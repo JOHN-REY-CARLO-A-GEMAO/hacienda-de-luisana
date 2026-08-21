@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { asset } from '../lib/asset'
 
 type Props = {
   src: string
@@ -16,6 +17,7 @@ type Props = {
  */
 export function SmartImage({ src, alt, className = '', loading = 'lazy', aspect }: Props) {
   const [errored, setErrored] = useState(false)
+  const resolvedSrc = useMemo(() => asset(src), [src])
 
   if (errored) {
     return (
@@ -40,7 +42,7 @@ export function SmartImage({ src, alt, className = '', loading = 'lazy', aspect 
 
   return (
     <img
-      src={src}
+      src={resolvedSrc}
       alt={alt}
       loading={loading}
       decoding="async"
