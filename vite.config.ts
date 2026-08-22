@@ -15,5 +15,15 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4173,
     allowedHosts: true
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+        }
+      }
+    }
   }
 })

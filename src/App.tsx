@@ -6,6 +6,7 @@ import { MobileStickyCTA } from './components/MobileStickyCTA'
 import { Home } from './pages/Home'
 import { BookingPage } from './pages/BookingPage'
 import { AdminPage } from './pages/AdminPage'
+import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { useReveal } from './lib/reveal'
 
 function ScrollHandler() {
@@ -34,7 +35,14 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/book" element={<BookingPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
