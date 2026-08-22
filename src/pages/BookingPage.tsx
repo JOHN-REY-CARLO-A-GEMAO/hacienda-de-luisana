@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
-import { bookingsDB } from '../lib/storage'
+import { cloudBookingsDB } from '../lib/firestoreBookings'
+import { isFirebaseConfigured } from '../lib/firebase'
 import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
 
@@ -40,7 +41,8 @@ export function BookingPage() {
     special_requests: '',
   })
   const [errors, setErrors] = useState<Errors>({})
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success'>('idle')
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState<string>('')
   const [submittedRef, setSubmittedRef] = useState<string>('')
 
   useEffect(() => {
@@ -89,24 +91,32 @@ export function BookingPage() {
     ev.preventDefault()
     if (!validate()) return
     setStatus('submitting')
-    // Persist locally so admin dashboard sees it end-to-end.
-    const b = bookingsDB.add({
-      guest_name: form.name.trim(),
-      phone: form.phone.trim(),
-      email: form.email.trim(),
-      check_in: form.check_in,
-      check_out: form.check_out,
-      guests: Number(form.guests),
-      accommodation: form.accommodation,
-      special_requests: form.special_requests.trim(),
-    })
-    await new Promise((r) => setTimeout(r, 600))
-    setSubmittedRef(b.id.slice(0, 8).toUpperCase())
-    setStatus('success')
+    setErrorMsg('')
+    try {
+      // Use cloud-aware service: Firestore if configured, else localStorage
+      const b = await cloudBookingsDB.add({
+        guest_name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        check_in: form.check_in,
+        check_out: form.check_out,
+        guests: Number(form.guests),
+        accommodation: form.accommodation,
+        special_requests: form.special_requests.trim(),
+      })
+      // Small UX delay
+      await new Promise((r) => setTimeout(r, 400))
+      setSubmittedRef(b.id.slice(0, 8).toUpperCase())
+      setStatus('success')
+    } catch (err: any) {
+      console.error('[Booking] failed', err)
+      setErrorMsg(err?.message || 'Failed to send request. Please try again.')
+      setStatus('error')
+    }
   }
 
   if (status === 'success') {
-    return <SuccessScreen reference={submittedRef} onNew={() => {
+    return <SuccessScreen reference={submittedRef} isCloud={cloudBookingsDB.isCloud} onNew={() => {
       setStatus('idle')
       setSubmittedRef('')
       setForm((f) => ({ ...f, name: '', phone: '', email: '', special_requests: '' }))
@@ -126,6 +136,17 @@ export function BookingPage() {
             availability and finalize your reservation. This is a booking inquiry — not an
             instant-confirmation engine.
           </p>
+          {!isFirebaseConfigured && (
+            <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
+              <strong>Demo mode:</strong> Firebase not configured — your request will be stored locally in this browser.
+              Owner can see it at <Link to="/admin" className="underline">/admin</Link> on this device.
+            </div>
+          )}
+          {cloudBookingsDB.isCloud && (
+            <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs text-emerald-800">
+              ✓ Secured by Firebase — your request will be saved to the cloud and the owner will be notified.
+            </div>
+          )}
         </div>
 
         <div className="mt-12 grid lg:grid-cols-3 gap-8 lg:gap-10">
@@ -134,6 +155,12 @@ export function BookingPage() {
             noValidate
             className="lg:col-span-2 bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 lg:p-10 space-y-8"
           >
+            {status === 'error' && (
+              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                {errorMsg}
+              </div>
+            )}
+
             <div>
               <h2 className="font-serif text-2xl text-forest-900">Stay Details</h2>
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
@@ -329,7 +356,7 @@ function SummaryRow({ icon: Icon, label, value }: { icon: any; label: string; va
   )
 }
 
-function SuccessScreen({ reference, onNew }: { reference: string; onNew: () => void }) {
+function SuccessScreen({ reference, onNew, isCloud }: { reference: string; onNew: () => void; isCloud: boolean }) {
   return (
     <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
       <div className="mx-auto max-w-3xl px-5 lg:px-8">
@@ -346,6 +373,9 @@ function SuccessScreen({ reference, onNew }: { reference: string; onNew: () => v
           <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-forest-50 border border-forest-100 text-forest-800 px-4 py-2 text-xs">
             Reference: <span className="font-mono font-semibold">{reference}</span>
           </div>
+          {isCloud && (
+            <div className="mt-3 text-xs text-forest-600">Saved securely to Firebase Firestore</div>
+          )}
 
           <div className="mt-10 flex flex-wrap gap-3 justify-center">
             <Link to="/" className="btn-ghost">Back to Home</Link>

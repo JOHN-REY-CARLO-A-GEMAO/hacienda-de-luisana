@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Logo } from './Logo'
 import { Menu, Close } from '../lib/icons'
+import { useAuth } from '../hooks/useAuth'
 
 const LINKS = [
   { href: '/', label: 'Home' },
@@ -17,6 +18,7 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const location = useLocation()
+  const { user, logout } = useAuth()
   const transparent = location.pathname === '/' && !scrolled
 
   useEffect(() => {
@@ -57,7 +59,25 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="hidden lg:block">
+        <div className="hidden lg:flex items-center gap-3">
+          {user ? (
+            <>
+              <Link
+                to="/admin"
+                className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                  transparent ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10' : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
+                }`}
+              >
+                Dashboard
+              </Link>
+              <button
+                onClick={() => logout()}
+                className={`text-xs ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 hover:text-forest-900'}`}
+              >
+                Sign out
+              </button>
+            </>
+          ) : null}
           <Link
             to="/book"
             className={
@@ -99,9 +119,18 @@ export function Nav() {
             </a>
           ))}
           <Link to="/book" className="btn-primary mt-6 w-full">Book Your Stay</Link>
-          <Link to="/admin" className="text-xs text-forest-600 mt-4 text-center underline">
-            Owner admin
-          </Link>
+          {user ? (
+            <>
+              <Link to="/admin" className="btn-ghost mt-3 w-full">Owner Dashboard</Link>
+              <button onClick={() => logout()} className="text-xs text-forest-600 mt-4 text-center underline w-full">
+                Sign out ({user.email})
+              </button>
+            </>
+          ) : (
+            <Link to="/admin" className="text-xs text-forest-600 mt-4 text-center underline">
+              Owner admin login
+            </Link>
+          )}
         </div>
       </div>
     </header>
