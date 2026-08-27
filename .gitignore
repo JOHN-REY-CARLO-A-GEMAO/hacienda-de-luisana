@@ -5,3 +5,14 @@ dist
 .DS_Store
 Thumbs.db
 tsconfig.tsbuildinfo
+
+# Android / Capacitor (local machine)
+android/local.properties
+android/.gradle
+android/build
+android/app/build
+android/captures
+android/.idea
+*.apk
+*.aab
+*.ap_

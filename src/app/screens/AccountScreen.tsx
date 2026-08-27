@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BUSINESS, FAQS } from '../../config/site'
 import { Chevron, Clock, Facebook, Instagram, Mail, MapPin, Messenger, Paw, Phone } from '../../lib/icons'
+import { isNativeApp } from '../../lib/native'
 import { Screen, ScreenTitle } from '../components/Screen'
 import { QuickActions } from '../components/QuickActions'
 import { telHref } from '../share'
@@ -140,11 +141,13 @@ export function AccountScreen() {
         </a>
       </section>
 
-      <p className="mt-6 text-center text-xs text-forest-600">
-        <Link to="/" className="underline underline-offset-4">
-          View full website
-        </Link>
-      </p>
+      {!isNativeApp ? (
+        <p className="mt-6 text-center text-xs text-forest-600">
+          <Link to="/" className="underline underline-offset-4">
+            View full website
+          </Link>
+        </p>
+      ) : null}
     </Screen>
   )
 }

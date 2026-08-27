@@ -8,6 +8,7 @@ import { BookingPage } from './pages/BookingPage'
 import { AdminPage } from './pages/AdminPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { useReveal } from './lib/reveal'
+import { isNativeApp } from './lib/native'
 import { GuestApp } from './app/GuestApp'
 import { HomeScreen } from './app/screens/HomeScreen'
 import { StayScreen } from './app/screens/StayScreen'
@@ -45,10 +46,20 @@ function WebsiteLayout() {
   )
 }
 
+function NativeHomeRedirect() {
+  const location = useLocation()
+  if (isNativeApp && location.pathname === '/') {
+    return <Navigate to="/app" replace />
+  }
+  return null
+}
+
 export default function App() {
   useReveal()
   return (
-    <Routes>
+    <>
+      <NativeHomeRedirect />
+      <Routes>
       <Route path="/app" element={<GuestApp />}>
         <Route index element={<HomeScreen />} />
         <Route path="stay" element={<StayScreen />} />
@@ -71,6 +82,7 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
+    </>
   )
 }
 

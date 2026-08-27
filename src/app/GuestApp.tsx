@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
+import { isNativeApp } from '../lib/native'
 import { AppHeader } from './AppHeader'
 import { AppTabBar } from './AppTabBar'
+import { useNativeShell } from './useNativeShell'
 
 function useLockBodyScroll() {
   useEffect(() => {
@@ -27,8 +29,30 @@ function ScrollToTop() {
   return null
 }
 
+function AppChrome() {
+  return (
+    <>
+      <AppHeader />
+      <ScrollToTop />
+      <div id="app-scroll" className="flex-1 overflow-y-auto overscroll-contain">
+        <Outlet />
+      </div>
+      <AppTabBar />
+    </>
+  )
+}
+
 export function GuestApp() {
   useLockBodyScroll()
+  useNativeShell()
+
+  if (isNativeApp) {
+    return (
+      <div className="h-[100dvh] bg-cream-50 flex flex-col">
+        <AppChrome />
+      </div>
+    )
+  }
 
   return (
     <div className="h-[100dvh] bg-cream-50 lg:bg-[#0f1c11] lg:flex lg:flex-col lg:items-center lg:justify-center lg:p-8">
@@ -39,12 +63,7 @@ export function GuestApp() {
       </div>
 
       <div className="h-full w-full lg:h-[min(844px,calc(100dvh-6rem))] lg:w-[390px] lg:rounded-[40px] lg:overflow-hidden lg:border lg:border-forest-800 lg:shadow-[0_40px_80px_-24px_rgba(0,0,0,0.55)] lg:ring-4 lg:ring-forest-900 flex flex-col bg-cream-50">
-        <AppHeader />
-        <ScrollToTop />
-        <div id="app-scroll" className="flex-1 overflow-y-auto overscroll-contain">
-          <Outlet />
-        </div>
-        <AppTabBar />
+        <AppChrome />
       </div>
 
       <Link

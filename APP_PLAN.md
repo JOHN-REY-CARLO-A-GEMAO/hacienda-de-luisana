@@ -1,6 +1,6 @@
 # Hacienda de LuisAna — Guest App Plan
 
-**Status:** Plan only (hindi pa build)  
+**Status:** Guest web app (`/app`) + Capacitor Android project are in the repo. Open `android/` in Android Studio to install. See `ANDROID.md`.  
 **Audience:** Guests / customers muna  
 **Owner dashboard:** mananatili sa web (`/admin`) — hindi featured sa app
 
