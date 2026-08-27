@@ -5,7 +5,11 @@ import { Phone } from '../lib/icons'
 export function MobileStickyCTA() {
   const location = useLocation()
   // Don't show over the booking or admin pages
-  if (location.pathname.startsWith('/book') || location.pathname.startsWith('/admin')) return null
+  if (
+    location.pathname.startsWith('/book') ||
+    location.pathname.startsWith('/admin') ||
+    location.pathname.startsWith('/app')
+  ) return null
 
   return (
     <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 pb-safe pointer-events-none">
