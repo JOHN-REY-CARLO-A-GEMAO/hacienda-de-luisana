@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { Nav } from './components/Nav'
 import { Footer } from './components/Footer'
 import { MobileStickyCTA } from './components/MobileStickyCTA'
@@ -8,6 +8,13 @@ import { BookingPage } from './pages/BookingPage'
 import { AdminPage } from './pages/AdminPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { useReveal } from './lib/reveal'
+import { isNativeApp } from './lib/native'
+import { GuestApp } from './app/GuestApp'
+import { HomeScreen } from './app/screens/HomeScreen'
+import { StayScreen } from './app/screens/StayScreen'
+import { ExploreScreen } from './app/screens/ExploreScreen'
+import { BookScreen } from './app/screens/BookScreen'
+import { AccountScreen } from './app/screens/AccountScreen'
 
 function ScrollHandler() {
   const location = useLocation()
@@ -25,30 +32,57 @@ function ScrollHandler() {
   return null
 }
 
-export default function App() {
-  useReveal()
+function WebsiteLayout() {
   return (
     <div className="min-h-screen flex flex-col">
       <Nav />
       <ScrollHandler />
       <main className="flex-1">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/book" element={<BookingPage />} />
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute>
-                <AdminPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Outlet />
       </main>
       <Footer />
       <MobileStickyCTA />
     </div>
+  )
+}
+
+function NativeHomeRedirect() {
+  const location = useLocation()
+  if (isNativeApp && location.pathname === '/') {
+    return <Navigate to="/app" replace />
+  }
+  return null
+}
+
+export default function App() {
+  useReveal()
+  return (
+    <>
+      <NativeHomeRedirect />
+      <Routes>
+      <Route path="/app" element={<GuestApp />}>
+        <Route index element={<HomeScreen />} />
+        <Route path="stay" element={<StayScreen />} />
+        <Route path="explore" element={<ExploreScreen />} />
+        <Route path="book" element={<BookScreen />} />
+        <Route path="account" element={<AccountScreen />} />
+        <Route path="*" element={<Navigate to="/app" replace />} />
+      </Route>
+      <Route element={<WebsiteLayout />}>
+        <Route path="/" element={<Home />} />
+        <Route path="/book" element={<BookingPage />} />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <AdminPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
+    </>
   )
 }
 

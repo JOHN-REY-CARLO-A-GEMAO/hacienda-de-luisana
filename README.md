@@ -27,12 +27,27 @@ npm install
 # Dev (requires .env.local for Firebase, else local fallback)
 npm run dev
 
+# Guest app (browser): http://localhost:5173/app
+
 # Build
 npm run build
 
 # Preview build
 npm run preview
 ```
+
+## 📱 Android (Android Studio)
+
+The guest app is wrapped with Capacitor. On your computer:
+
+```bash
+npm install
+npm run android          # build + sync + open Android Studio
+```
+
+Open the **`android/`** folder (not the repo root), wait for Gradle, then Run on an emulator or USB phone.
+
+Full steps: [ANDROID.md](./ANDROID.md).
 
 ## 🔧 Firebase Setup
 

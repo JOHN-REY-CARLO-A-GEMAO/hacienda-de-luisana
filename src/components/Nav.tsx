@@ -79,6 +79,16 @@ export function Nav() {
             </>
           ) : null}
           <Link
+            to="/app"
+            className={`text-xs px-3 py-1.5 rounded-full border transition ${
+              transparent
+                ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
+                : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
+            }`}
+          >
+            Guest app
+          </Link>
+          <Link
             to="/book"
             className={
               transparent
@@ -119,6 +129,7 @@ export function Nav() {
             </a>
           ))}
           <Link to="/book" className="btn-primary mt-6 w-full">Book Your Stay</Link>
+          <Link to="/app" className="btn-ghost mt-3 w-full">Open guest app</Link>
           {user ? (
             <>
               <Link to="/admin" className="btn-ghost mt-3 w-full">Owner Dashboard</Link>

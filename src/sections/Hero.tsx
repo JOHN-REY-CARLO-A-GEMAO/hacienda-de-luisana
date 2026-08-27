@@ -46,6 +46,12 @@ export function Hero() {
                   Explore Hacienda
                 </a>
               </div>
+              <Link
+                to="/app"
+                className="mt-5 inline-flex lg:hidden text-sm text-cream-100/80 underline underline-offset-4"
+              >
+                Open guest app
+              </Link>
             </div>
           </div>
         </div>
