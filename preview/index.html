@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hacienda de LuisAna - Quiet Luxury Guest Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --forest900: #0F1C11;
+      --forest800: #243B26;
+      --olive: #8A9A5B;
+      --cream50: #FBF9F3;
+      --cream100: #F3EFE0;
+      --goldAccent: #C5A059;
+      --shadow: 0 4px 20px rgba(15, 28, 17, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: #111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: var(--forest900);
+    }
+
+    /* Mobile Frame Device Simulator */
+    .device-container {
+      width: 100%;
+      max-width: 430px;
+      height: 920px;
+      max-height: 95vh;
+      background-color: var(--cream50);
+      border-radius: 40px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 0 12px #222;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Top Status Bar */
+    .status-bar {
+      height: 44px;
+      background-color: var(--forest900);
+      color: var(--cream50);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 100;
+    }
+
+    /* Main Scrollable Viewport */
+    .view-content {
+      flex: 1;
+      overflow-y: auto;
+      position: relative;
+      background-color: var(--cream50);
+    }
+
+    .tab-page {
+      display: none;
+      min-height: 100%;
+      padding-bottom: 80px;
+    }
+
+    .tab-page.active {
+      display: block;
+    }
+
+    /* Header Bar */
+    .app-header {
+      background-color: var(--forest900);
+      color: var(--cream50);
+      padding: 16px 20px;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+
+    .app-header h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+    }
+
+    /* Navigation Bar (Flutter NavigationBar) */
+    .nav-bar {
+      height: 70px;
+      background-color: var(--forest900);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      z-index: 90;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: rgba(251, 249, 243, 0.6);
+      text-decoration: none;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 20%;
+      height: 100%;
+    }
+
+    .nav-item svg {
+      width: 22px;
+      height: 22px;
+      margin-bottom: 4px;
+      fill: currentColor;
+    }
+
+    .nav-item.active {
+      color: var(--goldAccent);
+    }
+
+    .nav-item.active svg {
+      fill: var(--goldAccent);
+    }
+
+    /* Hero PageView */
+    .hero-container {
+      height: 340px;
+      position: relative;
+      overflow: hidden;
+      background-color: var(--forest900);
+    }
+
+    .hero-slider {
+      display: flex;
+      width: 300%;
+      height: 100%;
+      transition: transform 0.5s ease;
+    }
+
+    .hero-slide {
+      width: 33.333%;
+      height: 100%;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+    }
+
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.2), transparent, rgba(15,28,17,0.9));
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 24px 20px;
+      color: var(--cream50);
+    }
+
+    .hero-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 30px;
+      font-weight: 700;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+
+    .dots-indicator {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      position: absolute;
+      bottom: 12px;
+      left: 0;
+      right: 0;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.4);
+      transition: all 0.3s ease;
+    }
+
+    .dot.active {
+      width: 24px;
+      background: var(--goldAccent);
+    }
+
+    /* Content Cards & Padding */
+    .container {
+      padding: 20px;
+    }
+
+    .sub-heading {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--olive);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .section-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--forest900);
+      margin-bottom: 12px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background-color: var(--forest900);
+      color: var(--cream50);
+    }
+
+    .btn-outlined {
+      background-color: transparent;
+      border: 1.5px solid var(--forest800);
+      color: var(--forest900);
+    }
+
+    /* Stats Box */
+    .stats-card {
+      background-color: var(--forest900);
+      color: var(--cream50);
+      border-radius: 16px;
+      padding: 18px 12px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-val {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--goldAccent);
+    }
+
+    .stat-lbl {
+      font-size: 11px;
+      color: rgba(251, 249, 243, 0.7);
+      margin-top: 2px;
+    }
+
+    .stat-divider {
+      width: 1px;
+      height: 30px;
+      background: rgba(255,255,255,0.15);
+    }
+
+    /* Horizontal Featured Slider */
+    .featured-scroll {
+      display: flex;
+      gap: 14px;
+      overflow-x: auto;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(138, 154, 91, 0.2);
+    }
+
+    .card-featured {
+      min-width: 240px;
+      width: 240px;
+      cursor: pointer;
+    }
+
+    .card-img {
+      width: 100%;
+      height: 140px;
+      object-fit: cover;
+    }
+
+    .card-body {
+      padding: 12px 14px;
+    }
+
+    .card-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .card-price {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--forest800);
+    }
+
+    /* Chips */
+    .chips-row {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      background-color: var(--cream100);
+      overflow-x: auto;
+    }
+
+    .chip {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      background-color: #fff;
+      color: var(--forest900);
+      cursor: pointer;
+      border: none;
+      white-space: nowrap;
+    }
+
+    .chip.active {
+      background-color: var(--forest800);
+      color: var(--cream50);
+      font-weight: 600;
+    }
+
+    /* Accommodation Full Card */
+    .acc-card {
+      margin-bottom: 16px;
+      cursor: pointer;
+    }
+
+    .acc-card .card-img {
+      height: 180px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background-color: rgba(138, 154, 91, 0.2);
+      color: var(--forest900);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* Form Styles */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--forest900);
+    }
+
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .form-input:focus, .form-select:focus {
+      border-color: var(--forest800);
+    }
+
+    /* Grid Gallery */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 16px;
+    }
+
+    .gallery-item {
+      height: 140px;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .gallery-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .gallery-item-title {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px;
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* Smart Lock Interactive Display */
+    .lock-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 20px;
+      text-align: center;
+    }
+
+    .connection-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(46, 125, 50, 0.15);
+      color: #2E7D32;
+      border: 1px solid #2E7D32;
+      margin-bottom: 30px;
+    }
+
+    .lock-ring-outer {
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .lock-progress-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+
+    .lock-progress-svg circle {
+      fill: none;
+      stroke-width: 8;
+    }
+
+    .lock-progress-bg {
+      stroke: var(--cream100);
+    }
+
+    .lock-progress-bar {
+      stroke: var(--forest900);
+      stroke-dasharray: 502;
+      stroke-dashoffset: 502;
+      transition: stroke-dashoffset 0.06s linear;
+    }
+
+    .lock-btn-inner {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background-color: var(--forest800);
+      color: var(--cream50);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 25px rgba(15, 28, 17, 0.3);
+      transition: all 0.3s ease;
+      z-index: 2;
+    }
+
+    .lock-btn-inner.unlocked {
+      background-color: var(--forest900);
+      color: var(--goldAccent);
+    }
+
+    .lock-btn-inner svg {
+      width: 54px;
+      height: 54px;
+      fill: currentColor;
+    }
+
+    .ripple-effect {
+      position: absolute;
+      inset: -15px;
+      border-radius: 50%;
+      border: 2px solid var(--goldAccent);
+      animation: pulse 1.5s infinite;
+      opacity: 0;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.9); opacity: 0.8; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+
+    /* Modal / Toast */
+    .toast {
+      position: absolute;
+      bottom: 80px;
+      left: 20px;
+      right: 20px;
+      background: var(--forest900);
+      color: var(--cream50);
+      padding: 14px 18px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(120px);
+      transition: transform 0.3s ease;
+      z-index: 200;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+    }
+
+    /* Tabs Bar for Explore */
+    .tab-header-bar {
+      display: flex;
+      background: var(--forest900);
+      color: var(--cream50);
+    }
+
+    .tab-header-btn {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.6);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+    }
+
+    .tab-header-btn.active {
+      color: var(--cream50);
+      border-bottom-color: var(--goldAccent);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="device-container">
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span>09:41</span>
+      <span>Hacienda de LuisAna</span>
+      <span>100% 🔋</span>
+    </div>
+
+    <!-- Main Viewport -->
+    <div class="view-content">
+
+      <!-- TAB 1: HOME -->
+      <div id="tab-home" class="tab-page active">
+        <div class="hero-container">
+          <div class="hero-slider" id="heroSlider">
+            <div class="hero-slide" style="background-image: url('/assets/images/gmaps/img-03.jpg');">
+              <div class="hero-overlay">
+                <div class="hero-title">Main House Villa</div>
+                <div style="font-size: 13px; color: var(--goldAccent);">Quiet Luxury Private Haven</div>
+              </div>
+            </div>
+            <div class="hero-slide" style="background-image: url('/assets/images/gmaps/img-05.jpg');">
+              <div class="hero-overlay">
+                <div class="hero-title">Forest Deck Glamping</div>
+                <div style="font-size: 13px; color: var(--goldAccent);">Elevated Canopy Living</div>
+              </div>
+            </div>
+            <div class="hero-slide" style="background-image: url('/assets/images/gmaps/img-07.jpg');">
+              <div class="hero-overlay">
+                <div class="hero-title">Riverside Deck</div>
+                <div style="font-size: 13px; color: var(--goldAccent);">Serene River Stream Views</div>
+              </div>
+            </div>
+          </div>
+          <div class="dots-indicator">
+            <div class="dot active" onclick="setHeroSlide(0)"></div>
+            <div class="dot" onclick="setHeroSlide(1)"></div>
+            <div class="dot" onclick="setHeroSlide(2)"></div>
+          </div>
+        </div>
+
+        <div class="container">
+          <div class="sub-heading">SLOW LIVING & QUIET LUXURY</div>
+          <div class="section-title">Sanctuary in Luisiana, Laguna</div>
+          <p style="font-size: 13px; color: #444; line-height: 1.5;">
+            Welcome to Hacienda de LuisAna — an exclusive mountain haven where serene nature meets refined quiet luxury. Unplug in our main villa or immerse in nature on elevated forest decks.
+          </p>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="switchTab('book')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
+              Book Now
+            </button>
+            <button class="btn btn-outlined" onclick="switchTab('stay')">
+              Explore Stays
+            </button>
+          </div>
+
+          <div class="stats-card">
+            <div class="stat-item">
+              <div class="stat-val">12</div>
+              <div class="stat-lbl">Max Guests</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+              <div class="stat-val">2</div>
+              <div class="stat-lbl">Camping Decks</div>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+              <div class="stat-val">4.9★</div>
+              <div class="stat-lbl">Guest Rating</div>
+            </div>
+          </div>
+
+          <div class="section-title" style="font-size: 22px;">Featured Accommodations</div>
+          <div class="featured-scroll">
+            <div class="card card-featured" onclick="switchTab('stay')">
+              <img src="/assets/images/gmaps/img-03.jpg" class="card-img" alt="Main House">
+              <div class="card-body">
+                <div class="card-title">Main House Villa</div>
+                <div class="card-price">PHP 8,500 / night</div>
+              </div>
+            </div>
+            <div class="card card-featured" onclick="switchTab('stay')">
+              <img src="/assets/images/gmaps/img-05.jpg" class="card-img" alt="Forest Deck">
+              <div class="card-body">
+                <div class="card-title">Camping A - Forest Deck</div>
+                <div class="card-price">PHP 1,800 / night</div>
+              </div>
+            </div>
+            <div class="card card-featured" onclick="switchTab('stay')">
+              <img src="/assets/images/gmaps/img-07.jpg" class="card-img" alt="Riverside">
+              <div class="card-body">
+                <div class="card-title">Camping B - Riverside</div>
+                <div class="card-price">PHP 1,500 / night</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: STAY -->
+      <div id="tab-stay" class="tab-page">
+        <div class="app-header">
+          <h1>Accommodations</h1>
+        </div>
+        <div class="chips-row">
+          <button class="chip active" onclick="filterAccom('All', this)">All</button>
+          <button class="chip" onclick="filterAccom('Main House', this)">Main House</button>
+          <button class="chip" onclick="filterAccom('Camping Units', this)">Camping Units</button>
+        </div>
+        <div class="container" id="stayList">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- TAB 3: EXPLORE -->
+      <div id="tab-explore" class="tab-page">
+        <div class="app-header">
+          <h1>Explore Luisiana</h1>
+        </div>
+        <div class="tab-header-bar">
+          <button class="tab-header-btn active" onclick="setExploreTab('nearby', this)">Nearby Attractions</button>
+          <button class="tab-header-btn" onclick="setExploreTab('gallery', this)">Photo Gallery</button>
+        </div>
+
+        <div id="explore-nearby" style="display: block;">
+          <div class="container" id="nearbyList">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <div id="explore-gallery" style="display: none;">
+          <div class="chips-row">
+            <button class="chip active" onclick="filterGallery('All', this)">All</button>
+            <button class="chip" onclick="filterGallery('Main House', this)">Main House</button>
+            <button class="chip" onclick="filterGallery('Camping', this)">Camping</button>
+            <button class="chip" onclick="filterGallery('Nature', this)">Nature</button>
+          </div>
+          <div class="gallery-grid" id="galleryGrid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: BOOK -->
+      <div id="tab-book" class="tab-page">
+        <div class="app-header">
+          <h1>Book Your Stay</h1>
+        </div>
+        <div class="container">
+          <div class="section-title" style="font-size: 20px;">Reservation Form</div>
+          <form id="bookingForm" onsubmit="handleBookingSubmit(event)">
+            <div class="form-group">
+              <label class="form-label">Accommodation</label>
+              <select class="form-select" id="bookAccSelect">
+                <option value="Main House Villa">Main House Villa (PHP 8,500/night)</option>
+                <option value="Camping A - Forest Deck">Camping A - Forest Deck (PHP 1,800/night)</option>
+                <option value="Camping B - Riverside">Camping B - Riverside (PHP 1,500/night)</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <div class="form-group" style="flex:1;">
+                <label class="form-label">Check-In</label>
+                <input type="date" class="form-input" id="checkInDate" required>
+              </div>
+              <div class="form-group" style="flex:1;">
+                <label class="form-label">Check-Out</label>
+                <input type="date" class="form-input" id="checkOutDate" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Number of Guests: <span id="guestCountVal">2</span></label>
+              <input type="range" min="1" max="12" value="2" class="form-input" id="guestRange" oninput="document.getElementById('guestCountVal').innerText=this.value">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Full Name</label>
+              <input type="text" class="form-input" id="guestName" value="Maria Santos" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Mobile Phone Number</label>
+              <input type="tel" class="form-input" id="guestPhone" value="+63 925 850 7707" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Special Requests (Optional)</label>
+              <textarea class="form-textarea" id="guestNotes" rows="2">Quiet peaceful room preference.</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; height: 48px; font-size: 15px;">
+              Proceed to KYC Verification
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- TAB 5: KEY (GUEST DASHBOARD & DIGITAL KEY) -->
+      <div id="tab-key" class="tab-page">
+        <div class="app-header">
+          <h1>Guest Hub & Digital Key</h1>
+        </div>
+        <div class="container">
+          <div class="card" style="background: var(--forest900); color: var(--cream50); padding: 20px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <span style="font-size: 11px; letter-spacing: 1.5px; opacity: 0.7;">RESERVATION STATUS</span>
+              <span id="keyStatusBadge" class="badge" style="background: #2E7D32; color: #fff;">CONFIRMED</span>
+            </div>
+            <div id="keyAccTitle" style="font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 700; color: var(--cream50);">
+              Main House Villa
+            </div>
+            <div id="keyRefText" style="font-size: 13px; color: var(--goldAccent); margin-top: 4px;">
+              Ref ID: HDL-9824 • 6 Guests
+            </div>
+          </div>
+
+          <!-- Digital Key Controller -->
+          <div class="card" style="padding: 20px; text-align: center; margin-bottom: 20px;">
+            <div class="connection-badge">
+              <span style="display:inline-block; width:8px; height:8px; background:#2E7D32; border-radius:50%;"></span>
+              ESP32 Bluetooth Lock Connected
+            </div>
+
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 700; margin-bottom: 4px;" id="lockHeading">
+              PRESS & HOLD TO UNLOCK
+            </div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 24px;" id="lockSubHeading">
+              Hold button down firmly for 1.2 seconds
+            </div>
+
+            <div class="lock-ring-outer" id="lockBtn">
+              <div class="ripple-effect" id="lockRipple" style="display:none;"></div>
+              <svg class="lock-progress-svg" viewBox="0 0 170 170">
+                <circle class="lock-progress-bg" cx="85" cy="85" r="80"></circle>
+                <circle class="lock-progress-bar" id="lockProgressBar" cx="85" cy="85" r="80"></circle>
+              </svg>
+              <div class="lock-btn-inner" id="lockInner">
+                <svg viewBox="0 0 24 24" id="lockIcon"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contact Host -->
+          <div class="section-title" style="font-size: 20px;">Contact Host</div>
+          <div class="btn-row">
+            <button class="btn btn-outlined" onclick="window.location.href='tel:+639258507707'">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 2.62 4.23 5.45 5.67l2.2-2.23c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.23z"/></svg>
+              Call Host
+            </button>
+            <button class="btn btn-outlined" onclick="window.open('https://m.me/haciendadeluisana','_blank')">
+              Messenger
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+      <span id="toastText">Notification message</span>
+    </div>
+
+    <!-- Navigation Bar -->
+    <div class="nav-bar">
+      <a class="nav-item active" onclick="switchTab('home')" id="nav-home">
+        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        Home
+      </a>
+      <a class="nav-item" onclick="switchTab('stay')" id="nav-stay">
+        <svg viewBox="0 0 24 24"><path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z"/></svg>
+        Stay
+      </a>
+      <a class="nav-item" onclick="switchTab('explore')" id="nav-explore">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Explore
+      </a>
+      <a class="nav-item" onclick="switchTab('book')" id="nav-book">
+        <svg viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/></svg>
+        Book
+      </a>
+      <a class="nav-item" onclick="switchTab('key')" id="nav-key">
+        <svg viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+        Key
+      </a>
+    </div>
+  </div>
+
+  <script>
+    // Data Models
+    const accommodations = [
+      {
+        id: 'main-house',
+        title: 'Main House Villa',
+        category: 'Main House',
+        capacity: 12,
+        price: 8500,
+        image: '/assets/images/gmaps/img-03.jpg',
+        desc: 'Experience slow living in our flagship Quiet Luxury Main House Villa. Private pool, mountain view, for up to 12 guests.'
+      },
+      {
+        id: 'camping-a',
+        title: 'Camping A - Forest Deck',
+        category: 'Camping Units',
+        capacity: 4,
+        price: 1800,
+        image: '/assets/images/gmaps/img-05.jpg',
+        desc: 'Elevated teak deck with luxury canvas glamping tent nestled in rainforest canopy.'
+      },
+      {
+        id: 'camping-b',
+        title: 'Camping B - Riverside',
+        category: 'Camping Units',
+        capacity: 4,
+        price: 1500,
+        image: '/assets/images/gmaps/img-07.jpg',
+        desc: 'Steps away from the cold natural waters of Luisiana river with private deck platform.'
+      }
+    ];
+
+    const nearbySpots = [
+      { name: 'Hulugan Falls', location: 'Luisiana, Laguna', desc: 'Grand 70m cascading waterfall surrounded by pristine jungle mist.', img: '/assets/images/gmaps/hulugan_falls.jpg', map: 'https://maps.google.com/?q=Hulugan+Falls+Luisiana+Laguna' },
+      { name: 'Aliw Falls', location: 'Luisiana, Laguna', desc: 'Cascading multi-tiered waterfalls with natural cold rock pools.', img: '/assets/images/gmaps/aliw_falls.jpg', map: 'https://maps.google.com/?q=Aliw+Falls+Luisiana+Laguna' },
+      { name: 'Caliraya Lake', location: 'Cavinti, Laguna', desc: 'Peaceful high-altitude lake popular for sunset kayaking and fresh breezes.', img: '/assets/images/gmaps/caliraya_lake.jpg', map: 'https://maps.google.com/?q=Caliraya+Lake+Laguna' },
+      { name: 'Kamay ni Hesus', location: 'Lucban, Quezon', desc: 'Famous pilgrimage shrine and colossal statue with scenic mountain views.', img: '/assets/images/gmaps/kamay_ni_hesus.jpg', map: 'https://maps.google.com/?q=Kamay+ni+Hesus+Lucban+Quezon' }
+    ];
+
+    const galleryPhotos = [
+      { img: '/assets/images/gmaps/img-03.jpg', title: 'Main House Villa Exterior', tag: 'Main House' },
+      { img: '/assets/images/gmaps/img-02.jpg', title: 'Infinity Pool & Ridge View', tag: 'Main House' },
+      { img: '/assets/images/gmaps/img-01.jpg', title: 'Hacienda Main Entrance', tag: 'Main House' },
+      { img: '/assets/images/gmaps/img-04.jpg', title: 'Morning Mist Mountain Balcony', tag: 'Main House' },
+      { img: '/assets/images/gmaps/img-09.jpg', title: 'Outdoor Gourmet Dining Deck', tag: 'Main House' },
+      { img: '/assets/images/gmaps/img-05.jpg', title: 'Forest Deck Glamping', tag: 'Camping' },
+      { img: '/assets/images/gmaps/img-06.jpg', title: 'Glamping Interior Sanctuary', tag: 'Camping' },
+      { img: '/assets/images/gmaps/img-08.jpg', title: 'Campfire Pit Evening Glow', tag: 'Camping' },
+      { img: '/assets/images/gmaps/img-07.jpg', title: 'Serene Riverside Deck', tag: 'Nature' },
+      { img: '/assets/images/gmaps/hulugan_falls.jpg', title: 'Hulugan Falls Mist', tag: 'Nature' },
+      { img: '/assets/images/gmaps/aliw_falls.jpg', title: 'Aliw Falls Cascades', tag: 'Nature' },
+      { img: '/assets/images/gmaps/caliraya_lake.jpg', title: 'Caliraya Lake View', tag: 'Nature' }
+    ];
+
+    let currentHero = 0;
+
+    function setHeroSlide(idx) {
+      currentHero = idx;
+      document.getElementById('heroSlider').style.transform = `translateX(-${idx * 33.333}%)`;
+      document.querySelectorAll('.dots-indicator .dot').forEach((dot, i) => {
+        dot.classList.toggle('active', i === idx);
+      });
+    }
+
+    // Auto rotate hero
+    setInterval(() => {
+      setHeroSlide((currentHero + 1) % 3);
+    }, 4000);
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+      document.getElementById('tab-' + tabId).classList.add('active');
+      document.getElementById('nav-' + tabId).classList.add('active');
+
+      if (tabId === 'stay') renderStayList('All');
+      if (tabId === 'explore') {
+        renderNearbyList();
+        renderGalleryGrid('All');
+      }
+    }
+
+    function renderStayList(filter) {
+      const container = document.getElementById('stayList');
+      const list = accommodations.filter(a => filter === 'All' || a.category === filter);
+      container.innerHTML = list.map(a => `
+        <div class="card acc-card">
+          <img src="${a.image}" class="card-img" alt="${a.title}">
+          <div class="card-body">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div class="card-title">${a.title}</div>
+              <span class="badge">Up to ${a.capacity} guests</span>
+            </div>
+            <p style="font-size:12px; color:#555; margin: 8px 0;">${a.desc}</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+              <div class="card-price">PHP ${a.price.toLocaleString()} / night</div>
+              <button class="btn btn-primary" style="padding: 8px 14px; font-size: 12px;" onclick="selectRoomToBook('${a.title}')">
+                Book This
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function selectRoomToBook(title) {
+      document.getElementById('bookAccSelect').value = title;
+      switchTab('book');
+    }
+
+    function filterAccom(category, btn) {
+      document.querySelectorAll('.chips-row .chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      renderStayList(category);
+    }
+
+    function setExploreTab(subTab, btn) {
+      document.querySelectorAll('.tab-header-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('explore-nearby').style.display = subTab === 'nearby' ? 'block' : 'none';
+      document.getElementById('explore-gallery').style.display = subTab === 'gallery' ? 'block' : 'none';
+    }
+
+    function renderNearbyList() {
+      const container = document.getElementById('nearbyList');
+      container.innerHTML = nearbySpots.map(s => `
+        <div class="card acc-card" style="margin-bottom:16px;">
+          <img src="${s.img}" class="card-img" alt="${s.name}">
+          <div class="card-body">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div class="card-title">${s.name}</div>
+              <span style="font-size:12px; color:var(--olive); font-weight:600;">${s.location}</span>
+            </div>
+            <p style="font-size:12px; color:#555; margin:6px 0;">${s.desc}</p>
+            <a href="${s.map}" target="_blank" style="color:var(--forest800); font-weight:600; font-size:12px; text-decoration:none;">Open in Maps →</a>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderGalleryGrid(tag) {
+      const container = document.getElementById('galleryGrid');
+      const list = galleryPhotos.filter(g => tag === 'All' || g.tag === tag);
+      container.innerHTML = list.map(g => `
+        <div class="gallery-item">
+          <img src="${g.img}" alt="${g.title}">
+          <div class="gallery-item-title">${g.title}</div>
+        </div>
+      `).join('');
+    }
+
+    function filterGallery(tag, btn) {
+      document.querySelectorAll('#explore-gallery .chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      renderGalleryGrid(tag);
+    }
+
+    // Initialize Default Dates in Form
+    const today = new Date();
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const dayAfter = new Date(today); dayAfter.setDate(dayAfter.getDate() + 3);
+    document.getElementById('checkInDate').value = tomorrow.toISOString().split('T')[0];
+    document.getElementById('checkOutDate').value = dayAfter.toISOString().split('T')[0];
+
+    function handleBookingSubmit(e) {
+      e.preventDefault();
+      const acc = document.getElementById('bookAccSelect').value;
+      const name = document.getElementById('guestName').value;
+      const ref = 'HDL-' + Math.floor(1000 + Math.random() * 8999);
+
+      document.getElementById('keyAccTitle').innerText = acc;
+      document.getElementById('keyRefText').innerText = `Ref ID: ${ref} • ${name}`;
+
+      showToast(`Booking submitted! Reference: ${ref}`);
+      switchTab('key');
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastText').innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    // Press & Hold Smart Lock Logic
+    let holdTimer = null;
+    let progress = 0;
+    let isUnlocked = false;
+
+    const lockBtn = document.getElementById('lockBtn');
+    const progressBar = document.getElementById('lockProgressBar');
+    const lockInner = document.getElementById('lockInner');
+    const lockHeading = document.getElementById('lockHeading');
+    const lockSubHeading = document.getElementById('lockSubHeading');
+    const lockRipple = document.getElementById('lockRipple');
+
+    function startHold() {
+      if (isUnlocked) return;
+      clearInterval(holdTimer);
+      holdTimer = setInterval(() => {
+        progress += 0.05;
+        const offset = 502 - (progress * 502);
+        progressBar.style.strokeDashoffset = Math.max(0, offset);
+
+        if (progress >= 1.0) {
+          clearInterval(holdTimer);
+          triggerUnlock();
+        }
+      }, 60);
+    }
+
+    function cancelHold() {
+      if (isUnlocked) return;
+      clearInterval(holdTimer);
+      progress = 0;
+      progressBar.style.strokeDashoffset = 502;
+    }
+
+    function triggerUnlock() {
+      isUnlocked = true;
+      lockInner.classList.add('unlocked');
+      lockHeading.innerText = 'DOOR UNLOCKED';
+      lockSubHeading.innerText = 'Auto re-locking in 5 seconds...';
+      lockRipple.style.display = 'block';
+      showToast('🔓 Smart Lock Unlocked! ESP32 Handshake Success.');
+
+      setTimeout(() => {
+        isUnlocked = false;
+        progress = 0;
+        progressBar.style.strokeDashoffset = 502;
+        lockInner.classList.remove('unlocked');
+        lockHeading.innerText = 'PRESS & HOLD TO UNLOCK';
+        lockSubHeading.innerText = 'Hold button down firmly for 1.2 seconds';
+        lockRipple.style.display = 'none';
+      }, 5000);
+    }
+
+    lockBtn.addEventListener('mousedown', startHold);
+    lockBtn.addEventListener('mouseup', cancelHold);
+    lockBtn.addEventListener('mouseleave', cancelHold);
+    lockBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startHold(); });
+    lockBtn.addEventListener('touchend', cancelHold);
+
+    // Initial render
+    renderStayList('All');
+  </script>
+</body>
+</html>
