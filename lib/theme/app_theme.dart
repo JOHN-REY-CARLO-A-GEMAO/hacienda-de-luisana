@@ -77,7 +77,7 @@ class AppTheme {
           letterSpacing: 0.5,
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 2,
         shadowColor: forest900.withOpacity(0.08),

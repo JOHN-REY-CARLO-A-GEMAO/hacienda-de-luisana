@@ -1,3 +1,48 @@
+# Node / Vite
+node_modules/
+dist/
+tsconfig.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env - keep .env.example, ignore local secrets
+.env
+.env.local
+!.env.example
+!.firebaserc.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+android/.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.log
+*.class
+*.pyc
+
+# Android / Gradle (local builds)
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/app/debug/
+android/app/profile/
+android/app/release/
+*.apk
+*.aab
+*.ap_
+# Generated Flutter plugin registrant (re-generated on build)
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+
 # Flutter / Dart
 .dart_tool/
 .flutter-plugins
@@ -6,15 +51,19 @@
 .pub-cache/
 .pub/
 build/
+coverage/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+app.*.symbols
+app.*.map.json
 
-# Android
-android/.gradle
-android/captures/
-android/gradlew
-android/gradlew.bat
-android/local.properties
+# Pub lock - ignored for clean repo (regenerated via `flutter pub get` / `npm install`)
+pubspec.lock
+hacienda_flutter/pubspec.lock
 
-# Environment
-.env
+# Misc project clutter (do not commit)
+hacienda_flutter/
 image-search/
-node_modules/
+preview/
+dist/
+.idea/

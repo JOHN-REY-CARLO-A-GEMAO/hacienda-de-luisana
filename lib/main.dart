@@ -155,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               centerTitle: true,
               background: Stack(
-                fit: StackTrace.expand,
+                fit: StackFit.expand,
                 children: [
                   PageView.builder(
                     controller: _pageController,
@@ -972,7 +972,7 @@ class _ExploreScreenState extends State<ExploreScreen>
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: Stack(
-                          fit: StackTrace.expand,
+                          fit: StackFit.expand,
                           children: [
                             Image.asset(
                               item['image']!,
@@ -1470,9 +1470,10 @@ class BookingConfirmationScreen extends StatelessWidget {
               const SizedBox(height: 24),
 
               Card(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
                     _buildSummaryRow('Guest Name', booking.guestName),
                     const Divider(),
                     _buildSummaryRow('Accommodation', booking.accommodationTitle),
@@ -1485,6 +1486,7 @@ class BookingConfirmationScreen extends StatelessWidget {
                   ],
                 ),
               ),
+            ),
               const SizedBox(height: 32),
 
               SizedBox(
@@ -1663,7 +1665,7 @@ class DashboardScreen extends StatelessWidget {
                               ? 'Your digital key is active. Tap below to access room controls.'
                               : 'Digital Key unlocks once booking is confirmed.',
                           textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(fontSize: 12, color: Colors.black64),
+                          style: GoogleFonts.inter(fontSize: 12, color: Colors.black54),
                         ),
                         const SizedBox(height: 16),
                         SizedBox(
