@@ -1,5 +1,6 @@
 package com.haciendadeluisana.app;
 
-import com.getcapacitor.BridgeActivity;
+import io.flutter.embedding.android.FlutterActivity;
 
-public class MainActivity extends BridgeActivity {}
+public class MainActivity extends FlutterActivity {
+}
