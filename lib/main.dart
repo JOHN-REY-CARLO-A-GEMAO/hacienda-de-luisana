@@ -1506,16 +1506,36 @@ class _BookScreenState extends State<BookScreen> {
 
               // Accommodation Dropdown
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 value: _selectedAccommodation,
                 decoration: InputDecoration(
                   labelText: 'Select Accommodation',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   prefixIcon: const Icon(Icons.home, color: AppTheme.forest800),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                 ),
+                selectedItemBuilder: (context) {
+                  return accommodationsList.map((acc) {
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${acc.title} (PHP ${NumberFormat('#,###').format(acc.pricePerNight)})',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.forest800),
+                      ),
+                    );
+                  }).toList();
+                },
                 items: accommodationsList.map((acc) {
                   return DropdownMenuItem(
                     value: acc.title,
-                    child: Text('${acc.title} (PHP ${NumberFormat('#,###').format(acc.pricePerNight)})'),
+                    child: Text(
+                      '${acc.title} (PHP ${NumberFormat('#,###').format(acc.pricePerNight)})',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: GoogleFonts.inter(fontSize: 13),
+                    ),
                   );
                 }).toList(),
                 onChanged: (val) {
