@@ -228,35 +228,49 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Subheading
-                  Text(
-                    'SLOW LIVING & QUIET LUXURY',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2.0,
-                      color: AppTheme.olive,
-                    ),
+                  // Opener — small gold rule + eyebrow kicker
+                  Row(
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: AppTheme.goldAccent,
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'SLOW LIVING & QUIET LUXURY',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 2.2,
+                          color: AppTheme.olive,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 14),
                   Text(
-                    'Sanctuary in Luisiana, Laguna',
+                    'A sanctuary in\nLuisiana, Laguna',
                     style: GoogleFonts.cormorantGaramond(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 34,
+                      height: 1.05,
+                      fontWeight: FontWeight.w700,
                       color: AppTheme.forest900,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   Text(
                     'Welcome to Hacienda de LuisAna — an exclusive mountain haven where serene nature meets refined quiet luxury. Unplug in our main villa or immerse in nature on elevated forest decks.',
                     style: GoogleFonts.inter(
                       fontSize: 14,
-                      color: AppTheme.forest800.withOpacity(0.8),
-                      height: 1.5,
+                      color: AppTheme.forest800.withOpacity(0.82),
+                      height: 1.6,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
 
                   // Call To Action Buttons (Book Now / Explore Stays)
                   Row(
@@ -278,47 +292,97 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 30),
 
-                  // Stats Row (12 max guests / 2 camping / 4.9★)
+                  // Stats card — deep green with gold hairline top accent
                   Container(
-                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 12),
                     decoration: BoxDecoration(
-                      color: AppTheme.forest900,
-                      borderRadius: BorderRadius.circular(16),
+                      gradient: AppTheme.forestDeep,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.forest900.withOpacity(0.18),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    child: Stack(
                       children: [
-                        _buildStatItem('12', 'Max Guests', Icons.group),
-                        Container(width: 1, height: 35, color: Colors.white24),
-                        _buildStatItem('2', 'Camping Decks', Icons.deck),
-                        Container(width: 1, height: 35, color: Colors.white24),
-                        _buildStatItem('4.9★', 'Guest Rating', Icons.star),
+                        Positioned(
+                          top: 0,
+                          left: 28,
+                          right: 28,
+                          child: Container(
+                            height: 2,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.transparent,
+                                  AppTheme.goldSoft.withOpacity(0.7),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildStatItem('12', 'Max Guests', Icons.group),
+                            Container(width: 1, height: 38, color: Colors.white24),
+                            _buildStatItem('2', 'Camping Decks', Icons.deck),
+                            Container(width: 1, height: 38, color: Colors.white24),
+                            _buildStatItem('4.9★', 'Guest Rating', Icons.star),
+                          ],
+                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 32),
 
-                  // Featured Cards Section
+                  // Featured Cards Section header
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        'Featured Accommodations',
-                        style: GoogleFonts.cormorantGaramond(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.forest900,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Featured Accommodations',
+                              style: GoogleFonts.cormorantGaramond(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.forest900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Hand-picked quiet-luxury stays',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: AppTheme.forest800.withOpacity(0.6),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       TextButton(
                         onPressed: () => widget.onNavigateTab(1),
-                        child: const Text('View All', style: TextStyle(color: AppTheme.olive)),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('View All'),
+                            SizedBox(width: 2),
+                            Icon(Icons.arrow_forward, size: 16),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
 
                   // Horizontal Featured List
                   SizedBox(
@@ -348,54 +412,129 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Hero image with quiet scrim + price tag
                                   Expanded(
-                                    child: Image.asset(
-                                      item.heroImages.first,
-                                      width: double.infinity,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => Container(
-                                        color: AppTheme.forest800,
-                                        child: const Center(
-                                          child: Icon(Icons.home, color: AppTheme.cream50),
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        Image.asset(
+                                          item.heroImages.first,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            color: AppTheme.forest800,
+                                            child: const Center(
+                                              child: Icon(Icons.home, color: AppTheme.cream50),
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                        // soft bottom scrim for legibility
+                                        const DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.transparent,
+                                                Color(0x660F1C11),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        // category chip
+                                        Positioned(
+                                          top: 10,
+                                          left: 10,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.forest900.withOpacity(0.78),
+                                              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                                              border: Border.all(
+                                                color: AppTheme.goldSoft.withOpacity(0.5),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              item.category.toUpperCase(),
+                                              style: GoogleFonts.inter(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 1.1,
+                                                color: AppTheme.cream50,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        // price tag pill
+                                        Positioned(
+                                          right: 10,
+                                          bottom: 10,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.cream50,
+                                              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black.withOpacity(0.18),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Text(
+                                              '₱${NumberFormat('#,###').format(item.pricePerNight)}/night',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.forest900,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                   Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Column(
+                                    padding: const EdgeInsets.all(14.0),
+                                    child: Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          item.title,
-                                          style: GoogleFonts.cormorantGaramond(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              'PHP ${NumberFormat('#,###').format(item.pricePerNight)}/night',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                                color: AppTheme.forest800,
-                                              ),
+                                        Expanded(
+                                          child: Text(
+                                            item.title,
+                                            style: GoogleFonts.cormorantGaramond(
+                                              fontSize: 19,
+                                              height: 1.1,
+                                              fontWeight: FontWeight.w700,
+                                              color: AppTheme.forest900,
                                             ),
-                                            Row(
-                                              children: [
-                                                const Icon(Icons.star, size: 14, color: AppTheme.goldAccent),
-                                                const SizedBox(width: 2),
-                                                Text(
-                                                  '${item.rating}',
-                                                  style: GoogleFonts.inter(fontSize: 12),
-                                                ),
-                                              ],
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.star_rounded,
+                                              size: 15,
+                                              color: AppTheme.goldAccent,
+                                            ),
+                                            const SizedBox(width: 2),
+                                            Text(
+                                              '${item.rating}',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.forest900,
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -471,17 +610,41 @@ class _StayScreenState extends State<StayScreen> {
       ),
       body: Column(
         children: [
-          // Filter Chips
+          // Filter chips — soft cream bar
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            color: AppTheme.cream100,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            decoration: BoxDecoration(
+              color: AppTheme.cream100.withOpacity(0.55),
+              border: Border(
+                bottom: BorderSide(color: AppTheme.forest900.withOpacity(0.06)),
+              ),
+            ),
             child: Row(
               children: [
-                _buildFilterChip('All'),
-                const SizedBox(width: 8),
-                _buildFilterChip('Main House'),
-                const SizedBox(width: 8),
-                _buildFilterChip('Camping Units'),
+                Text(
+                  'Browse',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4,
+                    color: AppTheme.olive,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _buildFilterChip('All'),
+                        const SizedBox(width: 8),
+                        _buildFilterChip('Main House'),
+                        const SizedBox(width: 8),
+                        _buildFilterChip('Camping Units'),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -500,17 +663,67 @@ class _StayScreenState extends State<StayScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        height: 180,
+                        height: 190,
                         width: double.infinity,
-                        child: Image.asset(
-                          item.heroImages.first,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: AppTheme.forest800,
-                            child: const Center(
-                              child: Icon(Icons.image, color: Colors.white, size: 50),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.asset(
+                              item.heroImages.first,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: AppTheme.forest800,
+                                child: const Center(
+                                  child: Icon(Icons.image, color: Colors.white, size: 50),
+                                ),
+                              ),
                             ),
-                          ),
+                            // scrim to lift the top tag
+                            const DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [Color(0x550F1C11), Colors.transparent],
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 12,
+                              left: 12,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.cream50,
+                                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.16),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.villa_outlined,
+                                        size: 13, color: AppTheme.forest800),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      item.category.toUpperCase(),
+                                      style: GoogleFonts.inter(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 1.0,
+                                        color: AppTheme.forest900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       Padding(
@@ -667,40 +880,126 @@ class AccommodationDetailScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // category + rating eyebrow
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppTheme.cream100,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                          border: Border.all(color: AppTheme.olive.withOpacity(0.4)),
+                        ),
+                        child: Text(
+                          accommodation.category.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                            color: AppTheme.forest800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Row(
+                        children: [
+                          const Icon(Icons.star_rounded,
+                              color: AppTheme.goldAccent, size: 17),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${accommodation.rating}',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.forest900,
+                            ),
+                          ),
+                          Text(
+                            '  ·  up to ${accommodation.capacity} guests',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: AppTheme.forest800.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    accommodation.title,
+                    style: GoogleFonts.cormorantGaramond(
+                      fontSize: 30,
+                      height: 1.05,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.forest900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // price
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
                     children: [
                       Text(
-                        accommodation.title,
-                        style: GoogleFonts.cormorantGaramond(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
+                        'from ',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: AppTheme.forest800.withOpacity(0.6),
                         ),
                       ),
                       Text(
-                        'PHP ${NumberFormat('#,###').format(accommodation.pricePerNight)} / night',
+                        '₱${NumberFormat('#,###').format(accommodation.pricePerNight)}',
+                        style: GoogleFonts.cormorantGaramond(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.goldAccent,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '/ night',
                         style: GoogleFonts.inter(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.forest800,
+                          fontSize: 13,
+                          color: AppTheme.forest800.withOpacity(0.7),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   Text(
                     accommodation.description,
-                    style: GoogleFonts.inter(fontSize: 15, height: 1.5),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Amenities & Features',
-                    style: GoogleFonts.cormorantGaramond(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      height: 1.55,
+                      color: AppTheme.forest900.withOpacity(0.88),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 30),
+
+                  // Amenities heading with gold rule
+                  Row(
+                    children: [
+                      Container(
+                        width: 22,
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: AppTheme.goldAccent,
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Amenities & Features',
+                        style: GoogleFonts.cormorantGaramond(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.forest900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
                   // Amenities Wrap
                   Wrap(
                     spacing: 8,
@@ -818,60 +1117,110 @@ class _ExploreScreenState extends State<ExploreScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
-                      height: 160,
+                      height: 168,
                       width: double.infinity,
-                      child: Image.asset(
-                        spot.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: AppTheme.forest800,
-                          child: const Center(
-                            child: Icon(Icons.landscape, size: 50, color: Colors.white),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.asset(
+                            spot.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: AppTheme.forest800,
+                              child: const Center(
+                                child: Icon(Icons.landscape, size: 50, color: Colors.white),
+                              ),
+                            ),
                           ),
-                        ),
+                          // soft bottom scrim
+                          const DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Colors.transparent, Color(0x770F1C11)],
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 12,
+                            bottom: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: AppTheme.cream50,
+                                borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.18),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.place,
+                                      size: 14, color: AppTheme.goldAccent),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    spot.location,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.forest900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(18),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(
+                            spot.name,
+                            style: GoogleFonts.cormorantGaramond(
+                              fontSize: 23,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.forest900,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Text(
+                            spot.description,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              height: 1.5,
+                              color: AppTheme.forest900.withOpacity(0.85),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              Text(
-                                spot.name,
-                                style: GoogleFonts.cormorantGaramond(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                spot.location,
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: AppTheme.olive,
-                                  fontWeight: FontWeight.w600,
+                              TextButton.icon(
+                                onPressed: () => _launchMaps(spot.mapUrl),
+                                icon: const Icon(Icons.map_outlined, size: 17),
+                                label: const Text('Open in Maps'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppTheme.forest800,
+                                  backgroundColor: AppTheme.olive.withOpacity(0.12),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(AppTheme.radiusPill),
+                                  ),
                                 ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            spot.description,
-                            style: GoogleFonts.inter(fontSize: 13, height: 1.4),
-                          ),
-                          const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton.icon(
-                              onPressed: () => _launchMaps(spot.mapUrl),
-                              icon: const Icon(Icons.map, size: 16),
-                              label: const Text('Open in Maps →'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.forest800,
-                              ),
-                            ),
                           ),
                         ],
                       ),
@@ -886,8 +1235,13 @@ class _ExploreScreenState extends State<ExploreScreen>
           Column(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
-                color: AppTheme.cream100,
+                padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+                decoration: BoxDecoration(
+                  color: AppTheme.cream100.withOpacity(0.55),
+                  border: Border(
+                    bottom: BorderSide(color: AppTheme.forest900.withOpacity(0.06)),
+                  ),
+                ),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -1121,15 +1475,34 @@ class _BookScreenState extends State<BookScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Step 1: Reservation Details',
-                style: GoogleFonts.cormorantGaramond(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.forest900,
-                ),
+              // Step 1 — numbered header
+              Row(
+                children: [
+                  _StepBadge(number: '1'),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Reservation Details',
+                        style: GoogleFonts.cormorantGaramond(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.forest900,
+                        ),
+                      ),
+                      Text(
+                        'Pick your stay & dates',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: AppTheme.forest800.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
               // Accommodation Dropdown
               DropdownButtonFormField<String>(
@@ -1213,17 +1586,36 @@ class _BookScreenState extends State<BookScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
 
-              Text(
-                'Step 2: Guest Details',
-                style: GoogleFonts.cormorantGaramond(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.forest900,
-                ),
+              // Step 2 — numbered header
+              Row(
+                children: [
+                  _StepBadge(number: '2'),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Guest Details',
+                        style: GoogleFonts.cormorantGaramond(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.forest900,
+                        ),
+                      ),
+                      Text(
+                        'Who is checking in',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: AppTheme.forest800.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
               TextFormField(
                 controller: _nameController,
@@ -1356,40 +1748,146 @@ class _KycScreenState extends State<KycScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                Container(
+                  width: 22,
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: AppTheme.goldAccent,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'GUEST VERIFICATION',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.8,
+                    color: AppTheme.olive,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             Text(
-              'Identity & Payment Verification',
+              'Identity & Payment',
               style: GoogleFonts.cormorantGaramond(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+                fontSize: 27,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.forest900,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'To ensure security and quiet luxury guest compliance, please upload a valid Government ID and bank payment deposit receipt.',
-              style: GoogleFonts.inter(fontSize: 13, color: Colors.black87),
+              'To ensure security and quiet-luxury compliance, kindly upload a valid Government ID and the bank deposit receipt for your reservation.',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                height: 1.55,
+                color: AppTheme.forest800.withOpacity(0.78),
+              ),
             ),
             const SizedBox(height: 24),
 
             // Govt ID Upload
             Card(
+              clipBehavior: Clip.antiAlias,
               child: ListTile(
-                leading: const Icon(Icons.badge, color: AppTheme.forest800, size: 32),
-                title: const Text('Government Issued ID'),
-                subtitle: Text(_govtIdName ?? 'Tap to select photo (Passport, Driver License, UMID)'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                leading: Container(
+                  width: 48,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _govtIdName == null
+                        ? AppTheme.cream100
+                        : AppTheme.olive.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.olive.withOpacity(0.35)),
+                  ),
+                  child: Icon(
+                    _govtIdName == null
+                        ? Icons.badge_outlined
+                        : Icons.verified_user_outlined,
+                    color: AppTheme.forest800,
+                    size: 26,
+                  ),
+                ),
+                title: Text(
+                  'Government Issued ID',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.forest900,
+                  ),
+                ),
+                subtitle: Text(
+                  _govtIdName == null
+                      ? 'Passport, Driver’s License, or UMID'
+                      : _govtIdName!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: _govtIdName == null
+                        ? AppTheme.forest800.withOpacity(0.7)
+                        : AppTheme.forest800,
+                  ),
+                ),
                 trailing: TextButton(
                   onPressed: () => _pickImage(true),
                   child: Text(_govtIdName == null ? 'Upload' : 'Change'),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             // Payment Receipt Upload
             Card(
+              clipBehavior: Clip.antiAlias,
               child: ListTile(
-                leading: const Icon(Icons.receipt_long, color: AppTheme.forest800, size: 32),
-                title: const Text('Payment Deposit Receipt'),
-                subtitle: Text(_receiptName ?? 'Tap to select GCash / Bank transfer receipt'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                leading: Container(
+                  width: 48,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _receiptName == null
+                        ? AppTheme.cream100
+                        : AppTheme.olive.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.olive.withOpacity(0.35)),
+                  ),
+                  child: Icon(
+                    _receiptName == null
+                        ? Icons.receipt_long
+                        : Icons.verified_user_outlined,
+                    color: AppTheme.forest800,
+                    size: 26,
+                  ),
+                ),
+                title: Text(
+                  'Payment Deposit Receipt',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.forest900,
+                  ),
+                ),
+                subtitle: Text(
+                  _receiptName == null
+                      ? 'GCash / Bank transfer reference'
+                      : _receiptName!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: _receiptName == null
+                        ? AppTheme.forest800.withOpacity(0.7)
+                        : AppTheme.forest800,
+                  ),
+                ),
                 trailing: TextButton(
                   onPressed: () => _pickImage(false),
                   child: Text(_receiptName == null ? 'Upload' : 'Change'),
@@ -1448,23 +1946,67 @@ class BookingConfirmationScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.check_circle_outline, color: AppTheme.olive, size: 90),
-              const SizedBox(height: 20),
+              Container(
+                width: 112,
+                height: 112,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: AppTheme.goldShade,
+                  border: Border.all(color: AppTheme.cream50, width: 5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.goldAccent.withOpacity(0.35),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.check_rounded,
+                    color: AppTheme.forest900, size: 64),
+              ),
+              const SizedBox(height: 26),
               Text(
-                'Booking Confirmed!',
+                'Reservation Confirmed',
                 style: GoogleFonts.cormorantGaramond(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 34,
+                  height: 1.05,
+                  fontWeight: FontWeight.w700,
                   color: AppTheme.forest900,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
-                'Reference ID: ${booking.referenceId}',
+                'Your stay at Hacienda de LuisAna is reserved. '
+                'Your digital key unlocks once the deposit is verified.',
+                textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.goldAccent,
+                  fontSize: 13,
+                  height: 1.5,
+                  color: AppTheme.forest800.withOpacity(0.75),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+                decoration: BoxDecoration(
+                  color: AppTheme.forest900,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.forest900.withOpacity(0.2),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  'Ref · ${booking.referenceId}',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    color: AppTheme.goldSoft,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -1559,27 +2101,65 @@ class DashboardScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Welcome card
+                // Welcome header
+                Text(
+                  'Good to see you,',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: AppTheme.forest800.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 2),
                 Text(
                   'Welcome, ${booking?.guestName ?? "Guest"}',
                   style: GoogleFonts.cormorantGaramond(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 30,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.forest900,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 7),
                 Text(
-                  'Hacienda de LuisAna Guest Hub',
-                  style: GoogleFonts.inter(fontSize: 13, color: AppTheme.olive),
+                  'Your Hacienda guest hub — reservation, digital key and host support.',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: AppTheme.olive,
+                  ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
 
                 // Status Badge Card
                 Card(
                   color: AppTheme.forest900,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+                    side: const BorderSide(color: AppTheme.forest900),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
+                    padding: const EdgeInsets.all(22.0),
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          top: 0,
+                          left: 26,
+                          right: 26,
+                          child: Container(
+                            height: 2,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.transparent,
+                                  AppTheme.goldSoft.withOpacity(0.8),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
@@ -1640,32 +2220,79 @@ class DashboardScreen extends StatelessWidget {
                         ],
                       ],
                     ),
+                  ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
 
-                // Digital Key Access Button (Line 317)
+                // Digital Key quick-action card
                 Card(
+                  clipBehavior: Clip.antiAlias,
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(18),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.lock_person, size: 45, color: AppTheme.forest800),
-                        const SizedBox(height: 8),
-                        Text(
-                          'ESP32 Smart Lock Access',
-                          style: GoogleFonts.cormorantGaramond(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                gradient: AppTheme.forestDeep,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(Icons.lock_person,
+                                  color: AppTheme.goldSoft, size: 26),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Digital Key',
+                                    style: GoogleFonts.cormorantGaramond(
+                                      fontSize: 21,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.forest900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'ESP32 Smart Lock access',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      color: AppTheme.forest800.withOpacity(0.7),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              width: 9,
+                              height: 9,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isConfirmed
+                                    ? AppTheme.olive
+                                    : Colors.amber.shade600,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 10),
                         Text(
                           isConfirmed
-                              ? 'Your digital key is active. Tap below to access room controls.'
-                              : 'Digital Key unlocks once booking is confirmed.',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(fontSize: 12, color: Colors.black54),
+                              ? 'Your key is active — press & hold to unlock your stay.'
+                              : 'Your digital key unlocks once the booking is confirmed.',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            height: 1.45,
+                            color: AppTheme.forest800.withOpacity(0.72),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         SizedBox(
@@ -1681,25 +2308,47 @@ class DashboardScreen extends StatelessWidget {
                                     );
                                   }
                                 : null,
-                            icon: const Icon(Icons.key),
-                            label: const Text('My Digital Key'),
+                            icon: const Icon(Icons.key, size: 18),
+                            label: const Text('Open My Digital Key'),
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
 
-                // Host Contact Section
+                // Host Contact Section header
+                Row(
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 2,
+                      decoration: BoxDecoration(
+                        color: AppTheme.goldAccent,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Contact Host',
+                      style: GoogleFonts.cormorantGaramond(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.forest900,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
                 Text(
-                  'Contact Host',
-                  style: GoogleFonts.cormorantGaramond(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                  'Questions before or during your stay? We’re a call away.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: AppTheme.forest800.withOpacity(0.6),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
 
                 Row(
                   children: [
@@ -1950,6 +2599,40 @@ class _DigitalKeyScreenState extends State<DigitalKeyScreen>
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Small reusable gold number badge used for step headers in the Book flow.
+class _StepBadge extends StatelessWidget {
+  final String number;
+  const _StepBadge({required this.number});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: AppTheme.goldShade,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.goldAccent.withOpacity(0.35),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        number,
+        style: GoogleFonts.inter(
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          color: AppTheme.forest900,
         ),
       ),
     );
