@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,14 +9,19 @@ import 'package:intl/intl.dart';
 import 'theme/app_theme.dart';
 import 'models/accommodation.dart';
 import 'models/booking.dart';
+import 'services/auth_store.dart';
 import 'services/booking_store.dart';
 import 'services/esp32_service.dart';
+import 'screens/auth_screen.dart';
+import 'screens/dashboard_screen.dart';
+import 'utils/validators.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthStore()),
         ChangeNotifierProvider(create: (_) => BookingStore()),
         Provider(create: (_) => Esp32Service()),
       ],
@@ -71,7 +75,7 @@ class _AppShellState extends State<AppShell> {
       StayScreen(onNavigateBookTab: () => _onTabSelected(3)),
       const ExploreScreen(),
       const BookScreen(),
-      const DashboardScreen(),
+      DashboardScreen(onNavigateBook: () => _onTabSelected(3)),
     ];
 
     return Scaffold(
@@ -1394,9 +1398,31 @@ class _BookScreenState extends State<BookScreen> {
   DateTime _checkOutDate = DateTime.now().add(const Duration(days: 3));
   int _guestCount = 2;
 
-  final TextEditingController _nameController = TextEditingController(text: 'Maria Santos');
-  final TextEditingController _phoneController = TextEditingController(text: '+63 925 850 7707');
-  final TextEditingController _notesController = TextEditingController(text: 'Quiet peaceful room preference.');
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill contact details when the guest is already signed in.
+    final user = context.read<AuthStore>().user;
+    if (user != null) {
+      _nameController.text = user.name;
+      _emailController.text = user.email;
+      _phoneController.text = user.phone;
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
 
   Future<void> _selectDate(BuildContext context, bool isCheckIn) async {
     final initialDate = isCheckIn ? _checkInDate : _checkOutDate;
@@ -1433,36 +1459,91 @@ class _BookScreenState extends State<BookScreen> {
     }
   }
 
-  void _submitForm() {
-    if (_formKey.currentState!.validate()) {
-      final refId = 'HDL-${(1000 + (DateTime.now().millisecondsSinceEpoch % 8999))}';
-      final booking = Booking(
-        referenceId: refId,
-        guestName: _nameController.text,
-        phone: _phoneController.text,
-        accommodationTitle: _selectedAccommodation,
-        checkInDate: _checkInDate,
-        checkOutDate: _checkOutDate,
-        guestCount: _guestCount,
-        notes: _notesController.text,
-        status: 'pending',
-      );
+  /// Availability sanity checks that don't belong to a single field.
+  String? _validateTrip() {
+    if (!_checkOutDate.isAfter(_checkInDate)) {
+      return 'Check-out must be after check-in.';
+    }
+    final acc = accommodationsList.firstWhere(
+      (a) => a.title == _selectedAccommodation,
+      orElse: () => accommodationsList.first,
+    );
+    if (_guestCount > acc.capacity) {
+      return '${acc.title} accommodates up to ${acc.capacity} guests.';
+    }
+    return null;
+  }
 
-      // Save to store and push KycScreen
-      Provider.of<BookingStore>(context, listen: false).setBooking(booking);
+  Future<void> _submitForm() async {
+    if (!_formKey.currentState!.validate()) return;
 
-      Navigator.push(
+    final tripError = _validateTrip();
+    if (tripError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tripError)));
+      return;
+    }
+
+    // Auth gate: guests browse freely but must sign in / register to book.
+    final auth = context.read<AuthStore>();
+    if (!auth.isAuthenticated) {
+      final loggedIn = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
-          builder: (_) => KycScreen(booking: booking),
+          builder: (_) => const AuthScreen(
+            reason: 'Sign in or create an account to complete your booking.',
+          ),
         ),
       );
+      if (loggedIn != true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('You can send your booking once you\'re signed in.')),
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
     }
+
+    // Session may have just started — pre-fill anything still empty.
+    final user = context.read<AuthStore>().user;
+    if (user != null) {
+      if (_nameController.text.trim().isEmpty) _nameController.text = user.name;
+      if (_emailController.text.trim().isEmpty) _emailController.text = user.email;
+      if (_phoneController.text.trim().isEmpty) _phoneController.text = user.phone;
+    }
+
+    final refId =
+        'HDL-${DateTime.now().year.toString().substring(2)}${(1000 + DateTime.now().millisecondsSinceEpoch % 8999)}';
+    final booking = Booking(
+      referenceId: refId,
+      guestName: _nameController.text.trim(),
+      phone: Validators.normalizePhone(_phoneController.text),
+      email: _emailController.text.trim(),
+      accommodationTitle: _selectedAccommodation,
+      checkInDate: _checkInDate,
+      checkOutDate: _checkOutDate,
+      guestCount: _guestCount,
+      notes: _notesController.text.trim(),
+      status: 'pending',
+      kycStatus: 'required',
+    );
+
+    // Persist to the store and continue to guest verification.
+    Provider.of<BookingStore>(context, listen: false).submitBooking(booking);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => KycScreen(booking: booking),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final DateFormat formatter = DateFormat('EEE, MMM d, yyyy');
+    final authUser = context.watch<AuthStore>().user;
 
     return Scaffold(
       appBar: AppBar(
@@ -1637,14 +1718,67 @@ class _BookScreenState extends State<BookScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Auth status hint — booking requires a guest account (demo-local).
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: authUser != null
+                      ? AppTheme.oliveMist.withOpacity(0.45)
+                      : AppTheme.cream100,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusField),
+                  border: Border.all(
+                    color: authUser != null
+                        ? AppTheme.olive.withOpacity(0.4)
+                        : AppTheme.forest900.withOpacity(0.12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      authUser != null ? Icons.verified_outlined : Icons.info_outline,
+                      size: 18,
+                      color: AppTheme.forest800,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        authUser != null
+                            ? 'Booking as ${authUser.name} (${authUser.email})'
+                            : 'Browsing as guest — you\'ll be asked to sign in when you submit.',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          height: 1.4,
+                          color: AppTheme.forest800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
               TextFormField(
                 controller: _nameController,
+                textCapitalization: TextCapitalization.words,
                 decoration: InputDecoration(
                   labelText: 'Full Name',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   prefixIcon: const Icon(Icons.person, color: AppTheme.forest800),
                 ),
-                validator: (val) => val == null || val.isEmpty ? 'Please enter your name' : null,
+                validator: Validators.name,
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: 'Email Address',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.mail_outline, color: AppTheme.forest800),
+                ),
+                validator: Validators.email,
               ),
               const SizedBox(height: 16),
 
@@ -1653,10 +1787,11 @@ class _BookScreenState extends State<BookScreen> {
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
                   labelText: 'Mobile Phone Number',
+                  hintText: '09XX XXX XXXX',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   prefixIcon: const Icon(Icons.phone, color: AppTheme.forest800),
                 ),
-                validator: (val) => val == null || val.isEmpty ? 'Please enter your phone number' : null,
+                validator: Validators.phone,
               ),
               const SizedBox(height: 16),
 
@@ -1676,8 +1811,11 @@ class _BookScreenState extends State<BookScreen> {
                 height: 50,
                 child: ElevatedButton.icon(
                   onPressed: _submitForm,
-                  icon: const Icon(Icons.arrow_forward),
-                  label: const Text('Proceed to KYC Verification', style: TextStyle(fontSize: 16)),
+                  icon: Icon(authUser != null ? Icons.arrow_forward : Icons.login),
+                  label: Text(
+                    authUser != null ? 'Proceed to KYC Verification' : 'Sign In & Proceed',
+                    style: const TextStyle(fontSize: 16),
+                  ),
                 ),
               ),
             ],
@@ -1730,6 +1868,14 @@ class _KycScreenState extends State<KycScreen> {
   }
 
   void _submitKyc() async {
+    if (_govtIdName == null || _receiptName == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please upload both your Government ID and payment receipt.')),
+      );
+      return;
+    }
+
     if (!_termsAccepted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please accept the Terms & Guest Policy to proceed.')),
@@ -1740,13 +1886,18 @@ class _KycScreenState extends State<KycScreen> {
     setState(() => _isSubmitting = true);
     await Future.delayed(const Duration(milliseconds: 1200));
 
-    widget.booking.govtIdPath = _govtIdName ?? 'govt_id_verified.jpg';
-    widget.booking.paymentReceiptPath = _receiptName ?? 'payment_receipt_verified.jpg';
+    widget.booking.govtIdPath = _govtIdName;
+    widget.booking.paymentReceiptPath = _receiptName;
 
     if (mounted) {
+      // Documents received — the booking STAYS pending until the host approves.
+      // Demo: a simulated host review confirms it a few seconds later.
       final store = Provider.of<BookingStore>(context, listen: false);
-      store.setBooking(widget.booking);
-      store.confirm();
+      store.markKycSubmitted(
+        widget.booking.referenceId,
+        govtIdPath: _govtIdName,
+        receiptPath: _receiptName,
+      );
 
       Navigator.pushReplacement(
         context,
@@ -1801,7 +1952,7 @@ class _KycScreenState extends State<KycScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'To ensure security and quiet-luxury compliance, kindly upload a valid Government ID and the bank deposit receipt for your reservation.',
+              'To ensure security and quiet-luxury compliance, kindly upload a valid Government ID and the bank deposit receipt for your reservation. Your booking stays pending until our host verifies both.',
               style: GoogleFonts.inter(
                 fontSize: 13,
                 height: 1.55,
@@ -1941,7 +2092,7 @@ class _KycScreenState extends State<KycScreen> {
                 onPressed: _isSubmitting ? null : _submitKyc,
                 child: _isSubmitting
                     ? const SpinKitThreeBounce(color: AppTheme.cream50, size: 24)
-                    : const Text('Complete Booking & Verify', style: TextStyle(fontSize: 16)),
+                    : const Text('Submit for Host Verification', style: TextStyle(fontSize: 16)),
               ),
             ),
           ],
@@ -1986,7 +2137,7 @@ class BookingConfirmationScreen extends StatelessWidget {
               ),
               const SizedBox(height: 26),
               Text(
-                'Reservation Confirmed',
+                'Booking Submitted',
                 style: GoogleFonts.cormorantGaramond(
                   fontSize: 34,
                   height: 1.05,
@@ -1996,8 +2147,8 @@ class BookingConfirmationScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Your stay at Hacienda de LuisAna is reserved. '
-                'Your digital key unlocks once the deposit is verified.',
+                'We received your reservation and KYC documents. '
+                'Our host will confirm your stay shortly — your digital key unlocks the moment you\'re confirmed.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 13,
@@ -2087,543 +2238,7 @@ class BookingConfirmationScreen extends StatelessWidget {
   }
 }
 
-// Line 317: DashboardScreen
-class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key});
-
-  Future<void> _makeCall(String phone) async {
-    final uri = Uri.parse('tel:$phone');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    }
-  }
-
-  Future<void> _openMessenger() async {
-    final uri = Uri.parse('https://m.me/haciendadeluisana');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<BookingStore>(
-      builder: (context, store, child) {
-        final booking = store.currentBooking;
-        final isConfirmed = store.isConfirmed;
-
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Guest Dashboard'),
-          ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Welcome header
-                Text(
-                  'Good to see you,',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: AppTheme.forest800.withOpacity(0.6),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Welcome, ${booking?.guestName ?? "Guest"}',
-                  style: GoogleFonts.cormorantGaramond(
-                    fontSize: 30,
-                    height: 1.1,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.forest900,
-                  ),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  'Your Hacienda guest hub — reservation, digital key and host support.',
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: AppTheme.olive,
-                  ),
-                ),
-                const SizedBox(height: 22),
-
-                // Status Badge Card
-                Card(
-                  color: AppTheme.forest900,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-                    side: const BorderSide(color: AppTheme.forest900),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(22.0),
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          top: 0,
-                          left: 26,
-                          right: 26,
-                          child: Container(
-                            height: 2,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.transparent,
-                                  AppTheme.goldSoft.withOpacity(0.8),
-                                  Colors.transparent,
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'RESERVATION STATUS',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.5,
-                                color: AppTheme.cream50.withOpacity(0.7),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isConfirmed ? Colors.green.shade700 : Colors.amber.shade800,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                (booking?.status ?? 'No Booking').toUpperCase(),
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          booking?.accommodationTitle ?? 'No Active Booking',
-                          style: GoogleFonts.cormorantGaramond(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.cream50,
-                          ),
-                        ),
-                        if (booking != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Ref: ${booking.referenceId} • ${booking.guestCount} Guests',
-                            style: GoogleFonts.inter(fontSize: 13, color: AppTheme.cream50.withOpacity(0.8)),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              const Icon(Icons.calendar_month, color: AppTheme.goldAccent, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${DateFormat('MMM d').format(booking.checkInDate)} - ${DateFormat('MMM d, yyyy').format(booking.checkOutDate)}',
-                                style: GoogleFonts.inter(fontSize: 13, color: AppTheme.cream50),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Digital Key quick-action card
-                Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 52,
-                              height: 52,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                gradient: AppTheme.forestDeep,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: const Icon(Icons.lock_person,
-                                  color: AppTheme.goldSoft, size: 26),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Digital Key',
-                                    style: GoogleFonts.cormorantGaramond(
-                                      fontSize: 21,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppTheme.forest900,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'ESP32 Smart Lock access',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: AppTheme.forest800.withOpacity(0.7),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              width: 9,
-                              height: 9,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: isConfirmed
-                                    ? AppTheme.olive
-                                    : Colors.amber.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          isConfirmed
-                              ? 'Your key is active — press & hold to unlock your stay.'
-                              : 'Your digital key unlocks once the booking is confirmed.',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            height: 1.45,
-                            color: AppTheme.forest800.withOpacity(0.72),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: isConfirmed
-                                ? () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const DigitalKeyScreen(),
-                                      ),
-                                    );
-                                  }
-                                : null,
-                            icon: const Icon(Icons.key, size: 18),
-                            label: const Text('Open My Digital Key'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // Host Contact Section header
-                Row(
-                  children: [
-                    Container(
-                      width: 22,
-                      height: 2,
-                      decoration: BoxDecoration(
-                        color: AppTheme.goldAccent,
-                        borderRadius: BorderRadius.circular(1),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Contact Host',
-                      style: GoogleFonts.cormorantGaramond(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.forest900,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Questions before or during your stay? We’re a call away.',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: AppTheme.forest800.withOpacity(0.6),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _makeCall('+639258507707'),
-                        icon: const Icon(Icons.phone),
-                        label: const Text('Call Host'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _openMessenger,
-                        icon: const Icon(Icons.chat_bubble_outline),
-                        label: const Text('Messenger'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// Line 337: DigitalKeyScreen (ESP32 Smart Lock Press & Hold logic)
-class DigitalKeyScreen extends StatefulWidget {
-  const DigitalKeyScreen({super.key});
-
-  @override
-  State<DigitalKeyScreen> createState() => _DigitalKeyScreenState();
-}
-
-class _DigitalKeyScreenState extends State<DigitalKeyScreen>
-    with SingleTickerProviderStateMixin {
-  double _holdProgress = 0.0;
-  Timer? _holdTimer;
-  bool _isUnlocked = false;
-  late AnimationController _pulseController;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _holdTimer?.cancel();
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  void _startHold() {
-    _holdTimer?.cancel();
-    _holdTimer = Timer.periodic(const Duration(milliseconds: 60), (timer) {
-      setState(() {
-        _holdProgress += 0.05; // 20 steps x 60ms = 1.2s total hold required
-        if (_holdProgress >= 1.0) {
-          _holdProgress = 1.0;
-          timer.cancel();
-          _triggerUnlock();
-        }
-      });
-    });
-  }
-
-  void _cancelHold() {
-    _holdTimer?.cancel();
-    if (!_isUnlocked) {
-      setState(() {
-        _holdProgress = 0.0;
-      });
-    }
-  }
-
-  void _triggerUnlock() async {
-    final esp32 = Provider.of<Esp32Service>(context, listen: false);
-    final success = await esp32.unlock();
-
-    if (mounted) {
-      if (success) {
-        setState(() {
-          _isUnlocked = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🔓 Smart Lock Unlocked! Door opened successfully.'),
-            backgroundColor: AppTheme.forest800,
-          ),
-        );
-
-        // Auto relock state in UI after 5 seconds
-        Timer(const Duration(seconds: 5), () {
-          if (mounted) {
-            setState(() {
-              _isUnlocked = false;
-              _holdProgress = 0.0;
-            });
-          }
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final esp32 = Provider.of<Esp32Service>(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Digital Key Smart Lock'),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // ESP32 Status Header
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: esp32.connected ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: esp32.connected ? Colors.green : Colors.red,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      esp32.connected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                      color: esp32.connected ? Colors.green : Colors.red,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      esp32.connected ? 'ESP32 Lock Connected' : 'ESP32 Lock Disconnected',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: esp32.connected ? Colors.green.shade900 : Colors.red.shade900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              Text(
-                _isUnlocked ? 'DOOR UNLOCKED' : 'PRESS & HOLD TO UNLOCK',
-                style: GoogleFonts.cormorantGaramond(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                  color: AppTheme.forest900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _isUnlocked
-                    ? 'Door will automatically relock in 5 seconds.'
-                    : 'Hold button down firmly for 1.2 seconds',
-                style: GoogleFonts.inter(fontSize: 13, color: Colors.black54),
-              ),
-              const SizedBox(height: 50),
-
-              // Circular Press & Hold Button with CircularProgressIndicator + SpinKitPulse
-              GestureDetector(
-                onTapDown: (_) => _startHold(),
-                onTapUp: (_) => _cancelHold(),
-                onTapCancel: () => _cancelHold(),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // SpinKit Ripple when unlocked or holding
-                    if (_isUnlocked || _holdProgress > 0)
-                      SpinKitPulse(
-                        color: _isUnlocked ? AppTheme.olive : AppTheme.goldAccent,
-                        size: 220,
-                      ),
-
-                    // Outer Circular Progress Indicator
-                    SizedBox(
-                      width: 170,
-                      height: 170,
-                      child: CircularProgressIndicator(
-                        value: _holdProgress,
-                        strokeWidth: 8,
-                        backgroundColor: AppTheme.cream100,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          _isUnlocked ? AppTheme.olive : AppTheme.forest900,
-                        ),
-                      ),
-                    ),
-
-                    // Main Inner Circular Lock Button
-                    Container(
-                      width: 140,
-                      height: 140,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _isUnlocked ? AppTheme.forest900 : AppTheme.forest800,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.forest900.withOpacity(0.3),
-                            blurRadius: 15,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        _isUnlocked ? Icons.lock_open : Icons.lock,
-                        size: 60,
-                        color: _isUnlocked ? AppTheme.goldAccent : AppTheme.cream50,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 50),
-
-              // Status indicator footer
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 16,
-                    color: AppTheme.forest800.withOpacity(0.7),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Bluetooth 5.0 Low Energy encrypted handshake',
-                    style: GoogleFonts.inter(fontSize: 12, color: Colors.black54),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+// DashboardScreen & DigitalKeyScreen now live in lib/screens/dashboard_screen.dart
 
 /// Small reusable gold number badge used for step headers in the Book flow.
 class _StepBadge extends StatelessWidget {

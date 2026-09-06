@@ -84,9 +84,9 @@ Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH
 1. **Home** — 380px SliverAppBar hero PageView (`assets/images/gmaps/img-03/05/07.jpg`), stats (12 guests / 2 decks / 4.9★), featured stays.
 2. **Stay** — ChoiceChip filters (All / Main House / Camping), cards + detail modal (Main House 12 @ ₱8,500; Camping A 4 @ ₱1,800; Camping B 4 @ ₱1,500).
 3. **Explore** — Nearby (Hulugan Falls, Aliw Falls, Caliraya Lake, Kamay ni Hesus) + Open in Maps + 2-col gallery.
-4. **Book** — 2-step form (accommodation, dates, guests 1-12) → `Booking:HDL-xxx` (`lib/models/booking.dart`).
-5. **Key / Dashboard** — `BookingStore` (provider), status badge, check-in/out summary, Digital Key (enabled when confirmed), host contact (`tel:+639258507707`).
-6. **KYC & ESP32** — `KycScreen` (ID + receipt image_picker) → `BookingConfirmationScreen`; `Esp32Service` simulated BLE 5.0 (800ms unlock, 5s auto re-lock, 1.2s press-and-hold `SpinKitPulse`).
+4. **Book** — 2-step form (accommodation, dates, guests 1-12) with input validation → `Booking:HDL-xxx` (`lib/models/booking.dart`). Submitting while signed out triggers the **auth wall** (`lib/screens/auth_screen.dart`, demo-local register/login via `lib/services/auth_store.dart`).
+5. **Key / Dashboard** — `BookingStore` (provider, persisted), status timeline (Reserved → Verification → Confirmed → Check-in), Digital Key (unlocks only once the host confirms — demo simulates the host approval ~6 s after KYC), cancel-while-pending, past stays, host contact (`tel:+639258507707`). See [FLUTTER_FLOW.md](./FLUTTER_FLOW.md).
+6. **KYC & ESP32** — `KycScreen` (ID + receipt image_picker, both required) → `BookingConfirmationScreen` (booking stays *pending* until host review); `Esp32Service` simulated BLE 5.0 (800ms unlock, 5s auto re-lock, 1.2s press-and-hold `SpinKitPulse`).
 
 ### Run (Flutter)
 

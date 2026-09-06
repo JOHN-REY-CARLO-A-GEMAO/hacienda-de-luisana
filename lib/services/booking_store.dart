@@ -1,54 +1,151 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/booking.dart';
 
+/// Guest-side booking state for the demo.
+///
+/// Flow (demo simulation of the real pipeline):
+///   submitBooking()      → status: pending, kyc: required
+///   markKycSubmitted()   → kyc: submitted  (status STAYS pending)
+///   ~6s "host review"    → status: confirmed, kyc: approved
+///
+/// Everything is persisted to SharedPreferences so bookings survive app
+/// restarts. In Phase 2 this store becomes a thin wrapper over Firestore and
+/// the simulated timer is replaced by the real host's /admin action.
 class BookingStore extends ChangeNotifier {
-  Booking? _currentBooking;
+  static const String _storeKey = 'hdl_demo_bookings';
+
+  final List<Booking> _bookings = [];
+  Timer? _hostReviewTimer;
 
   BookingStore() {
-    // Demo seed booking for seamless testing
-    _currentBooking = Booking(
-      referenceId: 'HDL-9824',
-      guestName: 'Guest User',
-      phone: '+639258507707',
-      accommodationTitle: 'Main House Villa',
-      checkInDate: DateTime.now().add(const Duration(days: 1)),
-      checkOutDate: DateTime.now().add(const Duration(days: 3)),
-      guestCount: 6,
-      notes: 'Quiet luxury stay request',
-      status: 'confirmed', // Initial state confirmed for prototype test
-    );
+    _load();
   }
 
-  Booking? get currentBooking => _currentBooking;
+  List<Booking> get bookings => List.unmodifiable(_bookings);
 
-  bool get isConfirmed =>
-      _currentBooking != null &&
-      (_currentBooking!.status == 'confirmed' || _currentBooking!.status == 'checkedIn');
+  /// The booking the dashboard should surface (latest active one).
+  Booking? get currentBooking {
+    final active = _bookings.where((b) => b.isActive).toList();
+    if (active.isEmpty) return null;
+    active.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return active.first;
+  }
 
-  bool get isCheckedIn =>
-      _currentBooking != null && _currentBooking!.status == 'checkedIn';
+  bool get isConfirmed => currentBooking?.isConfirmed ?? false;
 
-  void setBooking(Booking booking) {
-    _currentBooking = booking;
+  bool get isCheckedIn => currentBooking?.status == 'checked_in';
+
+  Booking? _findByRef(String referenceId) {
+    for (final b in _bookings) {
+      if (b.referenceId == referenceId) return b;
+    }
+    return null;
+  }
+
+  // ---- Actions ----
+
+  /// Guest submitted the reservation form. Booking starts as pending.
+  void submitBooking(Booking booking) {
+    _bookings.add(booking);
+    _persist();
     notifyListeners();
   }
 
-  void confirm() {
-    if (_currentBooking != null) {
-      _currentBooking!.status = 'confirmed';
-      notifyListeners();
-    }
+  /// Guest uploaded ID + receipt. Docs are "received" — the host still has to
+  /// approve. Demo: simulate that host review completing after a short delay.
+  void markKycSubmitted(String referenceId, {String? govtIdPath, String? receiptPath}) {
+    final b = _findByRef(referenceId);
+    if (b == null) return;
+    b.kycStatus = 'submitted';
+    b.govtIdPath = govtIdPath ?? b.govtIdPath;
+    b.paymentReceiptPath = receiptPath ?? b.paymentReceiptPath;
+    _persist();
+    notifyListeners();
+
+    _hostReviewTimer?.cancel();
+    _hostReviewTimer = Timer(const Duration(seconds: 6), () {
+      _simulateHostApproval(referenceId);
+    });
   }
 
+  /// DEMO ONLY: stands in for the host pressing "Confirm" in the web /admin.
+  void _simulateHostApproval(String referenceId) {
+    final b = _findByRef(referenceId);
+    if (b == null || b.status != 'pending') return;
+    b.status = 'confirmed';
+    b.kycStatus = 'approved';
+    _persist();
+    notifyListeners();
+    debugPrint('Demo host approved booking $referenceId');
+  }
+
+  /// Guest check-in (host-assisted in the real flow).
   void checkIn() {
-    if (_currentBooking != null) {
-      _currentBooking!.status = 'checkedIn';
+    final b = currentBooking;
+    if (b != null && b.status == 'confirmed') {
+      b.status = 'checked_in';
+      _persist();
       notifyListeners();
     }
   }
 
-  void cancelBooking() {
-    _currentBooking = null;
+  /// Guest may cancel while still pending; later cancellations go via host.
+  bool cancelBooking() {
+    final b = currentBooking;
+    if (b == null || b.status != 'pending') return false;
+    b.status = 'cancelled';
+    _hostReviewTimer?.cancel();
+    _persist();
     notifyListeners();
+    return true;
+  }
+
+  // ---- Persistence ----
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_storeKey);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw) as List<dynamic>;
+        _bookings
+          ..clear()
+          ..addAll(list.map((e) => Booking.fromJson(e as Map<String, dynamic>)));
+        // Re-arm the demo host review if the app was restarted mid-review.
+        final pending = _bookings.where((b) => b.status == 'pending' && b.kycStatus == 'submitted');
+        if (pending.isNotEmpty) {
+          _hostReviewTimer?.cancel();
+          _hostReviewTimer = Timer(const Duration(seconds: 3), () {
+            for (final b in pending.toList()) {
+              _simulateHostApproval(b.referenceId);
+            }
+          });
+        }
+        notifyListeners();
+      }
+    } catch (_) {
+      // Corrupt cache — start clean.
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _storeKey,
+        jsonEncode(_bookings.map((b) => b.toJson()).toList()),
+      );
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _hostReviewTimer?.cancel();
+    super.dispose();
   }
 }
