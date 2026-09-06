@@ -33,22 +33,52 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID as string | undefined,
 }
 
-// Check if Firebase is properly configured (all required fields present)
+// Helper to check if an environment string has a non-placeholder value
+function isValidConfigValue(val?: string): boolean {
+  if (!val) return false
+  const trimmed = val.trim()
+  if (!trimmed) return false
+  const lower = trimmed.toLowerCase()
+  // Reject common dummy / placeholder patterns
+  if (
+    lower.includes('your_') ||
+    lower.includes('placeholder') ||
+    lower.includes('example') ||
+    lower.includes('xxxx') ||
+    lower.startsWith('<') ||
+    lower.endsWith('>') ||
+    lower === 'undefined' ||
+    lower === 'null' ||
+    lower === 'your_api_key_here' ||
+    lower === 'your_project_id' ||
+    lower === 'your_app_id' ||
+    lower === 'your_sender_id'
+  ) {
+    return false
+  }
+  return true
+}
+
+// Google / Firebase Web API keys start with AIza and are ~39 characters long
+function isValidApiKey(key?: string): boolean {
+  if (!isValidConfigValue(key)) return false
+  return Boolean(key && key.startsWith('AIza') && key.length >= 20)
+}
+
+// Check if Firebase is properly configured (all required fields present and non-placeholder)
 export const isFirebaseConfigured = Boolean(
-  firebaseConfig.apiKey &&
-  firebaseConfig.authDomain &&
-  firebaseConfig.projectId &&
-  firebaseConfig.storageBucket &&
-  firebaseConfig.messagingSenderId &&
-  firebaseConfig.appId
+  isValidApiKey(firebaseConfig.apiKey) &&
+  isValidConfigValue(firebaseConfig.authDomain) &&
+  isValidConfigValue(firebaseConfig.projectId) &&
+  isValidConfigValue(firebaseConfig.appId)
 )
 
 // Warn in development if not configured, but don't crash the app
 if (!isFirebaseConfigured && import.meta.env.DEV) {
-  console.warn(
-    '[Firebase] Missing configuration. Using local fallback. ' +
-    'Create .env.local from .env.example and fill in your Firebase keys. ' +
-    'Auth will show setup instructions, bookings will use localStorage.'
+  console.info(
+    '[Firebase] Running in local offline mode. ' +
+    'To connect to Firebase, update .env.local with valid Firebase credentials (API key starting with AIza). ' +
+    'Bookings and admin dashboard will use local persistence.'
   )
 }
 
@@ -62,26 +92,41 @@ let storage: FirebaseStorage | null = null
 let googleProvider: GoogleAuthProvider | null = null
 
 if (isFirebaseConfigured) {
-  // Avoid re-initializing during HMR
-  app = getApps().length ? getApp() : initializeApp(firebaseConfig as any)
-  auth = getAuth(app)
-  db = getFirestore(app)
-  storage = getStorage(app)
-  googleProvider = new GoogleAuthProvider()
-  googleProvider.setCustomParameters({ prompt: 'select_account' })
+  try {
+    // Avoid re-initializing during HMR
+    app = getApps().length ? getApp() : initializeApp(firebaseConfig as any)
+    auth = getAuth(app)
+    db = getFirestore(app)
+    storage = getStorage(app)
+    googleProvider = new GoogleAuthProvider()
+    googleProvider.setCustomParameters({ prompt: 'select_account' })
 
-  // Optional Analytics — only in browser, only if measurementId present
-  if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
-    // Dynamic import to avoid SSR issues and keep bundle lean
-    import('firebase/analytics').then(({ getAnalytics, isSupported }) => {
-      isSupported().then((supported) => {
-        if (supported && app) {
-          getAnalytics(app)
-        }
-      })
-    }).catch(() => {
-      // Analytics is optional, ignore errors
-    })
+    // Optional Analytics — only in browser, only if measurementId present and not a placeholder
+    if (
+      typeof window !== 'undefined' &&
+      isValidConfigValue(firebaseConfig.measurementId) &&
+      !firebaseConfig.measurementId?.includes('XXXX')
+    ) {
+      // Dynamic import to avoid SSR issues and keep bundle lean
+      import('firebase/analytics')
+        .then(({ getAnalytics, isSupported }) => {
+          return isSupported().then((supported) => {
+            if (supported && app) {
+              getAnalytics(app)
+            }
+          })
+        })
+        .catch(() => {
+          // Analytics is optional, ignore errors
+        })
+    }
+  } catch (err) {
+    console.warn('[Firebase] Initialization error, falling back to local mode:', err)
+    app = null
+    auth = null
+    db = null
+    storage = null
+    googleProvider = null
   }
 } else {
   // Dummy placeholders to keep imports working when not configured
@@ -98,11 +143,12 @@ export { app, auth, db, storage, googleProvider, firebaseConfig }
 // Helper for debugging / admin UI
 // ----------------------------------------------------------------------------
 export function getFirebaseStatus() {
+  const isReady = isFirebaseConfigured && Boolean(app)
   return {
-    configured: isFirebaseConfigured,
-    projectId: firebaseConfig.projectId || 'not-set',
-    authDomain: firebaseConfig.authDomain || 'not-set',
-    hasApiKey: Boolean(firebaseConfig.apiKey),
-    hasMeasurementId: Boolean(firebaseConfig.measurementId),
+    configured: isReady,
+    projectId: isReady ? (firebaseConfig.projectId || 'not-set') : 'local-mode',
+    authDomain: isReady ? (firebaseConfig.authDomain || 'not-set') : 'local-mode',
+    hasApiKey: isValidApiKey(firebaseConfig.apiKey),
+    hasMeasurementId: isValidConfigValue(firebaseConfig.measurementId) && !firebaseConfig.measurementId?.includes('XXXX'),
   }
 }

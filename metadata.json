@@ -1,0 +1,6 @@
+{
+  "name": "Hacienda de LuisAna",
+  "description": "Private countryside stay and camping getaway in Luisiana, Laguna",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
