@@ -69,14 +69,14 @@ export function ExploreScreen() {
               key={g.id}
               type="button"
               onClick={() => setOpenIdx(i)}
-              className="relative overflow-hidden rounded-2xl text-left"
+              className="relative overflow-hidden rounded-2xl text-left aspect-[4/3] bg-white"
               aria-label={g.caption}
             >
               <SmartImage
                 src={g.url}
                 alt={g.caption}
-                aspect={g.aspect === 'wide' ? '4 / 3' : '3 / 4'}
-                className="w-full object-cover"
+                aspect="4 / 3"
+                className="w-full h-full object-cover"
               />
             </button>
           ))}
