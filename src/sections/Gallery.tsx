@@ -71,19 +71,19 @@ export function Gallery() {
           </div>
         </div>
 
-        <div className="mt-10 columns-2 md:columns-3 lg:columns-4 gap-4 [column-fill:_balance]">
+        <div className="mt-10 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filtered.map((g, i) => (
             <button
               key={g.id}
               onClick={() => setOpenIdx(i)}
-              className="mb-4 block w-full break-inside-avoid overflow-hidden rounded-2xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600"
+              className="block w-full overflow-hidden rounded-2xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 aspect-[4/3] bg-white"
               aria-label={`Open ${g.caption}`}
             >
               <SmartImage
                 src={g.url}
                 alt={g.caption}
-                aspect={g.aspect === 'tall' ? '3 / 4' : g.aspect === 'wide' ? '4 / 3' : '1 / 1'}
-                className="w-full object-cover transition-transform duration-[1400ms] ease-out-expo group-hover:scale-[1.05]"
+                aspect="4 / 3"
+                className="w-full h-full object-cover transition-transform duration-[1400ms] ease-out-expo group-hover:scale-[1.05]"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-forest-950/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition" />
               <div className="absolute bottom-3 left-3 right-3 text-left text-cream-50 text-xs opacity-0 group-hover:opacity-100 transition">
