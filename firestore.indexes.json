@@ -15,6 +15,22 @@
         { "fieldPath": "check_in", "order": "ASCENDING" },
         { "fieldPath": "check_out", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accommodation", "order": "ASCENDING" },
+        { "fieldPath": "check_out", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

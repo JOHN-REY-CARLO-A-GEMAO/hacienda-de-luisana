@@ -20,6 +20,23 @@ function accName(id: string) {
   return ACCOMMODATIONS.find((a) => a.id === id)?.name || (id === 'other' ? 'Other / Ask Us' : id)
 }
 
+// P3 + G2: half-open overlap ([in, out) — checkout day is free) used for the
+// approve-time re-check. Client overlap checks are racy; this host-side check
+// at Confirm time is authoritative.
+function datesOverlap(aIn: string, aOut: string, bIn: string, bOut: string) {
+  return aIn < bOut && bIn < aOut
+}
+
+function findConflicts(items: Booking[], booking: Booking) {
+  return items.filter(
+    (b) =>
+      b.id !== booking.id &&
+      b.accommodation === booking.accommodation &&
+      (b.status === 'Pending' || b.status === 'Confirmed') &&
+      datesOverlap(b.check_in, b.check_out, booking.check_in, booking.check_out),
+  )
+}
+
 export function AdminPage() {
   const { user, logout, isConfigured } = useAuth()
   const [items, setItems] = useState<Booking[]>([])
@@ -94,6 +111,20 @@ export function AdminPage() {
     } finally {
       setUpdatingId(null)
     }
+  }
+
+  // G2 approve-time re-check: authoritative overlap gate before Confirm.
+  // Returns true when the host confirms the approve should proceed.
+  const confirmWithRecheck = (booking: Booking) => {
+    const conflicts = findConflicts(items, booking)
+    if (conflicts.length > 0) {
+      const names = conflicts.map((c) => `${c.guest_name} (${c.check_in}→${c.check_out})`).join(', ')
+      return confirm(
+        `Warning: overlaps with ${conflicts.length} active booking(s) for the same stay: ${names}. ` +
+        `Approving will double-book. Proceed anyway?`,
+      )
+    }
+    return true
   }
 
   const handleDelete = async (id: string) => {
@@ -199,9 +230,10 @@ export function AdminPage() {
                           <th className="px-5 py-3">Guest</th>
                           <th className="px-5 py-3">Dates</th>
                           <th className="px-5 py-3">Guests</th>
-                          <th className="px-5 py-3">Accommodation</th>
-                          <th className="px-5 py-3">Status</th>
-                          <th className="px-5 py-3 text-right">Actions</th>
+                            <th className="px-5 py-3">Accommodation</th>
+                            <th className="px-5 py-3">Status</th>
+                            <th className="px-5 py-3">KYC</th>
+                            <th className="px-5 py-3 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-forest-900/5">
@@ -217,11 +249,12 @@ export function AdminPage() {
                             <td className="px-5 py-4 text-forest-800">{b.guests}</td>
                             <td className="px-5 py-4 text-forest-800">{accName(b.accommodation)}</td>
                             <td className="px-5 py-4"><StatusPill status={b.status} /></td>
+                            <td className="px-5 py-4"><KycPill booking={b} /></td>
                             <td className="px-5 py-4 text-right">
                               <div className="inline-flex gap-1">
                                 <button onClick={() => setViewing(b)} className="px-2.5 py-1.5 rounded-lg text-xs bg-cream-100 hover:bg-cream-200 text-forest-800">View</button>
                                 {b.status === 'Pending' && (
-                                  <button onClick={() => handleUpdate(b.id, { status: 'Confirmed' })} disabled={updatingId === b.id} className="px-2.5 py-1.5 rounded-lg text-xs bg-forest-700 text-cream-50 hover:bg-forest-800 disabled:opacity-50">Confirm</button>
+                                  <button onClick={() => { if (confirmWithRecheck(b)) handleUpdate(b.id, { status: 'Confirmed' }) }} disabled={updatingId === b.id} className="px-2.5 py-1.5 rounded-lg text-xs bg-forest-700 text-cream-50 hover:bg-forest-800 disabled:opacity-50">Confirm</button>
                                 )}
                                 {b.status !== 'Cancelled' && b.status !== 'Completed' && (
                                   <button onClick={() => handleUpdate(b.id, { status: 'Cancelled' })} disabled={updatingId === b.id} className="px-2.5 py-1.5 rounded-lg text-xs bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 disabled:opacity-50">Cancel</button>
@@ -325,6 +358,30 @@ function StatusPill({ status }: { status: BookingStatus }) {
   )
 }
 
+// P3: KYC review pill. Web-only bookings carry no kyc_status → "—".
+function KycPill({ booking }: { booking: Booking }) {
+  const s = booking.kyc_status
+  if (!s) return <span className="text-xs text-forest-700/40">—</span>
+  const map: Record<string, string> = {
+    required: 'bg-cream-100 text-forest-700 border-forest-900/10',
+    submitted: 'bg-amber-50 text-amber-800 border-amber-200',
+    approved: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    rejected: 'bg-red-50 text-red-700 border-red-100',
+  }
+  const hasDocs = Boolean(booking.kyc_id_url || booking.kyc_receipt_url)
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={`text-[11px] uppercase tracking-eyebrow px-2.5 py-1 rounded-full border ${map[s]}`}>{s}</span>
+      {s === 'submitted' && !hasDocs && (
+        <span className="text-[10px] text-amber-700" title="Guest submitted from an offline device — photos pending resubmit">no photos</span>
+      )}
+      {booking.source === 'flutter_app' && (
+        <span className="text-[10px] text-forest-700/50" title={`App booking ${booking.ref_id || ''}`}>app</span>
+      )}
+    </span>
+  )
+}
+
 function EmptyState({ isCloud }: { isCloud: boolean }) {
   return (
     <div className="p-14 text-center">
@@ -351,13 +408,14 @@ function ViewModal({ booking, onClose, onUpdate }: { booking: Booking; onClose: 
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
   }, [])
+  const [rejectReason, setRejectReason] = useState(booking.kyc_reject_reason || '')
   return (
     <div className="fixed inset-0 z-50 bg-forest-950/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white max-w-lg w-full rounded-3xl p-6 lg:p-8 relative" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white max-w-lg w-full rounded-3xl p-6 lg:p-8 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full hover:bg-cream-100 text-forest-800" aria-label="Close">
           <Close size={18} />
         </button>
-        <div className="eyebrow">Request {booking.id.slice(0,8).toUpperCase()}</div>
+        <div className="eyebrow">Request {booking.id.slice(0,8).toUpperCase()}{booking.ref_id ? ` · ${booking.ref_id}` : ''}</div>
         <h3 className="font-serif text-3xl text-forest-900 mt-2">{booking.guest_name}</h3>
         <div className="mt-1 text-sm text-forest-700/80">{booking.phone} · {booking.email}</div>
 
@@ -368,12 +426,88 @@ function ViewModal({ booking, onClose, onUpdate }: { booking: Booking; onClose: 
           <Item icon={Sparkle} label="Accommodation" value={accName(booking.accommodation)} />
         </div>
 
+        {/* P3: KYC review row — thumb, approve/reject + reason, resubmit loop.
+            Guest key stays disabled until kyc approved AND booking confirmed;
+            rejection never confirms the stay, guest resubmits from the app. */}
+        <div className="mt-6 rounded-2xl border border-forest-900/10 p-4">
+          <div className="flex items-center justify-between">
+            <div className="eyebrow">KYC Verification</div>
+            <KycPill booking={booking} />
+          </div>
+          {!booking.kyc_status ? (
+            <p className="mt-2 text-xs text-forest-700/70">
+              No KYC on this inquiry (web form). Ask the guest to book via the app, or verify their ID manually before confirming.
+            </p>
+          ) : (
+            <>
+              {(booking.kyc_id_url || booking.kyc_receipt_url) ? (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {booking.kyc_id_url && (
+                    <a href={booking.kyc_id_url} target="_blank" rel="noreferrer" className="block group">
+                      <img src={booking.kyc_id_url} alt="Government ID" className="w-full h-28 object-cover rounded-xl border border-forest-900/10 group-hover:opacity-90" />
+                      <div className="mt-1 text-[11px] text-forest-700/70 underline">Government ID ↗</div>
+                    </a>
+                  )}
+                  {booking.kyc_receipt_url && (
+                    <a href={booking.kyc_receipt_url} target="_blank" rel="noreferrer" className="block group">
+                      <img src={booking.kyc_receipt_url} alt="Payment receipt" className="w-full h-28 object-cover rounded-xl border border-forest-900/10 group-hover:opacity-90" />
+                      <div className="mt-1 text-[11px] text-forest-700/70 underline">Deposit receipt ↗</div>
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  Guest submitted from an offline device — photos not uploaded yet. Ask them to resubmit from the app when online.
+                </p>
+              )}
+              {booking.kyc_status === 'rejected' && booking.kyc_reject_reason && (
+                <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                  Rejected: {booking.kyc_reject_reason}
+                </p>
+              )}
+              <input
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Reject reason (e.g. blurry ID, name mismatch)…"
+                className="mt-3 w-full text-xs border border-forest-900/10 rounded-xl px-3 py-2 outline-none focus:border-forest-600"
+              />
+              <div className="mt-2 flex gap-2 flex-wrap">
+                <button
+                  onClick={() => { onUpdate(booking.id, { kyc_status: 'approved', kyc_reject_reason: '' }); onClose() }}
+                  className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  Approve ID
+                </button>
+                <button
+                  onClick={() => {
+                    if (!rejectReason.trim() && !confirm('Reject without a reason? The guest will not know what to fix. Proceed?')) return
+                    onUpdate(booking.id, { kyc_status: 'rejected', kyc_reject_reason: rejectReason.trim() }); onClose()
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs bg-white border border-red-200 text-red-700 hover:bg-red-50"
+                >
+                  Reject ID
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-forest-700/60">
+                Guest key stays disabled until ID is approved and the booking is confirmed. Rejected guests resubmit from the app — status stays pending.
+              </p>
+            </>
+          )}
+        </div>
+
         {booking.special_requests && (
           <div className="mt-6">
             <div className="eyebrow">Special Requests</div>
             <p className="mt-2 text-sm text-forest-800/85 leading-relaxed whitespace-pre-line">
               {booking.special_requests}
             </p>
+          </div>
+        )}
+
+        {booking.eta_share_url && (
+          <div className="mt-4 text-xs">
+            <span className="eyebrow">Guest ETA · </span>
+            <a href={booking.eta_share_url} target="_blank" rel="noreferrer" className="text-forest-700 underline">Live location link ↗</a>
           </div>
         )}
 

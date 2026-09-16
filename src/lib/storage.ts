@@ -4,6 +4,8 @@
 
 export type BookingStatus = 'Pending' | 'Confirmed' | 'Cancelled' | 'Completed'
 
+export type KycStatus = 'required' | 'submitted' | 'approved' | 'rejected'
+
 export type Booking = {
   id: string
   guest_name: string
@@ -16,6 +18,15 @@ export type Booking = {
   special_requests: string
   status: BookingStatus
   created_at: string     // ISO
+  // P3 Real KYC (Flutter app writes these; web-only bookings omit them)
+  ref_id?: string
+  uid?: string
+  source?: string
+  kyc_status?: KycStatus
+  kyc_id_url?: string
+  kyc_receipt_url?: string
+  kyc_reject_reason?: string
+  eta_share_url?: string
 }
 
 const KEY = 'hdl:bookings'

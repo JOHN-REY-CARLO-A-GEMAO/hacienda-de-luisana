@@ -50,4 +50,50 @@ class Validators {
     if (v.startsWith('0')) return '+63${v.substring(1)}';
     return v;
   }
+
+  static DateTime _dateOnly(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+  /// Check-in must not be in the past (date granularity).
+  static String? checkInDate(DateTime? checkIn, [DateTime? now]) {
+    if (checkIn == null) return 'Please choose a check-in date';
+    final today = _dateOnly(now ?? DateTime.now());
+    if (_dateOnly(checkIn).isBefore(today)) {
+      return 'Check-in cannot be in the past';
+    }
+    return null;
+  }
+
+  /// Check-out must be strictly after check-in.
+  static String? checkOutDate(DateTime checkIn, DateTime? checkOut) {
+    if (checkOut == null) return 'Please choose a check-out date';
+    if (!_dateOnly(checkOut).isAfter(_dateOnly(checkIn))) {
+      return 'Check-out must be after check-in';
+    }
+    return null;
+  }
+
+  /// Guests must be 1..12 and within the accommodation capacity.
+  static String? guestCount(int guests, int capacity) {
+    if (guests < 1) return 'At least 1 guest required';
+    if (guests > 12) return 'Max 12 guests per booking';
+    if (guests > capacity) {
+      return 'This stay accommodates up to $capacity guests';
+    }
+    return null;
+  }
+
+  /// Combined trip validation for the Book tab. Returns first error or null.
+  static String? trip({
+    required DateTime checkIn,
+    required DateTime checkOut,
+    required int guests,
+    required int capacity,
+    DateTime? now,
+  }) {
+    final inErr = checkInDate(checkIn, now);
+    if (inErr != null) return inErr;
+    final outErr = checkOutDate(checkIn, checkOut);
+    if (outErr != null) return outErr;
+    return guestCount(guests, capacity);
+  }
 }

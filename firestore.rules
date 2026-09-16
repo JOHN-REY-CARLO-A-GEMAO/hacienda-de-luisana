@@ -3,15 +3,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: is authenticated
+    // Helper: is authenticated (includes Firebase anonymous uid)
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Bookings collection
-    // - Anyone can CREATE a booking (guest inquiry form)
-    // - Only authenticated users can READ/UPDATE/DELETE (owner dashboard)
-    // - Validate required fields on create
+    // P3: admin = owner allowlist only (keep in sync with storage.rules
+    // isOwnerEmail + site.ts contact email). Anonymous uids have no email
+    // token, so guests can never satisfy this — they use isOwnDoc().
+    // Owner login: Google sign-in with haciendadeluisiana@gmail.com in /admin.
+    function ownerEmails() {
+      return ['haciendadeluisiana@gmail.com'];
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email in ownerEmails();
+    }
+
+    // P2: guest owns docs carrying their anon uid.
+    function isOwnDoc() {
+      return isSignedIn()
+        && resource.data.get('uid', '') != ''
+        && resource.data.get('uid', '') == request.auth.uid;
+    }
+
+    // Bookings collection (shared by web /book + Flutter app, P2/P3)
+    // - CREATE stays public pending-only so web inquiry works unauthenticated.
+    //   Extra app keys (ref_id, uid, kyc_status, kyc urls, source,
+    //   eta_share_url) are additive.
+    // - READ: admin full + guest read-own (anon uid).
+    // - UPDATE: admin full + guest self-serve (cancel own pending, attach
+    //   kyc_status/urls/eta only — never status-confirm, never reject reason).
+    //   Host MUST re-check availability at approve time (G2): query
+    //   overlapping pending/confirmed for the same accommodation before
+    //   flipping Pending -> Confirmed. Client overlap check is racy;
+    //   approve-time re-check is authoritative.
+    // - DELETE: admin only.
     match /bookings/{bookingId} {
       allow create: if true
         && request.resource.data.keys().hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at'])
@@ -21,24 +48,29 @@ service cloud.firestore {
         && request.resource.data.check_out is string
         && request.resource.data.status == 'Pending';
 
-      allow read, update, delete: if isSignedIn();
+      allow read: if isAdmin() || isOwnDoc();
 
-      // For tighter security, uncomment to restrict to specific owner emails:
-      // allow read, update, delete: if isSignedIn() && request.auth.token.email in ['owner@example.com'];
+      allow update: if isAdmin()
+        || (isSignedIn()
+          && resource.data.get('uid', '') == request.auth.uid
+          && resource.data.status == 'Pending'
+          && request.resource.data.status in ['Pending', 'Cancelled']
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'kyc_status', 'kyc_id_url', 'kyc_receipt_url', 'eta_share_url']));
+
+      allow delete: if isAdmin();
     }
-
-    // Future collections examples:
 
     // Gallery images metadata (public read, owner write)
     match /gallery/{imageId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // Site config (public read, owner write)
     match /site_config/{docId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // Deny all other collections by default unless explicitly allowed

@@ -5,22 +5,40 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/booking.dart';
+import 'cloud_bookings.dart';
 
-/// Guest-side booking state for the demo.
+/// Guest-side booking state.
 ///
-/// Flow (demo simulation of the real pipeline):
-///   submitBooking()      → status: pending, kyc: required
-///   markKycSubmitted()   → kyc: submitted  (status STAYS pending)
-///   ~6s "host review"    → status: confirmed, kyc: approved
+/// P1: local correctness, no backend — submit stays pending for host review.
+/// P2: offline-first Firestore sync over the same `bookings` collection the
+/// web /book form uses (web-compatible shape via Booking.toCloudMap).
 ///
-/// Everything is persisted to SharedPreferences so bookings survive app
-/// restarts. In Phase 2 this store becomes a thin wrapper over Firestore and
-/// the simulated timer is replaced by the real host's /admin action.
+/// - Local SharedPreferences cache opens instantly and survives restarts.
+/// - When cloud is live, own bookings stream in and host updates
+///   (confirmed/cancelled, kyc approved/rejected) reconcile over local.
+/// - Offline submits stay `synced=false` and show a "will send" banner;
+///   syncPending() retries them on reconnect.
+/// - Lazy EXPIRED: pending older than 24h reads as `expired` locally
+///   (Booking.isExpiredLocal) and releases dates until a TTL cron exists.
 class BookingStore extends ChangeNotifier {
   static const String _storeKey = 'hdl_demo_bookings';
 
   final List<Booking> _bookings = [];
-  Timer? _hostReviewTimer;
+
+  CloudBookings? _cloud;
+  StreamSubscription<List<Booking>>? _watchSub;
+
+  /// True once Firebase init succeeded (cloud live, own stream attached).
+  bool cloudLive = false;
+
+  /// True while a cloud write/retry is in flight.
+  bool syncing = false;
+
+  /// Last cloud error for the banner (null when clean).
+  String? syncError;
+
+  /// Active guest uid (anon Firebase uid or local fallback).
+  String? uid;
 
   BookingStore() {
     _load();
@@ -29,12 +47,16 @@ class BookingStore extends ChangeNotifier {
   List<Booking> get bookings => List.unmodifiable(_bookings);
 
   /// The booking the dashboard should surface (latest active one).
+  /// Expired-pending is terminal locally, so it never surfaces as current.
   Booking? get currentBooking {
     final active = _bookings.where((b) => b.isActive).toList();
     if (active.isEmpty) return null;
     active.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return active.first;
   }
+
+  /// Unsynced locals waiting for cloud (offline queue depth).
+  int get pendingSyncCount => _bookings.where((b) => !b.synced).length;
 
   bool get isConfirmed => currentBooking?.isConfirmed ?? false;
 
@@ -47,41 +69,176 @@ class BookingStore extends ChangeNotifier {
     return null;
   }
 
-  // ---- Actions ----
+  // ---- Cloud attach ----
 
-  /// Guest submitted the reservation form. Booking starts as pending.
-  void submitBooking(Booking booking) {
-    _bookings.add(booking);
-    _persist();
+  /// Attaches the cloud service (call once from AppShell). Never throws.
+  Future<void> attachCloud(CloudBookings cloud, {String? anonUid}) async {
+    _cloud = cloud;
+    try {
+      cloudLive = await cloud.ensureInitialized();
+      uid = cloud.uid ?? anonUid ?? uid;
+      if (uid != null && cloudLive) {
+        await _watchOwn();
+      }
+      // Opportunistically push anything queued while offline.
+      await syncPending();
+    } catch (e) {
+      syncError = e.toString();
+      cloudLive = false;
+    }
     notifyListeners();
   }
 
-  /// Guest uploaded ID + receipt. Docs are "received" — the host still has to
-  /// approve. Demo: simulate that host review completing after a short delay.
-  void markKycSubmitted(String referenceId, {String? govtIdPath, String? receiptPath}) {
+  Future<void> _watchOwn() async {
+    await _watchSub?.cancel();
+    final cloud = _cloud;
+    final id = uid ?? cloud?.uid;
+    if (cloud == null || !cloudLive || id == null || id.isEmpty) return;
+    _watchSub = cloud.watchOwnBookings(id).listen(
+      (remote) => _reconcileCloud(remote),
+      onError: (Object e) {
+        syncError = e.toString();
+        notifyListeners();
+      },
+    );
+  }
+
+  /// Merges host truth over local cache by referenceId.
+  /// Remote status/kyc/urls/reject-reason/eta/firestoreId win;
+  /// local-only docs are kept. Rejected KYC surfaces with the host reason
+  /// so the guest sees *why* and can resubmit (key stays disabled meanwhile).
+  void _reconcileCloud(List<Booking> remote) {
+    if (remote.isEmpty) return;
+    var changed = false;
+    for (final r in remote) {
+      final local = _findByRef(r.referenceId);
+      if (local == null) {
+        _bookings.add(r);
+        changed = true;
+      } else {
+        if (local.status != r.status ||
+            local.kycStatus != r.kycStatus ||
+            local.kycIdUrl != r.kycIdUrl ||
+            local.kycReceiptUrl != r.kycReceiptUrl ||
+            local.kycRejectReason != r.kycRejectReason ||
+            local.etaShareUrl != r.etaShareUrl ||
+            local.firestoreId != r.firestoreId) {
+          local.status = r.status;
+          local.kycStatus = r.kycStatus;
+          local.kycIdUrl = r.kycIdUrl ?? local.kycIdUrl;
+          local.kycReceiptUrl = r.kycReceiptUrl ?? local.kycReceiptUrl;
+          local.kycRejectReason = r.kycRejectReason;
+          local.etaShareUrl = r.etaShareUrl ?? local.etaShareUrl;
+          local.firestoreId = r.firestoreId ?? local.firestoreId;
+          local.synced = true;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      _persist();
+      notifyListeners();
+    }
+  }
+
+  // ---- Actions ----
+
+  /// Guest submitted the reservation form. Persists locally instantly,
+  /// then best-effort syncs to Firestore in web shape (fire-and-forget).
+  Future<void> submitBooking(Booking booking) async {
+    booking.uid ??= uid;
+    _bookings.add(booking);
+    _persist();
+    notifyListeners();
+    await _pushOne(booking);
+  }
+
+  Future<void> _pushOne(Booking booking) async {
+    final cloud = _cloud;
+    if (cloud == null || !cloudLive) return; // stays queued (synced=false)
+    syncing = true;
+    syncError = null;
+    notifyListeners();
+    try {
+      final docId = await cloud.submitBooking(booking);
+      if (docId != null) {
+        booking.firestoreId = docId;
+        booking.synced = true;
+      }
+    } catch (e) {
+      syncError = e.toString();
+    } finally {
+      syncing = false;
+      _persist();
+      notifyListeners();
+    }
+  }
+
+  /// Retries all unsynced locals (call on reconnect / app resume).
+  Future<void> syncPending() async {
+    final cloud = _cloud;
+    if (cloud == null || !cloudLive) return;
+    final queued = _bookings.where((b) => !b.synced).toList();
+    if (queued.isEmpty) return;
+    syncing = true;
+    notifyListeners();
+    try {
+      for (final b in queued) {
+        b.uid ??= uid ?? cloud.uid;
+        final docId = await cloud.submitBooking(b);
+        if (docId != null) {
+          b.firestoreId = docId;
+          b.synced = true;
+        }
+      }
+      syncError = null;
+    } catch (e) {
+      syncError = e.toString();
+    } finally {
+      syncing = false;
+      _persist();
+      notifyListeners();
+    }
+  }
+
+  /// Guest submitted (or resubmitted after rejection) ID + receipt.
+  /// P3 uploads the files to /kyc before calling this (see KycScreen);
+  /// urls here are Storage download URLs for /admin review. Status stays
+  /// pending and any reject reason clears so the review loop restarts.
+  /// Offline: local placeholders persist, cloud sync retries via syncPending.
+  Future<void> markKycSubmitted(String referenceId,
+      {String? govtIdPath,
+      String? receiptPath,
+      String? kycIdUrl,
+      String? kycReceiptUrl}) async {
     final b = _findByRef(referenceId);
     if (b == null) return;
-    b.kycStatus = 'submitted';
+    b.applyKycSubmitted(idUrl: kycIdUrl, receiptUrl: kycReceiptUrl);
     b.govtIdPath = govtIdPath ?? b.govtIdPath;
     b.paymentReceiptPath = receiptPath ?? b.paymentReceiptPath;
     _persist();
     notifyListeners();
-
-    _hostReviewTimer?.cancel();
-    _hostReviewTimer = Timer(const Duration(seconds: 6), () {
-      _simulateHostApproval(referenceId);
-    });
+    final cloud = _cloud;
+    if (cloud != null && cloudLive && b.firestoreId != null) {
+      await cloud.markKycSubmitted(
+        b.firestoreId!,
+        idUrl: kycIdUrl,
+        receiptUrl: kycReceiptUrl,
+      );
+    }
   }
 
-  /// DEMO ONLY: stands in for the host pressing "Confirm" in the web /admin.
-  void _simulateHostApproval(String referenceId) {
+  /// Saves the one-time ETA Maps link (booker sends when near).
+  Future<void> setEtaShareUrl(String referenceId, String url) async {
     final b = _findByRef(referenceId);
-    if (b == null || b.status != 'pending') return;
-    b.status = 'confirmed';
-    b.kycStatus = 'approved';
+    if (b == null) return;
+    b.etaShareUrl = url;
     _persist();
     notifyListeners();
-    debugPrint('Demo host approved booking $referenceId');
+    final cloud = _cloud;
+    if (cloud != null && cloudLive && b.firestoreId != null) {
+      await cloud.setEtaShareUrl(b.firestoreId!, url);
+    }
   }
 
   /// Guest check-in (host-assisted in the real flow).
@@ -95,14 +252,62 @@ class BookingStore extends ChangeNotifier {
   }
 
   /// Guest may cancel while still pending; later cancellations go via host.
-  bool cancelBooking() {
+  Future<bool> cancelBooking() async {
     final b = currentBooking;
     if (b == null || b.status != 'pending') return false;
     b.status = 'cancelled';
-    _hostReviewTimer?.cancel();
     _persist();
     notifyListeners();
+    final cloud = _cloud;
+    if (cloud != null && cloudLive && b.firestoreId != null) {
+      await cloud.cancelOwn(b.firestoreId!);
+    }
     return true;
+  }
+
+  // ---- Availability (G2, client-side best-effort) ----
+
+  /// Local overlap check against cached bookings.
+  List<Booking> findLocalConflicts({
+    required String accommodationId,
+    required DateTime checkIn,
+    required DateTime checkOut,
+    String? excludeRefId,
+  }) {
+    return _bookings.where((b) {
+      if (excludeRefId != null && b.referenceId == excludeRefId) return false;
+      return b.blocksRange(checkIn, checkOut, sameStay: accommodationId);
+    }).toList();
+  }
+
+  /// Combined local + cloud overlap check before submit.
+  /// Cloud part fails open ([]) when offline or index-missing.
+  Future<List<Booking>> findAllConflicts({
+    required String accommodationId,
+    required DateTime checkIn,
+    required DateTime checkOut,
+    String? excludeRefId,
+  }) async {
+    final local = findLocalConflicts(
+      accommodationId: accommodationId,
+      checkIn: checkIn,
+      checkOut: checkOut,
+      excludeRefId: excludeRefId,
+    );
+    final cloud = _cloud;
+    if (cloud == null || !cloudLive) return local;
+    final remote = await cloud.findConflicts(
+      accommodationId: accommodationId,
+      checkIn: checkIn,
+      checkOut: checkOut,
+      excludeRefId: excludeRefId,
+    );
+    final seen = local.map((b) => b.referenceId).toSet();
+    final merged = [...local];
+    for (final r in remote) {
+      if (!seen.contains(r.referenceId)) merged.add(r);
+    }
+    return merged;
   }
 
   // ---- Persistence ----
@@ -116,16 +321,6 @@ class BookingStore extends ChangeNotifier {
         _bookings
           ..clear()
           ..addAll(list.map((e) => Booking.fromJson(e as Map<String, dynamic>)));
-        // Re-arm the demo host review if the app was restarted mid-review.
-        final pending = _bookings.where((b) => b.status == 'pending' && b.kycStatus == 'submitted');
-        if (pending.isNotEmpty) {
-          _hostReviewTimer?.cancel();
-          _hostReviewTimer = Timer(const Duration(seconds: 3), () {
-            for (final b in pending.toList()) {
-              _simulateHostApproval(b.referenceId);
-            }
-          });
-        }
         notifyListeners();
       }
     } catch (_) {
@@ -145,7 +340,7 @@ class BookingStore extends ChangeNotifier {
 
   @override
   void dispose() {
-    _hostReviewTimer?.cancel();
+    _watchSub?.cancel();
     super.dispose();
   }
 }

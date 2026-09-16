@@ -45,6 +45,15 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     special_requests: data.special_requests || '',
     status: data.status as BookingStatus,
     created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at || new Date().toISOString(),
+    // P3 KYC (additive — absent on web-only bookings)
+    ref_id: data.ref_id,
+    uid: data.uid,
+    source: data.source,
+    kyc_status: data.kyc_status,
+    kyc_id_url: data.kyc_id_url,
+    kyc_receipt_url: data.kyc_receipt_url,
+    kyc_reject_reason: data.kyc_reject_reason,
+    eta_share_url: data.eta_share_url,
   }
 }
 

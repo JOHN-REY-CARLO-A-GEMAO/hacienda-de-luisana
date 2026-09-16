@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/booking.dart';
 import '../services/auth_store.dart';
 import '../services/booking_store.dart';
+import '../services/door_key.dart';
 import '../services/esp32_service.dart';
 import '../theme/app_theme.dart';
 import 'auth_screen.dart';
@@ -23,8 +24,10 @@ import 'auth_screen.dart';
 /// - Booking confirmed        → digital key unlocks
 class DashboardScreen extends StatelessWidget {
   final VoidCallback? onNavigateBook;
+  final void Function(Booking)? onResubmitKyc;
 
-  const DashboardScreen({super.key, this.onNavigateBook});
+  const DashboardScreen(
+      {super.key, this.onNavigateBook, this.onResubmitKyc});
 
   Future<void> _makeCall(String phone) async {
     final uri = Uri.parse('tel:$phone');
@@ -64,9 +67,17 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthStore>();
     final store = context.watch<BookingStore>();
+    final lock = context.watch<Esp32Service>();
     final user = auth.user;
     final booking = store.currentBooking;
-    final isConfirmed = booking?.isConfirmed ?? false;
+    // P1 key gate: confirmed|checked_in + kyc approved + 2PM→12NN+1hr window.
+    // P4: lockout state joins the gate (button still opens the key screen,
+    // which shows the lockout reason + rescue path).
+    final lockout = lock.lockoutUntil();
+    final keyReason = lockout != null
+        ? 'Too many failed attempts — locked until ${DateFormat('h:mm a').format(lockout)}.'
+        : booking?.keyDisabledReason();
+    final keyEnabled = keyReason == null && booking != null;
 
     final pastStays = store.bookings
         .where((b) => !b.isActive && b.referenceId != booking?.referenceId)
@@ -128,6 +139,16 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 22),
+
+            // ---- P2 sync banner: cloud live vs local-only vs queued ----
+            _SyncBanner(
+              cloudLive: store.cloudLive,
+              syncing: store.syncing,
+              pending: store.pendingSyncCount,
+              error: store.syncError,
+              onRetry: () => store.syncPending(),
+            ),
+            const SizedBox(height: 14),
 
             // ---- Sign-in prompt (guest mode) ----
             if (user == null) ...[
@@ -325,15 +346,36 @@ class DashboardScreen extends StatelessWidget {
                       if (booking.isPending) ...[
                         const SizedBox(height: 12),
                         Text(
-                          booking.kycStatus == 'submitted'
-                              ? 'Host is reviewing your ID & deposit — you\'ll be confirmed shortly.'
-                              : 'Complete KYC verification to send your booking to the host.',
+                          booking.kycStatus == 'rejected'
+                              ? 'ID verification failed${booking.kycRejectReason != null && booking.kycRejectReason!.isNotEmpty ? ': ${booking.kycRejectReason}' : ''} — re-upload clearer photos. Key stays disabled until approved.'
+                              : booking.kycStatus == 'submitted'
+                                  ? 'Host is reviewing your ID & deposit — status stays pending until confirmed in /admin.'
+                                  : 'Complete KYC verification to send your booking to the host.',
                           style: GoogleFonts.inter(
                             fontSize: 12,
                             height: 1.45,
                             color: AppTheme.goldSoft.withOpacity(0.9),
                           ),
                         ),
+                        if (booking.kycStatus == 'rejected') ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.cream50,
+                                foregroundColor: AppTheme.forest900,
+                              ),
+                              onPressed: onResubmitKyc == null
+                                  ? null
+                                  : () => onResubmitKyc!(booking),
+                              icon: const Icon(
+                                  Icons.upload_file_outlined,
+                                  size: 16),
+                              label: const Text('Re-upload ID & Receipt'),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         SizedBox(
                           width: double.infinity,
@@ -366,6 +408,98 @@ class DashboardScreen extends StatelessWidget {
                             },
                             icon: const Icon(Icons.close, size: 16),
                             label: const Text('Cancel request'),
+                          ),
+                        ),
+                      ],
+                      // P2 one-time ETA link (MVP, consent-based): booker
+                      // pastes a Google Maps share URL when near; host sees
+                      // it on the cloud doc. Optional — tel:/Messenger
+                      // fallback if the booker declines or GPS is off.
+                      if (booking.isActive) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.cream50,
+                              side: BorderSide(
+                                color:
+                                    AppTheme.cream50.withOpacity(0.35),
+                              ),
+                            ),
+                            onPressed: () async {
+                              final controller = TextEditingController(
+                                text: booking.etaShareUrl ?? '',
+                              );
+                              final url = await showDialog<String>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Share ETA link'),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Paste a Google Maps share link when you\'re on the way. '
+                                        'Optional — you can also just call or message the host.',
+                                      ),
+                                      const SizedBox(height: 12),
+                                      TextField(
+                                        controller: controller,
+                                        keyboardType:
+                                            TextInputType.url,
+                                        decoration:
+                                            const InputDecoration(
+                                          hintText:
+                                              'https://maps.google.com/?q=…',
+                                          border:
+                                              OutlineInputBorder(),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx),
+                                      child: const Text('Later'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(
+                                          ctx,
+                                          controller.text
+                                              .trim()),
+                                      child: const Text('Save'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (url != null && url.isNotEmpty) {
+                                await store.setEtaShareUrl(
+                                  booking.referenceId,
+                                  url,
+                                );
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context)
+                                      .showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                          'ETA link shared with your host.'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(
+                                Icons.share_location_outlined,
+                                size: 16),
+                            label: Text(
+                              booking.etaShareUrl == null ||
+                                      booking.etaShareUrl!.isEmpty
+                                  ? 'Share ETA link (optional)'
+                                  : 'ETA shared — update link',
+                            ),
                           ),
                         ),
                       ],
@@ -425,32 +559,47 @@ class DashboardScreen extends StatelessWidget {
                             height: 9,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: isConfirmed ? AppTheme.olive : Colors.amber.shade600,
+                              color: keyEnabled ? AppTheme.olive : Colors.amber.shade600,
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        isConfirmed
+                        keyEnabled
                             ? 'Your key is active — press & hold to unlock your stay.'
-                            : 'Locked while your booking awaits host confirmation.',
+                            : (keyReason ??
+                                'Locked while your booking awaits host confirmation.'),
                         style: GoogleFonts.inter(
                           fontSize: 12,
                           height: 1.45,
                           color: AppTheme.forest800.withOpacity(0.72),
                         ),
                       ),
+                      if (booking.status == 'confirmed' ||
+                          booking.status == 'checked_in') ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Window: ${DateFormat('EEE MMM d, h:mm a').format(booking.keyActivatesAt)} → '
+                          '${DateFormat('EEE MMM d, h:mm a').format(booking.keyExpiresAt)} (12NN + 1hr grace)',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: AppTheme.forest800.withOpacity(0.55),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: isConfirmed
+                          onPressed: keyEnabled
                               ? () {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => const DigitalKeyScreen(),
+                                      builder: (_) => DigitalKeyScreen(
+                                        booking: booking,
+                                      ),
                                     ),
                                   );
                                 }
@@ -566,6 +715,84 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
+/// P2 sync banner: cloud live vs local-only vs queued.
+/// Offline submits never fake success — banner says "will send".
+class _SyncBanner extends StatelessWidget {
+  final bool cloudLive;
+  final bool syncing;
+  final int pending;
+  final String? error;
+  final VoidCallback onRetry;
+
+  const _SyncBanner({
+    required this.cloudLive,
+    required this.syncing,
+    required this.pending,
+    required this.error,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final String text;
+    final IconData icon;
+    final Color color;
+    if (syncing) {
+      text = 'Syncing with host…';
+      icon = Icons.sync;
+      color = AppTheme.olive;
+    } else if (!cloudLive) {
+      text = pending > 0
+          ? 'Local mode — $pending booking(s) will send when online.'
+          : 'Local mode — bookings stay on this phone until cloud setup.';
+      icon = Icons.cloud_off_outlined;
+      color = AppTheme.olive;
+    } else if (pending > 0) {
+      text = '$pending booking(s) waiting to send.';
+      icon = Icons.cloud_upload_outlined;
+      color = Colors.amber.shade800;
+    } else if (error != null) {
+      text = 'Sync hiccup — showing local copy.';
+      icon = Icons.cloud_off_outlined;
+      color = Colors.red.shade700;
+    } else {
+      text = 'Cloud live — host sees your bookings.';
+      icon = Icons.cloud_done_outlined;
+      color = AppTheme.olive;
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.cream100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.forest900.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                height: 1.4,
+                color: AppTheme.forest800,
+              ),
+            ),
+          ),
+          if (pending > 0 && cloudLive && !syncing)
+            TextButton(
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Quiet-luxury progress timeline shown inside the dark status card.
 class _FlowTimeline extends StatelessWidget {
   final int currentStep; // 0 reserved · 1 kyc · 2 confirmed · 3 check-in
@@ -624,9 +851,12 @@ class _FlowTimeline extends StatelessWidget {
   }
 }
 
-// ESP32 Smart Lock press-and-hold screen (unchanged behavior).
+// ESP32 Smart Lock press-and-hold screen.
+// P1: simulated transport (800ms unlock, 5s relock) but gated by booking
+// status + KYC + date window. Never silently fails — shows reason.
 class DigitalKeyScreen extends StatefulWidget {
-  const DigitalKeyScreen({super.key});
+  final Booking booking;
+  const DigitalKeyScreen({super.key, required this.booking});
 
   @override
   State<DigitalKeyScreen> createState() => _DigitalKeyScreenState();
@@ -679,17 +909,83 @@ class _DigitalKeyScreenState extends State<DigitalKeyScreen>
   }
 
   void _triggerUnlock() async {
+    // Re-check gate at press time (window may have expired while open).
+    final reason = widget.booking.keyDisabledReason();
+    if (reason != null) {
+      if (mounted) {
+        setState(() => _holdProgress = 0.0);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(reason)),
+        );
+      }
+      return;
+    }
     final esp32 = Provider.of<Esp32Service>(context, listen: false);
-    final success = await esp32.unlock();
 
-    if (mounted) {
-      if (success) {
+    // P4 lockout gate (3 fails / 10min → 15min cooldown).
+    final lockoutUntil = esp32.lockoutUntil();
+    if (lockoutUntil != null) {
+      if (mounted) {
+        setState(() => _holdProgress = 0.0);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Too many failed attempts — locked until ${DateFormat('h:mm a').format(lockoutUntil)}. Walk to the door or call the host.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      // P4 offline path: signed time-windowed token + challenge-response
+      // (never proximity). SimTransport stands in for BLE GATT; token bytes
+      // are identical on hardware.
+      final outcome = await (() async {
+        final token = DoorKey.issueFromBooking(
+          widget.booking,
+          DoorKey.demoPropertySecret,
+        );
+        if (!DoorKey.verify(token, DoorKey.demoPropertySecret)) {
+          return const UnlockOutcome.denied(
+              'Key not valid right now — check dates and KYC status.');
+        }
+        final transport = SimTransport();
+        final challenge = await transport.readChallenge();
+        final answer = DoorKey.answerChallenge(
+          token: token,
+          secret: DoorKey.demoPropertySecret,
+          challengeHex: challenge,
+        );
+        if (!DoorKey.verifyResponse(
+          token: token,
+          secret: DoorKey.demoPropertySecret,
+          challengeHex: challenge,
+          responseHex: answer,
+        )) {
+          return const UnlockOutcome.denied('Lock rejected the key.');
+        }
+        await transport.writeAnswer(answer);
+        return await esp32.requestUnlock(
+          uid: widget.booking.uid ?? 'guest',
+          refId: widget.booking.referenceId,
+          tokenValid: true,
+        );
+      })()
+          .timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => const UnlockOutcome.denied(
+            'Lock timed out — walk to the door or call the host.'),
+      );
+
+      if (!mounted) return;
+      if (outcome.granted) {
         setState(() {
           _isUnlocked = true;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🔓 Smart Lock Unlocked! Door opened successfully.'),
+          SnackBar(
+            content: Text('🔓 ${outcome.reason}'),
             backgroundColor: AppTheme.forest800,
           ),
         );
@@ -703,6 +999,22 @@ class _DigitalKeyScreenState extends State<DigitalKeyScreen>
             });
           }
         });
+      } else {
+        setState(() => _holdProgress = 0.0);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(outcome.reason)),
+        );
+      }
+    } catch (_) {
+      // Transport-level failure (never silent per P4).
+      if (mounted) {
+        setState(() => _holdProgress = 0.0);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Lock unreachable — walk to the door or call the host.'),
+          ),
+        );
       }
     }
   }
@@ -710,6 +1022,11 @@ class _DigitalKeyScreenState extends State<DigitalKeyScreen>
   @override
   Widget build(BuildContext context) {
     final esp32 = Provider.of<Esp32Service>(context);
+    // P4: key gate = booking state (status/KYC/window) + lockout state.
+    final lockout = esp32.lockoutUntil();
+    final gateReason = lockout != null
+        ? 'Too many failed attempts — locked until ${DateFormat('h:mm a').format(lockout)}. Walk to the door or call the host.'
+        : widget.booking.keyDisabledReason();
 
     return Scaffold(
       appBar: AppBar(
@@ -721,6 +1038,35 @@ class _DigitalKeyScreenState extends State<DigitalKeyScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Booking window banner — always visible so guest knows why.
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: gateReason == null
+                      ? AppTheme.olive.withOpacity(0.12)
+                      : AppTheme.cream100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: gateReason == null
+                        ? AppTheme.olive.withOpacity(0.4)
+                        : AppTheme.forest900.withOpacity(0.12),
+                  ),
+                ),
+                child: Text(
+                  gateReason ??
+                      'Ref ${widget.booking.referenceId} • Key live until '
+                      '${DateFormat('EEE MMM d, h:mm a').format(widget.booking.keyExpiresAt)}',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: AppTheme.forest800,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               // ESP32 Status Header
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -756,7 +1102,32 @@ class _DigitalKeyScreenState extends State<DigitalKeyScreen>
                   ],
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 10),
+              // P4: lock battery/signal placeholders (simulated until BLE
+              // GATT exposes real battery service + RSSI).
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.battery_std,
+                      size: 15, color: Colors.black54),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${esp32.batteryPercent}% (sim)',
+                    style: GoogleFonts.inter(
+                        fontSize: 12, color: Colors.black54),
+                  ),
+                  const SizedBox(width: 14),
+                  const Icon(Icons.signal_cellular_alt,
+                      size: 15, color: Colors.black54),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${esp32.rssiDbm} dBm (sim)',
+                    style: GoogleFonts.inter(
+                        fontSize: 12, color: Colors.black54),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
 
               Text(
                 _isUnlocked ? 'DOOR UNLOCKED' : 'PRESS & HOLD TO UNLOCK',
@@ -832,6 +1203,54 @@ class _DigitalKeyScreenState extends State<DigitalKeyScreen>
 
               const SizedBox(height: 50),
 
+              // P4: recent access log (timestamp, uid, result) — persisted
+              // locally, syncs to Central DB via Esp32Service.syncLogs.
+              if (esp32.recentLogs.isNotEmpty) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Recent activity',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      color: AppTheme.olive,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...esp32.recentLogs.map(
+                  (l) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      children: [
+                        Icon(
+                          l.granted
+                              ? Icons.lock_open
+                              : Icons.lock_outline,
+                          size: 14,
+                          color: l.granted
+                              ? Colors.green.shade700
+                              : Colors.red.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${DateFormat('MMM d, h:mm a').format(l.timestamp)} • ${l.granted ? 'granted' : 'denied'} • ${l.reason}',
+                            style: GoogleFonts.inter(
+                                fontSize: 11, color: Colors.black54),
+                          ),
+                        ),
+                        if (!l.synced)
+                          const Icon(Icons.cloud_upload_outlined,
+                              size: 13, color: Colors.black38),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               // Status indicator footer
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -843,7 +1262,7 @@ class _DigitalKeyScreenState extends State<DigitalKeyScreen>
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    'Bluetooth 5.0 Low Energy encrypted handshake',
+                    'Challenge-response key (never proximity)',
                     style: GoogleFonts.inter(fontSize: 12, color: Colors.black54),
                   ),
                 ],

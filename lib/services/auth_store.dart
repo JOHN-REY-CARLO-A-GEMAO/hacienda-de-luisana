@@ -40,13 +40,20 @@ class AuthException implements Exception {
 class AuthStore extends ChangeNotifier {
   static const String _accountsKey = 'hdl_demo_accounts';
   static const String _sessionKey = 'hdl_demo_session';
+  static const String _anonKey = 'hdl_anon_uid';
 
   AppUser? _user;
   AppUser? get user => _user;
   bool get isAuthenticated => _user != null;
 
+  /// P2 guest identity: Firebase anonymous uid when cloud is live,
+  /// otherwise a persisted local UUID. Saved on every Booking as `uid`.
+  String? _anonUid;
+  String? get anonUid => _anonUid;
+
   AuthStore() {
     _restoreSession();
+    ensureAnonUid();
   }
 
   Future<void> _restoreSession() async {
@@ -139,6 +146,39 @@ class AuthStore extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);
     _user = null;
+    notifyListeners();
+  }
+
+  /// Ensures a stable anonymous uid exists (called at first launch).
+  /// CloudBookings overwrites this key with the Firebase uid when online.
+  Future<String> ensureAnonUid() async {
+    if (_anonUid != null && _anonUid!.isNotEmpty) return _anonUid!;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(_anonKey);
+      if (cached != null && cached.isNotEmpty) {
+        _anonUid = cached;
+        return cached;
+      }
+      final fresh =
+          'local-${DateTime.now().millisecondsSinceEpoch}-${(cached ?? '').hashCode.abs()}${DateTime.now().microsecond}';
+      await prefs.setString(_anonKey, fresh);
+      _anonUid = fresh;
+      notifyListeners();
+      return fresh;
+    } catch (_) {
+      _anonUid ??= 'local-fallback-anon';
+      return _anonUid!;
+    }
+  }
+
+  /// Adopts the Firebase uid once cloud auth succeeds (same storage key).
+  Future<void> adoptUid(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_anonKey, uid);
+    } catch (_) {}
+    _anonUid = uid;
     notifyListeners();
   }
 

@@ -11,19 +11,27 @@ import 'models/accommodation.dart';
 import 'models/booking.dart';
 import 'services/auth_store.dart';
 import 'services/booking_store.dart';
+import 'services/cloud_bookings.dart';
+import 'services/kyc_storage.dart';
 import 'services/esp32_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'utils/validators.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Note: Firebase is initialized lazily by CloudBookings.ensureInitialized()
+  // (called from AppShell) so the app runs local-only without
+  // `flutterfire configure`. Run `flutterfire configure` + add
+  // google-services.json / GoogleService-Info.plist to go live.
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthStore()),
         ChangeNotifierProvider(create: (_) => BookingStore()),
-        Provider(create: (_) => Esp32Service()),
+        Provider(create: (_) => CloudBookings()),
+        // P4: ChangeNotifier so lockout/logs/battery repaint the key UI.
+        ChangeNotifierProvider(create: (_) => Esp32Service()),
       ],
       child: const HaciendaApp(),
     ),
@@ -60,6 +68,27 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialTab;
+    // P2: anonymous uid at first launch + attach cloud stream (best-effort).
+    // Never blocks first paint; failures stay local-only.
+    Future.microtask(() async {
+      if (!mounted) return;
+      try {
+        final auth = context.read<AuthStore>();
+        final anonUid = await auth.ensureAnonUid();
+        if (!mounted) return;
+        final cloud = context.read<CloudBookings>();
+        final store = context.read<BookingStore>();
+        await store.attachCloud(cloud, anonUid: anonUid);
+        final liveUid = cloud.uid ?? anonUid;
+        await auth.adoptUid(liveUid);
+        if (mounted) {
+          final store2 = context.read<BookingStore>();
+          store2.uid ??= liveUid;
+        }
+      } catch (_) {
+        // Local-only mode — dashboard banner reflects this.
+      }
+    });
   }
 
   void _onTabSelected(int index) {
@@ -75,7 +104,17 @@ class _AppShellState extends State<AppShell> {
       StayScreen(onNavigateBookTab: () => _onTabSelected(3)),
       const ExploreScreen(),
       const BookScreen(),
-      DashboardScreen(onNavigateBook: () => _onTabSelected(3)),
+      DashboardScreen(
+        onNavigateBook: () => _onTabSelected(3),
+        // P3 resubmit loop: rejected KYC reopens KycScreen for the same
+        // booking; submit clears the reason and restarts host review.
+        onResubmitKyc: (booking) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => KycScreen(booking: booking)),
+          );
+        },
+      ),
     ];
 
     return Scaffold(
@@ -1460,18 +1499,18 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   /// Availability sanity checks that don't belong to a single field.
+  /// Delegates to Validators.trip so rules are unit-tested in one place.
   String? _validateTrip() {
-    if (!_checkOutDate.isAfter(_checkInDate)) {
-      return 'Check-out must be after check-in.';
-    }
     final acc = accommodationsList.firstWhere(
       (a) => a.title == _selectedAccommodation,
       orElse: () => accommodationsList.first,
     );
-    if (_guestCount > acc.capacity) {
-      return '${acc.title} accommodates up to ${acc.capacity} guests.';
-    }
-    return null;
+    return Validators.trip(
+      checkIn: _checkInDate,
+      checkOut: _checkOutDate,
+      guests: _guestCount,
+      capacity: acc.capacity,
+    );
   }
 
   Future<void> _submitForm() async {
@@ -1513,8 +1552,34 @@ class _BookScreenState extends State<BookScreen> {
       if (_phoneController.text.trim().isEmpty) _phoneController.text = user.phone;
     }
 
-    final refId =
-        'HDL-${DateTime.now().year.toString().substring(2)}${(1000 + DateTime.now().millisecondsSinceEpoch % 8999)}';
+    // P2: query-before-submit overlap check (G2, client-side best-effort).
+    // Racy by nature — host re-checks at approve time (see CloudBookings
+    // .stillAvailable note). Expired/cancelled/completed release dates.
+    final store = Provider.of<BookingStore>(context, listen: false);
+    final acc = accommodationsList.firstWhere(
+      (a) => a.title == _selectedAccommodation,
+      orElse: () => accommodationsList.first,
+    );
+    final conflicts = await store.findAllConflicts(
+      accommodationId: acc.id,
+      checkIn: _checkInDate,
+      checkOut: _checkOutDate,
+    );
+    if (conflicts.isNotEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Those dates are taken for ${acc.title} '
+              '(${conflicts.first.referenceId}). Try nearby dates.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final refId = Booking.generateReferenceId();
     final booking = Booking(
       referenceId: refId,
       guestName: _nameController.text.trim(),
@@ -1527,10 +1592,14 @@ class _BookScreenState extends State<BookScreen> {
       notes: _notesController.text.trim(),
       status: 'pending',
       kycStatus: 'required',
+      // P2 guest identity: anon Firebase uid (or local fallback).
+      uid: context.read<AuthStore>().anonUid ?? store.uid,
     );
 
-    // Persist to the store and continue to guest verification.
-    Provider.of<BookingStore>(context, listen: false).submitBooking(booking);
+    // Persist locally instantly, sync to Firestore best-effort (offline
+    // stays synced=false and shows a "will send" banner).
+    await store.submitBooking(booking);
+    if (store.uid == null && booking.uid != null) store.uid = booking.uid;
 
     Navigator.push(
       context,
@@ -1838,6 +1907,9 @@ class KycScreen extends StatefulWidget {
 class _KycScreenState extends State<KycScreen> {
   String? _govtIdName;
   String? _receiptName;
+  XFile? _govtIdFile;
+  XFile? _receiptFile;
+  String? _uploadNote;
   bool _termsAccepted = false;
   bool _isSubmitting = false;
 
@@ -1849,10 +1921,13 @@ class _KycScreenState extends State<KycScreen> {
       if (image != null) {
         setState(() {
           if (isGovtId) {
+            _govtIdFile = image;
             _govtIdName = image.name;
           } else {
+            _receiptFile = image;
             _receiptName = image.name;
           }
+          _uploadNote = null;
         });
       }
     } catch (e) {
@@ -1883,20 +1958,63 @@ class _KycScreenState extends State<KycScreen> {
       return;
     }
 
-    setState(() => _isSubmitting = true);
-    await Future.delayed(const Duration(milliseconds: 1200));
+    setState(() {
+      _isSubmitting = true;
+      _uploadNote = _govtIdFile != null && _receiptFile != null
+          ? 'Uploading IDs for host review…'
+          : null;
+    });
 
     widget.booking.govtIdPath = _govtIdName;
     widget.booking.paymentReceiptPath = _receiptName;
 
+    String? idUrl;
+    String? receiptUrl;
     if (mounted) {
-      // Documents received — the booking STAYS pending until the host approves.
-      // Demo: a simulated host review confirms it a few seconds later.
+      // P3: upload ID + receipt to /kyc/{uid}/{ref}/ (own-uid, 5MB image/*).
+      // Status stays pending either way; without urls the host sees local
+      // placeholders and the guest can resubmit from the dashboard.
       final store = Provider.of<BookingStore>(context, listen: false);
-      store.markKycSubmitted(
+      final auth = Provider.of<AuthStore>(context, listen: false);
+      final cloud = Provider.of<CloudBookings>(context, listen: false);
+      final uid = auth.anonUid ?? store.uid ?? cloud.uid;
+      if (_govtIdFile != null && _receiptFile != null && uid != null) {
+        try {
+          final storage = KycStorage();
+          final results = await Future.wait([
+            storage.uploadKycFile(
+              uid: uid,
+              bookingRefId: widget.booking.referenceId,
+              kind: 'id',
+              file: _govtIdFile!,
+            ),
+            storage.uploadKycFile(
+              uid: uid,
+              bookingRefId: widget.booking.referenceId,
+              kind: 'receipt',
+              file: _receiptFile!,
+            ),
+          ]);
+          idUrl = results[0];
+          receiptUrl = results[1];
+        } on KycUploadException catch (e) {
+          // Offline / unconfigured cloud: keep local placeholders, host
+          // reviews after resubmit. Never fake success.
+          if (mounted) {
+            setState(() => _uploadNote =
+                'Upload deferred (${e.message}) — booking still sent for review; resubmit photos when online.');
+          }
+        }
+      }
+
+      // Documents received — the booking STAYS pending until the host
+      // approves in web /admin (resubmit after rejection restarts the loop).
+      await store.markKycSubmitted(
         widget.booking.referenceId,
         govtIdPath: _govtIdName,
         receiptPath: _receiptName,
+        kycIdUrl: idUrl,
+        kycReceiptUrl: receiptUrl,
       );
 
       Navigator.pushReplacement(
@@ -1951,6 +2069,29 @@ class _KycScreenState extends State<KycScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            if (widget.booking.kycStatus == 'rejected') ...[
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Text(
+                  'Host rejected your last ID'
+                  '${widget.booking.kycRejectReason != null && widget.booking.kycRejectReason!.isNotEmpty ? ': ${widget.booking.kycRejectReason}' : ''}. '
+                  'Upload clearer photos to restart review — your key stays disabled until approved.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    height: 1.5,
+                    color: Colors.red.shade900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Text(
               'To ensure security and quiet-luxury compliance, kindly upload a valid Government ID and the bank deposit receipt for your reservation. Your booking stays pending until our host verifies both.',
               style: GoogleFonts.inter(
@@ -1959,6 +2100,17 @@ class _KycScreenState extends State<KycScreen> {
                 color: AppTheme.forest800.withOpacity(0.78),
               ),
             ),
+            if (_uploadNote != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _uploadNote!,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: AppTheme.forest800.withOpacity(0.75),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Govt ID Upload

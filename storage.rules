@@ -3,17 +3,29 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Public read for site assets, authenticated write
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // P3: owner allowlist (same address as firestore isAdmin).
+    // Keep in sync with firestore.rules OWNER_EMAILS.
+    function isOwnerEmail() {
+      return isSignedIn()
+        && request.auth.token.email in ['haciendadeluisiana@gmail.com'];
+    }
+
+    // Public read for site assets, owner-only write (tightened P3:
+    // was any-signed-in; site images are owner-published).
     match /gallery/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null
+      allow write: if isOwnerEmail()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
     match /accommodations/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null
+      allow write: if isOwnerEmail()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
@@ -23,6 +35,19 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId
         && request.resource.size < 2 * 1024 * 1024;
+    }
+
+    // P3 ENABLED: KYC ID + receipt uploads (sensitive PII, RA10173).
+    // Layout: /kyc/{uid}/{bookingRef}/{id|receipt}.jpg
+    // - WRITE own-uid only, 5MB, image/* (guest uploads own docs only).
+    // - READ own uid + owner allowlist only (host review). No public read.
+    // - Deletes/overwrites follow the same write gate (resubmit loop).
+    match /kyc/{userId}/{allPaths=**} {
+      allow read: if request.auth != null
+        && (request.auth.uid == userId || isOwnerEmail());
+      allow write: if request.auth != null && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
     }
 
     // Deny everything else by default
