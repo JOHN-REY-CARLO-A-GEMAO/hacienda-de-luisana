@@ -45,7 +45,7 @@ export function Nav() {
           <Logo tone={transparent ? 'light' : 'dark'} />
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-8">
+        <nav className="hidden lg:flex items-center gap-7">
           {LINKS.map((l) => (
             <a
               key={l.href}
@@ -59,25 +59,8 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="hidden lg:flex items-center gap-3">
-          {user ? (
-            <>
-              <Link
-                to="/admin"
-                className={`text-xs px-3 py-1.5 rounded-full border transition ${
-                  transparent ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10' : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
-                }`}
-              >
-                Dashboard
-              </Link>
-              <button
-                onClick={() => logout()}
-                className={`text-xs ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 hover:text-forest-900'}`}
-              >
-                Sign out
-              </button>
-            </>
-          ) : null}
+        <div className="hidden lg:flex items-center gap-2.5">
+          {/* Quick shortcuts to the 3 main parts requested */}
           <Link
             to="/app"
             className={`text-xs px-3 py-1.5 rounded-full border transition ${
@@ -85,15 +68,38 @@ export function Nav() {
                 ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
                 : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
             }`}
+            title="App for Client (Incoming bookings, confirmation, analytics, length of stay)"
           >
-            Guest app
+            Client App
           </Link>
+
+          <Link
+            to="/admin"
+            className={`text-xs px-3 py-1.5 rounded-full border transition ${
+              transparent
+                ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
+                : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
+            }`}
+            title="Website for Admin (Smart lock records: lock/unlock counts and timestamps)"
+          >
+            Admin Website
+          </Link>
+
+          {user && (
+            <button
+              onClick={() => logout()}
+              className={`text-xs ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 hover:text-forest-900'}`}
+            >
+              Sign out
+            </button>
+          )}
+
           <Link
             to="/book"
             className={
               transparent
-                ? 'btn bg-cream-50 text-forest-900 hover:bg-white'
-                : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900'
+                ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs px-4 py-2'
+                : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900 text-xs px-4 py-2'
             }
           >
             Book Your Stay
@@ -115,7 +121,7 @@ export function Nav() {
       {/* Mobile drawer */}
       <div
         className={`lg:hidden overflow-hidden transition-[max-height] duration-500 ${
-          open ? 'max-h-[80vh]' : 'max-h-0'
+          open ? 'max-h-[85vh]' : 'max-h-0'
         } bg-cream-50 border-t border-forest-900/5`}
       >
         <div className="px-6 py-6 flex flex-col gap-1">
@@ -123,24 +129,31 @@ export function Nav() {
             <a
               key={l.href}
               href={l.href}
-              className="text-forest-900 py-3 border-b border-forest-900/5 text-lg font-serif"
+              className="text-forest-900 py-2.5 border-b border-forest-900/5 text-base font-serif"
             >
               {l.label}
             </a>
           ))}
-          <Link to="/book" className="btn-primary mt-6 w-full">Book Your Stay</Link>
-          <Link to="/app" className="btn-ghost mt-3 w-full">Open guest app</Link>
-          {user ? (
-            <>
-              <Link to="/admin" className="btn-ghost mt-3 w-full">Owner Dashboard</Link>
-              <button onClick={() => logout()} className="text-xs text-forest-600 mt-4 text-center underline w-full">
-                Sign out ({user.email})
-              </button>
-            </>
-          ) : (
-            <Link to="/admin" className="text-xs text-forest-600 mt-4 text-center underline">
-              Owner admin login
+
+          <div className="mt-4 pt-2 space-y-2">
+            <Link to="/book" className="btn-primary w-full text-xs">
+              Website for Bookers (/book)
             </Link>
+            <Link to="/app" className="btn-ghost w-full text-xs">
+              App for Client (/app)
+            </Link>
+            <Link to="/admin" className="btn-ghost w-full text-xs">
+              Website for Admin (/admin)
+            </Link>
+            <Link to="/track" className="btn bg-cream-100 text-forest-800 w-full text-xs">
+              Live Location Sharing (/track)
+            </Link>
+          </div>
+
+          {user && (
+            <button onClick={() => logout()} className="text-xs text-forest-600 mt-3 text-center underline w-full">
+              Sign out ({user.email})
+            </button>
           )}
         </div>
       </div>

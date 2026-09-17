@@ -174,6 +174,71 @@ export const Clock = base(
   </>
 )
 
+export const Lock = base(
+  <>
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </>
+)
+
+export const Unlock = base(
+  <>
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+  </>
+)
+
+export const Key = base(
+  <>
+    <path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1.5-1.5L8 9" />
+    <circle cx="7.5" cy="16.5" r="4.5" />
+    <path d="m10.7 13.3 8.3-8.3" />
+  </>
+)
+
+export const BarChart = base(
+  <>
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+  </>
+)
+
+export const Navigation = base(
+  <>
+    <polygon points="3 11 22 2 13 21 11 13 3 11" />
+  </>
+)
+
+export const Copy = base(
+  <>
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </>
+)
+
+export const Check = base(
+  <>
+    <polyline points="20 6 9 17 4 12" />
+  </>
+)
+
+export const AlertCircle = base(
+  <>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </>
+)
+
+export const Refresh = base(
+  <>
+    <path d="M23 4v6h-6" />
+    <path d="M1 20v-6h6" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+  </>
+)
+
 export const AMENITY_ICONS: Record<string, React.ComponentType<IconProps>> = {
   wifi: Wifi,
   parking: Car,

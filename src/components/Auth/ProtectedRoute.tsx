@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { LoginForm } from './LoginForm'
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, isConfigured } = useAuth()
+  const [showSetup, setShowSetup] = useState(false)
 
   if (loading) {
     return (
@@ -15,23 +17,28 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // If Firebase not configured, still allow access but show warning + login form fallback
-  // For owner dashboard we want to allow local demo even without Firebase
+  // If Firebase not configured, allow seamless access in local demo mode
   if (!isConfigured) {
     return (
-      <div className="pt-28 pb-24 min-h-screen bg-cream-50">
-        <div className="mx-auto max-w-7xl px-5 lg:px-8">
-          <div className="max-w-xl mx-auto mb-10">
+      <div className="min-h-screen bg-cream-50">
+        <div className="bg-amber-100/90 border-b border-amber-200 text-amber-900 text-xs px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold uppercase tracking-eyebrow text-[10px]">Local Mode Active:</span>
+            <span>Running with simulated smart lock & local bookings database.</span>
+          </div>
+          <button
+            onClick={() => setShowSetup(!showSetup)}
+            className="underline hover:text-amber-950 font-medium"
+          >
+            {showSetup ? 'Hide Setup Info' : 'Cloud Setup'}
+          </button>
+        </div>
+        {showSetup && (
+          <div className="max-w-xl mx-auto my-6 px-4">
             <LoginForm />
           </div>
-          <div className="border-t border-forest-900/5 pt-10">
-            <div className="eyebrow text-center mb-2">Local Demo Mode</div>
-            <p className="text-center text-sm text-forest-700/60 mb-8 max-w-lg mx-auto">
-              Firebase not configured — showing dashboard with local data. Configure Firebase to enable secure owner login and cloud storage.
-            </p>
-            {children}
-          </div>
-        </div>
+        )}
+        {children}
       </div>
     )
   }
@@ -43,7 +50,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
           <LoginForm />
         </div>
         <p className="mt-6 text-xs text-forest-700/60 text-center max-w-sm px-5">
-          Owner access only. Sign in with your authorized account. If you are a guest, please use the booking form.
+          Admin access only. Sign in with your authorized account.
         </p>
       </div>
     )

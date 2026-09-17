@@ -118,12 +118,23 @@ export function BookingPage() {
   }
 
   if (status === 'success') {
-    return <SuccessScreen bookingId={submittedId} reference={submittedRef} isCloud={cloudBookingsDB.isCloud} onNew={() => {
-      setStatus('idle')
-      setSubmittedRef('')
-      setSubmittedId('')
-      setForm((f) => ({ ...f, name: '', phone: '', email: '', special_requests: '' }))
-    }} />
+    return (
+      <SuccessScreen
+        bookingId={submittedId}
+        reference={submittedRef}
+        isCloud={cloudBookingsDB.isCloud}
+        checkIn={form.check_in}
+        checkOut={form.check_out}
+        guests={form.guests}
+        accommodationName={selectedAcc?.name || OPTIONS.find((o) => o.id === form.accommodation)?.label}
+        onNew={() => {
+          setStatus('idle')
+          setSubmittedRef('')
+          setSubmittedId('')
+          setForm((f) => ({ ...f, name: '', phone: '', email: '', special_requests: '' }))
+        }}
+      />
+    )
   }
 
   return (
@@ -359,28 +370,63 @@ function SummaryRow({ icon: Icon, label, value }: { icon: any; label: string; va
   )
 }
 
-function SuccessScreen({ bookingId, reference, onNew, isCloud }: { bookingId: string; reference: string; onNew: () => void; isCloud: boolean }) {
+function SuccessScreen({
+  bookingId,
+  reference,
+  onNew,
+  isCloud,
+  checkIn,
+  checkOut,
+  guests,
+  accommodationName,
+}: {
+  bookingId: string
+  reference: string
+  onNew: () => void
+  isCloud: boolean
+  checkIn?: string
+  checkOut?: string
+  guests?: number
+  accommodationName?: string
+}) {
   const [shareState, setShareState] = useState<'idle' | 'sharing' | 'done' | 'error'>('idle')
   const [shareMsg, setShareMsg] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const sharePickup = async () => {
     setShareState('sharing')
     setShareMsg('')
     try {
-      const { getOneTapPosition, pickupMapsUrl } = await import('../lib/tracking')
+      const { getOneTapPosition, pickupMapsUrl, calculateDistanceKm, estimateEtaMinutes, guessAreaFromCoords } = await import('../lib/tracking')
       const pos = await getOneTapPosition()
+      const dist = calculateDistanceKm(pos.lat, pos.lng)
+      const eta = estimateEtaMinutes(dist)
+      const area = guessAreaFromCoords(pos.lat, pos.lng)
+
       await cloudBookingsDB.update(bookingId, {
         pickup_lat: pos.lat,
         pickup_lng: pos.lng,
+        pickup_area: area,
+        distance_km: dist,
+        eta_minutes: eta,
+        is_live_sharing: true,
         pickup_updated_at: new Date().toISOString(),
         eta_share_url: pickupMapsUrl(pos.lat, pos.lng),
       })
       setShareState('done')
-      setShareMsg('Pickup shared — the owner sees pickup → hotel route now.')
+      setShareMsg(`📍 Matagumpay na naibahagi ang lokasyon (${dist} km away, ${area}). Makikita na ito ni Client sa App!`)
     } catch (err: any) {
       setShareState('error')
       setShareMsg(err?.message || 'Could not share location.')
     }
+  }
+
+  const trackingUrl = typeof window !== 'undefined' ? `${window.location.origin}/track?id=${bookingId}` : `/track?id=${bookingId}`
+
+  const copyTrackingLink = () => {
+    navigator.clipboard.writeText(trackingUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
   }
 
   return (
@@ -390,42 +436,98 @@ function SuccessScreen({ bookingId, reference, onNew, isCloud }: { bookingId: st
           <div className="mx-auto w-16 h-16 rounded-full bg-forest-100 text-forest-700 flex items-center justify-center">
             <Sparkle size={26} />
           </div>
-          <div className="eyebrow mt-6">Request Received</div>
-          <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">Thank you!</h1>
-          <p className="mt-5 text-forest-800/80 leading-relaxed max-w-lg mx-auto">
-            Your booking request has been received. Hacienda de LuisAna will contact you to
-            confirm availability and finalize your reservation.
+          <div className="eyebrow mt-6">Request Received & Sent to App</div>
+          <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">Salamat!</h1>
+          <p className="mt-4 text-forest-800/80 leading-relaxed max-w-lg mx-auto">
+            Matagumpay na naipadala ang iyong booking request diretso sa <strong>Client App</strong> ng Hacienda de LuisAna para sa kumpirmasyon.
           </p>
-          <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-forest-50 border border-forest-100 text-forest-800 px-4 py-2 text-xs">
-            Reference: <span className="font-mono font-semibold">{reference}</span>
+          <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-forest-50 border border-forest-100 text-forest-800 px-4 py-2 text-xs">
+            Reference Number: <span className="font-mono font-bold text-forest-900">{reference}</span>
           </div>
-          {isCloud && (
-            <div className="mt-3 text-xs text-forest-600">Saved securely to Firebase Firestore</div>
+
+          {checkIn && checkOut && (
+            <div className="mt-6 rounded-2xl bg-cream-50 border border-forest-900/5 p-4 text-left grid sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <span className="text-forest-600 block uppercase tracking-eyebrow text-[10px]">Stay Duration</span>
+                <span className="font-serif text-sm text-forest-900 font-semibold">
+                  {(() => {
+                    const nights = Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)))
+                    return `${nights + 1} Days · ${nights} Night${nights > 1 ? 's' : ''}`
+                  })()}
+                </span>
+              </div>
+              <div>
+                <span className="text-forest-600 block uppercase tracking-eyebrow text-[10px]">Dates</span>
+                <span className="font-medium text-forest-900">{checkIn} → {checkOut}</span>
+              </div>
+              <div>
+                <span className="text-forest-600 block uppercase tracking-eyebrow text-[10px]">Accommodation</span>
+                <span className="font-medium text-forest-900 truncate block">{accommodationName || 'Hacienda'}</span>
+              </div>
+            </div>
           )}
-          <div className="mt-8 rounded-2xl bg-cream-50 border border-forest-900/10 p-4 text-left">
-            <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Help the host find you</div>
-            <p className="mt-1 text-sm text-forest-800/80">
-              One tap shares your pickup (where you are now). Drop-off is fixed: Hacienda de LuisAna.
+
+          {isCloud && (
+            <div className="mt-3 text-xs text-forest-600">✓ Real-time synced to Client App via Firebase Cloud</div>
+          )}
+
+          {/* Live Sharing Location Box requested by user */}
+          <div className="mt-8 rounded-3xl bg-forest-900 text-cream-50 p-6 sm:p-7 text-left relative overflow-hidden">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Live Location Sharing for Client
+              </div>
+              <span className="text-[11px] text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                Gusto makita ni Client kung malapit ka na
+              </span>
+            </div>
+
+            <h3 className="font-serif text-xl sm:text-2xl text-cream-50 mt-2">
+              Ibahagi ang Iyong Live Location
+            </h3>
+            <p className="mt-1 text-xs sm:text-sm text-cream-100/75 leading-relaxed">
+              Gusto makita ng may-ari (Client) kung nasaang area ka na o kung malapit ka na sa Luisiana para ma-prepare ang iyong pagdating at ma-unlock ang pinto.
             </p>
-            <button
-              onClick={sharePickup}
-              disabled={shareState === 'sharing'}
-              className="btn-primary mt-3 w-full disabled:opacity-60"
-            >
-              {shareState === 'sharing' ? 'Sharing…' : shareState === 'done' ? 'Pickup shared — tap to update' : '📍 Share my pickup location'}
-            </button>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                onClick={sharePickup}
+                disabled={shareState === 'sharing'}
+                className="btn-primary text-xs flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 border-none text-white disabled:opacity-60"
+              >
+                {shareState === 'sharing' ? 'Kumukuha ng GPS…' : shareState === 'done' ? '✓ Lokasyon Naibahagi na (I-update)' : '📍 I-share ang Aking Lokasyon Ngayon'}
+              </button>
+
+              <Link
+                to={`/track?id=${bookingId}`}
+                className="px-4 py-2.5 rounded-full bg-cream-50 text-forest-900 text-xs font-medium hover:bg-white transition inline-flex items-center gap-1.5"
+              >
+                Buksan ang Live Tracker <ArrowRight size={14} />
+              </Link>
+
+              <button
+                onClick={copyTrackingLink}
+                className="px-4 py-2.5 rounded-full border border-cream-50/20 bg-cream-50/10 text-cream-100 text-xs font-medium hover:bg-cream-50/20 transition inline-flex items-center gap-1.5"
+              >
+                {copied ? '✓ Kopyado na!' : 'Kopyahin ang Sharing Link'}
+              </button>
+            </div>
+
             {shareMsg && (
-              <p className={`mt-2 text-xs ${shareState === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>{shareMsg}</p>
+              <div className={`mt-3 p-3 rounded-xl text-xs ${shareState === 'error' ? 'bg-red-900/60 text-red-200 border border-red-500/30' : 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/30'}`}>
+                {shareMsg}
+              </div>
             )}
           </div>
 
-          <div className="mt-10 flex flex-wrap gap-3 justify-center">
-            <Link to="/" className="btn-ghost">Back to Home</Link>
+          <div className="mt-8 flex flex-wrap gap-3 justify-center">
+            <Link to="/" className="btn-ghost">Bumalik sa Home</Link>
             <a href={BUSINESS.contact.messenger} target="_blank" rel="noreferrer" className="btn-primary">
-              Message the Host <ArrowRight size={16} />
+              I-message si Client <ArrowRight size={16} />
             </a>
             <button onClick={onNew} className="btn bg-transparent text-forest-800 underline underline-offset-4">
-              Send another request
+              Magpadala ng isa pang booking
             </button>
           </div>
         </div>
