@@ -1,30 +1,34 @@
 name: hacienda_de_luisana
-description: "Hacienda de LuisAna - Quiet Luxury Guest Prototype (Capstone Activity 3)"
+description: "Hacienda de LuisAna - Resort Operations & Client Management App"
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.12.0 <4.0.0'
+  sdk: '>=3.2.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-  provider: ^6.1.2
+  # State Management & Service Locator
+  flutter_riverpod: ^2.5.1
+  # Backend & Real-time Database
+  firebase_core: ^2.30.0
+  firebase_auth: ^4.19.0
+  cloud_firestore: ^4.17.0
+  firebase_messaging: ^14.8.0
+  # Maps & Location
+  google_maps_flutter: ^2.6.0
+  geolocator: ^11.0.0
+  # Charts & Visuals
+  fl_chart: ^0.67.0
+  # UI, Icons, Helpers & Utilities
   google_fonts: ^6.2.1
-  flutter_spinkit: ^5.2.1
-  url_launcher: ^6.2.5
-  image_picker: ^1.1.2
   intl: ^0.19.0
-  shared_preferences: ^2.2.0
-  crypto: ^3.0.3
+  url_launcher: ^6.2.6
+  cached_network_image: ^3.3.1
+  flutter_local_notifications: ^17.1.0
   cupertino_icons: ^1.0.8
-  firebase_core: ^3.15.2
-  firebase_auth: ^5.5.4
-  cloud_firestore: ^5.6.12
-  firebase_storage: ^12.4.10
-  firebase_app_check: ^0.3.2+10
-  google_sign_in: ^6.2.1
-  flutter_blue_plus: ^2.3.12
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:
@@ -34,4 +38,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/gmaps/
+    - assets/
