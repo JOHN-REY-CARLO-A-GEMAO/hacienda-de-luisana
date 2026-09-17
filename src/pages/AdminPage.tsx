@@ -1,10 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { type Booking, type BookingStatus, bookingsDB } from '../lib/storage'
+import { Link, useSearchParams } from 'react-router-dom'
+import { type Booking, type BookingStatus, calculateNights, formatStayDuration } from '../lib/storage'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { directionsUrl, hasPickup, pickupAge } from '../lib/tracking'
+import { smartLockDB, DOORS, type SmartLockRecord, type SmartLockAction } from '../lib/smartLockStorage'
 import { ACCOMMODATIONS } from '../config/site'
-import { Calendar, Users, Sparkle, Close } from '../lib/icons'
+import {
+  Calendar,
+  Users,
+  Sparkle,
+  Close,
+  Lock,
+  Unlock,
+  Key,
+  Refresh,
+  Check,
+  MapPin,
+  Clock,
+  ArrowRight,
+  Phone,
+} from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
 import { getFirebaseStatus } from '../lib/firebase'
 
@@ -17,13 +32,32 @@ function fmtDate(iso: string) {
   return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function fmtTimestamp(iso: string) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const dateStr = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  const timeStr = d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return `${dateStr} · ${timeStr}`
+}
+
+function timeAgo(iso: string) {
+  if (!iso) return ''
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return ''
+  const secs = Math.max(0, Math.round((Date.now() - t) / 1000))
+  if (secs < 60) return `${secs}s ago`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
 function accName(id: string) {
   return ACCOMMODATIONS.find((a) => a.id === id)?.name || (id === 'other' ? 'Other / Ask Us' : id)
 }
 
-// P3 + G2: half-open overlap ([in, out) — checkout day is free) used for the
-// approve-time re-check. Client overlap checks are racy; this host-side check
-// at Confirm time is authoritative.
 function datesOverlap(aIn: string, aOut: string, bIn: string, bOut: string) {
   return aIn < bOut && bIn < aOut
 }
@@ -39,73 +73,139 @@ function findConflicts(items: Booking[], booking: Booking) {
 }
 
 export function AdminPage() {
+  const [params, setParams] = useSearchParams()
+  const initialTab = (params.get('tab') as 'smartlock' | 'bookings' | 'analytics') || 'smartlock'
+  const [activeTab, setActiveTab] = useState<'smartlock' | 'bookings' | 'analytics'>(initialTab)
+
   const { user, logout, isConfigured } = useAuth()
-  const [items, setItems] = useState<Booking[]>([])
-  const [filter, setFilter] = useState<'All' | BookingStatus>('All')
-  const [viewing, setViewing] = useState<Booking | null>(null)
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [smartLockRecords, setSmartLockRecords] = useState<SmartLockRecord[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Smart lock filters
+  const [doorFilter, setDoorFilter] = useState<string>('all')
+  const [actionFilter, setActionFilter] = useState<string>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [simMessage, setSimMessage] = useState<string | null>(null)
+  const [isSimulating, setIsSimulating] = useState(false)
+
+  // Booking filters
+  const [bookingFilter, setBookingFilter] = useState<'All' | BookingStatus>('All')
+  const [viewingBooking, setViewingBooking] = useState<Booking | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
-  // Subscribe to bookings (real-time if Firestore, event-based if local)
+  // Sync tab with URL
+  const switchTab = (tab: 'smartlock' | 'bookings' | 'analytics') => {
+    setActiveTab(tab)
+    setParams({ tab })
+  }
+
+  // Subscribe to bookings and smart lock records
   useEffect(() => {
     setLoading(true)
-    const unsub = cloudBookingsDB.subscribe((list) => {
-      setItems(list)
-      setLoading(false)
-    }, (err) => {
-      console.error(err)
+    const unsubBookings = cloudBookingsDB.subscribe((list) => {
+      setBookings(list)
       setLoading(false)
     })
-    return () => unsub()
+    const unsubSmartLock = smartLockDB.subscribe((logs) => {
+      setSmartLockRecords(logs)
+    })
+    return () => {
+      unsubBookings()
+      unsubSmartLock()
+    }
   }, [])
 
-  const today = new Date().toISOString().slice(0, 10)
+  // Smart lock stats computation ("naka ilang lock at unlock sila ng pinto")
+  const lockStats = useMemo(() => {
+    return smartLockDB.getStats(smartLockRecords)
+  }, [smartLockRecords])
 
-  const stats = useMemo(() => {
-    return {
-      pending: items.filter((b) => b.status === 'Pending').length,
-      confirmed: items.filter((b) => b.status === 'Confirmed').length,
-      todayIn: items.filter((b) => b.status !== 'Cancelled' && b.check_in === today).length,
-      todayOut: items.filter((b) => b.status !== 'Cancelled' && b.check_out === today).length,
-    }
-  }, [items, today])
-
-  const filtered = useMemo(() => {
-    if (filter === 'All') return items
-    return items.filter((b) => b.status === filter)
-  }, [items, filter])
-
-  // Calendar
-  const [monthDate, setMonthDate] = useState(() => new Date())
-  const monthGrid = useMemo(() => buildMonth(monthDate), [monthDate])
-  const isBooked = (day: Date) => {
-    const iso = day.toISOString().slice(0, 10)
-    return items.some(
-      (b) => b.status !== 'Cancelled' && b.check_in <= iso && iso < b.check_out,
-    )
-  }
-
-  const seedDemo = () => {
-    const demo = [
-      { name: 'Maria Reyes', in: offset(7), out: offset(9), guests: 6, acc: 'main-house' },
-      { name: 'JP Santos', in: offset(2), out: offset(3), guests: 2, acc: 'house-a-camping' },
-    ]
-    // Seed via cloud service (will go to Firestore if configured)
-    demo.forEach(async (d) => {
-      await cloudBookingsDB.add({
-        guest_name: d.name,
-        phone: '09XX XXX XXXX',
-        email: 'sample@example.com',
-        check_in: d.in,
-        check_out: d.out,
-        guests: d.guests,
-        accommodation: d.acc,
-        special_requests: 'Sample booking added from admin.',
-      })
+  // Filtered smart lock records ("kung anong oras")
+  const filteredRecords = useMemo(() => {
+    return smartLockRecords.filter((rec) => {
+      if (doorFilter !== 'all' && rec.door_id !== doorFilter) return false
+      if (actionFilter === 'unlock' && rec.action !== 'unlock') return false
+      if (actionFilter === 'lock' && rec.action !== 'lock' && rec.action !== 'auto_relock') return false
+      if (actionFilter === 'denied' && rec.action !== 'denied' && rec.success) return false
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        const matchName = rec.guest_name.toLowerCase().includes(q)
+        const matchRef = rec.ref_id?.toLowerCase().includes(q)
+        const matchDoor = rec.door_name.toLowerCase().includes(q)
+        const matchRfid = rec.rfid_uid?.toLowerCase().includes(q)
+        if (!matchName && !matchRef && !matchDoor && !matchRfid) return false
+      }
+      return true
     })
+  }, [smartLockRecords, doorFilter, actionFilter, searchQuery])
+
+  // Filtered bookings
+  const filteredBookings = useMemo(() => {
+    if (bookingFilter === 'All') return bookings
+    return bookings.filter((b) => b.status === bookingFilter)
+  }, [bookings, bookingFilter])
+
+  // Simulate smart lock actions
+  const handleSimulateAction = async (doorId: string, actionType: 'unlock' | 'lock' | 'denied' | 'master') => {
+    setIsSimulating(true)
+    const door = DOORS.find((d) => d.id === doorId) || DOORS[0]
+    const sampleGuest = bookings.find((b) => b.status === 'Confirmed') || bookings[0]
+    const guestName = sampleGuest?.guest_name || 'Bisita (Live Booker)'
+    const refId = sampleGuest?.ref_id || 'HDL-DEMO'
+
+    try {
+      if (actionType === 'unlock') {
+        await smartLockDB.simulateUnlock(door.id, guestName, refId, 'mobile_key')
+        setSimMessage(`🟢 UNLOCK RECORDED: Na-unlock ang "${door.name}" ni ${guestName} (${fmtTimestamp(new Date().toISOString())}). Naka-schedule ang 5s auto-relock!`)
+      } else if (actionType === 'lock') {
+        await smartLockDB.add({
+          door_id: door.id,
+          door_name: door.name,
+          action: 'lock',
+          method: 'admin_remote',
+          guest_name: 'Admin / Caretaker',
+          reason: 'Manual Remote Lock triggered via Admin Website',
+          success: true,
+        })
+        setSimMessage(`🔵 LOCK RECORDED: Naka-lock na ang "${door.name}" (${fmtTimestamp(new Date().toISOString())}).`)
+      } else if (actionType === 'denied') {
+        await smartLockDB.simulateDenied(door.id, 'Unregistered Device')
+        setSimMessage(`🔴 DENIED ATTEMPT RECORDED: Tanggihang access sa "${door.name}" (${fmtTimestamp(new Date().toISOString())}).`)
+      } else if (actionType === 'master') {
+        await smartLockDB.simulateMasterOverride(door.id)
+        setSimMessage(`🟣 MASTER OVERRIDE RECORDED: Master code ginamit sa "${door.name}" (${fmtTimestamp(new Date().toISOString())}).`)
+      }
+      setTimeout(() => setSimMessage(null), 7000)
+    } finally {
+      setIsSimulating(false)
+    }
   }
 
-  const handleUpdate = async (id: string, patch: Partial<Booking>) => {
+  // Export CSV
+  const handleExportCSV = () => {
+    const headers = ['Timestamp', 'Door Name', 'Action', 'Guest/Booker', 'Method', 'Reason', 'Success', 'RFID/Ref']
+    const rows = filteredRecords.map((r) => [
+      `"${r.timestamp}"`,
+      `"${r.door_name}"`,
+      `"${r.action}"`,
+      `"${r.guest_name}"`,
+      `"${r.method}"`,
+      `"${r.reason.replace(/"/g, '""')}"`,
+      `"${r.success ? 'Success' : 'Failed'}"`,
+      `"${r.rfid_uid || r.ref_id || ''}"`,
+    ])
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `smartlock_records_${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const handleUpdateBooking = async (id: string, patch: Partial<Booking>) => {
     setUpdatingId(id)
     try {
       await cloudBookingsDB.update(id, patch)
@@ -114,22 +214,19 @@ export function AdminPage() {
     }
   }
 
-  // G2 approve-time re-check: authoritative overlap gate before Confirm.
-  // Returns true when the host confirms the approve should proceed.
   const confirmWithRecheck = (booking: Booking) => {
-    const conflicts = findConflicts(items, booking)
+    const conflicts = findConflicts(bookings, booking)
     if (conflicts.length > 0) {
       const names = conflicts.map((c) => `${c.guest_name} (${c.check_in}→${c.check_out})`).join(', ')
       return confirm(
-        `Warning: overlaps with ${conflicts.length} active booking(s) for the same stay: ${names}. ` +
-        `Approving will double-book. Proceed anyway?`,
+        `Babala: May conflict sa ${conflicts.length} active booking(s): ${names}. Sigurado ka bang i-confirm?`,
       )
     }
     return true
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this booking? This cannot be undone.')) return
+  const handleDeleteBooking = async (id: string) => {
+    if (!confirm('I-delete ang booking na ito? Hindi na ito mababawi.')) return
     setUpdatingId(id)
     try {
       await cloudBookingsDB.remove(id)
@@ -143,444 +240,804 @@ export function AdminPage() {
   return (
     <div className="pt-24 pb-24 min-h-screen bg-cream-50">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
+        {/* Top Header */}
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
           <div>
-            <div className="eyebrow">Owner Dashboard</div>
-            <h1 className="display text-4xl lg:text-5xl mt-3 text-forest-900">Today's Overview</h1>
+            <div className="eyebrow">Website for Admin · Property Operations</div>
+            <h1 className="display text-3xl sm:text-4xl lg:text-5xl mt-2 text-forest-900">
+              Admin Control Center
+            </h1>
+            <p className="mt-2 text-forest-700/80 text-sm max-w-2xl leading-relaxed">
+              Dito papasok ang <strong>Smart lock records</strong> kung naka ilang lock at unlock sila ng pinto and kung anong oras, kasama ang pamamahala ng lahat ng bookings mula sa website bookers.
+            </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              {isConfigured ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-emerald-800">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Firebase: {firebaseStatus.projectId} · Cloud Mode
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-amber-800">
-                  Local Mode — no Firebase
-                </span>
-              )}
-              {user && (
-                <span className="rounded-full bg-forest-50 border border-forest-100 px-3 py-1 text-forest-700">
-                  {user.email} {user.displayName ? `· ${user.displayName}` : ''}
-                </span>
-              )}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-emerald-800">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Smart Lock Engine: Online ({DOORS.length} Doors Active)
+              </span>
               <span className="rounded-full bg-cream-100 px-3 py-1 text-forest-700">
-                {cloudBookingsDB.isCloud ? 'Firestore real-time' : 'localStorage'} · {items.length} total
+                {smartLockRecords.length} Lock/Unlock Events Recorded
+              </span>
+              <span className="rounded-full bg-cream-100 px-3 py-1 text-forest-700">
+                {bookings.length} Bookings Synced
               </span>
             </div>
-            <p className="mt-2 text-forest-700/70 text-sm max-w-xl">
-              {cloudBookingsDB.isCloud
-                ? 'Bookings are synced in real-time from Firestore. Updates are live across devices.'
-                : 'Data is stored locally in this browser for the demo — configure Firebase to enable cloud sync.'}
-            </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <Link to="/" className="btn-ghost">View Site</Link>
-            {items.length === 0 && (
-              <button onClick={seedDemo} className="btn-solid">Add sample data</button>
-            )}
+
+          <div className="flex gap-2 flex-wrap items-center">
+            <Link
+              to="/app"
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-forest-800 text-cream-50 hover:bg-forest-900 shadow-sm flex items-center gap-1.5 transition"
+            >
+              Buksan ang App for Client →
+            </Link>
+            <Link to="/book" className="btn-ghost text-xs">
+              Website for Bookers
+            </Link>
             {user && (
-              <button onClick={() => logout()} className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100">
+              <button
+                onClick={() => logout()}
+                className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
+              >
                 Sign out
               </button>
             )}
           </div>
         </div>
 
-        {loading ? (
-          <div className="mt-12 flex items-center justify-center py-20">
-            <div className="text-center">
-              <div className="mx-auto w-8 h-8 border-2 border-forest-200 border-t-forest-700 rounded-full animate-spin" />
-              <p className="mt-3 text-sm text-forest-700/70">Loading bookings…</p>
+        {/* Simulator Feedback Notification */}
+        {simMessage && (
+          <div className="mt-6 rounded-2xl bg-emerald-800 text-cream-50 p-4 text-xs font-medium shadow-md flex items-center justify-between animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <Check size={18} className="text-emerald-300 shrink-0" />
+              <span>{simMessage}</span>
             </div>
+            <button onClick={() => setSimMessage(null)} className="opacity-70 hover:opacity-100 p-1">
+              <Close size={16} />
+            </button>
           </div>
-        ) : (
-          <>
-            <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard label="Pending Requests" value={stats.pending} tone="olive" />
-              <StatCard label="Confirmed Bookings" value={stats.confirmed} tone="forest" />
-              <StatCard label="Upcoming Check-ins" value={stats.todayIn} tone="earth" hint="today" />
-              <StatCard label="Upcoming Check-outs" value={stats.todayOut} tone="earth" hint="today" />
+        )}
+
+        {/* Navigation Tabs on Admin Website */}
+        <div className="mt-8 border-b border-forest-900/10 flex gap-4 sm:gap-8 overflow-x-auto">
+          <button
+            onClick={() => switchTab('smartlock')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+              activeTab === 'smartlock'
+                ? 'border-forest-800 text-forest-900'
+                : 'border-transparent text-forest-600 hover:text-forest-900'
+            }`}
+          >
+            <Lock size={16} />
+            Smart Lock Records & Door Logs
+            <span className="px-2 py-0.5 rounded-full bg-forest-100 text-forest-800 text-[11px]">
+              {lockStats.totalUnlocks} unlocks · {lockStats.totalLocks} locks
+            </span>
+          </button>
+
+          <button
+            onClick={() => switchTab('bookings')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+              activeTab === 'bookings'
+                ? 'border-forest-800 text-forest-900'
+                : 'border-transparent text-forest-600 hover:text-forest-900'
+            }`}
+          >
+            <Calendar size={16} />
+            Booking Requests & Approvals
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px]">
+              {bookings.filter((b) => b.status === 'Pending').length} pending
+            </span>
+          </button>
+
+          <button
+            onClick={() => switchTab('analytics')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+              activeTab === 'analytics'
+                ? 'border-forest-800 text-forest-900'
+                : 'border-transparent text-forest-600 hover:text-forest-900'
+            }`}
+          >
+            <Clock size={16} />
+            Analytics & Length of Stay
+          </button>
+        </div>
+
+        {/* TAB 1: SMART LOCK RECORDS & DOOR LOGS */}
+        {activeTab === 'smartlock' && (
+          <div className="mt-8 space-y-8">
+            {/* Headline Counters ("kung naka ilang lock at unlock sila ng pinto") */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="rounded-3xl p-5 bg-emerald-700 text-white shadow-card">
+                <div className="flex items-center justify-between opacity-90 text-[11px] uppercase tracking-eyebrow font-semibold">
+                  <span>Kabuuang Unlocks</span>
+                  <Unlock size={18} />
+                </div>
+                <div className="mt-2 font-serif text-4xl lg:text-5xl">{lockStats.totalUnlocks}</div>
+                <div className="mt-1 text-xs text-emerald-100">
+                  Naka-unlock ang pinto (RFID / Mobile BLE)
+                </div>
+              </div>
+
+              <div className="rounded-3xl p-5 bg-forest-900 text-cream-50 shadow-card">
+                <div className="flex items-center justify-between opacity-90 text-[11px] uppercase tracking-eyebrow font-semibold">
+                  <span>Kabuuang Locks / Relocks</span>
+                  <Lock size={18} />
+                </div>
+                <div className="mt-2 font-serif text-4xl lg:text-5xl">{lockStats.totalLocks}</div>
+                <div className="mt-1 text-xs text-cream-100/70">
+                  Naka-lock / auto-secured ang pinto
+                </div>
+              </div>
+
+              <div className="rounded-3xl p-5 bg-white border border-forest-900/5 shadow-card">
+                <div className="flex items-center justify-between text-forest-600 text-[11px] uppercase tracking-eyebrow font-semibold">
+                  <span>Tanggihang Access (Denied)</span>
+                  <span className="text-red-500 font-bold">🚫</span>
+                </div>
+                <div className="mt-2 font-serif text-4xl lg:text-5xl text-forest-900">
+                  {lockStats.totalDenied}
+                </div>
+                <div className="mt-1 text-xs text-forest-700/60">
+                  Maling token, expired key, o hindi rehistrado
+                </div>
+              </div>
+
+              <div className="rounded-3xl p-5 bg-white border border-forest-900/5 shadow-card">
+                <div className="flex items-center justify-between text-forest-600 text-[11px] uppercase tracking-eyebrow font-semibold">
+                  <span>Kabuuang Kaganapan (Total Logs)</span>
+                  <Sparkle size={18} className="text-forest-600" />
+                </div>
+                <div className="mt-2 font-serif text-4xl lg:text-5xl text-forest-900">
+                  {lockStats.totalEvents}
+                </div>
+                <div className="mt-1 text-xs text-forest-700/60">
+                  Audit trail records na may exact timestamp
+                </div>
+              </div>
             </div>
 
-            <div className="mt-10 grid lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-white rounded-3xl border border-forest-900/5 shadow-card overflow-hidden">
-                <div className="p-5 border-b border-forest-900/5 flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="font-serif text-xl text-forest-900">Booking Requests</h2>
-                  <div className="flex gap-1 bg-cream-100/70 rounded-full p-1">
-                    {(['All', ...STATUSES] as const).map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setFilter(s)}
-                        className={`px-3 py-1.5 rounded-full text-xs ${
-                          filter === s ? 'bg-forest-800 text-cream-50' : 'text-forest-800 hover:bg-white'
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    ))}
+            {/* Per-Door Lock and Unlock Breakdown Cards */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
+                    Door-by-Door Breakdown
                   </div>
+                  <h3 className="font-serif text-2xl text-forest-900">Ilang Lock at Unlock Kada Pinto?</h3>
+                </div>
+                <span className="text-xs text-forest-700/60">Real-time status per door</span>
+              </div>
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {DOORS.map((door) => {
+                  const dStats = lockStats.perDoor[door.id] || { unlocks: 0, locks: 0, denied: 0 }
+                  const totalDoorOps = dStats.unlocks + dStats.locks
+
+                  return (
+                    <div
+                      key={door.id}
+                      className="bg-white rounded-3xl p-5 border border-forest-900/5 shadow-card relative flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-forest-900 truncate" title={door.name}>
+                            {door.name}
+                          </span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Lock Online" />
+                        </div>
+                        <div className="text-[11px] text-forest-700/60 mt-0.5">{door.location}</div>
+
+                        {/* Counts Grid */}
+                        <div className="grid grid-cols-2 gap-2 mt-4 text-center">
+                          <div className="bg-emerald-50 border border-emerald-200/60 rounded-2xl p-2.5">
+                            <span className="text-[10px] uppercase tracking-eyebrow text-emerald-800 font-semibold block">
+                              Unlocks
+                            </span>
+                            <span className="font-serif text-2xl font-bold text-emerald-950">
+                              {dStats.unlocks}
+                            </span>
+                          </div>
+                          <div className="bg-forest-50 border border-forest-100 rounded-2xl p-2.5">
+                            <span className="text-[10px] uppercase tracking-eyebrow text-forest-700 font-semibold block">
+                              Locks
+                            </span>
+                            <span className="font-serif text-2xl font-bold text-forest-950">
+                              {dStats.locks}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 text-[11px] text-forest-700/70 flex justify-between">
+                          <span>Battery: {door.battery}%</span>
+                          <span>Signal: {door.signalRssi} dBm</span>
+                        </div>
+                      </div>
+
+                      {/* Quick Trigger Button for this door */}
+                      <button
+                        disabled={isSimulating}
+                        onClick={() => handleSimulateAction(door.id, 'unlock')}
+                        className="mt-4 w-full py-2 rounded-xl text-xs font-semibold bg-cream-100 hover:bg-forest-800 hover:text-cream-50 text-forest-900 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Unlock size={13} />
+                        Simulate Unlock Door
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Smart Lock Testing & Live Simulation Console */}
+            <div className="bg-gradient-to-r from-forest-900 to-forest-950 text-cream-50 rounded-3xl p-6 shadow-card">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    Live Smart Lock Simulator & Hardware Console
+                  </div>
+                  <h3 className="font-serif text-2xl text-cream-50 mt-1">
+                    Subukan ang Pag-lock at Pag-unlock sa Pinto
+                  </h3>
+                  <p className="mt-1 text-xs text-cream-100/75 max-w-xl">
+                    I-click ang mga buttons sa ibaba upang mag-simulate ng aktwal na lock o unlock event. Agad itong papasok sa talaan na may eksaktong oras (exact timestamp).
+                  </p>
                 </div>
 
-                {filtered.length === 0 ? (
-                  <EmptyState isCloud={cloudBookingsDB.isCloud} />
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm min-w-[720px]">
-                      <thead>
-                        <tr className="text-left text-[11px] uppercase tracking-eyebrow text-forest-600">
-                          <th className="px-5 py-3">Guest</th>
-                          <th className="px-5 py-3">Dates</th>
-                          <th className="px-5 py-3">Guests</th>
-                            <th className="px-5 py-3">Accommodation</th>
-                            <th className="px-5 py-3">Status</th>
-                            <th className="px-5 py-3">KYC</th>
-                            <th className="px-5 py-3 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-forest-900/5">
-                        {filtered.map((b) => (
-                          <tr key={b.id} className={`hover:bg-cream-50/60 ${updatingId === b.id ? 'opacity-60' : ''}`}>
-                            <td className="px-5 py-4">
-                              <div className="font-medium text-forest-900">{b.guest_name}</div>
-                              <div className="text-xs text-forest-700/70">{b.phone} · {b.email}</div>
-                            </td>
-                            <td className="px-5 py-4 text-forest-800">
-                              {fmtDate(b.check_in)} → {fmtDate(b.check_out)}
-                            </td>
-                            <td className="px-5 py-4 text-forest-800">{b.guests}</td>
-                            <td className="px-5 py-4 text-forest-800">{accName(b.accommodation)}</td>
-                            <td className="px-5 py-4"><StatusPill status={b.status} /></td>
-                            <td className="px-5 py-4"><KycPill booking={b} /></td>
-                            <td className="px-5 py-4 text-right">
-                              <div className="inline-flex gap-1">
-                                <button onClick={() => setViewing(b)} className="px-2.5 py-1.5 rounded-lg text-xs bg-cream-100 hover:bg-cream-200 text-forest-800">View</button>
-                                {b.status === 'Pending' && (
-                                  <button onClick={() => { if (confirmWithRecheck(b)) handleUpdate(b.id, { status: 'Confirmed' }) }} disabled={updatingId === b.id} className="px-2.5 py-1.5 rounded-lg text-xs bg-forest-700 text-cream-50 hover:bg-forest-800 disabled:opacity-50">Confirm</button>
-                                )}
-                                {b.status !== 'Cancelled' && b.status !== 'Completed' && (
-                                  <button onClick={() => handleUpdate(b.id, { status: 'Cancelled' })} disabled={updatingId === b.id} className="px-2.5 py-1.5 rounded-lg text-xs bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 disabled:opacity-50">Cancel</button>
-                                )}
-                                {b.status === 'Confirmed' && (
-                                  <button onClick={() => handleUpdate(b.id, { status: 'Completed' })} disabled={updatingId === b.id} className="px-2.5 py-1.5 rounded-lg text-xs bg-olive-600 text-cream-50 hover:bg-olive-700 disabled:opacity-50">Complete</button>
-                                )}
-                                <button onClick={() => handleDelete(b.id)} disabled={updatingId === b.id} className="px-2.5 py-1.5 rounded-lg text-xs bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 disabled:opacity-50">Del</button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    disabled={isSimulating}
+                    onClick={() => handleSimulateAction('villa_front', 'unlock')}
+                    className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Unlock size={14} />
+                    Test Villa Unlock (800ms BLE + 5s Relock)
+                  </button>
+
+                  <button
+                    disabled={isSimulating}
+                    onClick={() => handleSimulateAction('main_entrance', 'unlock')}
+                    className="px-3.5 py-2.5 rounded-xl text-xs font-medium bg-cream-50/10 hover:bg-cream-50/20 text-cream-100 transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Key size={14} />
+                    Test Main Gate RFID Tap
+                  </button>
+
+                  <button
+                    disabled={isSimulating}
+                    onClick={() => handleSimulateAction('casita_a', 'denied')}
+                    className="px-3.5 py-2.5 rounded-xl text-xs font-medium bg-red-950/60 hover:bg-red-900/80 text-red-200 border border-red-500/30 transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    Test Access Denied
+                  </button>
+
+                  <button
+                    disabled={isSimulating}
+                    onClick={() => handleSimulateAction('villa_front', 'master')}
+                    className="px-3.5 py-2.5 rounded-xl text-xs font-medium bg-purple-950/60 hover:bg-purple-900/80 text-purple-200 border border-purple-500/30 transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    Test Master Override
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Smart Lock Detailed Records Table ("kung anong oras") */}
+            <div className="bg-white rounded-3xl border border-forest-900/5 shadow-card overflow-hidden">
+              <div className="p-5 border-b border-forest-900/5 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-serif text-xl text-forest-900">
+                    Talaan ng Smart Lock (Audit Trail)
+                  </h3>
+                  <p className="text-xs text-forest-700/70 mt-0.5">
+                    Naka-record ang bawat lock at unlock ng pinto at kung anong eksaktong oras
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Search */}
+                  <input
+                    type="text"
+                    placeholder="Search bisita, ref, RFID…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl border border-forest-900/10 text-xs text-forest-800 placeholder-forest-700/50 outline-none focus:border-forest-700 w-44 sm:w-56"
+                  />
+
+                  {/* Filter by Door */}
+                  <select
+                    value={doorFilter}
+                    onChange={(e) => setDoorFilter(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl border border-forest-900/10 text-xs text-forest-800 outline-none focus:border-forest-700 bg-white"
+                  >
+                    <option value="all">Lahat ng Pinto</option>
+                    {DOORS.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Filter by Action */}
+                  <select
+                    value={actionFilter}
+                    onChange={(e) => setActionFilter(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl border border-forest-900/10 text-xs text-forest-800 outline-none focus:border-forest-700 bg-white"
+                  >
+                    <option value="all">Lahat ng Aksyon</option>
+                    <option value="unlock">Unlocks Lamang</option>
+                    <option value="lock">Locks Lamang</option>
+                    <option value="denied">Denied Lamang</option>
+                  </select>
+
+                  {/* Export CSV */}
+                  <button
+                    onClick={handleExportCSV}
+                    className="px-3 py-1.5 rounded-xl bg-cream-100 hover:bg-cream-200 text-forest-800 text-xs font-medium transition"
+                  >
+                    I-export CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* Table Body */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left min-w-[800px]">
+                  <thead>
+                    <tr className="bg-cream-50/60 uppercase text-[10px] tracking-eyebrow text-forest-600 border-b border-forest-900/5">
+                      <th className="px-5 py-3.5">Oras (Exact Timestamp)</th>
+                      <th className="px-5 py-3.5">Aksyon</th>
+                      <th className="px-5 py-3.5">Pinto</th>
+                      <th className="px-5 py-3.5">Bisita / Booker</th>
+                      <th className="px-5 py-3.5">Pamamaraan (Method)</th>
+                      <th className="px-5 py-3.5">Dahilan / Resulta</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-forest-900/5">
+                    {filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-5 py-10 text-center text-forest-700/60">
+                          Walang natagpuang talaan na tumutugma sa filter.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRecords.map((rec) => {
+                        const isUnlock = rec.action === 'unlock'
+                        const isLock = rec.action === 'lock' || rec.action === 'auto_relock'
+                        const isDenied = rec.action === 'denied' || !rec.success
+                        const isMaster = rec.action === 'master_override'
+
+                        return (
+                          <tr key={rec.id} className="hover:bg-cream-50/50 transition">
+                            {/* Timestamp ("kung anong oras") */}
+                            <td className="px-5 py-3.5 whitespace-nowrap">
+                              <div className="font-semibold text-forest-900 font-mono text-[11px]">
+                                {fmtTimestamp(rec.timestamp)}
+                              </div>
+                              <div className="text-[10px] text-forest-700/50 mt-0.5">
+                                {timeAgo(rec.timestamp)}
                               </div>
                             </td>
+
+                            {/* Action ("naka ilang lock at unlock sila ng pinto") */}
+                            <td className="px-5 py-3.5 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                  isUnlock
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : isLock
+                                    ? 'bg-forest-50 text-forest-800 border-forest-200'
+                                    : isMaster
+                                    ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                    : 'bg-red-50 text-red-800 border-red-200'
+                                }`}
+                              >
+                                {isUnlock && <Unlock size={11} className="text-emerald-600" />}
+                                {isLock && <Lock size={11} className="text-forest-700" />}
+                                {isDenied && <span>✕</span>}
+                                {isMaster && <Key size={11} className="text-purple-600" />}
+                                {rec.action.replace('_', ' ').toUpperCase()}
+                              </span>
+                            </td>
+
+                            {/* Door Name */}
+                            <td className="px-5 py-3.5 whitespace-nowrap">
+                              <div className="font-medium text-forest-900">{rec.door_name}</div>
+                              <div className="text-[10px] text-forest-700/60 font-mono">{rec.door_id}</div>
+                            </td>
+
+                            {/* Booker / Guest */}
+                            <td className="px-5 py-3.5 whitespace-nowrap">
+                              <div className="font-medium text-forest-900">{rec.guest_name}</div>
+                              {rec.ref_id && (
+                                <div className="text-[10px] text-forest-700/60 font-mono">
+                                  Ref: {rec.ref_id}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Method */}
+                            <td className="px-5 py-3.5 whitespace-nowrap">
+                              <div className="capitalize text-forest-800">
+                                {rec.method === 'mobile_key'
+                                  ? '📱 Mobile BLE Key'
+                                  : rec.method === 'rfid_card'
+                                  ? '💳 RFID Keycard'
+                                  : rec.method === 'auto_timer'
+                                  ? '⏱️ Auto-relock Timer'
+                                  : rec.method === 'master_key'
+                                  ? '🔑 Master Override'
+                                  : '💻 Admin Remote'}
+                              </div>
+                              {rec.rfid_uid && (
+                                <div className="text-[10px] text-forest-700/50 font-mono">
+                                  {rec.rfid_uid}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Reason / Details */}
+                            <td className="px-5 py-3.5 text-forest-800 max-w-xs truncate" title={rec.reason}>
+                              {rec.reason}
+                            </td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-white rounded-3xl border border-forest-900/5 shadow-card p-5">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-serif text-xl text-forest-900">Calendar</h2>
-                  <div className="flex gap-1">
-                    <button onClick={() => setMonthDate(shiftMonth(monthDate, -1))} className="px-2 py-1 rounded-lg text-xs bg-cream-100 hover:bg-cream-200">‹</button>
-                    <button onClick={() => setMonthDate(new Date())} className="px-2 py-1 rounded-lg text-xs bg-cream-100 hover:bg-cream-200">Today</button>
-                    <button onClick={() => setMonthDate(shiftMonth(monthDate, 1))} className="px-2 py-1 rounded-lg text-xs bg-cream-100 hover:bg-cream-200">›</button>
-                  </div>
-                </div>
-                <div className="mt-3 text-xs uppercase tracking-eyebrow text-forest-600">
-                  {monthDate.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}
-                </div>
-                <div className="mt-3 grid grid-cols-7 text-[11px] text-forest-700/70 text-center">
-                  {['S','M','T','W','T','F','S'].map((d, i) => <div key={i} className="py-1">{d}</div>)}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {monthGrid.map((day, i) => {
-                    if (!day) return <div key={i} />
-                    const iso = day.toISOString().slice(0, 10)
-                    const booked = isBooked(day)
-                    const isToday = iso === today
-                    return (
-                      <div
-                        key={i}
-                        className={`aspect-square rounded-lg text-xs flex items-center justify-center border
-                          ${booked ? 'bg-forest-800 text-cream-50 border-forest-800' : 'bg-white border-forest-900/5 text-forest-800'}
-                          ${isToday ? 'ring-2 ring-forest-600' : ''}`}
-                        title={booked ? 'Booked' : 'Available'}
-                      >
-                        {day.getDate()}
-                      </div>
-                    )
-                  })}
-                </div>
-                <div className="mt-4 text-[11px] text-forest-700/70 flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-forest-800" /> Booked</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded border border-forest-900/20 bg-white" /> Available</span>
-                </div>
-
-                <div className="mt-6 rounded-2xl bg-cream-50 border border-forest-900/5 p-4">
-                  <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Firebase Status</div>
-                  <div className="mt-2 space-y-1 text-xs font-mono text-forest-800">
-                    <div>Configured: {isConfigured ? 'Yes' : 'No'}</div>
-                    <div>Project: {firebaseStatus.projectId}</div>
-                    <div>Mode: {cloudBookingsDB.isCloud ? 'Firestore' : 'localStorage'}</div>
-                    <div>Bookings: {items.length}</div>
-                  </div>
-                </div>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
-          </>
-        )}
-      </div>
 
-      {viewing && <ViewModal booking={viewing} onClose={() => setViewing(null)} onUpdate={handleUpdate} />}
-    </div>
-  )
-}
+            {/* Booker Lock Activity Summary */}
+            <div className="bg-white rounded-3xl border border-forest-900/5 shadow-card p-6">
+              <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
+                Per-Guest Access Tally
+              </div>
+              <h3 className="font-serif text-xl text-forest-900 mt-0.5">
+                Ilang Beses Nag-Lock at Nag-Unlock ang Bawat Booker?
+              </h3>
+              <p className="text-xs text-forest-700/70 mt-1 mb-4">
+                Buod ng smart lock utilization ng bawat guest habang nanunuluyan sa Hacienda:
+              </p>
 
-function StatCard({ label, value, tone, hint }: { label: string; value: number; tone: 'olive' | 'forest' | 'earth'; hint?: string }) {
-  const tones = {
-    forest: 'bg-forest-900 text-cream-100',
-    olive: 'bg-olive-600 text-cream-50',
-    earth: 'bg-earth-600 text-cream-50',
-  } as const
-  return (
-    <div className={`rounded-3xl p-5 ${tones[tone]}`}>
-      <div className="text-[11px] uppercase tracking-eyebrow opacity-80">{label}{hint ? ` · ${hint}` : ''}</div>
-      <div className="mt-2 font-serif text-4xl">{value}</div>
-    </div>
-  )
-}
-
-function StatusPill({ status }: { status: BookingStatus }) {
-  const map: Record<BookingStatus, string> = {
-    Pending: 'bg-olive-100 text-olive-700 border-olive-200',
-    Confirmed: 'bg-forest-100 text-forest-700 border-forest-200',
-    Cancelled: 'bg-red-50 text-red-700 border-red-100',
-    Completed: 'bg-earth-100 text-earth-700 border-earth-200',
-  }
-  return (
-    <span className={`text-[11px] uppercase tracking-eyebrow px-2.5 py-1 rounded-full border ${map[status]}`}>{status}</span>
-  )
-}
-
-// P3: KYC review pill. Web-only bookings carry no kyc_status → "—".
-function KycPill({ booking }: { booking: Booking }) {
-  const s = booking.kyc_status
-  if (!s) return <span className="text-xs text-forest-700/40">—</span>
-  const map: Record<string, string> = {
-    required: 'bg-cream-100 text-forest-700 border-forest-900/10',
-    submitted: 'bg-amber-50 text-amber-800 border-amber-200',
-    approved: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-    rejected: 'bg-red-50 text-red-700 border-red-100',
-  }
-  const hasDocs = Boolean(booking.kyc_id_url || booking.kyc_receipt_url)
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span className={`text-[11px] uppercase tracking-eyebrow px-2.5 py-1 rounded-full border ${map[s]}`}>{s}</span>
-      {s === 'submitted' && !hasDocs && (
-        <span className="text-[10px] text-amber-700" title="Guest submitted from an offline device — photos pending resubmit">no photos</span>
-      )}
-      {booking.source === 'flutter_app' && (
-        <span className="text-[10px] text-forest-700/50" title={`App booking ${booking.ref_id || ''}`}>app</span>
-      )}
-    </span>
-  )
-}
-
-function EmptyState({ isCloud }: { isCloud: boolean }) {
-  return (
-    <div className="p-14 text-center">
-      <div className="mx-auto w-14 h-14 rounded-2xl bg-forest-50 text-forest-700 flex items-center justify-center mb-4">
-        <Sparkle size={22} />
-      </div>
-      <div className="font-serif text-2xl text-forest-900">No booking requests yet</div>
-      <p className="mt-2 text-sm text-forest-800/70 max-w-md mx-auto">
-        {isCloud
-          ? 'New guest requests from Firestore will appear here in real-time. Share your booking link to start receiving inquiries.'
-          : 'New guest requests submitted through the site will appear here in real time. Currently using local storage.'}
-      </p>
-      {!isCloud && (
-        <p className="mt-3 text-xs text-forest-600 max-w-md mx-auto">
-          Tip: Configure Firebase to enable cross-device sync. See .env.example
-        </p>
-      )}
-    </div>
-  )
-}
-
-function ViewModal({ booking, onClose, onUpdate }: { booking: Booking; onClose: () => void; onUpdate: (id: string, patch: Partial<Booking>) => void }) {
-  useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
-  }, [])
-  const [rejectReason, setRejectReason] = useState(booking.kyc_reject_reason || '')
-  return (
-    <div className="fixed inset-0 z-50 bg-forest-950/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white max-w-lg w-full rounded-3xl p-6 lg:p-8 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full hover:bg-cream-100 text-forest-800" aria-label="Close">
-          <Close size={18} />
-        </button>
-        <div className="eyebrow">Request {booking.id.slice(0,8).toUpperCase()}{booking.ref_id ? ` · ${booking.ref_id}` : ''}</div>
-        <h3 className="font-serif text-3xl text-forest-900 mt-2">{booking.guest_name}</h3>
-        <div className="mt-1 text-sm text-forest-700/80">{booking.phone} · {booking.email}</div>
-
-        <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
-          <Item icon={Calendar} label="Check-in" value={fmtDate(booking.check_in)} />
-          <Item icon={Calendar} label="Check-out" value={fmtDate(booking.check_out)} />
-          <Item icon={Users} label="Guests" value={String(booking.guests)} />
-          <Item icon={Sparkle} label="Accommodation" value={accName(booking.accommodation)} />
-        </div>
-
-        {/* P3: KYC review row — thumb, approve/reject + reason, resubmit loop.
-            Guest key stays disabled until kyc approved AND booking confirmed;
-            rejection never confirms the stay, guest resubmits from the app. */}
-        <div className="mt-6 rounded-2xl border border-forest-900/10 p-4">
-          <div className="flex items-center justify-between">
-            <div className="eyebrow">KYC Verification</div>
-            <KycPill booking={booking} />
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {lockStats.perGuest.map((g, i) => (
+                  <div key={i} className="p-4 rounded-2xl bg-cream-50/70 border border-forest-900/5 flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-bold text-forest-900 text-sm">{g.guest_name}</div>
+                      {g.ref_id && <div className="text-[10px] font-mono text-forest-700/60 mt-0.5">{g.ref_id}</div>}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-emerald-800 font-bold">
+                        {g.unlocks} unlocks
+                      </div>
+                      <div className="text-forest-700 font-medium">
+                        {g.locks} locks
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          {!booking.kyc_status ? (
-            <p className="mt-2 text-xs text-forest-700/70">
-              No KYC on this inquiry (web form). Ask the guest to book via the app, or verify their ID manually before confirming.
-            </p>
-          ) : (
-            <>
-              {(booking.kyc_id_url || booking.kyc_receipt_url) ? (
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  {booking.kyc_id_url && (
-                    <a href={booking.kyc_id_url} target="_blank" rel="noreferrer" className="block group">
-                      <img src={booking.kyc_id_url} alt="Government ID" className="w-full h-28 object-cover rounded-xl border border-forest-900/10 group-hover:opacity-90" />
-                      <div className="mt-1 text-[11px] text-forest-700/70 underline">Government ID ↗</div>
-                    </a>
-                  )}
-                  {booking.kyc_receipt_url && (
-                    <a href={booking.kyc_receipt_url} target="_blank" rel="noreferrer" className="block group">
-                      <img src={booking.kyc_receipt_url} alt="Payment receipt" className="w-full h-28 object-cover rounded-xl border border-forest-900/10 group-hover:opacity-90" />
-                      <div className="mt-1 text-[11px] text-forest-700/70 underline">Deposit receipt ↗</div>
-                    </a>
-                  )}
+        )}
+
+        {/* TAB 2: BOOKING MANAGEMENT */}
+        {activeTab === 'bookings' && (
+          <div className="mt-8 space-y-6">
+            <div className="bg-white rounded-3xl border border-forest-900/5 shadow-card overflow-hidden">
+              <div className="p-5 border-b border-forest-900/5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-serif text-xl text-forest-900">Website Booker Requests</h2>
+                  <p className="text-xs text-forest-700/70">
+                    Lahat ng submissions mula sa Website for Bookers (/book)
+                  </p>
+                </div>
+                <div className="flex gap-1 bg-cream-100/70 rounded-full p-1">
+                  {(['All', ...STATUSES] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setBookingFilter(s)}
+                      className={`px-3 py-1.5 rounded-full text-xs transition ${
+                        bookingFilter === s
+                          ? 'bg-forest-800 text-cream-50'
+                          : 'text-forest-800 hover:bg-white'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredBookings.length === 0 ? (
+                <div className="p-12 text-center text-forest-700/60 text-sm">
+                  Walang requests sa filter na ito.
                 </div>
               ) : (
-                <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                  Guest submitted from an offline device — photos not uploaded yet. Ask them to resubmit from the app when online.
-                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[760px]">
+                    <thead>
+                      <tr className="text-left text-[11px] uppercase tracking-eyebrow text-forest-600 bg-cream-50/50">
+                        <th className="px-5 py-3.5">Bisita (Booker)</th>
+                        <th className="px-5 py-3.5">Stay Dates & Duration</th>
+                        <th className="px-5 py-3.5">Bisita</th>
+                        <th className="px-5 py-3.5">Accommodation</th>
+                        <th className="px-5 py-3.5">Status</th>
+                        <th className="px-5 py-3.5 text-right">Aksyon</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-forest-900/5">
+                      {filteredBookings.map((b) => (
+                        <tr key={b.id} className="hover:bg-cream-50/50 transition">
+                          <td className="px-5 py-4">
+                            <div className="font-semibold text-forest-900">{b.guest_name}</div>
+                            <div className="text-xs text-forest-700/70">
+                              {b.phone} · {b.email}
+                            </div>
+                            <div className="text-[10px] text-forest-600 font-mono mt-0.5">
+                              {b.ref_id || b.id.slice(0, 8).toUpperCase()}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-xs">
+                            <div className="font-medium text-forest-900">
+                              {b.check_in} → {b.check_out}
+                            </div>
+                            <div className="text-forest-700/70 font-semibold mt-0.5">
+                              {formatStayDuration(b.check_in, b.check_out)}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-xs text-forest-900 font-medium">
+                            {b.guests} Bisita
+                          </td>
+                          <td className="px-5 py-4 text-xs text-forest-800">
+                            {accName(b.accommodation)}
+                          </td>
+                          <td className="px-5 py-4">
+                            <span
+                              className={`text-[10px] uppercase tracking-eyebrow px-2.5 py-1 rounded-full font-bold border ${
+                                b.status === 'Pending'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : b.status === 'Confirmed'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : b.status === 'Completed'
+                                  ? 'bg-forest-50 text-forest-800 border-forest-200'
+                                  : 'bg-red-50 text-red-800 border-red-200'
+                              }`}
+                            >
+                              {b.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            <div className="inline-flex gap-1.5">
+                              <button
+                                onClick={() => setViewingBooking(b)}
+                                className="px-2.5 py-1.5 rounded-lg text-xs bg-cream-100 hover:bg-cream-200 text-forest-800 transition"
+                              >
+                                View
+                              </button>
+                              {b.status === 'Pending' && (
+                                <button
+                                  onClick={() => {
+                                    if (confirmWithRecheck(b)) {
+                                      handleUpdateBooking(b.id, { status: 'Confirmed' })
+                                    }
+                                  }}
+                                  disabled={updatingId === b.id}
+                                  className="px-2.5 py-1.5 rounded-lg text-xs bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition disabled:opacity-50"
+                                >
+                                  Confirm
+                                </button>
+                              )}
+                              {b.status !== 'Cancelled' && b.status !== 'Completed' && (
+                                <button
+                                  onClick={() => handleUpdateBooking(b.id, { status: 'Cancelled' })}
+                                  disabled={updatingId === b.id}
+                                  className="px-2.5 py-1.5 rounded-lg text-xs bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 transition disabled:opacity-50"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteBooking(b.id)}
+                                disabled={updatingId === b.id}
+                                className="px-2 py-1.5 rounded-lg text-xs bg-red-50 text-red-700 border border-red-100 hover:bg-red-100 transition disabled:opacity-50"
+                              >
+                                Del
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-              {booking.kyc_status === 'rejected' && booking.kyc_reject_reason && (
-                <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-                  Rejected: {booking.kyc_reject_reason}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: ANALYTICS & LENGTH OF STAY */}
+        {activeTab === 'analytics' && (
+          <div className="mt-8 space-y-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="rounded-3xl p-5 bg-forest-900 text-cream-50 shadow-card">
+                <div className="text-[10px] uppercase tracking-eyebrow text-cream-100/60">Average Stay Duration</div>
+                <div className="mt-2 font-serif text-4xl">
+                  {bookings.length > 0
+                    ? (
+                        bookings.reduce((sum, b) => sum + calculateNights(b.check_in, b.check_out), 0) /
+                        bookings.length
+                      ).toFixed(1)
+                    : '0'}{' '}
+                  <span className="text-base font-sans font-normal text-cream-100/70">Nights</span>
+                </div>
+                <div className="mt-1 text-xs text-cream-100/60">Average nights per reservation</div>
+              </div>
+
+              <div className="rounded-3xl p-5 bg-emerald-700 text-white shadow-card">
+                <div className="text-[10px] uppercase tracking-eyebrow text-emerald-200">Confirmed Stays</div>
+                <div className="mt-2 font-serif text-4xl">
+                  {bookings.filter((b) => b.status === 'Confirmed' || b.status === 'Completed').length}
+                </div>
+                <div className="mt-1 text-xs text-emerald-100">Out of {bookings.length} requests</div>
+              </div>
+
+              <div className="rounded-3xl p-5 bg-white border border-forest-900/5 shadow-card">
+                <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Total Nights Booked</div>
+                <div className="mt-2 font-serif text-4xl text-forest-900">
+                  {bookings.reduce((sum, b) => sum + calculateNights(b.check_in, b.check_out), 0)}
+                </div>
+                <div className="mt-1 text-xs text-forest-700/60">Combined nights across guests</div>
+              </div>
+
+              <div className="rounded-3xl p-5 bg-white border border-forest-900/5 shadow-card">
+                <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Smart Lock Operations</div>
+                <div className="mt-2 font-serif text-4xl text-forest-900">
+                  {smartLockRecords.length}
+                </div>
+                <div className="mt-1 text-xs text-forest-700/60">Unlocks and Locks combined</div>
+              </div>
+            </div>
+
+            {/* Length of Stay Distribution on Admin */}
+            <div className="bg-white rounded-3xl border border-forest-900/5 shadow-card p-6">
+              <h3 className="font-serif text-xl text-forest-900 mb-2">
+                Haba ng Pananatili (Length of Stay Distribution)
+              </h3>
+              <p className="text-xs text-forest-700/70 mb-4">
+                Detalyadong impormasyon kung gaano katagal ang stay ng bawat booker sa Hacienda de LuisAna:
+              </p>
+
+              <div className="space-y-3">
+                {bookings.map((b) => {
+                  const nights = calculateNights(b.check_in, b.check_out)
+                  return (
+                    <div
+                      key={b.id}
+                      className="p-4 rounded-2xl bg-cream-50/70 border border-forest-900/5 flex flex-wrap items-center justify-between gap-3 text-xs"
+                    >
+                      <div>
+                        <div className="font-semibold text-forest-900 text-sm">{b.guest_name}</div>
+                        <div className="text-forest-700/70 mt-0.5">
+                          {b.check_in} hanggang {b.check_out} ({accName(b.accommodation)})
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-forest-900 bg-white px-3 py-1 rounded-full border border-forest-900/10">
+                          {formatStayDuration(b.check_in, b.check_out)}
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            b.status === 'Confirmed'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : b.status === 'Pending'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-cream-100 text-forest-700'
+                          }`}
+                        >
+                          {b.status}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Booking View Modal */}
+      {viewingBooking && (
+        <div
+          className="fixed inset-0 z-50 bg-forest-950/60 flex items-center justify-center p-4"
+          onClick={() => setViewingBooking(null)}
+        >
+          <div
+            className="bg-white max-w-lg w-full rounded-3xl p-6 lg:p-8 relative max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setViewingBooking(null)}
+              className="absolute top-4 right-4 p-2 rounded-full hover:bg-cream-100 text-forest-800"
+            >
+              <Close size={18} />
+            </button>
+            <div className="eyebrow">
+              Request {viewingBooking.ref_id || viewingBooking.id.slice(0, 8).toUpperCase()}
+            </div>
+            <h3 className="font-serif text-3xl text-forest-900 mt-2">{viewingBooking.guest_name}</h3>
+            <div className="mt-1 text-sm text-forest-700/80">
+              {viewingBooking.phone} · {viewingBooking.email}
+            </div>
+
+            {/* Length of stay */}
+            <div className="mt-5 rounded-2xl bg-cream-50 p-4 border border-forest-900/10">
+              <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
+                Tagal ng Pananatili (Length of Stay)
+              </div>
+              <div className="font-serif text-xl text-forest-900 mt-1">
+                {formatStayDuration(viewingBooking.check_in, viewingBooking.check_out)}
+              </div>
+              <div className="mt-2 text-xs text-forest-800 grid grid-cols-2 gap-2">
+                <div>Check-in: <strong>{viewingBooking.check_in} (2:00 PM)</strong></div>
+                <div>Check-out: <strong>{viewingBooking.check_out} (12:00 PM)</strong></div>
+              </div>
+            </div>
+
+            {viewingBooking.special_requests && (
+              <div className="mt-4">
+                <div className="eyebrow">Special Requests</div>
+                <p className="mt-1 text-xs text-forest-800 bg-cream-50 rounded-xl p-3">
+                  {viewingBooking.special_requests}
                 </p>
-              )}
-              <input
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Reject reason (e.g. blurry ID, name mismatch)…"
-                className="mt-3 w-full text-xs border border-forest-900/10 rounded-xl px-3 py-2 outline-none focus:border-forest-600"
-              />
-              <div className="mt-2 flex gap-2 flex-wrap">
-                <button
-                  onClick={() => { onUpdate(booking.id, { kyc_status: 'approved', kyc_reject_reason: '' }); onClose() }}
-                  className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 text-white hover:bg-emerald-700"
-                >
-                  Approve ID
-                </button>
+              </div>
+            )}
+
+            {/* Proximity / Location */}
+            {(viewingBooking.pickup_area || viewingBooking.distance_km) && (
+              <div className="mt-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-3 text-xs">
+                <span className="font-bold text-emerald-900">Live Location: </span>
+                <span>{viewingBooking.pickup_area}</span>
+                {viewingBooking.distance_km && (
+                  <span className="block mt-0.5 text-emerald-800 font-semibold">
+                    {viewingBooking.distance_km} km away sa Hacienda
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="mt-6 flex gap-2 flex-wrap justify-end">
+              {viewingBooking.status === 'Pending' && (
                 <button
                   onClick={() => {
-                    if (!rejectReason.trim() && !confirm('Reject without a reason? The guest will not know what to fix. Proceed?')) return
-                    onUpdate(booking.id, { kyc_status: 'rejected', kyc_reject_reason: rejectReason.trim() }); onClose()
+                    handleUpdateBooking(viewingBooking.id, { status: 'Confirmed' })
+                    setViewingBooking(null)
                   }}
-                  className="px-3 py-1.5 rounded-lg text-xs bg-white border border-red-200 text-red-700 hover:bg-red-50"
+                  className="btn-primary text-xs bg-emerald-700 hover:bg-emerald-800"
                 >
-                  Reject ID
+                  Confirm Booking
                 </button>
-              </div>
-              <p className="mt-2 text-[11px] text-forest-700/60">
-                Guest key stays disabled until ID is approved and the booking is confirmed. Rejected guests resubmit from the app — status stays pending.
-              </p>
-            </>
-          )}
-        </div>
-
-        {booking.special_requests && (
-          <div className="mt-6">
-            <div className="eyebrow">Special Requests</div>
-            <p className="mt-2 text-sm text-forest-800/85 leading-relaxed whitespace-pre-line">
-              {booking.special_requests}
-            </p>
-          </div>
-        )}
-
-        {booking.eta_share_url && (
-          <div className="mt-4 text-xs">
-            <span className="eyebrow">Guest ETA · </span>
-            <a href={booking.eta_share_url} target="_blank" rel="noreferrer" className="text-forest-700 underline">Live location link ↗</a>
-          </div>
-        )}
-
-        {hasPickup(booking) && (
-          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm">
-            <div className="eyebrow text-emerald-800">Pickup → Drop-off · {pickupAge(booking)}</div>
-            <div className="mt-2 text-forest-900">
-              A · Pickup (guest): <span className="font-mono text-xs">{(booking.pickup_lat as number).toFixed(5)}, {(booking.pickup_lng as number).toFixed(5)}</span>
+              )}
+              {viewingBooking.status !== 'Cancelled' && (
+                <button
+                  onClick={() => {
+                    handleUpdateBooking(viewingBooking.id, { status: 'Cancelled' })
+                    setViewingBooking(null)
+                  }}
+                  className="btn-ghost text-xs"
+                >
+                  Cancel Booking
+                </button>
+              )}
             </div>
-            <div className="text-forest-900">B · Drop-off: Hacienda de LuisAna</div>
-            <a
-              href={directionsUrl(booking.pickup_lat as number, booking.pickup_lng as number)}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-block px-3 py-1.5 rounded-lg text-xs bg-forest-700 text-cream-50"
-            >
-              Navigate pickup → hotel ↗
-            </a>
-          </div>
-        )}
-
-        <div className="mt-8 flex items-center justify-between">
-          <StatusPill status={booking.status} />
-          <div className="text-[11px] text-forest-700/60">
-            Received {new Date(booking.created_at).toLocaleString('en-PH')}
           </div>
         </div>
-
-        <div className="mt-6 flex gap-2 flex-wrap">
-          {booking.status === 'Pending' && (
-            <button onClick={() => { onUpdate(booking.id, { status: 'Confirmed' }); onClose() }} className="btn-primary text-xs">Confirm Booking</button>
-          )}
-          {booking.status !== 'Cancelled' && booking.status !== 'Completed' && (
-            <button onClick={() => { onUpdate(booking.id, { status: 'Cancelled' }); onClose() }} className="btn-ghost text-xs">Cancel</button>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   )
-}
-
-function Item({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
-  return (
-    <div className="bg-cream-50 rounded-xl p-4">
-      <div className="text-[11px] uppercase tracking-eyebrow text-forest-600 inline-flex items-center gap-1.5">
-        <Icon size={13} /> {label}
-      </div>
-      <div className="mt-1 text-forest-900 font-medium">{value}</div>
-    </div>
-  )
-}
-
-// Utils
-function offset(days: number) {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-function shiftMonth(d: Date, delta: number) {
-  const n = new Date(d)
-  n.setMonth(n.getMonth() + delta)
-  return n
-}
-function buildMonth(d: Date): (Date | null)[] {
-  const y = d.getFullYear()
-  const m = d.getMonth()
-  const first = new Date(y, m, 1)
-  const daysInMonth = new Date(y, m + 1, 0).getDate()
-  const startDay = first.getDay()
-  const cells: (Date | null)[] = []
-  for (let i = 0; i < startDay; i++) cells.push(null)
-  for (let i = 1; i <= daysInMonth; i++) cells.push(new Date(y, m, i))
-  while (cells.length % 7 !== 0) cells.push(null)
-  return cells
 }

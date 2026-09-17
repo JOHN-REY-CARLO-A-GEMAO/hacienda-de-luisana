@@ -5,6 +5,7 @@ import { Footer } from './components/Footer'
 import { MobileStickyCTA } from './components/MobileStickyCTA'
 import { Home } from './pages/Home'
 import { BookingPage } from './pages/BookingPage'
+import { LiveTrackingPage } from './pages/LiveTrackingPage'
 import { AdminPage } from './pages/AdminPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { useReveal } from './lib/reveal'
@@ -12,6 +13,7 @@ import { isNativeApp } from './lib/native'
 import { AdminApp } from './app/AdminApp'
 import { AdminBookingsScreen } from './app/screens/AdminBookingsScreen'
 import { AdminTrackingScreen } from './app/screens/AdminTrackingScreen'
+import { ClientAnalyticsScreen } from './app/screens/ClientAnalyticsScreen'
 import { AdminRecordsScreen } from './app/screens/AdminRecordsScreen'
 
 function ScrollHandler() {
@@ -58,26 +60,34 @@ export default function App() {
     <>
       <NativeHomeRedirect />
       <Routes>
-      <Route path="/app" element={<AdminApp />}>
-        <Route index element={<AdminBookingsScreen />} />
-        <Route path="tracking" element={<AdminTrackingScreen />} />
-        <Route path="records" element={<AdminRecordsScreen />} />
-        <Route path="*" element={<Navigate to="/app" replace />} />
-      </Route>
-      <Route element={<WebsiteLayout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/book" element={<BookingPage />} />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <AdminPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<NotFound />} />
-      </Route>
-    </Routes>
+        {/* App for Client (Client / Host App) */}
+        <Route path="/app" element={<AdminApp />}>
+          <Route index element={<AdminBookingsScreen />} />
+          <Route path="tracking" element={<AdminTrackingScreen />} />
+          <Route path="analytics" element={<ClientAnalyticsScreen />} />
+          <Route path="records" element={<AdminRecordsScreen />} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
+        </Route>
+
+        {/* Website for Bookers and Public Website */}
+        <Route element={<WebsiteLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/book" element={<BookingPage />} />
+          <Route path="/track" element={<LiveTrackingPage />} />
+          <Route path="/share-location" element={<LiveTrackingPage />} />
+          
+          {/* Website for Admin */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Routes>
     </>
   )
 }

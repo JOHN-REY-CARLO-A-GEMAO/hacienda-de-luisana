@@ -58,6 +58,11 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     pickup_lng: typeof data.pickup_lng === 'number' ? data.pickup_lng : undefined,
     pickup_updated_at: data.pickup_updated_at,
     pickup_label: data.pickup_label,
+    pickup_area: data.pickup_area,
+    distance_km: typeof data.distance_km === 'number' ? data.distance_km : undefined,
+    eta_minutes: typeof data.eta_minutes === 'number' ? data.eta_minutes : undefined,
+    is_live_sharing: Boolean(data.is_live_sharing),
+    last_speed_kmh: typeof data.last_speed_kmh === 'number' ? data.last_speed_kmh : undefined,
   }
 }
 
