@@ -14,6 +14,20 @@ service firebase.storage {
         && request.auth.token.email in ['haciendadeluisiana@gmail.com'];
     }
 
+    // Role split: anak = locks-readonly placeholder (SWAP 1 LINE when the
+    // real Gmail arrives — same address as firestore anakEmails).
+    // Anak gets NO storage grants beyond public reads: /kyc holds gov IDs
+    // (PII, RA10173) and stays owner-only on purpose. Anak reads lock
+    // records from Firestore access_logs, never from Storage.
+    function anakEmails() {
+      return ['gemaojohnreycarloarguilles@gmail.com'];
+    }
+
+    function isAnak() {
+      return isSignedIn()
+        && request.auth.token.email in anakEmails();
+    }
+
     // Public read for site assets, owner-only write (tightened P3:
     // was any-signed-in; site images are owner-published).
     match /gallery/{allPaths=**} {
@@ -40,7 +54,9 @@ service firebase.storage {
     // P3 ENABLED: KYC ID + receipt uploads (sensitive PII, RA10173).
     // Layout: /kyc/{uid}/{bookingRef}/{id|receipt}.jpg
     // - WRITE own-uid only, 5MB, image/* (guest uploads own docs only).
-    // - READ own uid + owner allowlist only (host review). No public read.
+    // - READ own uid + owner allowlist (host review). Anak is BLOCKED
+    //   from IDs (locks-readonly ≠ ID review) — isAnak() deliberately
+    //   absent here. No public read.
     // - Deletes/overwrites follow the same write gate (resubmit loop).
     match /kyc/{userId}/{allPaths=**} {
       allow read: if request.auth != null

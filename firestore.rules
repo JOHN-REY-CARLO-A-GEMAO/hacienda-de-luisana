@@ -20,6 +20,18 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email in ownerEmails();
     }
 
+    // Role split: anak = locks-readonly placeholder.
+    // SWAP 1 LINE when the real Gmail arrives (no code change, redeploy only).
+    function anakEmails() {
+      return ['gemaojohnreycarloarguilles@gmail.com'];
+    }
+
+    // Anak may READ bookings (to make sense of lock records) + READ
+    // access_logs. No create/update/delete anywhere, no KYC, no confirm.
+    function isAnak() {
+      return isSignedIn() && request.auth.token.email in anakEmails();
+    }
+
     // P2: guest owns docs carrying their anon uid.
     function isOwnDoc() {
       return isSignedIn()
@@ -31,14 +43,10 @@ service cloud.firestore {
     // - CREATE stays public pending-only so web inquiry works unauthenticated.
     //   Extra app keys (ref_id, uid, kyc_status, kyc urls, source,
     //   eta_share_url) are additive.
-    // - READ: admin full + guest read-own (anon uid).
-    // - UPDATE: admin full + guest self-serve (cancel own pending, attach
-    //   kyc_status/urls/eta only — never status-confirm, never reject reason).
-    //   Host MUST re-check availability at approve time (G2): query
-    //   overlapping pending/confirmed for the same accommodation before
-    //   flipping Pending -> Confirmed. Client overlap check is racy;
-    //   approve-time re-check is authoritative.
-    // - DELETE: admin only.
+    // - READ: owner full + anak (locks-readonly) + guest read-own (anon uid).
+    // - UPDATE/DELETE: owner only + guest self-serve below. Anak can NEVER
+    //   confirm/cancel — update/delete exclude isAnak() on purpose.
+    //   Host MUST re-check availability at approve time (G2).
     match /bookings/{bookingId} {
       allow create: if true
         && request.resource.data.keys().hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at'])
@@ -48,7 +56,7 @@ service cloud.firestore {
         && request.resource.data.check_out is string
         && request.resource.data.status == 'Pending';
 
-      allow read: if isAdmin() || isOwnDoc();
+      allow read: if isAdmin() || isAnak() || isOwnDoc();
 
       allow update: if isAdmin()
         || (isSignedIn()
@@ -59,6 +67,20 @@ service cloud.firestore {
             .hasOnly(['status', 'kyc_status', 'kyc_id_url', 'kyc_receipt_url', 'eta_share_url']));
 
       allow delete: if isAdmin();
+    }
+
+    // Smart-lock access logs (P4 Central DB sync target).
+    // Shape: {timestamp, uid, ref_id, result: granted|denied, reason}.
+    // - CREATE: any signed-in client (guest app / lock gateway, incl. anon)
+    //   with the exact shape — append-only telemetry, no PII beyond uid.
+    // - READ: owner full + anak locks-readonly (admin lock-records view).
+    // - UPDATE/DELETE: owner only (tamper-evident history).
+    match /access_logs/{logId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['timestamp','uid','ref_id','result','reason'])
+        && request.resource.data.result in ['granted', 'denied'];
+      allow read: if isAdmin() || isAnak();
+      allow update, delete: if isAdmin();
     }
 
     // Gallery images metadata (public read, owner write)

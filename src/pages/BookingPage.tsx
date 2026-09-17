@@ -44,6 +44,7 @@ export function BookingPage() {
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [submittedRef, setSubmittedRef] = useState<string>('')
+  const [submittedId, setSubmittedId] = useState<string>('')
 
   useEffect(() => {
     if (status === 'success') window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -106,6 +107,7 @@ export function BookingPage() {
       })
       // Small UX delay
       await new Promise((r) => setTimeout(r, 400))
+      setSubmittedId(b.id)
       setSubmittedRef(b.id.slice(0, 8).toUpperCase())
       setStatus('success')
     } catch (err: any) {
@@ -116,9 +118,10 @@ export function BookingPage() {
   }
 
   if (status === 'success') {
-    return <SuccessScreen reference={submittedRef} isCloud={cloudBookingsDB.isCloud} onNew={() => {
+    return <SuccessScreen bookingId={submittedId} reference={submittedRef} isCloud={cloudBookingsDB.isCloud} onNew={() => {
       setStatus('idle')
       setSubmittedRef('')
+      setSubmittedId('')
       setForm((f) => ({ ...f, name: '', phone: '', email: '', special_requests: '' }))
     }} />
   }
@@ -356,7 +359,30 @@ function SummaryRow({ icon: Icon, label, value }: { icon: any; label: string; va
   )
 }
 
-function SuccessScreen({ reference, onNew, isCloud }: { reference: string; onNew: () => void; isCloud: boolean }) {
+function SuccessScreen({ bookingId, reference, onNew, isCloud }: { bookingId: string; reference: string; onNew: () => void; isCloud: boolean }) {
+  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'done' | 'error'>('idle')
+  const [shareMsg, setShareMsg] = useState('')
+
+  const sharePickup = async () => {
+    setShareState('sharing')
+    setShareMsg('')
+    try {
+      const { getOneTapPosition, pickupMapsUrl } = await import('../lib/tracking')
+      const pos = await getOneTapPosition()
+      await cloudBookingsDB.update(bookingId, {
+        pickup_lat: pos.lat,
+        pickup_lng: pos.lng,
+        pickup_updated_at: new Date().toISOString(),
+        eta_share_url: pickupMapsUrl(pos.lat, pos.lng),
+      })
+      setShareState('done')
+      setShareMsg('Pickup shared — the owner sees pickup → hotel route now.')
+    } catch (err: any) {
+      setShareState('error')
+      setShareMsg(err?.message || 'Could not share location.')
+    }
+  }
+
   return (
     <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
       <div className="mx-auto max-w-3xl px-5 lg:px-8">
@@ -376,6 +402,22 @@ function SuccessScreen({ reference, onNew, isCloud }: { reference: string; onNew
           {isCloud && (
             <div className="mt-3 text-xs text-forest-600">Saved securely to Firebase Firestore</div>
           )}
+          <div className="mt-8 rounded-2xl bg-cream-50 border border-forest-900/10 p-4 text-left">
+            <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Help the host find you</div>
+            <p className="mt-1 text-sm text-forest-800/80">
+              One tap shares your pickup (where you are now). Drop-off is fixed: Hacienda de LuisAna.
+            </p>
+            <button
+              onClick={sharePickup}
+              disabled={shareState === 'sharing'}
+              className="btn-primary mt-3 w-full disabled:opacity-60"
+            >
+              {shareState === 'sharing' ? 'Sharing…' : shareState === 'done' ? 'Pickup shared — tap to update' : '📍 Share my pickup location'}
+            </button>
+            {shareMsg && (
+              <p className={`mt-2 text-xs ${shareState === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>{shareMsg}</p>
+            )}
+          </div>
 
           <div className="mt-10 flex flex-wrap gap-3 justify-center">
             <Link to="/" className="btn-ghost">Back to Home</Link>

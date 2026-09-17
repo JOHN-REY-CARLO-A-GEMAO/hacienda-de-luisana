@@ -54,6 +54,10 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     kyc_receipt_url: data.kyc_receipt_url,
     kyc_reject_reason: data.kyc_reject_reason,
     eta_share_url: data.eta_share_url,
+    pickup_lat: typeof data.pickup_lat === 'number' ? data.pickup_lat : undefined,
+    pickup_lng: typeof data.pickup_lng === 'number' ? data.pickup_lng : undefined,
+    pickup_updated_at: data.pickup_updated_at,
+    pickup_label: data.pickup_label,
   }
 }
 

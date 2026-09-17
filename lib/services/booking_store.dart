@@ -40,6 +40,17 @@ class BookingStore extends ChangeNotifier {
   /// Active guest uid (anon Firebase uid or local fallback).
   String? uid;
 
+  /// Owner session flag (set by OwnerShell from AuthStore.isOwner).
+  /// Anak (view-only) can never confirm/cancel — rules exclude anak too.
+  bool _isOwnerSession = false;
+  bool get isOwnerSession => _isOwnerSession;
+
+  void setOwnerSession(bool value) {
+    if (_isOwnerSession == value) return;
+    _isOwnerSession = value;
+    notifyListeners();
+  }
+
   BookingStore() {
     _load();
   }
@@ -89,6 +100,37 @@ class BookingStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Owner mode: streams ALL bookings (not uid-scoped) for the owner APK
+  /// triage + tracking tabs. Falls back to local cache offline.
+  Future<void> attachOwnerCloud(CloudBookings cloud, {String? anonUid}) async {
+    _cloud = cloud;
+    try {
+      cloudLive = await cloud.ensureInitialized();
+      uid = cloud.uid ?? anonUid ?? uid;
+      if (cloudLive) {
+        await _watchAll();
+      }
+      await syncPending();
+    } catch (e) {
+      syncError = e.toString();
+      cloudLive = false;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _watchAll() async {
+    await _watchSub?.cancel();
+    final cloud = _cloud;
+    if (cloud == null || !cloudLive) return;
+    _watchSub = cloud.watchAllBookings().listen(
+      (remote) => _reconcileCloud(remote),
+      onError: (Object e) {
+        syncError = e.toString();
+        notifyListeners();
+      },
+    );
+  }
+
   Future<void> _watchOwn() async {
     await _watchSub?.cancel();
     final cloud = _cloud;
@@ -122,6 +164,8 @@ class BookingStore extends ChangeNotifier {
             local.kycReceiptUrl != r.kycReceiptUrl ||
             local.kycRejectReason != r.kycRejectReason ||
             local.etaShareUrl != r.etaShareUrl ||
+            local.pickupLat != r.pickupLat ||
+            local.pickupLng != r.pickupLng ||
             local.firestoreId != r.firestoreId) {
           local.status = r.status;
           local.kycStatus = r.kycStatus;
@@ -129,6 +173,10 @@ class BookingStore extends ChangeNotifier {
           local.kycReceiptUrl = r.kycReceiptUrl ?? local.kycReceiptUrl;
           local.kycRejectReason = r.kycRejectReason;
           local.etaShareUrl = r.etaShareUrl ?? local.etaShareUrl;
+          local.pickupLat = r.pickupLat ?? local.pickupLat;
+          local.pickupLng = r.pickupLng ?? local.pickupLng;
+          local.pickupUpdatedAt = r.pickupUpdatedAt ?? local.pickupUpdatedAt;
+          local.pickupLabel = r.pickupLabel ?? local.pickupLabel;
           local.firestoreId = r.firestoreId ?? local.firestoreId;
           local.synced = true;
           changed = true;
@@ -261,6 +309,46 @@ class BookingStore extends ChangeNotifier {
     final cloud = _cloud;
     if (cloud != null && cloudLive && b.firestoreId != null) {
       await cloud.cancelOwn(b.firestoreId!);
+    }
+    return true;
+  }
+
+  /// Owner: confirm any booking by ref (triage tab). Writes locally + cloud.
+  /// Anak-guarded: view-only sessions return false with a syncError.
+  Future<bool> confirmBooking(String referenceId) async {
+    if (!_isOwnerSession) {
+      syncError = 'View only — owner confirmation needed.';
+      notifyListeners();
+      return false;
+    }
+    final b = _findByRef(referenceId);
+    if (b == null) return false;
+    b.status = 'confirmed';
+    _persist();
+    notifyListeners();
+    final cloud = _cloud;
+    if (cloud != null && cloudLive && b.firestoreId != null) {
+      return cloud.confirmBooking(b.firestoreId!);
+    }
+    return true;
+  }
+
+  /// Owner: cancel any booking by ref (triage tab). Writes locally + cloud.
+  /// Anak-guarded: view-only sessions return false with a syncError.
+  Future<bool> cancelBookingRef(String referenceId) async {
+    if (!_isOwnerSession) {
+      syncError = 'View only — owner confirmation needed.';
+      notifyListeners();
+      return false;
+    }
+    final b = _findByRef(referenceId);
+    if (b == null) return false;
+    b.status = 'cancelled';
+    _persist();
+    notifyListeners();
+    final cloud = _cloud;
+    if (cloud != null && cloudLive && b.firestoreId != null) {
+      return cloud.cancelBooking(b.firestoreId!);
     }
     return true;
   }

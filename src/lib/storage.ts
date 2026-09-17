@@ -27,6 +27,12 @@ export type Booking = {
   kyc_receipt_url?: string
   kyc_reject_reason?: string
   eta_share_url?: string
+  // Rider-style one-tap pickup (guest live) -> dropoff (hotel fixed).
+  // pickup = guest GPS at tap time, dropoff = BUSINESS.coordinates.
+  pickup_lat?: number
+  pickup_lng?: number
+  pickup_updated_at?: string // ISO
+  pickup_label?: string
 }
 
 const KEY = 'hdl:bookings'

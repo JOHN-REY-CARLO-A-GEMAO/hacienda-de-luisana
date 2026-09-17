@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { type Booking, type BookingStatus, bookingsDB } from '../lib/storage'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
+import { directionsUrl, hasPickup, pickupAge } from '../lib/tracking'
 import { ACCOMMODATIONS } from '../config/site'
 import { Calendar, Users, Sparkle, Close } from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
@@ -508,6 +509,24 @@ function ViewModal({ booking, onClose, onUpdate }: { booking: Booking; onClose: 
           <div className="mt-4 text-xs">
             <span className="eyebrow">Guest ETA · </span>
             <a href={booking.eta_share_url} target="_blank" rel="noreferrer" className="text-forest-700 underline">Live location link ↗</a>
+          </div>
+        )}
+
+        {hasPickup(booking) && (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm">
+            <div className="eyebrow text-emerald-800">Pickup → Drop-off · {pickupAge(booking)}</div>
+            <div className="mt-2 text-forest-900">
+              A · Pickup (guest): <span className="font-mono text-xs">{(booking.pickup_lat as number).toFixed(5)}, {(booking.pickup_lng as number).toFixed(5)}</span>
+            </div>
+            <div className="text-forest-900">B · Drop-off: Hacienda de LuisAna</div>
+            <a
+              href={directionsUrl(booking.pickup_lat as number, booking.pickup_lng as number)}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-block px-3 py-1.5 rounded-lg text-xs bg-forest-700 text-cream-50"
+            >
+              Navigate pickup → hotel ↗
+            </a>
           </div>
         )}
 

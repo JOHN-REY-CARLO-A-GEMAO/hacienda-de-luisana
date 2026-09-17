@@ -9,12 +9,10 @@ import { AdminPage } from './pages/AdminPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { useReveal } from './lib/reveal'
 import { isNativeApp } from './lib/native'
-import { GuestApp } from './app/GuestApp'
-import { HomeScreen } from './app/screens/HomeScreen'
-import { StayScreen } from './app/screens/StayScreen'
-import { ExploreScreen } from './app/screens/ExploreScreen'
-import { BookScreen } from './app/screens/BookScreen'
-import { AccountScreen } from './app/screens/AccountScreen'
+import { AdminApp } from './app/AdminApp'
+import { AdminBookingsScreen } from './app/screens/AdminBookingsScreen'
+import { AdminTrackingScreen } from './app/screens/AdminTrackingScreen'
+import { AdminRecordsScreen } from './app/screens/AdminRecordsScreen'
 
 function ScrollHandler() {
   const location = useLocation()
@@ -60,12 +58,10 @@ export default function App() {
     <>
       <NativeHomeRedirect />
       <Routes>
-      <Route path="/app" element={<GuestApp />}>
-        <Route index element={<HomeScreen />} />
-        <Route path="stay" element={<StayScreen />} />
-        <Route path="explore" element={<ExploreScreen />} />
-        <Route path="book" element={<BookScreen />} />
-        <Route path="account" element={<AccountScreen />} />
+      <Route path="/app" element={<AdminApp />}>
+        <Route index element={<AdminBookingsScreen />} />
+        <Route path="tracking" element={<AdminTrackingScreen />} />
+        <Route path="records" element={<AdminRecordsScreen />} />
         <Route path="*" element={<Navigate to="/app" replace />} />
       </Route>
       <Route element={<WebsiteLayout />}>

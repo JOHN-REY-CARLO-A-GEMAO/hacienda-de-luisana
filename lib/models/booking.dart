@@ -83,6 +83,10 @@ class Booking {
     'kyc_id_url',
     'kyc_receipt_url',
     'eta_share_url',
+    'pickup_lat',
+    'pickup_lng',
+    'pickup_updated_at',
+    'pickup_label',
   };
 
   /// P2: guest identity (Firebase anonymous uid, or local fallback uuid).
@@ -92,6 +96,13 @@ class Booking {
   /// P2: one-time ETA share link (Maps URL the booker sends when near).
   /// Optional, never required. Auto-purge policy applies server-side later.
   String? etaShareUrl;
+
+  /// Rider-style one-tap pickup (guest live) -> dropoff (hotel fixed
+  /// 14.1754304,121.519389). One tap only, never continuous tracking.
+  double? pickupLat;
+  double? pickupLng;
+  DateTime? pickupUpdatedAt;
+  String? pickupLabel;
 
   /// P2: Firestore doc id once synced (null while local-only / offline).
   String? firestoreId;
@@ -141,6 +152,10 @@ class Booking {
     this.kycRejectReason,
     this.uid,
     this.etaShareUrl,
+    this.pickupLat,
+    this.pickupLng,
+    this.pickupUpdatedAt,
+    this.pickupLabel,
     this.firestoreId,
     this.synced = false,
     DateTime? createdAt,
@@ -262,6 +277,10 @@ class Booking {
       'kyc_reject_reason': kycRejectReason,
       'uid': uid,
       'eta_share_url': etaShareUrl,
+      'pickup_lat': pickupLat,
+      'pickup_lng': pickupLng,
+      'pickup_updated_at': pickupUpdatedAt?.toIso8601String(),
+      'pickup_label': pickupLabel,
       'source': cloudSource,
       // created_at is set with serverTimestamp() by the service;
       // kept here as ISO for offline queue debugging.
@@ -299,6 +318,12 @@ class Booking {
       uid: data['uid']?.toString(),
       etaShareUrl: (data['eta_share_url'] as String?) ??
           (data['etaShareUrl'] as String?),
+      pickupLat: (data['pickup_lat'] as num?)?.toDouble(),
+      pickupLng: (data['pickup_lng'] as num?)?.toDouble(),
+      pickupUpdatedAt: data['pickup_updated_at'] != null
+          ? _parseDate(data['pickup_updated_at'], now)
+          : null,
+      pickupLabel: data['pickup_label']?.toString(),
       firestoreId: docId,
       synced: true,
       govtIdPath: data['kyc_id_url']?.toString() ??
@@ -444,6 +469,10 @@ class Booking {
         'kycRejectReason': kycRejectReason,
         'uid': uid,
         'etaShareUrl': etaShareUrl,
+        'pickupLat': pickupLat,
+        'pickupLng': pickupLng,
+        'pickupUpdatedAt': pickupUpdatedAt?.toIso8601String(),
+        'pickupLabel': pickupLabel,
         'firestoreId': firestoreId,
         'synced': synced,
         'createdAt': createdAt.toIso8601String(),
@@ -485,6 +514,15 @@ class Booking {
         uid: json['uid'] as String?,
         etaShareUrl:
             (json['etaShareUrl'] ?? json['eta_share_url']) as String?,
+        pickupLat:
+            (json['pickupLat'] ?? json['pickup_lat'] as num?)?.toDouble(),
+        pickupLng:
+            (json['pickupLng'] ?? json['pickup_lng'] as num?)?.toDouble(),
+        pickupUpdatedAt: (json['pickupUpdatedAt'] ?? json['pickup_updated_at']) != null
+            ? _parseDate(json['pickupUpdatedAt'] ?? json['pickup_updated_at'], DateTime.now())
+            : null,
+        pickupLabel:
+            (json['pickupLabel'] ?? json['pickup_label'])?.toString(),
         firestoreId: json['firestoreId'] as String?,
         synced: (json['synced'] as bool?) ?? false,
         createdAt: json['createdAt'] != null

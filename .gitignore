@@ -67,3 +67,6 @@ image-search/
 preview/
 dist/
 .idea/
+
+# Local Firebase Android config (per-machine, never commit)
+android/app/google-services.json
