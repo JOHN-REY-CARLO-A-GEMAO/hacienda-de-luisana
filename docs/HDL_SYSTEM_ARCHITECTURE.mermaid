@@ -1,0 +1,316 @@
+flowchart TD
+    %% ==========================================
+    %% GLOBAL STYLES & DEFINITIONS
+    %% ==========================================
+    classDef terminal fill:#10B981,stroke:#059669,stroke-width:2px,color:#fff,font-weight:bold;
+    classDef terminalErr fill:#EF4444,stroke:#DC2626,stroke-width:2px,color:#fff,font-weight:bold;
+    classDef decision fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#92400E,font-weight:bold;
+    classDef process fill:#FFFFFF,stroke:#94A3B8,stroke-width:1.5px,color:#0F172A;
+    classDef processEmph fill:#EFF6FF,stroke:#3B82F6,stroke-width:2px,color:#1E3A8A,font-weight:bold;
+    classDef storage fill:#E0E7FF,stroke:#4338CA,stroke-width:2px,color:#312E81,font-weight:bold;
+
+    %% ==========================================
+    %% 1. INITIAL AUTHENTICATION & ROLE ROUTING
+    %% ==========================================
+    subgraph S1 ["1. INITIAL AUTHENTICATION & ROLE ROUTING"]
+        START([START: Open System Web/App]):::terminal
+        INPUT["Input: Register or Login<br/>(Register = Customer Only)"]:::process
+        STATUS{"Account Status<br/>ACTIVE?"}:::decision
+        DENYLOGIN["Login Not Allowed<br/>(Inactive / Archived)<br/>Notify Administrator"]:::process
+        END1([END 1: Access Denied]):::terminalErr
+        ROLE{"Identify User Role"}:::decision
+
+        START --> INPUT
+        INPUT --> STATUS
+        STATUS -- No --> DENYLOGIN
+        DENYLOGIN --> END1
+        STATUS -- Yes --> ROLE
+    end
+
+    %% ==========================================
+    %% 2. CUSTOMER / BOOKER FLOW (Approve First, Pay After, KYC, TTL)
+    %% ==========================================
+    subgraph S2 ["2. CUSTOMER / BOOKER MODULE FLOW (Approve First, Pay After, KYC, 24h TTL)"]
+        CUST_DASH["Customer Dashboard<br/>Browse Accommodations"]:::process
+        PROP_AVAIL{"Property Available?<br/>(System Overlap Check)"}:::decision
+        DATE_INPUT["Input: Select Check-in, Check-out<br/>& Number of Guests"]:::process
+        VAL_DATES{"Dates Valid &<br/>Guests ≤ Capacity?"}:::decision
+        NOTIFY_VAL["Notify Customer:<br/>Adjust Dates or Guests"]:::process
+        SUBMIT_BOOK["Submit Booking Request"]:::process
+        SET_PENDING["Set Booking = PENDING<br/>Apply 24h TTL Hold on Dates (G4)<br/>Save to Central DB & Notify Admin"]:::processEmph
+        UPLOAD_KYC["Customer Uploads Valid Government ID<br/>Set KYC = SUBMITTED"]:::process
+        ADMIN_REVIEW["Admin / Super Admin Review<br/>Booking Details & KYC"]:::process
+        SYS_RECHECK{"System Auto Re-check:<br/>Dates Still Free? (G2)"}:::decision
+        SUGGEST_ALT["Suggest Alternative Dates<br/>Notify Customer"]:::process
+        REBOOK_DEC{"Customer Accepts<br/>Alternative Dates?"}:::decision
+        REJECT_BOOK1["Set Booking = REJECTED<br/>Release Held Dates<br/>Notify Customer & Log (G1)"]:::process
+        END_REJECT1([END: Overlap Rejection]):::terminalErr
+
+        ID_VALID{"Government ID<br/>(KYC) Valid?"}:::decision
+        NOTIFY_KYC["Notify Customer: Re-upload ID<br/>(Within 24h TTL)"]:::process
+        RESUBMIT_KYC{"Customer Resubmits<br/>within TTL?"}:::decision
+        REJECT_BOOK2["Set Booking = REJECTED<br/>Release Dates & Notify"]:::process
+        END_REJECT2([END: KYC Rejection]):::terminalErr
+
+        SET_APPROVED["Set Booking = APPROVED<br/>(Dates Firmly Held — G3 Money Last)<br/>Notify: Proceed to Payment"]:::processEmph
+        PAY_SELECT["Customer Selects Payment Option:<br/>[50% Down Payment + Deposit] OR<br/>[Full Payment + Deposit]"]:::process
+        UPLOAD_PAY["Customer Uploads Payment Proof<br/>Set Payment = PENDING"]:::process
+        VERIFY_PAY["Admin / Super Admin Verifies Payment Proof<br/>Against Official Bank Records"]:::process
+        PAY_VALID{"Payment Proof<br/>Valid & Verified?"}:::decision
+        REJECT_PAY["Reject Payment & Notify Customer<br/>(Within TTL Window)"]:::process
+        RESUBMIT_PAY{"Customer Resubmits<br/>Proof within TTL?"}:::decision
+        CANCEL_PAY["Set Booking = CANCELLED<br/>Release Dates & Notify Customer<br/>(No Refund Needed)"]:::process
+        END_CANCEL1([END: Unpaid Cancelled]):::terminalErr
+
+        PAY_VERIFIED["Set Payment = VERIFIED<br/>Set Booking = RESERVED<br/>Save to DB & Notify Booker"]:::processEmph
+        CREATE_TRACK["Create Booking Tracking Record<br/>Generate Tracking ID & QR Voucher"]:::process
+        ASSIGN_CRED["Provision & Assign Credentials:<br/>RFID Card/Tag + In-App Mobile Key (BLE)"]:::processEmph
+
+        TTL_TIMER["24h TTL Timer Expires<br/>(Any Pending Booking Inactive for 24h — G4)"]:::process
+        EXPIRE_BKG["Set Booking = EXPIRED<br/>Release Held Dates<br/>Notify Customer & Admin (G1)"]:::process
+        END_EXPIRED([END: Auto-Expired]):::terminalErr
+
+        CUST_CANCEL["Customer Requests Cancellation<br/>(From Dashboard)"]:::process
+        CANCEL_STATUS{"Booking Stage<br/>at Cancel Request?"}:::decision
+        CANCEL_PRE_PAY["Pre-Payment (Pending/Approved):<br/>Set CANCELLED → Release Dates"]:::process
+        END_CANCEL2([END: Pre-Payment Cancel]):::terminalErr
+        ADMIN_REFUND_REV["Post-Payment (RESERVED):<br/>Admin Reviews per Cancellation Policy"]:::process
+        REFUND_DEC{"Refund Approved<br/>per Policy?"}:::decision
+        REFUND_EXEC["Set Booking = CANCELLED<br/>Release Held Dates<br/>Initiate & Execute Refund (Policy + Deposit)<br/>Set Status = REFUNDED & Notify"]:::processEmph
+        END_REFUND([END: Refund Processed]):::terminal
+        REFUND_DENY["Refund Denied per Policy Rules<br/>Booking Remains RESERVED"]:::process
+        END_DENY_CANCEL([END: Booking Retained]):::terminal
+
+        CUST_DASH --> PROP_AVAIL
+        PROP_AVAIL -- No --> CUST_DASH
+        PROP_AVAIL -- Yes --> DATE_INPUT
+        DATE_INPUT --> VAL_DATES
+        VAL_DATES -- No --> NOTIFY_VAL --> DATE_INPUT
+        VAL_DATES -- Yes --> SUBMIT_BOOK
+        SUBMIT_BOOK --> SET_PENDING
+        SET_PENDING --> UPLOAD_KYC
+        UPLOAD_KYC --> ADMIN_REVIEW
+        ADMIN_REVIEW --> SYS_RECHECK
+        SYS_RECHECK -- No --> SUGGEST_ALT --> REBOOK_DEC
+        REBOOK_DEC -- Yes --> DATE_INPUT
+        REBOOK_DEC -- No --> REJECT_BOOK1 --> END_REJECT1
+        SYS_RECHECK -- Yes --> ID_VALID
+        ID_VALID -- No --> NOTIFY_KYC --> RESUBMIT_KYC
+        RESUBMIT_KYC -- Yes --> UPLOAD_KYC
+        RESUBMIT_KYC -- No --> REJECT_BOOK2 --> END_REJECT2
+        ID_VALID -- Yes --> SET_APPROVED
+        SET_APPROVED --> PAY_SELECT
+        PAY_SELECT --> UPLOAD_PAY
+        UPLOAD_PAY --> VERIFY_PAY
+        VERIFY_PAY --> PAY_VALID
+        PAY_VALID -- No --> REJECT_PAY --> RESUBMIT_PAY
+        RESUBMIT_PAY -- Yes --> UPLOAD_PAY
+        RESUBMIT_PAY -- No --> CANCEL_PAY --> END_CANCEL1
+        PAY_VALID -- Yes --> PAY_VERIFIED
+        PAY_VERIFIED --> CREATE_TRACK
+        CREATE_TRACK --> ASSIGN_CRED
+
+        SET_PENDING -. 24h Timer .-> TTL_TIMER --> EXPIRE_BKG --> END_EXPIRED
+        CUST_CANCEL --> CANCEL_STATUS
+        CANCEL_STATUS -- Pending/Approved --> CANCEL_PRE_PAY --> END_CANCEL2
+        CANCEL_STATUS -- Reserved --> ADMIN_REFUND_REV --> REFUND_DEC
+        REFUND_DEC -- Yes --> REFUND_EXEC --> END_REFUND
+        REFUND_DEC -- No --> REFUND_DENY --> END_DENY_CANCEL
+    end
+
+    %% ==========================================
+    %% 3. RFID / MOBILE KEY SMART LOCK + ESP32
+    %% ==========================================
+    subgraph S3 ["3. RFID SMART LOCK + ESP32 MODULE FLOW (Dual Credential & Offline Mode)"]
+        CHECKIN_TRIGGER([CHECK-IN TIME REACHED: 2:00 PM<br/>Guest Arrives at Villa]):::terminal
+        PRESENT_CRED["Customer Presents RFID Card/Tag<br/>OR Taps Mobile Key in App via BLE (G5)"]:::process
+        ESP32_SCAN["RFID Reader Scans UID /<br/>ESP32 Receives Signed Token"]:::process
+        SEND_CRED["Send Credential to Verification Engine<br/>Log Event to Central DB<br/>(Offline Mode: Cached Token Fallback)"]:::process
+        VERIFY_CRED{"Verify Credential:<br/>Customer + Booking + Property +<br/>Payment + Account + Dates + Status?"}:::decision
+        SAVE_FAIL_LOG["Save Failed Access Log<br/>(Central DB / Offline Buffer)"]:::process
+        FAIL_COUNT{"≥ 3 Failures within<br/>10 Minutes?"}:::decision
+        ALERT_LOCKOUT["Alert Admin via Push/SMS<br/>Trigger 15-Minute Lockout"]:::process
+        DENY_ACCESS["Deny Access (Beep & Red LED)"]:::process
+        END_ACCESS([END ACCESS]):::terminalErr
+
+        ESP32_UNLOCK["ESP32 Unlocks Solenoid/Deadbolt<br/>Audible Chime & Green LED Pulse"]:::processEmph
+        SAVE_SUCCESS_LOG["Save Successful Access Log<br/>(Central DB Access History)"]:::process
+        FIRST_UNLOCK{"First Successful Unlock<br/>on Check-in Day?"}:::decision
+        SET_CHECKEDIN["Set Booking = CHECKED-IN<br/>Notify Admin: Guest Arrived"]:::processEmph
+        SET_STAYING["Set Booking = STAYING<br/>Activate Authorized In-Stay State"]:::processEmph
+        STAY_BEGINS["Customer Stay Begins<br/>Proceed to Location Tracking"]:::process
+
+        CHECKIN_TRIGGER --> PRESENT_CRED
+        PRESENT_CRED --> ESP32_SCAN
+        ESP32_SCAN --> SEND_CRED
+        SEND_CRED --> VERIFY_CRED
+        VERIFY_CRED -- No --> SAVE_FAIL_LOG --> FAIL_COUNT
+        FAIL_COUNT -- Yes --> ALERT_LOCKOUT --> END_ACCESS
+        FAIL_COUNT -- No --> DENY_ACCESS --> END_ACCESS
+        VERIFY_CRED -- Yes --> ESP32_UNLOCK
+        ESP32_UNLOCK --> SAVE_SUCCESS_LOG
+        SAVE_SUCCESS_LOG --> FIRST_UNLOCK
+        FIRST_UNLOCK -- Yes --> SET_CHECKEDIN --> SET_STAYING
+        FIRST_UNLOCK -- No --> SET_STAYING
+        SET_STAYING --> STAY_BEGINS
+    end
+
+    %% ==========================================
+    %% 4. GUEST LOCATION TRACKING MODULE (Consent-Gated)
+    %% ==========================================
+    subgraph S4 ["4. GUEST LOCATION TRACKING MODULE FLOW (Consent-Gated & RA 10173)"]
+        TRACK_CONSENT{"Guest Consented to<br/>Location Tracking?<br/>(RA 10173 Data Privacy)"}:::decision
+        TRACK_DISABLED["Tracking = DISABLED<br/>(Smart Lock & Access Logs only)"]:::process
+        TRACK_ENABLED["Tracking = ENABLED<br/>(Active during stay only)"]:::processEmph
+        GET_LOC["App Fetches Booker Location<br/>(Background GPS / Geofence)"]:::process
+        RECORD_LOC["Record Telemetry:<br/>GPS, Accuracy, Timestamp, Municipality"]:::process
+        SAVE_LOC_DB["Save Location to Central DB<br/>(Encrypted at Rest)"]:::process
+        VIEW_LOC["Admin / Super Admin View Authorized Radar<br/>(Role-Restricted & Audited)"]:::process
+        STILL_STAYING{"Guest Still Staying?<br/>(Check-out Not Passed)"}:::decision
+        STOP_TRACK["Stop Location Tracking<br/>Record Final Location"]:::process
+        WAIT_CHECKOUT["Proceed to Check-Out Flow"]:::process
+        PURGE_RULE["Retention & Purge Engine:<br/>Auto-Purge Location N Days Post Check-Out<br/>Write Purge Audit Log (G6)"]:::processEmph
+
+        TRACK_CONSENT -- No --> TRACK_DISABLED --> WAIT_CHECKOUT
+        TRACK_CONSENT -- Yes --> TRACK_ENABLED --> GET_LOC
+        GET_LOC --> RECORD_LOC --> SAVE_LOC_DB --> VIEW_LOC --> STILL_STAYING
+        STILL_STAYING -- Yes --> GET_LOC
+        STILL_STAYING -- No --> STOP_TRACK --> WAIT_CHECKOUT
+        WAIT_CHECKOUT --> PURGE_RULE
+    end
+
+    %% ==========================================
+    %% 5. CHECK-OUT, DAMAGE, SECURITY DEPOSIT & CLEANING
+    %% ==========================================
+    subgraph S5 ["5. CHECK-OUT, DAMAGE, CLEANING & INSPECTION FLOW"]
+        CHECKOUT([CHECK-OUT TIME REACHED: 12:00 NN<br/>Guest Departs Property]):::terminal
+        ESP32_LOCK["ESP32 Engages Lock<br/>Set Credential = INACTIVE"]:::process
+        SAVE_CHECKOUT_LOG["Save Check-out Access Log<br/>Set Booking = CHECKED-OUT<br/>Notify Customer"]:::processEmph
+        CREATE_CLEAN_TASK["Create Cleaning Task<br/>Auto-Assign Staff / Caretaker"]:::process
+        DAMAGE_CHECK{"Damage Reported?<br/>(Staff Inspection or Self-Report)"}:::decision
+        SUBMIT_DAMAGE["Submit Damage Report & Evidence<br/>(Photos/Videos + Description)"]:::process
+        ADMIN_VERIFY_DMG["Admin / Super Admin Review Damage"]:::process
+        DMG_VERIFIED{"Damage Verified<br/>& Chargeable?"}:::decision
+        CLOSE_DAMAGE["Close Damage Report<br/>(Normal Wear & Tear)"]:::process
+        SET_DMG_VERIFIED["Set Damage = VERIFIED<br/>Create Maintenance Work Order"]:::process
+        SETTLE_DEPOSIT["Security Deposit Settlement:<br/>Deduct Repair Cost from Deposit<br/>Refund Remaining Deposit"]:::processEmph
+        REPAIR_ITEM["Repair or Replace Damaged Item<br/>Update Maintenance Status"]:::process
+        STAFF_CLEAN["Staff or Caretaker Cleans Accommodation<br/>Sanitization & Linen Change"]:::process
+        CLEAN_DONE{"Cleaning<br/>Complete?"}:::decision
+        PROP_INSPECT["Conduct Property Inspection<br/>By Head Staff / Admin"]:::process
+        INSPECT_READY{"Clean and Ready<br/>for Next Guest?"}:::decision
+        MAINT_REPAIR["Maintenance Rectification & Re-clean"]:::process
+        SET_AVAILABLE["Set Property = AVAILABLE<br/>(Dates Rejoin Booking Pool — G1)"]:::processEmph
+        SAVE_RECORDS["Save Cleaning, Maintenance, Damage &<br/>Inspection Records to Central DB"]:::process
+        SET_COMPLETED["Set Booking = COMPLETED<br/>Notify Customer: Thank You + Deposit Statement"]:::processEmph
+        GEN_REPORTS["Generate Operational & Turnover Reports"]:::process
+        END_FLOW([END: Lifecycle Complete]):::terminal
+
+        CHECKOUT --> ESP32_LOCK --> SAVE_CHECKOUT_LOG --> CREATE_CLEAN_TASK --> DAMAGE_CHECK
+        DAMAGE_CHECK -- Yes --> SUBMIT_DAMAGE --> ADMIN_VERIFY_DMG --> DMG_VERIFIED
+        DAMAGE_CHECK -- No --> STAFF_CLEAN
+        DMG_VERIFIED -- No --> CLOSE_DAMAGE --> STAFF_CLEAN
+        DMG_VERIFIED -- Yes --> SET_DMG_VERIFIED --> SETTLE_DEPOSIT --> REPAIR_ITEM --> STAFF_CLEAN
+        STAFF_CLEAN --> CLEAN_DONE
+        CLEAN_DONE -- No --> STAFF_CLEAN
+        CLEAN_DONE -- Yes --> PROP_INSPECT --> INSPECT_READY
+        INSPECT_READY -- No --> MAINT_REPAIR --> PROP_INSPECT
+        INSPECT_READY -- Yes --> SET_AVAILABLE --> SAVE_RECORDS --> SET_COMPLETED --> GEN_REPORTS --> END_FLOW
+    end
+
+    %% ==========================================
+    %% 6. STAFF MODULE FLOW
+    %% ==========================================
+    subgraph S6 ["6. STAFF MODULE FLOW"]
+        STAFF_DASH["Staff Dashboard Access"]:::process
+        STAFF_ACTIVE{"Staff Account<br/>ACTIVE?"}:::decision
+        STAFF_DENY["Login Denied (Contact Administrator)"]:::process
+        END_STAFF1([END: Staff Denied]):::terminalErr
+        STAFF_OPS["Staff Operational Functions:<br/>• View Assigned Bookings<br/>• Manage Cleaning Tasks<br/>• Manage Maintenance Repairs<br/>• Property Inspections & Sign-offs"]:::process
+        STAFF_LOG["Save Staff Activity Log to DB"]:::process
+        END_STAFF2([END: Staff Session]):::terminal
+
+        STAFF_DASH --> STAFF_ACTIVE
+        STAFF_ACTIVE -- No --> STAFF_DENY --> END_STAFF1
+        STAFF_ACTIVE -- Yes --> STAFF_OPS --> STAFF_LOG --> END_STAFF2
+    end
+
+    %% ==========================================
+    %% 7. ADMIN MODULE FLOW
+    %% ==========================================
+    subgraph S7 ["7. ADMIN MODULE FLOW"]
+        ADMIN_DASH["Admin Dashboard Access"]:::process
+        ADMIN_ACTIVE{"Admin Account<br/>ACTIVE?"}:::decision
+        ADMIN_DENY["Login Denied (Contact Super Admin)"]:::process
+        END_ADMIN1([END: Admin Denied]):::terminalErr
+        ADMIN_OPS["Admin Full Management Operations:<br/>• Manage Users, Staff, Accommodations & Bookings<br/>• Verify Customer Government ID (KYC) & Payments<br/>• Approve / Reject Bookings (System overlap check - G2)<br/>• Process Refunds & Security Deposit Deductions<br/>• Provision, Activate & Deactivate RFID/Mobile Keys<br/>• View Credential Logs, Radar & Authorized Locations<br/>• Audit Trails & Soft Archive Users/Staff"]:::process
+        ADMIN_LOG["Save Admin Activity to Central DB Log"]:::process
+        END_ADMIN2([END: Admin Session]):::terminal
+
+        ADMIN_DASH --> ADMIN_ACTIVE
+        ADMIN_ACTIVE -- No --> ADMIN_DENY --> END_ADMIN1
+        ADMIN_ACTIVE -- Yes --> ADMIN_OPS --> ADMIN_LOG --> END_ADMIN2
+    end
+
+    %% ==========================================
+    %% 8. SUPER ADMIN MODULE FLOW
+    %% ==========================================
+    subgraph S8 ["8. SUPER ADMIN MODULE FLOW"]
+        SADASH([Super Admin Dashboard<br/>Status: ALWAYS ACTIVE]):::terminal
+        SA_OPS["Super Admin Exclusive Powers:<br/>• All Full Admin Permissions<br/>• Account Provisioning: Create Admin & Staff Accounts<br/>• Manage Admin Accounts (Disable, Enable, Archive, Restore)<br/>• System-wide Audit Logs, Financial & ESP32 Telemetry"]:::process
+        SA_SELF_CHECK{"Self-Action Check:<br/>Delete, Archive, or<br/>Disable Self?"}:::decision
+        SA_SELF_DENIED["Action Denied & Blocked<br/>(Super Admin Self-Protection)"]:::process
+        SA_EXEC["Execute Authorized Administrative Action"]:::process
+        SAREPORT["Generate System Reports"]:::processEmph
+        SA_LOG["Save Action to System-wide Audit Log"]:::process
+        END_SA([END: Super Admin Session]):::terminal
+
+        SADASH --> SA_OPS --> SA_SELF_CHECK
+        SA_SELF_CHECK -- Yes --> SA_SELF_DENIED --> SADASH
+        SA_SELF_CHECK -- No --> SA_EXEC --> SAREPORT --> SA_LOG --> END_SA
+    end
+
+    %% ==========================================
+    %% 9. ACCOUNT MANAGEMENT & SOFT ARCHIVE
+    %% ==========================================
+    subgraph S9 ["9. ACCOUNT MANAGEMENT & SOFT ARCHIVE FLOW"]
+        PROV_FLOW["Provisioning Workflow:<br/>• Customer Self-Registers (Customer Role Only)<br/>• Admin Creates Staff Accounts<br/>• Super Admin Creates Admin Accounts"]:::process
+        ACC_DEL_REQ["User / Staff / Admin Requests Deletion<br/>OR Admin Initiates Archive"]:::process
+        ACC_REVIEW["Admin / Super Admin Review Request"]:::process
+        CHECK_ACTIVE_BKG{"Account Has<br/>Active Bookings? (G1)"}:::decision
+        RESOLVE_BKG["Resolve, Transfer or Cancel Bookings First"]:::process
+        ARCHIVE_ACC["Soft Archive Account:<br/>Set Status = ARCHIVED<br/>Revoke Login & Move to Archive DB"]:::processEmph
+        RESTORE_ACC{"Restore Account<br/>Selected by Admin?"}:::decision
+        KEEP_ARCHIVED["Account Remains in Archive DB"]:::process
+        END_ARCHIVE1([END: Remains Archived]):::terminalErr
+        EXEC_RESTORE["Set Status = ACTIVE<br/>Restore Login Permissions<br/>Write Restore Audit Log"]:::processEmph
+        END_ARCHIVE2([END: Account Restored]):::terminal
+
+        PROV_FLOW --> ACC_DEL_REQ --> ACC_REVIEW --> CHECK_ACTIVE_BKG
+        CHECK_ACTIVE_BKG -- Yes --> RESOLVE_BKG --> ARCHIVE_ACC
+        CHECK_ACTIVE_BKG -- No --> ARCHIVE_ACC
+        ARCHIVE_ACC --> RESTORE_ACC
+        RESTORE_ACC -- No --> KEEP_ARCHIVED --> END_ARCHIVE1
+        RESTORE_ACC -- Yes --> EXEC_RESTORE --> END_ARCHIVE2
+    end
+
+    %% ==========================================
+    %% 10. CENTRAL DATABASE & STORAGE
+    %% ==========================================
+    subgraph S10 ["10. CENTRAL DATABASE & STORAGE ENTITIES"]
+        CENTRAL_DB[("CENTRAL DATABASE & STORAGE<br/>Users, KYC Docs, Accommodations, Bookings, TTL Holds,<br/>Payments, Proofs, Refunds, Deposits, RFID UIDs, BLE Keys,<br/>ESP32 Telemetry, GPS History, Damage, Maintenance, Audit Logs")]:::storage
+    end
+
+    %% ==========================================
+    %% CROSS-MODULE SEAMLESS TRANSITIONS
+    %% ==========================================
+    ROLE -- Customer --> CUST_DASH
+    ROLE -- Staff --> STAFF_DASH
+    ROLE -- Admin --> ADMIN_DASH
+    ROLE -- Super Admin --> SADASH
+
+    ASSIGN_CRED --> CHECKIN_TRIGGER
+    STAY_BEGINS --> TRACK_CONSENT
+    PURGE_RULE --> CHECKOUT
+    SET_AVAILABLE -. Sync Availability .-> CENTRAL_DB
+    SET_PENDING -. 24h Date Hold .-> CENTRAL_DB

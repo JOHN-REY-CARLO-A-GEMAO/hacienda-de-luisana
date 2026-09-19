@@ -1,0 +1,899 @@
+<?xml version="1.0" ?>
+<mxfile host="app.diagrams.net" modified="2026-09-19T00:00:00.000Z" agent="Hacienda-de-LuisAna/Architecture-v2" version="24.7.5" type="device">
+  <diagram id="hdl_system_architecture_v2" name="HDL Complete System Architecture Flow v2">
+    <mxGraphModel dx="2400" dy="1600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2800" pageHeight="3700" background="#F8FAFC" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="SUBGRAPH_AUTH" value="1. INITIAL AUTHENTICATION &amp;amp; ROLE ROUTING" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#F0F9FF;strokeColor=#0284C7;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#0369A1;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="40" y="220" width="500" height="740" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_CUSTOMER" value="2. CUSTOMER / BOOKER MODULE FLOW (Approve First, Pay After, KYC, 24h TTL)" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#F0FDF4;strokeColor=#16A34A;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#15803D;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="580" y="220" width="700" height="2400" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_LOCK" value="3. RFID SMART LOCK + ESP32 MODULE FLOW (Dual Credential &amp;amp; Offline Mode)" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#FAF5FF;strokeColor=#9333EA;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#7E22CE;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="220" width="680" height="1150" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_TRACKING" value="4. GUEST LOCATION TRACKING MODULE FLOW (Consent-Gated &amp;amp; RA 10173)" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#EEF2FF;strokeColor=#4F46E5;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#3730A3;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="2040" y="220" width="660" height="940" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_CHECKOUT" value="5. CHECK-OUT, DAMAGE, CLEANING &amp;amp; INSPECTION FLOW" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#FFFBEB;strokeColor=#D97706;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#B45309;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="1400" width="680" height="1220" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_STAFF" value="6. STAFF MODULE FLOW (Operations &amp;amp; Turnover)" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#F8FAFC;strokeColor=#475569;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#1E293B;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="40" y="990" width="500" height="670" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_ADMIN" value="7. ADMIN MODULE FLOW (Operational Governance &amp;amp; Controls)" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#F0F9FF;strokeColor=#0284C7;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#0369A1;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="2040" y="1190" width="660" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_SUPERADMIN" value="8. SUPER ADMIN MODULE FLOW (Global System Authority &amp;amp; Reports)" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#FAF5FF;strokeColor=#9333EA;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#7E22CE;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="2040" y="1940" width="660" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_ACCOUNT" value="9. ACCOUNT MANAGEMENT &amp;amp; SOFT ARCHIVE FLOW" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#F8FAFC;strokeColor=#475569;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#1E293B;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1690" width="500" height="930" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBGRAPH_DB" value="10. CENTRAL DATABASE ENTITIES &amp;amp; BOOKING TRACKING ENGINE" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#EEF2FF;strokeColor=#4F46E5;strokeWidth=2;fontStyle=1;fontSize=13;fontColor=#3730A3;rounded=1;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="40" y="2650" width="1240" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="BANNER_HEADER" value="&lt;b&gt;HACIENDA DE LUISANA RESORT &amp;amp; ESTATE&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;&lt;b&gt;Property Management, Smart Lock (RFID + Mobile Key / ESP32) &amp;amp; Live Tracking System Flow&lt;/b&gt;&lt;/font&gt;&lt;br/&gt;&lt;font color=&quot;#64748B&quot;&gt;System Architectural Flowchart v2 — Unified Production Specification&lt;/font&gt;" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#0F172A;strokeColor=#0F172A;fontColor=#FFFFFF;fontSize=18;align=left;spacingLeft=25;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="1500" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="LEGEND_BOX" value="&lt;b&gt;GLOBAL CONVENTIONS (System Rules v2):&lt;/b&gt;&lt;br/&gt;• &lt;b&gt;G1 — No Dangling ENDs:&lt;/b&gt; Every terminal sets final status + releases held dates + notifies customer + writes Activity Log.&lt;br/&gt;• &lt;b&gt;G2 — Enforced Availability:&lt;/b&gt; System DB overlap check at submit &lt;i&gt;and&lt;/i&gt; at approval (not eyeball-only).&lt;br/&gt;• &lt;b&gt;G3 — Money Last:&lt;/b&gt; Approve booking &amp;amp; KYC &lt;i&gt;before&lt;/i&gt; payment collection; verified money touched only via Refund pipeline.&lt;br/&gt;• &lt;b&gt;G4 — 24h TTL:&lt;/b&gt; Any booking in a pending stage for 24 hours auto-expires (EXPIRED → release dates → notify).&lt;br/&gt;• &lt;b&gt;G5 — One Credential Pipeline:&lt;/b&gt; RFID card &amp;amp; BLE Mobile Key share the same verification checklist &amp;amp; offline cache.&lt;br/&gt;• &lt;b&gt;G6 — Consent-Gated Tracking:&lt;/b&gt; Guest GPS tracking requires active consent (RA 10173); auto-purges N days post checkout.&lt;br/&gt;• &lt;b&gt;G7 — Central DB Auditing:&lt;/b&gt; Every state change writes timestamp, operator, and entity payload to Central DB." style="shape=note;whiteSpace=wrap;html=1;size=14;verticalAlign=top;align=left;spacing=8;fillColor=#FFFBEB;strokeColor=#F59E0B;fontColor=#78350F;fontSize=11;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1560" y="40" width="1140" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="START" value="START&lt;br/&gt;Open System (Web / App)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="170" y="260" width="240" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="INPUT" value="Input: Register or Login&lt;br/&gt;&lt;font color=&quot;#64748B&quot;&gt;(Register = Customer Only; Staff/Admin Provisioned)&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="330" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="STATUS" value="Account Status&lt;br/&gt;ACTIVE?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="215" y="410" width="150" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="DENYLOGIN" value="Login Not Allowed&lt;br/&gt;(Inactive / Archived)&lt;br/&gt;Notify: Contact Administrator" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="510" width="180" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="END1" value="END 1&lt;br/&gt;(Access Denied)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="600" width="180" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="ROLE" value="Identify User Role" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="290" y="510" width="160" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="ROLE_NOTE" value="&lt;b&gt;Role Routing:&lt;/b&gt;&lt;br/&gt;• Customer → Booker Flow&lt;br/&gt;• Staff → Operations Portal&lt;br/&gt;• Admin → Management Portal&lt;br/&gt;• Super Admin → System Controls" style="shape=note;whiteSpace=wrap;html=1;size=14;verticalAlign=top;align=left;spacing=8;fillColor=#FFFBEB;strokeColor=#F59E0B;fontColor=#78350F;fontSize=11;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="680" width="260" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="CUST_DASH" value="Customer Dashboard&lt;br/&gt;View Accommodations &amp;amp; Search" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="770" y="260" width="320" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="PROP_AVAIL" value="Property Available?&lt;br/&gt;&lt;font color=&quot;#64748B&quot;&gt;(System Date-Overlap Check)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="830" y="335" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="DATE_INPUT" value="Input: Select Check-in, Check-out&lt;br/&gt;&amp;amp; Number of Guests" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="430" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="VAL_DATES" value="Dates Valid &amp;amp;&lt;br/&gt;Guests ≤ Capacity?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="850" y="505" width="160" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="NOTIFY_VAL" value="Notify Customer:&lt;br/&gt;Adjust Dates or Guest Count" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="515" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBMIT_BOOK" value="Submit Booking Request" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="830" y="600" width="200" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="SET_PENDING" value="Set Booking = &lt;b&gt;PENDING&lt;/b&gt;&lt;br/&gt;Apply &lt;b&gt;24h TTL Hold&lt;/b&gt; on Dates (G4)&lt;br/&gt;Save to Central DB &amp;amp; Notify Admin" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="670" width="300" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="UPLOAD_KYC" value="Customer Uploads Valid Government ID&lt;br/&gt;Set KYC = &lt;b&gt;SUBMITTED&lt;/b&gt; (Central DB)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="755" width="300" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_REVIEW" value="Admin / Super Admin Review&lt;br/&gt;Booking Details &amp;amp; KYC Verification" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="830" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SYS_RECHECK" value="System Auto Re-check:&lt;br/&gt;Dates Still Free? (G2)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="830" y="905" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUGGEST_ALT" value="Suggest Alternative Dates&lt;br/&gt;Notify Customer via App/Email" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="915" width="190" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="REBOOK_DEC" value="Customer Accepts&lt;br/&gt;Alternative Dates?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="630" y="990" width="150" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="REJECT_BOOK1" value="Set Booking = &lt;b&gt;REJECTED&lt;/b&gt;&lt;br/&gt;Release Held Dates&lt;br/&gt;Notify Customer &amp;amp; Write Log (G1)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1080" width="190" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_REJECT1" value="END (Rejected: Overlap)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1165" width="190" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="ID_VALID" value="Government ID&lt;br/&gt;(KYC) Valid?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="850" y="1000" width="160" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="NOTIFY_KYC" value="Notify Customer: Re-upload ID&lt;br/&gt;(Within 24h TTL Window)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1235" width="190" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="RESUBMIT_KYC" value="Customer Resubmits&lt;br/&gt;within TTL?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="630" y="1310" width="150" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="REJECT_BOOK2" value="Set Booking = &lt;b&gt;REJECTED&lt;/b&gt;&lt;br/&gt;Release Held Dates&lt;br/&gt;Notify Customer &amp;amp; Log (G1)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1395" width="190" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_REJECT2" value="END (Rejected: KYC)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1480" width="190" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="SET_APPROVED" value="Set Booking = &lt;b&gt;APPROVED&lt;/b&gt;&lt;br/&gt;(Dates Firmly Held — G3 Money Last)&lt;br/&gt;Notify Customer: Proceed to Payment" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="1100" width="300" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="PAY_SELECT" value="Customer Selects Payment Option:&lt;br/&gt;[50% Down Payment + Deposit] OR&lt;br/&gt;[Full Payment + Deposit]" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="1185" width="300" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="UPLOAD_PAY" value="Customer Uploads Payment Proof&lt;br/&gt;Set Payment = &lt;b&gt;PENDING&lt;/b&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="1265" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="VERIFY_PAY" value="Admin / Super Admin Verifies Payment Proof&lt;br/&gt;Against Official Bank / Gateway Records" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="1340" width="300" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="PAY_VALID" value="Payment Proof&lt;br/&gt;Valid &amp;amp; Verified?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="850" y="1415" width="160" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="REJECT_PAY" value="Reject Payment &amp;amp; Notify Customer&lt;br/&gt;(Within 24h TTL Window)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1545" width="190" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="RESUBMIT_PAY" value="Customer Resubmits&lt;br/&gt;Proof within TTL?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="630" y="1620" width="150" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="CANCEL_PAY" value="Set Booking = &lt;b&gt;CANCELLED&lt;/b&gt;&lt;br/&gt;Release Dates &amp;amp; Notify Customer&lt;br/&gt;(No Money Verified — No Refund)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1705" width="190" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_CANCEL1" value="END (Unpaid Cancelled)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1795" width="190" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="PAY_VERIFIED" value="Set Payment = &lt;b&gt;VERIFIED&lt;/b&gt;&lt;br/&gt;Set Booking = &lt;b&gt;RESERVED&lt;/b&gt;&lt;br/&gt;Save to Central DB &amp;amp; Notify Customer" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="1515" width="300" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="CREATE_TRACK" value="Create Booking Tracking Record&lt;br/&gt;Generate Tracking ID &amp;amp; QR Voucher" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="1600" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="ASSIGN_CRED" value="Provision &amp;amp; Assign Guest Credentials:&lt;br/&gt;&lt;b&gt;RFID Card / Tag UID&lt;/b&gt; + &lt;b&gt;In-App Mobile Key (BLE)&lt;/b&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="770" y="1675" width="320" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="TTL_TIMER" value="&lt;b&gt;24h TTL Timer Expires&lt;/b&gt;&lt;br/&gt;(Any Pending Booking Inactive for 24h — G4)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="1755" width="250" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="EXPIRE_BKG" value="Set Booking = &lt;b&gt;EXPIRED&lt;/b&gt;&lt;br/&gt;Release Held Dates&lt;br/&gt;Notify Customer &amp;amp; Admin (G1)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="1830" width="250" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_EXPIRED" value="END (Auto-Expired)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1915" width="190" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="CUST_CANCEL" value="Customer Requests Cancellation&lt;br/&gt;(From Dashboard)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="790" y="1755" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="CANCEL_STATUS" value="Booking Stage&lt;br/&gt;at Cancel Request?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="815" y="1830" width="150" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="CANCEL_PRE_PAY" value="Pre-Payment Stage (Pending/Approved):&lt;br/&gt;Set &lt;b&gt;CANCELLED&lt;/b&gt; → Release Dates → Notify Admin" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="1920" width="210" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_CANCEL2" value="END (Pre-Payment Cancel)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="2005" width="210" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_REFUND_REV" value="Post-Payment Stage (RESERVED):&lt;br/&gt;Admin Reviews per Cancellation Policy" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="850" y="1920" width="210" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="REFUND_DEC" value="Refund Approved&lt;br/&gt;per Policy?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="2005" width="150" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="REFUND_EXEC" value="Set Booking = &lt;b&gt;CANCELLED&lt;/b&gt;&lt;br/&gt;Release Held Dates&lt;br/&gt;&lt;b&gt;Initiate &amp;amp; Execute Refund&lt;/b&gt;&lt;br/&gt;(Deposit + Policy-based Rate)&lt;br/&gt;Set Status = &lt;b&gt;REFUNDED&lt;/b&gt; &amp;amp; Notify" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="760" y="2100" width="260" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_REFUND" value="END (Refund Processed)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#059669;strokeColor=#047857;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="795" y="2215" width="190" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="REFUND_DENY" value="Refund Denied per Non-Refundable Policy&lt;br/&gt;Booking Remains &lt;b&gt;RESERVED&lt;/b&gt;&lt;br/&gt;Notify Customer Policy Justification" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="2100" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_DENY_CANCEL" value="END (Booking Retained)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#059669;strokeColor=#047857;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1055" y="2200" width="190" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="CHECKIN_TRIGGER" value="CHECK-IN TIME REACHED (2:00 PM)&lt;br/&gt;Guest Arrives at Villa / Casita" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="260" width="300" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="PRESENT_CRED" value="Customer Presents &lt;b&gt;RFID Card/Tag&lt;/b&gt;&lt;br/&gt;OR Taps &lt;b&gt;Mobile Key&lt;/b&gt; in App via BLE (G5)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="330" width="320" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="ESP32_SCAN" value="RFID Reader Scans UID /&lt;br/&gt;ESP32 Receives Signed Mobile Key Token" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="405" width="300" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SEND_CRED" value="Send Credential to Verification Engine&lt;br/&gt;Log Event to Central DB&lt;br/&gt;&lt;i&gt;(Offline Mode: Local Cached Token Fallback)&lt;/i&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1490" y="480" width="340" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="VERIFY_CRED" value="Verify Credential:&lt;br/&gt;Customer + Booking + Property +&lt;br/&gt;Payment + Account + Dates + Status?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="565" width="240" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="SAVE_FAIL_LOG" value="Save Failed Access Log&lt;br/&gt;(Central DB / Offline Buffer)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="670" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="FAIL_COUNT" value="≥ 3 Failures within&lt;br/&gt;10 Minutes?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1375" y="745" width="150" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ALERT_LOCKOUT" value="Alert Admin via Push/SMS&lt;br/&gt;Trigger &lt;b&gt;15-Minute Lockout&lt;/b&gt; Cooldown" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="835" width="200" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="DENY_ACCESS" value="Deny Access&lt;br/&gt;(Audible Beep &amp;amp; Red LED)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1570" y="755" width="180" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_ACCESS" value="END ACCESS" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1475" y="915" width="150" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="ESP32_UNLOCK" value="ESP32 Unlocks Solenoid / Deadbolt&lt;br/&gt;Audible Chime &amp;amp; Green LED Pulse" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="670" width="280" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SAVE_SUCCESS_LOG" value="Save Successful Access Log&lt;br/&gt;(Central DB Access History)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1690" y="745" width="240" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="FIRST_UNLOCK" value="First Successful Unlock&lt;br/&gt;on Check-in Day?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1720" y="815" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="SET_CHECKEDIN" value="Set Booking = &lt;b&gt;CHECKED-IN&lt;/b&gt;&lt;br/&gt;Notify Admin: &quot;Guest Has Arrived&quot;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="915" width="280" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SET_STAYING" value="Set Booking = &lt;b&gt;STAYING&lt;/b&gt;&lt;br/&gt;Activate Authorized In-Stay State" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1690" y="990" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="STAY_BEGINS" value="Customer Stay Begins&lt;br/&gt;Proceed to Authorized Location Tracking" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1680" y="1065" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="TRACK_CONSENT" value="Guest Consented to&lt;br/&gt;Location Tracking?&lt;br/&gt;&lt;font color=&quot;#64748B&quot;&gt;(Data Privacy Act / RA 10173)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2270" y="260" width="200" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="TRACK_DISABLED" value="Tracking = &lt;b&gt;DISABLED&lt;/b&gt;&lt;br/&gt;(Smart Lock &amp;amp; RFID access logs only)&lt;br/&gt;Respect Privacy Choice" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2060" y="365" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="TRACK_ENABLED" value="Tracking = &lt;b&gt;ENABLED&lt;/b&gt;&lt;br/&gt;(Active during authorized stay period only)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2370" y="365" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="GET_LOC" value="Mobile App Fetches Booker Location&lt;br/&gt;(Background GPS / Geofence Beacon)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2370" y="440" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="RECORD_LOC" value="Record Telemetry:&lt;br/&gt;GPS Lat/Long, Accuracy, Timestamp, Municipality" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2360" y="515" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SAVE_LOC_DB" value="Save Location History to Central DB&lt;br/&gt;&lt;i&gt;(Encrypted at Rest, Access-Logged)&lt;/i&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2370" y="590" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="VIEW_LOC" value="Admin &amp;amp; Super Admin View Authorized Radar&lt;br/&gt;(Role-Restricted; Every View is Audited)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2360" y="665" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="STILL_STAYING" value="Guest Still Staying?&lt;br/&gt;(Check-out Not Passed)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2405" y="740" width="170" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="STOP_TRACK" value="Stop Location Tracking&lt;br/&gt;Record Final Location Timestamp" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2370" y="830" width="240" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="WAIT_CHECKOUT" value="Proceed to Check-Out Flow" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2080" y="745" width="200" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="PURGE_RULE" value="&lt;b&gt;Retention &amp;amp; Purge Engine:&lt;/b&gt;&lt;br/&gt;Auto-Purge Location History N Days Post Check-Out&lt;br/&gt;Write Purge Audit Log (G6)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2190" y="895" width="360" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="CHECKOUT" value="CHECK-OUT TIME REACHED (12:00 NN)&lt;br/&gt;Guest Departs Property" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="1440" width="300" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="ESP32_LOCK" value="ESP32 Engages Lock&lt;br/&gt;Set Credential Status = &lt;b&gt;INACTIVE&lt;/b&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1520" y="1510" width="280" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SAVE_CHECKOUT_LOG" value="Save Check-out Access Log&lt;br/&gt;Set Booking = &lt;b&gt;CHECKED-OUT&lt;/b&gt;&lt;br/&gt;Notify Customer: Check-out Acknowledged" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="1585" width="320" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="CREATE_CLEAN_TASK" value="Create Cleaning Task&lt;br/&gt;Auto-Assign Staff / Caretaker" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1520" y="1670" width="280" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="DAMAGE_CHECK" value="Damage Reported?&lt;br/&gt;&lt;font color=&quot;#64748B&quot;&gt;(Staff Inspection or Guest Self-Report)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1555" y="1740" width="210" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="SUBMIT_DAMAGE" value="Select Damaged Item &amp;amp; Description&lt;br/&gt;Upload Photo / Video Evidence&lt;br/&gt;Submit Damage Report to Central DB" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="1835" width="280" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_VERIFY_DMG" value="Admin / Super Admin Review&lt;br/&gt;Damage Evidence &amp;amp; Repair Estimate" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="1920" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="DMG_VERIFIED" value="Damage Verified&lt;br/&gt;&amp;amp; Chargeable?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="1995" width="180" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="CLOSE_DAMAGE" value="Close Damage Report&lt;br/&gt;(Normal Wear &amp;amp; Tear / Disallowed)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="2085" width="230" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SET_DMG_VERIFIED" value="Set Damage = &lt;b&gt;VERIFIED&lt;/b&gt;&lt;br/&gt;Create Maintenance Work Order" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="2085" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SETTLE_DEPOSIT" value="&lt;b&gt;Security Deposit Settlement:&lt;/b&gt;&lt;br/&gt;Deduct Repair Cost from Deposit&lt;br/&gt;Refund Remaining Deposit to Customer" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="2160" width="280" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="REPAIR_ITEM" value="Repair or Replace Damaged Item&lt;br/&gt;Update Maintenance Status to Fixed" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="2245" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="STAFF_CLEAN" value="Staff or Caretaker Cleans Accommodation&lt;br/&gt;Sanitization, Linen Change, Restock" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="2320" width="320" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="CLEAN_DONE" value="Cleaning&lt;br/&gt;Complete?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="2395" width="160" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="PROP_INSPECT" value="Property Inspection Conducted&lt;br/&gt;By Head Staff / Admin" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1530" y="2480" width="260" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="INSPECT_READY" value="Clean and Ready&lt;br/&gt;for Next Guest?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="2550" width="160" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="MAINT_REPAIR" value="Maintenance Rectification&lt;br/&gt;&amp;amp; Re-cleaning" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1350" y="2555" width="190" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SET_AVAILABLE" value="Set Property = &lt;b&gt;AVAILABLE&lt;/b&gt;&lt;br/&gt;(Dates Rejoin Booking Pool Only Now — G1)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1750" y="2550" width="240" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="SAVE_RECORDS" value="Save Cleaning, Maintenance, Damage &amp;amp;&lt;br/&gt;Inspection Records to Central DB" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="2640" width="300" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SET_COMPLETED" value="Set Booking = &lt;b&gt;COMPLETED&lt;/b&gt;&lt;br/&gt;Notify Customer: Thank You + Final Deposit Statement" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1490" y="2715" width="340" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="GEN_REPORTS" value="Generate Operational &amp;amp; Financial Reports" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="2795" width="240" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_FLOW" value="END (Lifecycle Complete)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#059669;strokeColor=#047857;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1565" y="2865" width="190" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="STAFF_DASH" value="Staff Dashboard Access" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="190" y="1030" width="200" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="STAFF_ACTIVE" value="Staff Account&lt;br/&gt;Status ACTIVE?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="215" y="1100" width="150" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="STAFF_DENY" value="Login Denied&lt;br/&gt;(Contact Administrator)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="65" y="1190" width="170" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_STAFF1" value="END (Staff Denied)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="65" y="1265" width="170" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="STAFF_OPS" value="&lt;b&gt;Staff Operational Functions:&lt;/b&gt;&lt;br/&gt;• View Assigned Bookings &amp;amp; Schedules&lt;br/&gt;• Manage Cleaning Work Orders&lt;br/&gt;• Manage Maintenance Repairs&lt;br/&gt;• Conduct Property Inspections&lt;br/&gt;• Submit Inspection Checklists &amp;amp; Photos" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="140" y="1190" width="300" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="STAFF_RESTRICT" value="&lt;font color=&quot;#991B1B&quot;&gt;&lt;b&gt;Restrictions:&lt;/b&gt;&lt;br/&gt;Staff cannot manage accounts, verify payments,&lt;br/&gt;or approve bookings.&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;size=14;verticalAlign=top;align=left;spacing=8;fillColor=#FFFBEB;strokeColor=#F59E0B;fontColor=#78350F;fontSize=11;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="140" y="1315" width="300" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="STAFF_LOG" value="Save Staff Activity to Central Audit Log" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="165" y="1395" width="250" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_STAFF2" value="END (Staff Session)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#059669;strokeColor=#047857;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1465" width="180" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_DASH" value="Admin Dashboard Access" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2270" y="1230" width="200" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_ACTIVE" value="Admin Account&lt;br/&gt;Status ACTIVE?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2295" y="1300" width="150" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_DENY" value="Login Denied&lt;br/&gt;(Contact Super Admin)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2060" y="1390" width="170" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_ADMIN1" value="END (Admin Denied)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2060" y="1465" width="170" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_OPS" value="&lt;b&gt;Full Admin Capabilities:&lt;/b&gt;&lt;br/&gt;• Manage Users, Staff, Accommodations &amp;amp; Bookings&lt;br/&gt;• Verify Customer Government ID (KYC) &amp;amp; Payments&lt;br/&gt;• Approve / Reject Bookings (System overlap check - G2)&lt;br/&gt;• Process Refunds &amp;amp; Security Deposit Deductions&lt;br/&gt;• Provision, Activate &amp;amp; Deactivate RFID/Mobile Keys&lt;br/&gt;• View Credential Logs, Radar &amp;amp; Authorized Locations&lt;br/&gt;• Track Activities, View Analytics &amp;amp; Generate Reports&lt;br/&gt;• Disable, Enable, Soft-Archive or Restore Users/Staff" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2220" y="1390" width="300" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_RESTRICT" value="&lt;font color=&quot;#991B1B&quot;&gt;&lt;b&gt;Restrictions:&lt;/b&gt;&lt;br/&gt;Cannot modify Super Admin accounts or restore other Admins.&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;size=14;verticalAlign=top;align=left;spacing=8;fillColor=#FFFBEB;strokeColor=#F59E0B;fontColor=#78350F;fontSize=11;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2220" y="1570" width="300" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="ADMIN_LOG" value="Save Admin Actions to Central Activity Log" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2245" y="1635" width="250" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_ADMIN2" value="END (Admin Session)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#059669;strokeColor=#047857;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2280" y="1705" width="180" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="SADASH" value="Super Admin Dashboard&lt;br/&gt;(Status: &lt;b&gt;ALWAYS ACTIVE&lt;/b&gt;)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2250" y="1980" width="240" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="SA_OPS" value="&lt;b&gt;Super Admin Exclusive Powers:&lt;/b&gt;&lt;br/&gt;• All Full Admin Permissions&lt;br/&gt;• &lt;b&gt;Account Provisioning:&lt;/b&gt; Create Admin &amp;amp; Staff Accounts&lt;br/&gt;• Manage Admin Accounts (Disable, Enable, Archive, Restore)&lt;br/&gt;• Restore User, Staff, and Admin Accounts&lt;br/&gt;• System-wide Logs, Hardware Telemetry &amp;amp; Financials&lt;br/&gt;• Global System &amp;amp; Security Configuration" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2220" y="2050" width="300" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="SA_SELF_CHECK" value="Self-Action Check:&lt;br/&gt;Delete, Archive, or&lt;br/&gt;Disable Self?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2295" y="2200" width="150" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="SA_SELF_DENIED" value="&lt;b&gt;Action Denied &amp;amp; Blocked:&lt;/b&gt;&lt;br/&gt;Super Admin cannot demote,&lt;br/&gt;archive, or delete self." style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2060" y="2295" width="210" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="SA_EXEC" value="Execute Authorized Administrative Action&lt;br/&gt;(Account Creation, Role Update, Policy Change)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2230" y="2300" width="280" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SAREPORT" value="Generate System Reports&lt;br/&gt;(Financial, Turnover, Security &amp;amp; Audit Reports)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2240" y="2375" width="260" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="SA_LOG" value="Save Action to System-wide Activity Log (Central DB)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2230" y="2450" width="280" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_SA" value="END (Super Admin Session)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#059669;strokeColor=#047857;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="2280" y="2520" width="180" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="PROV_FLOW" value="&lt;b&gt;Account Provisioning:&lt;/b&gt;&lt;br/&gt;• Public Register → Customer Role Only&lt;br/&gt;• Admin Creates Staff Accounts&lt;br/&gt;• Super Admin Creates Admin Accounts&lt;br/&gt;• Save Provisioning Audit Log" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="140" y="1730" width="300" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="ACC_DEL_REQ" value="User / Staff / Admin Requests Deletion&lt;br/&gt;OR Admin Initiates Archive Action" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="150" y="1840" width="280" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="ACC_REVIEW" value="Admin / Super Admin Review Request" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="170" y="1915" width="240" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="CHECK_ACTIVE_BKG" value="Account Has&lt;br/&gt;Active Bookings? (G1)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="215" y="1985" width="150" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="RESOLVE_BKG" value="Resolve, Transfer, or Cancel&lt;br/&gt;Active Bookings First (G1)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="65" y="2075" width="180" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="ARCHIVE_ACC" value="Soft Archive Account:&lt;br/&gt;Set Status = &lt;b&gt;ARCHIVED&lt;/b&gt;&lt;br/&gt;Revoke Login &amp;amp; Move to Archive DB" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="170" y="2155" width="240" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="RESTORE_ACC" value="Restore Account&lt;br/&gt;Selected by Admin?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontColor=#92400E;fontStyle=1;fontSize=11;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="215" y="2240" width="150" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="KEEP_ARCHIVED" value="Account Remains in Archived Database&lt;br/&gt;(Login Remains Blocked)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="65" y="2330" width="200" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_ARCHIVE1" value="END (Remains Archived)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="2410" width="170" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="EXEC_RESTORE" value="Set Status = &lt;b&gt;ACTIVE&lt;/b&gt;&lt;br/&gt;Restore Login Permissions&lt;br/&gt;Write Restore Audit Log" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="2330" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="END_ARCHIVE2" value="END (Account Restored)" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#059669;strokeColor=#047857;fontColor=#FFFFFF;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="295" y="2410" width="170" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="CENTRAL_DB" value="&lt;b&gt;CENTRAL DATABASE &amp;amp; STORAGE (Firestore / Cloud DB)&lt;/b&gt;&lt;br/&gt;• Users, Government ID / KYC Verification Records, Staff, Admins, Super Admin&lt;br/&gt;• Accommodations, Availability Calendar, 24h Date Holds (TTL Engine)&lt;br/&gt;• Bookings, Payments, Payment Proofs, Refunds, Security Deposits&lt;br/&gt;• Smart Lock Credentials (RFID Cards/Tags, Mobile Key BLE Tokens, Status)&lt;br/&gt;• ESP32 Hardware Controls, Access Logs, Offline Log Buffer, Lockout Events&lt;br/&gt;• Guest Locations, Location History (Encrypted), Consent Records, Purge Logs&lt;br/&gt;• Damage Reports, Evidence Media, Maintenance Tasks, Cleaning, Inspections&lt;br/&gt;• Account Requests, Archived Accounts DB, Provisioning Logs, System Notifications" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#E0E7FF;strokeColor=#4338CA;fontColor=#312E81;fontStyle=1;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="2700" width="680" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="BOOKING_TRACKING" value="&lt;b&gt;BOOKING STATUS LIFECYCLE STATE MACHINE:&lt;/b&gt;&lt;br/&gt;&lt;b&gt;Main Path:&lt;/b&gt;&lt;br/&gt;PENDING → KYC SUBMITTED → APPROVED → PAYMENT PENDING →&lt;br/&gt;PAYMENT VERIFIED → RESERVED → CHECKED-IN → STAYING →&lt;br/&gt;CHECKED-OUT → COMPLETED&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Terminal Branch States:&lt;/b&gt;&lt;br/&gt;• &lt;b&gt;REJECTED&lt;/b&gt; (Availability overlap or KYC failure; dates released)&lt;br/&gt;• &lt;b&gt;CANCELLED&lt;/b&gt; (Pre-payment or Host cancel; dates released)&lt;br/&gt;• &lt;b&gt;REFUNDED&lt;/b&gt; (Post-payment cancel; deposit + refund policy executed)&lt;br/&gt;• &lt;b&gt;EXPIRED&lt;/b&gt; (24h TTL timeout in any pending stage; dates released)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;fontColor=#1E3A8A;fontStyle=1;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="2700" width="470" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="ACTIVITY_LOG" value="&lt;b&gt;SYSTEM-WIDE ACTIVITY AUDIT TRAIL:&lt;/b&gt;&lt;br/&gt;Every single mutation records: Timestamp, User ID, Role, IP Address, Action Performed, Entity, State Snapshot. Immutable write-once audit log." style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontColor=#0F172A;fontSize=12;strokeWidth=1.5;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="2900" width="1180" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="START" target="INPUT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="INPUT" target="STATUS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1_3" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STATUS" target="DENYLOGIN">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1_4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="DENYLOGIN" target="END1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1_5" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STATUS" target="ROLE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CUST_DASH" target="PROP_AVAIL">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_2" value="No (Search Again)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="PROP_AVAIL" target="CUST_DASH">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_3" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="PROP_AVAIL" target="DATE_INPUT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="DATE_INPUT" target="VAL_DATES">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_5" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="VAL_DATES" target="NOTIFY_VAL">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="NOTIFY_VAL" target="DATE_INPUT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_7" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="VAL_DATES" target="SUBMIT_BOOK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SUBMIT_BOOK" target="SET_PENDING">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SET_PENDING" target="UPLOAD_KYC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="UPLOAD_KYC" target="ADMIN_REVIEW">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ADMIN_REVIEW" target="SYS_RECHECK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_12" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="SYS_RECHECK" target="SUGGEST_ALT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SUGGEST_ALT" target="REBOOK_DEC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_14" value="Yes (Rebook)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="REBOOK_DEC" target="DATE_INPUT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_15" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="REBOOK_DEC" target="REJECT_BOOK1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_16" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="REJECT_BOOK1" target="END_REJECT1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_17" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="SYS_RECHECK" target="ID_VALID">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_18" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ID_VALID" target="NOTIFY_KYC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_19" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="NOTIFY_KYC" target="RESUBMIT_KYC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_20" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="RESUBMIT_KYC" target="UPLOAD_KYC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_21" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="RESUBMIT_KYC" target="REJECT_BOOK2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_22" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="REJECT_BOOK2" target="END_REJECT2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_23" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ID_VALID" target="SET_APPROVED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_24" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SET_APPROVED" target="PAY_SELECT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_25" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="PAY_SELECT" target="UPLOAD_PAY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_26" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="UPLOAD_PAY" target="VERIFY_PAY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_27" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="VERIFY_PAY" target="PAY_VALID">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_28" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="PAY_VALID" target="REJECT_PAY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_29" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="REJECT_PAY" target="RESUBMIT_PAY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_30" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="RESUBMIT_PAY" target="UPLOAD_PAY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_31" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="RESUBMIT_PAY" target="CANCEL_PAY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_32" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="CANCEL_PAY" target="END_CANCEL1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_33" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="PAY_VALID" target="PAY_VERIFIED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_34" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="PAY_VERIFIED" target="CREATE_TRACK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_35" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CREATE_TRACK" target="ASSIGN_CRED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_36" value="24h Timer" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6366F1;strokeWidth=1.5;strokeFactor=1;dashed=1;dashPattern=5 5;fontColor=#4338CA;fontSize=10;" edge="1" parent="1" source="SET_PENDING" target="TTL_TIMER">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_37" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="TTL_TIMER" target="EXPIRE_BKG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_38" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="EXPIRE_BKG" target="END_EXPIRED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_39" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CUST_CANCEL" target="CANCEL_STATUS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_40" value="Pending/Approved" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CANCEL_STATUS" target="CANCEL_PRE_PAY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_41" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="CANCEL_PRE_PAY" target="END_CANCEL2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_42" value="Reserved" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CANCEL_STATUS" target="ADMIN_REFUND_REV">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_43" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ADMIN_REFUND_REV" target="REFUND_DEC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_44" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="REFUND_DEC" target="REFUND_EXEC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_45" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="REFUND_EXEC" target="END_REFUND">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_46" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="REFUND_DEC" target="REFUND_DENY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec_47" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="REFUND_DENY" target="END_DENY_CANCEL">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CHECKIN_TRIGGER" target="PRESENT_CRED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="PRESENT_CRED" target="ESP32_SCAN">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ESP32_SCAN" target="SEND_CRED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SEND_CRED" target="VERIFY_CRED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_5" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="VERIFY_CRED" target="SAVE_FAIL_LOG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SAVE_FAIL_LOG" target="FAIL_COUNT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_7" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="FAIL_COUNT" target="ALERT_LOCKOUT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ALERT_LOCKOUT" target="END_ACCESS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_9" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="FAIL_COUNT" target="DENY_ACCESS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="DENY_ACCESS" target="END_ACCESS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_11" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="VERIFY_CRED" target="ESP32_UNLOCK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ESP32_UNLOCK" target="SAVE_SUCCESS_LOG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SAVE_SUCCESS_LOG" target="FIRST_UNLOCK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_14" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="FIRST_UNLOCK" target="SET_CHECKEDIN">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_15" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SET_CHECKEDIN" target="SET_STAYING">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_16" value="No (Subsequent Unlock)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="FIRST_UNLOCK" target="SET_STAYING">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="el_17" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SET_STAYING" target="STAY_BEGINS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_1" value="No Consent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="TRACK_CONSENT" target="TRACK_DISABLED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_2" value="Yes Consented" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="TRACK_CONSENT" target="TRACK_ENABLED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="TRACK_DISABLED" target="WAIT_CHECKOUT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="TRACK_ENABLED" target="GET_LOC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="GET_LOC" target="RECORD_LOC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="RECORD_LOC" target="SAVE_LOC_DB">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SAVE_LOC_DB" target="VIEW_LOC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="VIEW_LOC" target="STILL_STAYING">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_9" value="Yes (Stay Ongoing)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STILL_STAYING" target="GET_LOC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_10" value="No (Departing)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STILL_STAYING" target="STOP_TRACK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="STOP_TRACK" target="WAIT_CHECKOUT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="et_12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="WAIT_CHECKOUT" target="PURGE_RULE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CHECKOUT" target="ESP32_LOCK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ESP32_LOCK" target="SAVE_CHECKOUT_LOG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SAVE_CHECKOUT_LOG" target="CREATE_CLEAN_TASK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CREATE_CLEAN_TASK" target="DAMAGE_CHECK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_5" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="DAMAGE_CHECK" target="SUBMIT_DAMAGE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_6" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="DAMAGE_CHECK" target="STAFF_CLEAN">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SUBMIT_DAMAGE" target="ADMIN_VERIFY_DMG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ADMIN_VERIFY_DMG" target="DMG_VERIFIED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_9" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="DMG_VERIFIED" target="CLOSE_DAMAGE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="CLOSE_DAMAGE" target="STAFF_CLEAN">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_11" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="DMG_VERIFIED" target="SET_DMG_VERIFIED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SET_DMG_VERIFIED" target="SETTLE_DEPOSIT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SETTLE_DEPOSIT" target="REPAIR_ITEM">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="REPAIR_ITEM" target="STAFF_CLEAN">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_15" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="STAFF_CLEAN" target="CLEAN_DONE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_16" value="No (Continue Cleaning)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="CLEAN_DONE" target="STAFF_CLEAN">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_17" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="CLEAN_DONE" target="PROP_INSPECT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_18" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="PROP_INSPECT" target="INSPECT_READY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_19" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="INSPECT_READY" target="MAINT_REPAIR">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="MAINT_REPAIR" target="PROP_INSPECT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_21" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="INSPECT_READY" target="SET_AVAILABLE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_22" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SET_AVAILABLE" target="SAVE_RECORDS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_23" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SAVE_RECORDS" target="SET_COMPLETED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_24" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SET_COMPLETED" target="GEN_REPORTS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_25" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="GEN_REPORTS" target="END_FLOW">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="es_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="STAFF_DASH" target="STAFF_ACTIVE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="es_2" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STAFF_ACTIVE" target="STAFF_DENY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="es_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STAFF_DENY" target="END_STAFF1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="es_4" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STAFF_ACTIVE" target="STAFF_OPS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="es_5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="STAFF_OPS" target="STAFF_LOG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="es_6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STAFF_LOG" target="END_STAFF2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ADMIN_DASH" target="ADMIN_ACTIVE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea_2" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ADMIN_ACTIVE" target="ADMIN_DENY">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ADMIN_DENY" target="END_ADMIN1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea_4" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ADMIN_ACTIVE" target="ADMIN_OPS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea_5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ADMIN_OPS" target="ADMIN_LOG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea_6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ADMIN_LOG" target="END_ADMIN2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="esa_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SADASH" target="SA_OPS">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="esa_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SA_OPS" target="SA_SELF_CHECK">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="esa_3" value="Yes (Self)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="SA_SELF_CHECK" target="SA_SELF_DENIED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="esa_4" value="Return to Panel" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SA_SELF_DENIED" target="SADASH">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="esa_5" value="No (Valid Target)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="SA_SELF_CHECK" target="SA_EXEC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="esa_6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SA_EXEC" target="SAREPORT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="esa_7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="SAREPORT" target="SA_LOG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="esa_8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="SA_LOG" target="END_SA">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="PROV_FLOW" target="ACC_DEL_REQ">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ACC_DEL_REQ" target="ACC_REVIEW">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ACC_REVIEW" target="CHECK_ACTIVE_BKG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_4" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="CHECK_ACTIVE_BKG" target="RESOLVE_BKG">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="RESOLVE_BKG" target="ARCHIVE_ACC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_6" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="CHECK_ACTIVE_BKG" target="ARCHIVE_ACC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="ARCHIVE_ACC" target="RESTORE_ACC">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_8" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="RESTORE_ACC" target="KEEP_ARCHIVED">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1.8;fontColor=#991B1B;fontSize=11;fontStyle=1;" edge="1" parent="1" source="KEEP_ARCHIVED" target="END_ARCHIVE1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_10" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="RESTORE_ACC" target="EXEC_RESTORE">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eacc_11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=1.8;fontColor=#065F46;fontSize=11;fontStyle=1;" edge="1" parent="1" source="EXEC_RESTORE" target="END_ARCHIVE2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_auth_cust" value="Customer" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0284C7;strokeWidth=2.2;fontColor=#0369A1;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ROLE" target="CUST_DASH">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_auth_staff" value="Staff" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0284C7;strokeWidth=2.2;fontColor=#0369A1;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ROLE" target="STAFF_DASH">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_auth_admin" value="Admin" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0284C7;strokeWidth=2.2;fontColor=#0369A1;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ROLE" target="ADMIN_DASH">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_auth_sa" value="Super Admin" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0284C7;strokeWidth=2.2;fontColor=#0369A1;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ROLE" target="SADASH">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_cust_lock" value="Check-in Time Reached" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0284C7;strokeWidth=2.2;fontColor=#0369A1;fontSize=11;fontStyle=1;" edge="1" parent="1" source="ASSIGN_CRED" target="CHECKIN_TRIGGER">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_lock_track" value="Stay Commences" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0284C7;strokeWidth=2.2;fontColor=#0369A1;fontSize=11;fontStyle=1;" edge="1" parent="1" source="STAY_BEGINS" target="TRACK_CONSENT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_track_checkout" value="Check-out &amp; Credential Revoke" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0284C7;strokeWidth=2.2;fontColor=#0369A1;fontSize=11;fontStyle=1;" edge="1" parent="1" source="PURGE_RULE" target="CHECKOUT">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_clean_db" value="Sync Availability" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6366F1;strokeWidth=1.5;strokeFactor=1;dashed=1;dashPattern=5 5;fontColor=#4338CA;fontSize=10;" edge="1" parent="1" source="SET_AVAILABLE" target="CENTRAL_DB">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="cx_track_db" value="Init Lifecycle" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6366F1;strokeWidth=1.5;strokeFactor=1;dashed=1;dashPattern=5 5;fontColor=#4338CA;fontSize=10;" edge="1" parent="1" source="CREATE_TRACK" target="BOOKING_TRACKING">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
