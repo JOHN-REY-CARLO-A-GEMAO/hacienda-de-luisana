@@ -63,6 +63,7 @@ hacienda_flutter/pubspec.lock
 
 # Misc project clutter (do not commit)
 hacienda_flutter/
+.scratch/
 image-search/
 preview/
 dist/
