@@ -16,7 +16,7 @@ export function ClientAnalyticsScreen() {
   // Analytics Computations
   const stats = useMemo(() => {
     const totalBookings = items.length
-    const confirmed = items.filter((b) => b.status === 'Confirmed' || b.status === 'Completed')
+    const reserved = items.filter((b) => b.status === 'Reserved' || b.status === 'Completed')
     const pending = items.filter((b) => b.status === 'Pending')
     const cancelled = items.filter((b) => b.status === 'Cancelled')
 
@@ -37,7 +37,7 @@ export function ClientAnalyticsScreen() {
 
     // Revenue estimation
     let totalEstimatedRevenue = 0
-    let confirmedRevenue = 0
+    let reservedRevenue = 0
 
     items.forEach((b) => {
       const nights = calculateNights(b.check_in, b.check_out)
@@ -56,8 +56,8 @@ export function ClientAnalyticsScreen() {
         else stayBuckets.fivePlusNights += 1
       }
 
-      if (b.status === 'Confirmed' || b.status === 'Completed') {
-        confirmedRevenue += bookingVal
+      if (b.status === 'Reserved' || b.status === 'Completed') {
+        reservedRevenue += bookingVal
       }
     })
 
@@ -85,7 +85,7 @@ export function ClientAnalyticsScreen() {
 
     // Currently active stays
     const currentActiveStays = items
-      .filter((b) => b.status === 'Confirmed')
+      .filter((b) => b.status === 'Reserved')
       .map((b) => ({
         ...b,
         stayInfo: getStayProgress(b.check_in, b.check_out),
@@ -94,16 +94,16 @@ export function ClientAnalyticsScreen() {
 
     return {
       totalBookings,
-      confirmedCount: confirmed.length,
+      reservedCount: reserved.length,
       pendingCount: pending.length,
       cancelledCount: cancelled.length,
-      confirmationRate: totalBookings > 0 ? Math.round((confirmed.length / totalBookings) * 100) : 0,
+      confirmationRate: totalBookings > 0 ? Math.round((reserved.length / totalBookings) * 100) : 0,
       totalGuests,
       totalNights,
       avgStayNights,
       stayBuckets,
       totalEstimatedRevenue,
-      confirmedRevenue,
+      reservedRevenue,
       popularAccs,
       currentActiveStays,
     }
@@ -122,10 +122,10 @@ export function ClientAnalyticsScreen() {
         <div className="bg-forest-900 text-cream-50 rounded-3xl p-4 shadow-card">
           <div className="text-[10px] uppercase tracking-eyebrow text-cream-100/60">Estimated Revenue</div>
           <div className="font-serif text-2xl sm:text-3xl mt-1 text-white">
-            ₱{stats.confirmedRevenue.toLocaleString()}
+            ₱{stats.reservedRevenue.toLocaleString()}
           </div>
           <div className="text-[10px] text-cream-100/70 mt-1">
-            Confirmed: ₱{stats.confirmedRevenue.toLocaleString()}
+            Reserved: ₱{stats.reservedRevenue.toLocaleString()}
           </div>
         </div>
 
@@ -145,7 +145,7 @@ export function ClientAnalyticsScreen() {
             {stats.confirmationRate}%
           </div>
           <div className="text-[10px] text-forest-700/60 mt-1">
-            {stats.confirmedCount} out of {stats.totalBookings} inquiries
+            {stats.reservedCount} out of {stats.totalBookings} inquiries
           </div>
         </div>
 
@@ -311,8 +311,8 @@ export function ClientAnalyticsScreen() {
             <div className="font-serif text-2xl text-amber-900 mt-0.5">{stats.pendingCount}</div>
           </div>
           <div className="bg-emerald-50 rounded-2xl p-3 border border-emerald-200/60">
-            <div className="text-[10px] uppercase tracking-eyebrow text-emerald-800">Confirmed</div>
-            <div className="font-serif text-2xl text-emerald-900 mt-0.5">{stats.confirmedCount}</div>
+            <div className="text-[10px] uppercase tracking-eyebrow text-emerald-800">Reserved</div>
+            <div className="font-serif text-2xl text-emerald-900 mt-0.5">{stats.reservedCount}</div>
           </div>
           <div className="bg-red-50 rounded-2xl p-3 border border-red-200/60">
             <div className="text-[10px] uppercase tracking-eyebrow text-red-800">Cancelled</div>

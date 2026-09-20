@@ -12,26 +12,59 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   query,
   orderBy,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
   type DocumentData,
   type QuerySnapshot,
 } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
-import { bookingsDB, type Booking, type BookingStatus } from './storage'
+import { activityLogStorage, bookingsDB, type Booking } from './storage'
+import { ACCOMMODATIONS } from '../config/site'
+import {
+  applyAction,
+  effectiveStatus,
+  findDateConflicts,
+  formatHoldCountdown,
+  holdMsRemaining,
+  instantOf,
+  normalizeStatus,
+  unitsForAccommodation,
+  DATE_HOLD_MS,
+  type ActionAccepted,
+  type ActionRefused,
+  type ActivityLogEntry,
+  type Actor,
+  type BookingAction,
+  type BookingStatus,
+  type DateRange,
+  type HoldBearingBooking,
+} from './booking'
 
 const COLLECTION = 'bookings'
+/** Per-Booking Activity log: `bookings/{id}/activity`, append-only. */
+const ACTIVITY_COLLECTION = 'activity'
 
-type FirestoreBooking = Omit<Booking, 'created_at'> & {
+type FirestoreBooking = Omit<Booking, 'created_at' | 'status'> & {
   created_at: any // serverTimestamp
+  status: string
 }
 
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+/**
+ * The Date hold a Booking places on its dates when it is submitted: 24 hours out
+ * (CONTEXT.md § Date hold). Stored as data, not kept in anybody's UI state.
+ */
+function initialHoldExpiry(now: string | number | Date = Date.now()): string {
+  return new Date(new Date(now).getTime() + DATE_HOLD_MS).toISOString()
+}
+
 function mapDocToBooking(id: string, data: DocumentData): Booking {
   return {
     id,
@@ -43,8 +76,27 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     guests: data.guests,
     accommodation: data.accommodation,
     special_requests: data.special_requests || '',
-    status: data.status as BookingStatus,
+    // Old documents are migrated on read: a stored `Confirmed` reads as
+    // `Reserved`, and nothing is rewritten in Firestore (spec #9).
+    status: normalizeStatus(data.status),
     created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at || new Date().toISOString(),
+    // Booking lifecycle v2 (additive — absent on Bookings stored before it)
+    hold_expires_at: data.hold_expires_at ?? null,
+    rejection_reason: data.rejection_reason ?? null,
+    payment_plan: data.payment_plan,
+    payment_status: data.payment_status,
+    payment_proof_url: data.payment_proof_url ?? null,
+    payment_reject_reason: data.payment_reject_reason ?? null,
+    amount_claimed: typeof data.amount_claimed === 'number' ? data.amount_claimed : undefined,
+    stay_total: typeof data.stay_total === 'number' ? data.stay_total : undefined,
+    amount_due: typeof data.amount_due === 'number' ? data.amount_due : undefined,
+    security_deposit: typeof data.security_deposit === 'number' ? data.security_deposit : undefined,
+    balance_due: typeof data.balance_due === 'number' ? data.balance_due : undefined,
+    amount_verified: typeof data.amount_verified === 'number' ? data.amount_verified : undefined,
+    refund_status: data.refund_status,
+    refund_total: typeof data.refund_total === 'number' ? data.refund_total : undefined,
+    refund_breakdown: data.refund_breakdown ?? null,
+    cancellation_reason: data.cancellation_reason ?? null,
     // P3 KYC (additive — absent on web-only bookings)
     ref_id: data.ref_id,
     uid: data.uid,
@@ -66,13 +118,154 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
   }
 }
 
+/**
+ * The Activity log: every state change to a Booking, with its actor and
+ * timestamp, in the order it happened.
+ *
+ * Append-only. The interface deliberately offers no update and no remove, so no
+ * surface can rewrite history (CONTEXT.md § Activity log, ticket #11).
+ */
+export const activityLogDB = {
+  async list(bookingId: string): Promise<ActivityLogEntry[]> {
+    if (!isCloud || !db) return activityLogStorage.list(bookingId)
+    try {
+      const q = query(
+        collection(db, COLLECTION, bookingId, ACTIVITY_COLLECTION),
+        orderBy('at', 'asc'),
+      )
+      const snap = await getDocs(q)
+      const entries = snap.docs.map((d) => d.data() as ActivityLogEntry)
+      // Two entries can share an instant; the sequence says which came first.
+      return entries.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+    } catch (e) {
+      console.warn('[Firestore] activity list() failed, falling back to local', e)
+      return activityLogStorage.list(bookingId)
+    }
+  },
+
+  async append(entries: readonly ActivityLogEntry[]): Promise<void> {
+    if (entries.length === 0) return
+    if (!isCloud || !db) {
+      activityLogStorage.append(entries)
+      return
+    }
+    try {
+      // Grouped per Booking, because the sequence continues from that Booking's
+      // last entry. The id is the sequence, so two appends that both think they
+      // are next collide instead of silently reordering the log.
+      const byBooking = new Map<string, ActivityLogEntry[]>()
+      for (const entry of entries) {
+        byBooking.set(entry.booking_id, [...(byBooking.get(entry.booking_id) ?? []), entry])
+      }
+      await Promise.all(
+        [...byBooking].map(async ([bookingId, batch]) => {
+          const log = collection(db!, COLLECTION, bookingId, ACTIVITY_COLLECTION)
+          const written = await getDocs(log)
+          let seq = written.docs.reduce((max, d) => {
+            const value = d.data().seq
+            return typeof value === 'number' && value > max ? value : max
+          }, -1)
+          await runTransaction(db!, async (tx) => {
+            for (const entry of batch) {
+              seq += 1
+              tx.set(doc(log, String(seq)), { ...entry, seq })
+            }
+          })
+        }),
+      )
+    } catch (e) {
+      console.warn('[Firestore] activity append() failed, falling back to local', e)
+      activityLogStorage.append(entries)
+    }
+  },
+}
+
+/**
+ * The entry a Booking owes the moment it is created. Creation is a state change
+ * like any other, so it is logged here rather than left to whichever screen
+ * happened to submit the form (spec #9).
+ */
+function submissionEntry(bookingId: string, actor: Actor, at: string): ActivityLogEntry {
+  return {
+    booking_id: bookingId,
+    action: 'Submit',
+    from_status: 'Pending',
+    to_status: 'Pending',
+    actor: actor.actor,
+    actor_id: actor.actor_id,
+    ...(actor.actor_name ? { actor_name: actor.actor_name } : {}),
+    at,
+  }
+}
+
+/** Store a patch, in Firestore when it is configured and locally when it is not. */
+async function writePatch(id: string, patch: Partial<Booking>): Promise<void> {
+  if (!isCloud || !db) {
+    bookingsDB.update(id, patch)
+    return
+  }
+  try {
+    // Remove id from patch if present
+    const { id: _omit, ...rest } = patch as any
+    await updateDoc(doc(db, COLLECTION, id), rest)
+  } catch (e) {
+    console.warn('[Firestore] update() failed, falling back to local', e)
+    bookingsDB.update(id, patch)
+  }
+}
+
+/**
+ * Record a status written straight to the store.
+ *
+ * Nothing is logged when the status did not actually move — a location patch
+ * from /track is not a state change and does not belong in the Activity log.
+ */
+async function logStatusChange(
+  id: string,
+  before: Booking | undefined,
+  patch: Partial<Booking>,
+  by?: Actor,
+): Promise<void> {
+  if (!before || patch.status === undefined) return
+  const to = normalizeStatus(patch.status)
+  const from = normalizeStatus(before.status)
+  if (to === from) return
+
+  await activityLogDB.append([
+    {
+      booking_id: id,
+      action: 'SetStatus',
+      from_status: from,
+      to_status: to,
+      actor: by?.actor ?? 'host',
+      actor_id: by?.actor_id ?? 'host-dashboard',
+      ...(by?.actor_name ? { actor_name: by.actor_name } : {}),
+      at: instantOf(by ?? {}),
+      reason: 'Set directly from the Host dashboard.',
+    },
+  ])
+}
+
+const isCloud = isFirebaseConfigured && Boolean(db)
+
 // ----------------------------------------------------------------------------
 // Public API — mirrors bookingsDB but cloud-aware
 // ----------------------------------------------------------------------------
 export const cloudBookingsDB = {
   // Check if we should use Firestore
   get isCloud() {
-    return isFirebaseConfigured && Boolean(db)
+    return isCloud
+  },
+
+  async get(id: string): Promise<Booking | undefined> {
+    if (!isCloud || !db) return bookingsDB.get(id)
+    try {
+      const snap = await getDoc(doc(db, COLLECTION, id))
+      return snap.exists() ? mapDocToBooking(snap.id, snap.data()) : undefined
+    } catch (e) {
+      console.warn('[Firestore] get() failed, falling back to local', e)
+      return bookingsDB.get(id)
+    }
   },
 
   async list(): Promise<Booking[]> {
@@ -116,44 +309,147 @@ export const cloudBookingsDB = {
     return unsub
   },
 
-  async add(input: Omit<Booking, 'id' | 'status' | 'created_at'>): Promise<Booking> {
-    if (!this.isCloud || !db) {
-      return bookingsDB.add(input)
+  /**
+   * Submit a Booking.
+   *
+   * Places the 24-hour Date hold on its dates as stored data, and writes the
+   * Booking's first Activity log entry. The `actor` is whoever is submitting —
+   * a Guest from /book — and defaults to an unnamed Guest.
+   */
+  async add(input: Omit<Booking, 'id' | 'status' | 'created_at'>, actor?: Actor): Promise<Booking> {
+    const at = instantOf(actor ?? {})
+    const holdExpiresAt = initialHoldExpiry(at)
+    const withHold = { ...input, hold_expires_at: holdExpiresAt }
+
+    if (!isCloud || !db) {
+      const booking = bookingsDB.add(withHold)
+      activityLogStorage.append([submissionEntry(booking.id, actor ?? { actor: 'guest', actor_id: 'guest' }, at)])
+      return booking
     }
     try {
       const payload: Omit<FirestoreBooking, 'id'> = {
-        ...input,
+        ...withHold,
         status: 'Pending',
         created_at: serverTimestamp(),
       }
       const ref = await addDoc(collection(db, COLLECTION), payload)
+      await activityLogDB.append([submissionEntry(ref.id, actor ?? { actor: 'guest', actor_id: 'guest' }, at)])
       // Return optimistic booking
       return {
         id: ref.id,
-        ...input,
+        ...withHold,
         status: 'Pending',
-        created_at: new Date().toISOString(),
+        created_at: at,
       }
     } catch (e) {
       console.warn('[Firestore] add() failed, falling back to local', e)
-      return bookingsDB.add(input)
+      const booking = bookingsDB.add(withHold)
+      activityLogStorage.append([submissionEntry(booking.id, actor ?? { actor: 'guest', actor_id: 'guest' }, at)])
+      return booking
     }
   },
 
-  async update(id: string, patch: Partial<Booking>): Promise<void> {
-    if (!this.isCloud || !db) {
-      bookingsDB.update(id, patch)
-      return
-    }
-    try {
-      const ref = doc(db, COLLECTION, id)
-      // Remove id from patch if present
-      const { id: _omit, ...rest } = patch as any
-      await updateDoc(ref, rest)
-    } catch (e) {
-      console.warn('[Firestore] update() failed, falling back to local', e)
-      bookingsDB.update(id, patch)
-    }
+  /**
+   * The status this Booking reads as, right now.
+   *
+   * The read-time rule from ADR-0002, applied by every surface instead of each
+   * one guessing: a Booking whose Date hold ran out reads as Expired whether the
+   * Guest is looking or the Host is, and nothing has to be written for that to be
+   * true.
+   */
+  readStatus(booking: Booking, now: string | number | Date = Date.now()): BookingStatus {
+    return effectiveStatus(booking, now)
+  },
+
+  /** Milliseconds of Date hold a Guest has left; zero once it has run out. */
+  holdRemaining(booking: Booking, now: string | number | Date = Date.now()): number {
+    return holdMsRemaining(booking, now)
+  },
+
+  /** The Guest-facing wording for the hold they have left. */
+  holdCountdown(booking: Booking, now: string | number | Date = Date.now()): string {
+    return formatHoldCountdown(holdMsRemaining(booking, now))
+  },
+
+  /**
+   * Are these dates free for a Guest to ask for?
+   *
+   * The same rule the Host's approval re-check applies (G2), with the unit count
+   * taken from the published Accommodations, so a Guest is never offered dates
+   * that are already held and the Host is never asked to refuse them by hand.
+   */
+  async checkAvailability(
+    request: DateRange,
+    options: { now?: string | number | Date } = {},
+  ): Promise<{ available: boolean; conflicts: HoldBearingBooking[] }> {
+    const now = options.now ?? Date.now()
+    const bookings = await this.list()
+    const conflicts = findDateConflicts(request, bookings, {
+      unitsAvailable: unitsForAccommodation(request.accommodation, ACCOMMODATIONS),
+      now,
+    })
+    return { available: conflicts.length === 0, conflicts }
+  },
+
+  /**
+   * Record that a Date hold has run out.
+   *
+   * Reading a Booking never rewrites it (ADR-0002), so the stored document keeps
+   * saying `Pending` while every surface reads `Expired`. This is the one place
+   * that writes the fact down, and it refuses to do it twice: the expiry
+   * happened once, at the instant the hold ran out, and the Activity log should
+   * say so rather than say it every time somebody looked.
+   */
+  async materialiseExpiry(id: string, now: string | number | Date = Date.now()): Promise<ActionAccepted | ActionRefused> {
+    // A hold expiring is never anybody's decision, so the actor is not a
+    // parameter: it is the system, every time.
+    return this.transition(id, { type: 'Expire' }, { actor: 'system', actor_id: 'system', actor_name: 'System', now })
+  },
+
+  /**
+   * This Booking's Activity log, in the order it happened.
+   *
+   * On the bookings interface because reading a Booking and reading its history
+   * is one job: the Host opens a Booking to answer "who changed this and when".
+   */
+  async history(id: string): Promise<ActivityLogEntry[]> {
+    return activityLogDB.list(id)
+  },
+
+  /**
+   * Take one lifecycle action on a stored Booking.
+   *
+   * The rule lives in the lifecycle module, not here: this is the adapter that
+   * loads the Booking, applies the action, stores the patch and appends the
+   * Activity log entries the action owes. A refused action stores nothing and
+   * logs nothing, so a Booking can never change state unlogged.
+   */
+  async transition(id: string, action: BookingAction, actor: Actor): Promise<ActionAccepted | ActionRefused> {
+    const booking = await this.get(id)
+    if (!booking) return { ok: false, reason: 'No Booking with that id.' }
+
+    const result = applyAction(booking, action, actor)
+    if (!result.ok) return result
+
+    // The action logged this change itself, so the write must not log it again:
+    // one entry per state change, from the thing that made it.
+    await writePatch(id, result.patch)
+    await activityLogDB.append(result.entries)
+    return result
+  },
+
+  /**
+   * Write a patch to a stored Booking.
+   *
+   * Status changes made this way bypass the lifecycle's own rules, but they are
+   * never bypass-able *and* silent: the log entry is written here, by the change
+   * itself, so no surface can move a Booking without a trace (spec #9).
+   * `transition()` is the door that checks the rules as well.
+   */
+  async update(id: string, patch: Partial<Booking>, by?: Actor): Promise<void> {
+    const before = await this.get(id)
+    await writePatch(id, patch)
+    await logStatusChange(id, before, patch, by)
   },
 
   async remove(id: string): Promise<void> {

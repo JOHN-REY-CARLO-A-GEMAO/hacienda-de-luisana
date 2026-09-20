@@ -2,9 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
+import { ensureGuestUid } from '../lib/guestAuth'
+import type { Booking } from '../lib/storage'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
+import { HoldCountdown } from '../components/Booking/HoldCountdown'
+import { KycUpload } from '../components/Booking/KycUpload'
 
 type FormState = {
   check_in: string
@@ -45,6 +49,10 @@ export function BookingPage() {
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [submittedRef, setSubmittedRef] = useState<string>('')
   const [submittedId, setSubmittedId] = useState<string>('')
+  const [submittedBooking, setSubmittedBooking] = useState<Booking | null>(null)
+  // G2: availability is checked by the system before the Guest commits, not
+  // only in the Host's head at approval time (ticket #12).
+  const [availability, setAvailability] = useState<{ available: boolean; heldBy: number } | null>(null)
 
   useEffect(() => {
     if (status === 'success') window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -54,6 +62,7 @@ export function BookingPage() {
     () => ACCOMMODATIONS.find((a) => a.id === form.accommodation),
     [form.accommodation],
   )
+
 
   const nights = useMemo(() => {
     if (!form.check_in || !form.check_out) return 0
@@ -67,6 +76,35 @@ export function BookingPage() {
     if (!selectedAcc?.price || !nights) return null
     return selectedAcc.price * nights
   }, [selectedAcc, nights])
+
+  useEffect(() => {
+    if (!form.check_in || !form.check_out || !form.accommodation) {
+      setAvailability(null)
+      return
+    }
+    if (nights <= 0) {
+      setAvailability(null)
+      return
+    }
+    let alive = true
+    cloudBookingsDB
+      .checkAvailability({
+        accommodation: form.accommodation,
+        check_in: form.check_in,
+        check_out: form.check_out,
+      })
+      .then((result) => {
+        if (alive) setAvailability({ available: result.available, heldBy: result.conflicts.length })
+      })
+      .catch(() => {
+        // An availability read that fails must not strand the Guest: the Host's
+        // approval re-check is still the last line of defence (ADR-0002).
+        if (alive) setAvailability(null)
+      })
+    return () => {
+      alive = false
+    }
+  }, [form.check_in, form.check_out, form.accommodation, nights])
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -94,6 +132,13 @@ export function BookingPage() {
     setStatus('submitting')
     setErrorMsg('')
     try {
+      // firestore.rules lets a Guest change their own Booking only when the
+      // document already carries their uid, and `uid` is not among the keys a
+      // Guest may add afterwards — so the anonymous identity is attached here, at
+      // creation, exactly as the mobile app does. Without Firebase, or with
+      // Anonymous sign-in disabled, the booking still goes through and the Guest
+      // is told at upload time what that costs them.
+      const uid = (await ensureGuestUid()) ?? undefined
       // Use cloud-aware service: Firestore if configured, else localStorage
       const b = await cloudBookingsDB.add({
         guest_name: form.name.trim(),
@@ -104,11 +149,13 @@ export function BookingPage() {
         guests: Number(form.guests),
         accommodation: form.accommodation,
         special_requests: form.special_requests.trim(),
+        ...(uid ? { uid } : {}),
       })
       // Small UX delay
       await new Promise((r) => setTimeout(r, 400))
       setSubmittedId(b.id)
       setSubmittedRef(b.id.slice(0, 8).toUpperCase())
+      setSubmittedBooking(b)
       setStatus('success')
     } catch (err: any) {
       console.error('[Booking] failed', err)
@@ -122,6 +169,7 @@ export function BookingPage() {
       <SuccessScreen
         bookingId={submittedId}
         reference={submittedRef}
+        booking={submittedBooking}
         isCloud={cloudBookingsDB.isCloud}
         checkIn={form.check_in}
         checkOut={form.check_out}
@@ -131,6 +179,7 @@ export function BookingPage() {
           setStatus('idle')
           setSubmittedRef('')
           setSubmittedId('')
+          setSubmittedBooking(null)
           setForm((f) => ({ ...f, name: '', phone: '', email: '', special_requests: '' }))
         }}
       />
@@ -264,10 +313,21 @@ export function BookingPage() {
               </div>
             </div>
 
+            {availability && !availability.available && (
+              <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-900 leading-relaxed">
+                <strong>Those dates are already held.</strong>{' '}
+                {availability.heldBy === 1
+                  ? 'Another Booking is holding them'
+                  : `${availability.heldBy} Bookings are holding them`}{' '}
+                — a hold lasts 24 hours while the host reviews, so pick different dates and your request
+                will go straight through.
+              </div>
+            )}
+
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={status === 'submitting'}
+                disabled={status === 'submitting' || (availability !== null && !availability.available)}
                 className="btn-primary w-full sm:w-auto disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {status === 'submitting' ? 'Sending…' : 'Send Booking Request'}
@@ -310,7 +370,7 @@ export function BookingPage() {
                           <div className="text-[11px] text-forest-700/60">{nights} night{nights > 1 ? 's' : ''} · placeholder rate</div>
                         </>
                       ) : (
-                        <div className="text-sm text-forest-800/70">Confirmed with host</div>
+                        <div className="text-sm text-forest-800/70">Quoted by the host</div>
                       )}
                     </div>
                   </div>
@@ -373,6 +433,7 @@ function SummaryRow({ icon: Icon, label, value }: { icon: any; label: string; va
 function SuccessScreen({
   bookingId,
   reference,
+  booking,
   onNew,
   isCloud,
   checkIn,
@@ -382,6 +443,7 @@ function SuccessScreen({
 }: {
   bookingId: string
   reference: string
+  booking: Booking | null
   onNew: () => void
   isCloud: boolean
   checkIn?: string
@@ -444,6 +506,19 @@ function SuccessScreen({
           <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-forest-50 border border-forest-100 text-forest-800 px-4 py-2 text-xs">
             Reference Number: <span className="font-mono font-bold text-forest-900">{reference}</span>
           </div>
+
+          {booking && (
+            <div className="mt-6 text-left">
+              <HoldCountdown booking={booking} />
+            </div>
+          )}
+
+          {/* Step 2 — the ID goes with the request, not in a separate visit (#13) */}
+          {booking && (
+            <div className="mt-3 text-left">
+              <KycUpload booking={booking} />
+            </div>
+          )}
 
           {checkIn && checkOut && (
             <div className="mt-6 rounded-2xl bg-cream-50 border border-forest-900/5 p-4 text-left grid sm:grid-cols-3 gap-3 text-xs">
