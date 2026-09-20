@@ -36,7 +36,7 @@ The Booking's position in the lifecycle: Pending → KYC Submitted → Approved 
 _Avoid_: Confirmed (retired; the paid state is Reserved), "booking state"
 
 **Date hold**:
-The claim a Booking places on its dates while it waits for review; it lasts 24 hours and expires automatically if nobody acts.
+The claim a Booking places on its dates. It counts down 24 hours while the Booking waits for review, and becomes firm when the Host approves; from there only a terminal status releases the dates.
 _Avoid_: TTL, lock, block, reservation
 
 **Expired**:

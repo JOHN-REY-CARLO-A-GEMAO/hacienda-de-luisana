@@ -3,30 +3,31 @@
 // Hacienda de LuisAna
 // ----------------------------------------------------------------------------
 
-export type BookingStatus = 'Pending' | 'Confirmed' | 'Cancelled' | 'Completed'
+// The canonical Booking vocabulary lives in the lifecycle module; this store is
+// an adapter at that seam, so it re-exports rather than redefining it.
+// `Confirmed` is retired: a stored Confirmed Booking reads as `Reserved`.
+export type { BookingStatus } from './booking'
+export type { KycStatus } from './booking'
 
-export type KycStatus = 'required' | 'submitted' | 'approved' | 'rejected'
+import { normalizeStatus } from './booking'
+import type { ActivityLogEntry, BookingState, BookingStatus, KycStatus } from './booking'
 
-export type Booking = {
-  id: string
+/**
+ * A Booking as stored.
+ *
+ * Everything the lifecycle module needs to reason about a Booking is here, so a
+ * stored Booking can be handed straight to `applyAction` with no translation.
+ */
+export type Booking = BookingState & {
   guest_name: string
   phone: string
   email: string
-  check_in: string // ISO YYYY-MM-DD
-  check_out: string // ISO YYYY-MM-DD
   guests: number
-  accommodation: string // Accommodation.id or 'other'
   special_requests: string
-  status: BookingStatus
   created_at: string // ISO
-  // KYC verification
-  ref_id?: string
   uid?: string
   source?: string
-  kyc_status?: KycStatus
-  kyc_id_url?: string
   kyc_receipt_url?: string
-  kyc_reject_reason?: string
   eta_share_url?: string
   // Booker live location sharing
   pickup_lat?: number
@@ -41,6 +42,7 @@ export type Booking = {
 }
 
 const KEY = 'hdl:bookings'
+const ACTIVITY_KEY = 'hdl:activity'
 
 /** Calculate nights between two dates */
 export function calculateNights(checkIn: string, checkOut: string): number {
@@ -110,7 +112,7 @@ function generateSampleBookings(): Booking[] {
       guests: 6,
       accommodation: 'main-house',
       special_requests: 'Celebrating 10th anniversary with family. Requesting early arrival if possible.',
-      status: 'Confirmed',
+      status: 'Reserved',
       created_at: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
       ref_id: 'HDL-7821',
       kyc_status: 'approved',
@@ -203,9 +205,59 @@ function writeAll(list: Booking[]) {
   window.dispatchEvent(new CustomEvent('hdl:bookings-updated'))
 }
 
+/**
+ * The Activity log, in local persistence.
+ *
+ * Append-only by construction: the interface offers no edit and no delete, so a
+ * caller cannot rewrite history even by accident (CONTEXT.md § Activity log).
+ * Entries are kept in insertion order, which is the order they happened.
+ */
+export const activityLogStorage = {
+  list(bookingId: string): ActivityLogEntry[] {
+    return readActivity().filter((entry) => entry.booking_id === bookingId)
+  },
+  append(entries: readonly ActivityLogEntry[]): void {
+    if (entries.length === 0) return
+    writeActivity([...readActivity(), ...entries])
+  },
+}
+
+function readActivity(): ActivityLogEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(ACTIVITY_KEY)
+    return raw ? (JSON.parse(raw) as ActivityLogEntry[]) : []
+  } catch {
+    return []
+  }
+}
+
+function writeActivity(entries: ActivityLogEntry[]) {
+  window.localStorage.setItem(ACTIVITY_KEY, JSON.stringify(entries))
+  window.dispatchEvent(new CustomEvent('hdl:activity-updated'))
+}
+
+/**
+ * Migrate a stored Booking on read.
+ *
+ * Documents written before the vocabulary change still say `Confirmed`; every
+ * read turns that into `Reserved` instead of rewriting what is stored (spec #9).
+ * Both adapters apply this, so a Guest view and the Host view can never
+ * disagree about the same Booking.
+ */
+function migrateOnRead(booking: Booking): Booking {
+  return { ...booking, status: normalizeStatus(booking.status) }
+}
+
 export const bookingsDB = {
   list(): Booking[] {
-    return readAll().sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    return readAll()
+      .map(migrateOnRead)
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+  },
+  get(id: string): Booking | undefined {
+    const found = readAll().find((b) => b.id === id)
+    return found ? migrateOnRead(found) : undefined
   },
   add(input: Omit<Booking, 'id' | 'status' | 'created_at'>): Booking {
     const b: Booking = {

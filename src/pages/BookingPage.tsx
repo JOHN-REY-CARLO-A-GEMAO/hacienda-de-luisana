@@ -310,7 +310,7 @@ export function BookingPage() {
                           <div className="text-[11px] text-forest-700/60">{nights} night{nights > 1 ? 's' : ''} · placeholder rate</div>
                         </>
                       ) : (
-                        <div className="text-sm text-forest-800/70">Confirmed with host</div>
+                        <div className="text-sm text-forest-800/70">Quoted by the host</div>
                       )}
                     </div>
                   </div>

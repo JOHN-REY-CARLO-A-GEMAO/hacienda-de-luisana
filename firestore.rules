@@ -45,8 +45,9 @@ service cloud.firestore {
     //   eta_share_url) are additive.
     // - READ: owner full + anak (locks-readonly) + guest read-own (anon uid).
     // - UPDATE/DELETE: owner only + guest self-serve below. Anak can NEVER
-    //   confirm/cancel — update/delete exclude isAnak() on purpose.
-    //   Host MUST re-check availability at approve time (G2).
+    //   approve/cancel — update/delete exclude isAnak() on purpose.
+    //   Host MUST re-check availability at approve time (G2), and the system
+    //   re-checks it for them: see src/lib/booking (forApproval).
     match /bookings/{bookingId} {
       allow create: if true
         && request.resource.data.keys().hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at'])
@@ -61,12 +62,32 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isSignedIn()
           && resource.data.get('uid', '') == request.auth.uid
-          && resource.data.status == 'Pending'
-          && request.resource.data.status in ['Pending', 'Cancelled']
+          && resource.data.status in ['Pending', 'KYC Submitted']
+          // A Guest may withdraw, upload or resend their ID and payment proof,
+          // and choose a payment plan. They may never approve or verify
+          // anything themselves (ADR-0001: money moves only after the Host).
+          && request.resource.data.status in ['Pending', 'KYC Submitted', 'Payment Pending', 'Cancelled']
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['status', 'kyc_status', 'kyc_id_url', 'kyc_receipt_url', 'eta_share_url']));
+            .hasOnly(['status', 'kyc_status', 'kyc_id_url', 'kyc_receipt_url', 'kyc_reject_reason',
+                      'eta_share_url', 'payment_plan', 'payment_status', 'payment_proof_url',
+                      'amount_claimed', 'stay_total', 'amount_due', 'security_deposit',
+                      'balance_due', 'cancellation_reason', 'hold_expires_at']));
 
       allow delete: if isAdmin();
+
+      // Activity log (spec #9, ticket #11): the append-only record of every
+      // state change, with the actor and timestamp that made it.
+      // - CREATE: anyone who may change the Booking, with the entry shape.
+      // - READ: owner + anak + the Guest it belongs to.
+      // - UPDATE/DELETE: nobody. Not the owner. An audit record that can be
+      //   edited is not an audit record (CONTEXT.md § Activity log).
+      match /activity/{entryId} {
+        allow create: if request.resource.data.keys().hasAll(
+            ['booking_id', 'action', 'from_status', 'to_status', 'actor', 'actor_id', 'at'])
+          && request.resource.data.booking_id == bookingId;
+        allow read: if isAdmin() || isAnak() || isOwnDoc();
+        allow update, delete: if false;
+      }
     }
 
     // Smart-lock access logs (P4 Central DB sync target).

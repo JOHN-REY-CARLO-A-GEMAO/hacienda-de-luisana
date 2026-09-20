@@ -23,7 +23,7 @@ import {
 import { useAuth } from '../hooks/useAuth'
 import { getFirebaseStatus } from '../lib/firebase'
 
-const STATUSES: BookingStatus[] = ['Pending', 'Confirmed', 'Cancelled', 'Completed']
+const STATUSES: BookingStatus[] = ['Pending', 'Reserved', 'Cancelled', 'Completed']
 
 function fmtDate(iso: string) {
   if (!iso) return '—'
@@ -67,7 +67,7 @@ function findConflicts(items: Booking[], booking: Booking) {
     (b) =>
       b.id !== booking.id &&
       b.accommodation === booking.accommodation &&
-      (b.status === 'Pending' || b.status === 'Confirmed') &&
+      (b.status === 'Pending' || b.status === 'Reserved') &&
       datesOverlap(b.check_in, b.check_out, booking.check_in, booking.check_out),
   )
 }
@@ -150,7 +150,7 @@ export function AdminPage() {
   const handleSimulateAction = async (doorId: string, actionType: 'unlock' | 'lock' | 'denied' | 'master') => {
     setIsSimulating(true)
     const door = DOORS.find((d) => d.id === doorId) || DOORS[0]
-    const sampleGuest = bookings.find((b) => b.status === 'Confirmed') || bookings[0]
+    const sampleGuest = bookings.find((b) => b.status === 'Reserved') || bookings[0]
     const guestName = sampleGuest?.guest_name || 'Bisita (Live Booker)'
     const refId = sampleGuest?.ref_id || 'HDL-DEMO'
 
@@ -800,7 +800,7 @@ export function AdminPage() {
                               className={`text-[10px] uppercase tracking-eyebrow px-2.5 py-1 rounded-full font-bold border ${
                                 b.status === 'Pending'
                                   ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                  : b.status === 'Confirmed'
+                                  : b.status === 'Reserved'
                                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                   : b.status === 'Completed'
                                   ? 'bg-forest-50 text-forest-800 border-forest-200'
@@ -822,7 +822,7 @@ export function AdminPage() {
                                 <button
                                   onClick={() => {
                                     if (confirmWithRecheck(b)) {
-                                      handleUpdateBooking(b.id, { status: 'Confirmed' })
+                                      handleUpdateBooking(b.id, { status: 'Reserved' })
                                     }
                                   }}
                                   disabled={updatingId === b.id}
@@ -878,9 +878,9 @@ export function AdminPage() {
               </div>
 
               <div className="rounded-3xl p-5 bg-emerald-700 text-white shadow-card">
-                <div className="text-[10px] uppercase tracking-eyebrow text-emerald-200">Confirmed Stays</div>
+                <div className="text-[10px] uppercase tracking-eyebrow text-emerald-200">Reserved Stays</div>
                 <div className="mt-2 font-serif text-4xl">
-                  {bookings.filter((b) => b.status === 'Confirmed' || b.status === 'Completed').length}
+                  {bookings.filter((b) => b.status === 'Reserved' || b.status === 'Completed').length}
                 </div>
                 <div className="mt-1 text-xs text-emerald-100">Out of {bookings.length} requests</div>
               </div>
@@ -932,7 +932,7 @@ export function AdminPage() {
                         </span>
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            b.status === 'Confirmed'
+                            b.status === 'Reserved'
                               ? 'bg-emerald-100 text-emerald-800'
                               : b.status === 'Pending'
                               ? 'bg-amber-100 text-amber-800'
@@ -1015,7 +1015,7 @@ export function AdminPage() {
               {viewingBooking.status === 'Pending' && (
                 <button
                   onClick={() => {
-                    handleUpdateBooking(viewingBooking.id, { status: 'Confirmed' })
+                    handleUpdateBooking(viewingBooking.id, { status: 'Reserved' })
                     setViewingBooking(null)
                   }}
                   className="btn-primary text-xs bg-emerald-700 hover:bg-emerald-800"

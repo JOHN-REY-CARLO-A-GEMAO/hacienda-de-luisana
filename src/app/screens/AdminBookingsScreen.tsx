@@ -51,7 +51,7 @@ export function AdminBookingsScreen() {
   }, [items, statusFilter, durationFilter])
 
   const pendingCount = items.filter((b) => b.status === 'Pending').length
-  const confirmedCount = items.filter((b) => b.status === 'Confirmed').length
+  const reservedCount = items.filter((b) => b.status === 'Reserved').length
 
   const getAccommodationName = (accId: string) => {
     return ACCOMMODATIONS.find((a) => a.id === accId)?.name || (accId === 'other' ? 'Custom Accommodation' : accId)
@@ -86,8 +86,8 @@ export function AdminBookingsScreen() {
           <div className="text-[10px] text-forest-700/60">bago mula sa booker</div>
         </div>
         <div className="bg-white rounded-2xl p-3 border border-forest-900/5 shadow-sm">
-          <div className="text-[10px] uppercase tracking-eyebrow text-emerald-700">Confirmed Stays</div>
-          <div className="font-serif text-2xl text-forest-900 mt-0.5">{confirmedCount}</div>
+          <div className="text-[10px] uppercase tracking-eyebrow text-emerald-700">Reserved Stays</div>
+          <div className="font-serif text-2xl text-forest-900 mt-0.5">{reservedCount}</div>
           <div className="text-[10px] text-forest-700/60">nakareserba na</div>
         </div>
         <div className="col-span-2 sm:col-span-1 bg-forest-900 text-cream-50 rounded-2xl p-3 shadow-sm flex flex-col justify-between">
@@ -103,7 +103,7 @@ export function AdminBookingsScreen() {
 
       {/* Filter Tabs: Status */}
       <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
-        {(['all', 'Pending', 'Confirmed', 'Completed', 'Cancelled'] as const).map((s) => (
+        {(['all', 'Pending', 'Reserved', 'Completed', 'Cancelled'] as const).map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -198,7 +198,7 @@ export function AdminBookingsScreen() {
                     className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
                       b.status === 'Pending'
                         ? 'bg-amber-50 text-amber-800 border-amber-200'
-                        : b.status === 'Confirmed'
+                        : b.status === 'Reserved'
                         ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                         : b.status === 'Completed'
                         ? 'bg-olive-50 text-olive-800 border-olive-200'
@@ -232,7 +232,7 @@ export function AdminBookingsScreen() {
                   </div>
 
                   {/* Active Stay Timer Progress if currently staying */}
-                  {b.status === 'Confirmed' && stayProgress.isCurrentStay && (
+                  {b.status === 'Reserved' && stayProgress.isCurrentStay && (
                     <div className="mt-2.5 pt-2 border-t border-forest-900/5">
                       <div className="flex items-center justify-between text-[11px] text-emerald-800 font-medium">
                         <span>🟢 Kasalukuyang Nanunuluyan (Day {stayProgress.dayNumber} of {stayProgress.totalDays})</span>
@@ -298,7 +298,7 @@ export function AdminBookingsScreen() {
                     {b.status === 'Pending' && (
                       <button
                         disabled={busy === b.id}
-                        onClick={() => update(b.id, { status: 'Confirmed' }, `Kumpirmado na ang booking ni ${b.guest_name}!`)}
+                        onClick={() => update(b.id, { status: 'Reserved' }, `Kumpirmado na ang booking ni ${b.guest_name}!`)}
                         className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm flex items-center gap-1.5 disabled:opacity-50 transition"
                       >
                         <Check size={14} />
@@ -307,7 +307,7 @@ export function AdminBookingsScreen() {
                     )}
 
                     {/* Mark as Completed */}
-                    {b.status === 'Confirmed' && (
+                    {b.status === 'Reserved' && (
                       <button
                         disabled={busy === b.id}
                         onClick={() => update(b.id, { status: 'Completed' }, `Nai-tag bilang Completed ang stay ni ${b.guest_name}.`)}
@@ -434,7 +434,7 @@ export function AdminBookingsScreen() {
               {selectedBooking.status === 'Pending' && (
                 <button
                   disabled={busy === selectedBooking.id}
-                  onClick={() => update(selectedBooking.id, { status: 'Confirmed' }, 'Kumpirmado na ang booking!')}
+                  onClick={() => update(selectedBooking.id, { status: 'Reserved' }, 'Kumpirmado na ang booking!')}
                   className="btn-primary text-xs bg-emerald-700 hover:bg-emerald-800"
                 >
                   Kumpirmahin ang Booking (Confirm)
