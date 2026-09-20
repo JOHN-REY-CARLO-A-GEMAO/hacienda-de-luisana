@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
 import { formatStayDuration, calculateNights, getStayProgress, type Booking, type BookingStatus } from '../../lib/storage'
@@ -6,6 +6,7 @@ import { hasPickup, pickupAge, getProximityStatus } from '../../lib/tracking'
 import { ACCOMMODATIONS } from '../../config/site'
 import { Screen, ScreenTitle } from '../components/Screen'
 import { BookingHistory } from '../../components/Booking/BookingHistory'
+import { effectiveStatus } from '../../lib/booking'
 import { Check, Close, Clock, MapPin, Phone, Users, Bed, Sparkle } from '../../lib/icons'
 
 export function AdminBookingsScreen() {
@@ -15,6 +16,21 @@ export function AdminBookingsScreen() {
   const [durationFilter, setDurationFilter] = useState<'all' | '1-night' | '2-nights' | '3-plus'>('all')
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [notification, setNotification] = useState<string | null>(null)
+
+  // A Date hold that has run out is written down the first time a Host surface
+  // sees it, so the Activity log says when the expiry happened instead of only
+  // ever showing a Booking that reads as Expired (ticket #12). Reading never
+  // rewrites anything (ADR-0002); this is the one place that records it, and it
+  // refuses to do it twice.
+  const expiryAttempted = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    for (const b of items) {
+      if (expiryAttempted.current.has(b.id)) continue
+      if (effectiveStatus(b) !== 'Expired') continue
+      expiryAttempted.current.add(b.id)
+      void cloudBookingsDB.materialiseExpiry(b.id)
+    }
+  }, [items])
 
   useEffect(() => {
     const unsub = cloudBookingsDB.subscribe((list) => {
@@ -42,7 +58,9 @@ export function AdminBookingsScreen() {
   // Filter items
   const filtered = useMemo(() => {
     return items.filter((b) => {
-      if (statusFilter !== 'all' && b.status !== statusFilter) return false
+      // Filtering answers the same question the badge does, or the Host filters
+      // to "Expired" and gets nothing back.
+      if (statusFilter !== 'all' && effectiveStatus(b) !== statusFilter) return false
       const nights = calculateNights(b.check_in, b.check_out)
       if (durationFilter === '1-night' && nights !== 1) return false
       if (durationFilter === '2-nights' && nights !== 2) return false
@@ -51,8 +69,8 @@ export function AdminBookingsScreen() {
     })
   }, [items, statusFilter, durationFilter])
 
-  const pendingCount = items.filter((b) => b.status === 'Pending').length
-  const reservedCount = items.filter((b) => b.status === 'Reserved').length
+  const pendingCount = items.filter((b) => effectiveStatus(b) === 'Pending').length
+  const reservedCount = items.filter((b) => effectiveStatus(b) === 'Reserved').length
 
   const getAccommodationName = (accId: string) => {
     return ACCOMMODATIONS.find((a) => a.id === accId)?.name || (accId === 'other' ? 'Custom Accommodation' : accId)
@@ -104,7 +122,7 @@ export function AdminBookingsScreen() {
 
       {/* Filter Tabs: Status */}
       <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
-        {(['all', 'Pending', 'Reserved', 'Completed', 'Cancelled'] as const).map((s) => (
+        {(['all', 'Pending', 'Reserved', 'Completed', 'Cancelled', 'Expired'] as const).map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -169,7 +187,10 @@ export function AdminBookingsScreen() {
             const stayProgress = getStayProgress(b.check_in, b.check_out)
             const nights = calculateNights(b.check_in, b.check_out)
             const prox = b.distance_km ? getProximityStatus(b.distance_km) : null
-            const isPending = b.status === 'Pending'
+            // ADR-0002: the Host reads the same status the Guest does, so a hold
+            // that ran out shows as Expired here without anybody writing it.
+            const readsAs = effectiveStatus(b)
+            const isPending = readsAs === 'Pending'
 
             return (
               <div
@@ -233,7 +254,7 @@ export function AdminBookingsScreen() {
                   </div>
 
                   {/* Active Stay Timer Progress if currently staying */}
-                  {b.status === 'Reserved' && stayProgress.isCurrentStay && (
+                  {readsAs === 'Reserved' && stayProgress.isCurrentStay && (
                     <div className="mt-2.5 pt-2 border-t border-forest-900/5">
                       <div className="flex items-center justify-between text-[11px] text-emerald-800 font-medium">
                         <span>🟢 Kasalukuyang Nanunuluyan (Day {stayProgress.dayNumber} of {stayProgress.totalDays})</span>
@@ -296,7 +317,7 @@ export function AdminBookingsScreen() {
                 <div className="mt-4 pt-3 border-t border-forest-900/5 flex flex-wrap items-center gap-2 justify-between">
                   <div className="flex items-center gap-2">
                     {/* Confirm Booking Button */}
-                    {b.status === 'Pending' && (
+                    {isPending && (
                       <button
                         disabled={busy === b.id}
                         onClick={() => update(b.id, { status: 'Reserved' }, `Kumpirmado na ang booking ni ${b.guest_name}!`)}
@@ -308,7 +329,7 @@ export function AdminBookingsScreen() {
                     )}
 
                     {/* Mark as Completed */}
-                    {b.status === 'Reserved' && (
+                    {readsAs === 'Reserved' && (
                       <button
                         disabled={busy === b.id}
                         onClick={() => update(b.id, { status: 'Completed' }, `Nai-tag bilang Completed ang stay ni ${b.guest_name}.`)}
@@ -319,7 +340,7 @@ export function AdminBookingsScreen() {
                     )}
 
                     {/* Cancel / Decline button */}
-                    {b.status !== 'Cancelled' && b.status !== 'Completed' && (
+                    {readsAs !== 'Cancelled' && readsAs !== 'Completed' && readsAs !== 'Expired' && (
                       <button
                         disabled={busy === b.id}
                         onClick={() => update(b.id, { status: 'Cancelled' }, `Nai-cancel ang booking ni ${b.guest_name}.`)}

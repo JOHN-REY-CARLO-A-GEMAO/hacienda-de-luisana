@@ -57,6 +57,8 @@ export {
 
 export { describeActivity, type ActivityLine } from './activity'
 
+export { formatHoldCountdown, unitsForAccommodation, type UnitBearing } from './holds'
+
 export {
   applyAction,
   instantOf,

@@ -6,6 +6,7 @@ import { directionsUrl, hasPickup, pickupAge } from '../lib/tracking'
 import { smartLockDB, DOORS, type SmartLockRecord, type SmartLockAction } from '../lib/smartLockStorage'
 import { ACCOMMODATIONS } from '../config/site'
 import { BookingHistory } from '../components/Booking/BookingHistory'
+import { findDateConflicts, effectiveStatus } from '../lib/booking'
 import {
   Calendar,
   Users,
@@ -59,18 +60,28 @@ function accName(id: string) {
   return ACCOMMODATIONS.find((a) => a.id === id)?.name || (id === 'other' ? 'Other / Ask Us' : id)
 }
 
-function datesOverlap(aIn: string, aOut: string, bIn: string, bOut: string) {
-  return aIn < bOut && bIn < aOut
+/** One read of the rule per row, rather than four. */
+function statusChip(status: ReturnType<typeof effectiveStatus>): string {
+  if (status === 'Reserved') return 'bg-emerald-100 text-emerald-800'
+  if (status === 'Pending') return 'bg-amber-100 text-amber-800'
+  if (status === 'Expired') return 'bg-red-100 text-red-700'
+  return 'bg-cream-100 text-forest-700'
 }
 
+/**
+ * Which stored Bookings are holding this one's dates.
+ *
+ * The lifecycle module's rule, not a local one: ADR-0002's whole cost is that
+ * every surface answering "are these dates free?" must apply the same overlap
+ * rule, and a private copy here had already drifted — it ignored Date holds, so
+ * it warned about a Booking whose hold had run out and stayed quiet about one
+ * that was two minutes from being Approved.
+ *
+ * No unit count is passed because this is the Host's warning, not the approval
+ * gate: they want to see everything holding the dates before they decide.
+ */
 function findConflicts(items: Booking[], booking: Booking) {
-  return items.filter(
-    (b) =>
-      b.id !== booking.id &&
-      b.accommodation === booking.accommodation &&
-      (b.status === 'Pending' || b.status === 'Reserved') &&
-      datesOverlap(b.check_in, b.check_out, booking.check_in, booking.check_out),
-  )
+  return findDateConflicts(booking, items, { excludeId: booking.id })
 }
 
 export function AdminPage() {
@@ -933,14 +944,10 @@ export function AdminPage() {
                         </span>
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            b.status === 'Reserved'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : b.status === 'Pending'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-cream-100 text-forest-700'
+                            statusChip(effectiveStatus(b))
                           }`}
                         >
-                          {b.status}
+                          {effectiveStatus(b)}
                         </span>
                       </div>
                     </div>

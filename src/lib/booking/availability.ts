@@ -122,7 +122,7 @@ export function isHoldExpirable(status: BookingStatus): boolean {
  * nothing in the backend ever releases a hold (ADR-0002), so an absent expiry
  * must not become a permanent claim on the dates.
  */
-export function isHoldExpired(booking: DateHoldFields, now: string | number | Date): boolean {
+export function isHoldExpired(booking: DateHoldFields, now: string | number | Date = Date.now()): boolean {
   const status = normalizeStatus(booking.status)
   if (!isHoldExpirable(status)) return false
   if (!booking.hold_expires_at) return true
@@ -133,7 +133,7 @@ export function isHoldExpired(booking: DateHoldFields, now: string | number | Da
  * Milliseconds of Date hold a Guest has left, as at `now` — never negative.
  * A Booking that is no longer waiting for review has no hold counting down.
  */
-export function holdMsRemaining(booking: DateHoldFields, now: string | number | Date): number {
+export function holdMsRemaining(booking: DateHoldFields, now: string | number | Date = Date.now()): number {
   const status = normalizeStatus(booking.status)
   if (!isHoldExpirable(status) || !booking.hold_expires_at) return 0
   return Math.max(0, parseInstant(booking.hold_expires_at) - parseInstant(now))
@@ -148,7 +148,7 @@ export function holdMsRemaining(booking: DateHoldFields, now: string | number | 
  * no two surfaces can disagree about an expired hold. The stored document is
  * not rewritten by reading it.
  */
-export function effectiveStatus(booking: DateHoldFields, now: string | number | Date): BookingStatus {
+export function effectiveStatus(booking: DateHoldFields, now: string | number | Date = Date.now()): BookingStatus {
   const status = normalizeStatus(booking.status)
   return isHoldExpired(booking, now) ? 'Expired' : status
 }
@@ -201,11 +201,11 @@ export type AvailabilityOptions = {
  * already taken. Conflicts are returned in check-in order so a caller can show
  * the Guest the nearest clash first.
  */
-export function findDateConflicts(
+export function findDateConflicts<T extends HoldBearingBooking>(
   request: DateRange,
-  bookings: readonly HoldBearingBooking[],
+  bookings: readonly T[],
   options: AvailabilityOptions = {},
-): HoldBearingBooking[] {
+): T[] {
   const { unitsAvailable, excludeId, forApproval } = options
   const now = options.now ?? Date.now()
   if (!unitsAvailable || unitsAvailable < 1) return []
@@ -227,9 +227,9 @@ export function findDateConflicts(
 }
 
 /** Are these dates free, by the same rule `findDateConflicts` applies? */
-export function isAvailable(
+export function isAvailable<T extends HoldBearingBooking>(
   request: DateRange,
-  bookings: readonly HoldBearingBooking[],
+  bookings: readonly T[],
   options: AvailabilityOptions = {},
 ): boolean {
   return findDateConflicts(request, bookings, options).length === 0

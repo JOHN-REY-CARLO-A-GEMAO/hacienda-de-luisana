@@ -24,16 +24,25 @@ import {
 } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
 import { activityLogStorage, bookingsDB, type Booking } from './storage'
+import { ACCOMMODATIONS } from '../config/site'
 import {
   applyAction,
+  effectiveStatus,
+  findDateConflicts,
+  formatHoldCountdown,
+  holdMsRemaining,
   instantOf,
   normalizeStatus,
+  unitsForAccommodation,
   DATE_HOLD_MS,
   type ActionAccepted,
   type ActionRefused,
   type ActivityLogEntry,
   type Actor,
   type BookingAction,
+  type BookingStatus,
+  type DateRange,
+  type HoldBearingBooking,
 } from './booking'
 
 const COLLECTION = 'bookings'
@@ -338,6 +347,63 @@ export const cloudBookingsDB = {
       activityLogStorage.append([submissionEntry(booking.id, actor ?? { actor: 'guest', actor_id: 'guest' }, at)])
       return booking
     }
+  },
+
+  /**
+   * The status this Booking reads as, right now.
+   *
+   * The read-time rule from ADR-0002, applied by every surface instead of each
+   * one guessing: a Booking whose Date hold ran out reads as Expired whether the
+   * Guest is looking or the Host is, and nothing has to be written for that to be
+   * true.
+   */
+  readStatus(booking: Booking, now: string | number | Date = Date.now()): BookingStatus {
+    return effectiveStatus(booking, now)
+  },
+
+  /** Milliseconds of Date hold a Guest has left; zero once it has run out. */
+  holdRemaining(booking: Booking, now: string | number | Date = Date.now()): number {
+    return holdMsRemaining(booking, now)
+  },
+
+  /** The Guest-facing wording for the hold they have left. */
+  holdCountdown(booking: Booking, now: string | number | Date = Date.now()): string {
+    return formatHoldCountdown(holdMsRemaining(booking, now))
+  },
+
+  /**
+   * Are these dates free for a Guest to ask for?
+   *
+   * The same rule the Host's approval re-check applies (G2), with the unit count
+   * taken from the published Accommodations, so a Guest is never offered dates
+   * that are already held and the Host is never asked to refuse them by hand.
+   */
+  async checkAvailability(
+    request: DateRange,
+    options: { now?: string | number | Date } = {},
+  ): Promise<{ available: boolean; conflicts: HoldBearingBooking[] }> {
+    const now = options.now ?? Date.now()
+    const bookings = await this.list()
+    const conflicts = findDateConflicts(request, bookings, {
+      unitsAvailable: unitsForAccommodation(request.accommodation, ACCOMMODATIONS),
+      now,
+    })
+    return { available: conflicts.length === 0, conflicts }
+  },
+
+  /**
+   * Record that a Date hold has run out.
+   *
+   * Reading a Booking never rewrites it (ADR-0002), so the stored document keeps
+   * saying `Pending` while every surface reads `Expired`. This is the one place
+   * that writes the fact down, and it refuses to do it twice: the expiry
+   * happened once, at the instant the hold ran out, and the Activity log should
+   * say so rather than say it every time somebody looked.
+   */
+  async materialiseExpiry(id: string, now: string | number | Date = Date.now()): Promise<ActionAccepted | ActionRefused> {
+    // A hold expiring is never anybody's decision, so the actor is not a
+    // parameter: it is the system, every time.
+    return this.transition(id, { type: 'Expire' }, { actor: 'system', actor_id: 'system', actor_name: 'System', now })
   },
 
   /**

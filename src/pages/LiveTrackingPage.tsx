@@ -16,6 +16,7 @@ import {
   HOTEL_LNG,
 } from '../lib/tracking'
 import { formatStayDuration } from '../lib/storage'
+import { HoldCountdown } from '../components/Booking/HoldCountdown'
 import { MapPin, Navigation, Phone, Messenger, Copy, Check, Sparkle, ArrowRight, Clock } from '../lib/icons'
 
 export function LiveTrackingPage() {
@@ -206,6 +207,13 @@ export function LiveTrackingPage() {
             </div>
           )}
         </div>
+
+        {/* Date hold — how long the Guest has left for the Host to review (#12) */}
+        {booking && (
+          <div className="mt-4">
+            <HoldCountdown booking={booking} />
+          </div>
+        )}
 
         {/* Live Status Banner */}
         <div className="mt-6 bg-white rounded-3xl border border-forest-900/5 shadow-card p-6">
