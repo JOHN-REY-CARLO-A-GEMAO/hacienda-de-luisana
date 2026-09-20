@@ -75,6 +75,10 @@ The moment the first Credential use succeeds on the check-in day; it is what mov
 Identity verification: the government ID a Guest uploads and the Host reviews before approving a Booking.
 _Avoid_: Verification, ID check, eKYC
 
+**Guest identity**:
+The anonymous sign-in a Guest's own Booking and uploaded documents are keyed to, attached when the Booking is created. A Booking created without one cannot be claimed later (ADR-0004).
+_Avoid_: User account, login, session
+
 **Activity log**:
 The append-only audit record of every state change in the system, with a timestamp and the actor who made it.
 _Avoid_: Audit trail, system log, history (per-Booking history is a view over this log)

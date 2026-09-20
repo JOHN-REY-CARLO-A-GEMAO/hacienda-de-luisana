@@ -6,6 +6,8 @@ import { hasPickup, pickupAge, getProximityStatus } from '../../lib/tracking'
 import { ACCOMMODATIONS } from '../../config/site'
 import { Screen, ScreenTitle } from '../components/Screen'
 import { BookingHistory } from '../../components/Booking/BookingHistory'
+import { BookingReview } from '../../components/Booking/BookingReview'
+import { useAuth } from '../../hooks/useAuth'
 import { effectiveStatus } from '../../lib/booking'
 import { Check, Close, Clock, MapPin, Phone, Users, Bed, Sparkle } from '../../lib/icons'
 
@@ -16,6 +18,15 @@ export function AdminBookingsScreen() {
   const [durationFilter, setDurationFilter] = useState<'all' | '1-night' | '2-nights' | '3-plus'>('all')
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [notification, setNotification] = useState<string | null>(null)
+  const { user } = useAuth()
+
+  // Every decision here is attributed: the Activity log is worth nothing
+  // without knowing which Host made it (ticket #11).
+  const hostActor = {
+    actor: 'host' as const,
+    actor_id: user?.uid ?? 'host',
+    actor_name: user?.email ?? 'Host',
+  }
 
   // A Date hold that has run out is written down the first time a Host surface
   // sees it, so the Activity log says when the expiry happened instead of only
@@ -56,6 +67,12 @@ export function AdminBookingsScreen() {
   }
 
   // Filter items
+  // The modal shows what is stored now, not the card the Host tapped: approving
+  // re-checks availability and can move this Booking underneath them.
+  const viewedBooking = selectedBooking
+    ? items.find((b) => b.id === selectedBooking.id) ?? selectedBooking
+    : null
+
   const filtered = useMemo(() => {
     return items.filter((b) => {
       // Filtering answers the same question the badge does, or the Host filters
@@ -316,15 +333,14 @@ export function AdminBookingsScreen() {
                 {/* Booking Confirmation Actions ("dito din papasok ang confirmation for the booking") */}
                 <div className="mt-4 pt-3 border-t border-forest-900/5 flex flex-wrap items-center gap-2 justify-between">
                   <div className="flex items-center gap-2">
-                    {/* Confirm Booking Button */}
-                    {isPending && (
+                    {/* Review — approval re-checks the dates and can refuse (#13) */}
+                    {['Pending', 'KYC Submitted'].includes(readsAs) && (
                       <button
-                        disabled={busy === b.id}
-                        onClick={() => update(b.id, { status: 'Reserved' }, `Kumpirmado na ang booking ni ${b.guest_name}!`)}
-                        className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm flex items-center gap-1.5 disabled:opacity-50 transition"
+                        onClick={() => setSelectedBooking(b)}
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm flex items-center gap-1.5 transition"
                       >
                         <Check size={14} />
-                        Kumpirmahin (Confirm)
+                        I-review (Review)
                       </button>
                     )}
 
@@ -374,7 +390,7 @@ export function AdminBookingsScreen() {
       )}
 
       {/* Booker Full Details Modal */}
-      {selectedBooking && (
+      {viewedBooking && (
         <div
           className="fixed inset-0 z-50 bg-forest-950/70 flex items-center justify-center p-4 backdrop-blur-xs"
           onClick={() => setSelectedBooking(null)}
@@ -391,8 +407,8 @@ export function AdminBookingsScreen() {
             </button>
 
             <div className="eyebrow">Booker Profile & Stay Information</div>
-            <h3 className="font-serif text-2xl text-forest-900 mt-1">{selectedBooking.guest_name}</h3>
-            <div className="text-xs text-forest-700/70">{selectedBooking.phone} · {selectedBooking.email}</div>
+            <h3 className="font-serif text-2xl text-forest-900 mt-1">{viewedBooking.guest_name}</h3>
+            <div className="text-xs text-forest-700/70">{viewedBooking.phone} · {viewedBooking.email}</div>
 
             {/* Stay Duration Box */}
             <div className="mt-4 rounded-2xl bg-cream-50 p-4 border border-forest-900/10">
@@ -400,12 +416,12 @@ export function AdminBookingsScreen() {
                 Tagal ng Pananatili (Length of Stay)
               </div>
               <div className="font-serif text-xl text-forest-900 mt-0.5">
-                {formatStayDuration(selectedBooking.check_in, selectedBooking.check_out)}
+                {formatStayDuration(viewedBooking.check_in, viewedBooking.check_out)}
               </div>
               <div className="mt-2 text-xs text-forest-800 space-y-1">
-                <div>Check-in: <strong>{selectedBooking.check_in} (Standard 2:00 PM)</strong></div>
-                <div>Check-out: <strong>{selectedBooking.check_out} (Standard 12:00 PM)</strong></div>
-                <div>Kabuuang Gabi: <strong>{calculateNights(selectedBooking.check_in, selectedBooking.check_out)} Night(s)</strong></div>
+                <div>Check-in: <strong>{viewedBooking.check_in} (Standard 2:00 PM)</strong></div>
+                <div>Check-out: <strong>{viewedBooking.check_out} (Standard 12:00 PM)</strong></div>
+                <div>Kabuuang Gabi: <strong>{calculateNights(viewedBooking.check_in, viewedBooking.check_out)} Night(s)</strong></div>
               </div>
             </div>
 
@@ -413,20 +429,20 @@ export function AdminBookingsScreen() {
             <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
               <div className="bg-cream-50 rounded-xl p-3">
                 <span className="text-[10px] uppercase tracking-eyebrow text-forest-600 block">Accommodation</span>
-                <span className="font-semibold text-forest-900">{getAccommodationName(selectedBooking.accommodation)}</span>
+                <span className="font-semibold text-forest-900">{getAccommodationName(viewedBooking.accommodation)}</span>
               </div>
               <div className="bg-cream-50 rounded-xl p-3">
                 <span className="text-[10px] uppercase tracking-eyebrow text-forest-600 block">Bilang ng Bisita</span>
-                <span className="font-semibold text-forest-900">{selectedBooking.guests} Guests</span>
+                <span className="font-semibold text-forest-900">{viewedBooking.guests} Guests</span>
               </div>
             </div>
 
             {/* Special Request */}
-            {selectedBooking.special_requests && (
+            {viewedBooking.special_requests && (
               <div className="mt-4">
                 <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Special Request ng Booker:</div>
                 <p className="mt-1 text-xs text-forest-800 bg-cream-50 rounded-xl p-3 leading-relaxed">
-                  {selectedBooking.special_requests}
+                  {viewedBooking.special_requests}
                 </p>
               </div>
             )}
@@ -435,38 +451,34 @@ export function AdminBookingsScreen() {
             <div className="mt-4 rounded-2xl border border-forest-900/10 p-3.5 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">Live Location Sharing</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] ${selectedBooking.is_live_sharing ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-cream-100 text-forest-700'}`}>
-                  {selectedBooking.is_live_sharing ? 'Aktibo / Sharing' : 'Hindi pa nag-share'}
+                <span className={`px-2 py-0.5 rounded-full text-[10px] ${viewedBooking.is_live_sharing ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-cream-100 text-forest-700'}`}>
+                  {viewedBooking.is_live_sharing ? 'Aktibo / Sharing' : 'Hindi pa nag-share'}
                 </span>
               </div>
-              {selectedBooking.pickup_area && (
+              {viewedBooking.pickup_area && (
                 <div className="mt-2 text-forest-900">
-                  Kasalukuyang Area: <strong>{selectedBooking.pickup_area}</strong>
+                  Kasalukuyang Area: <strong>{viewedBooking.pickup_area}</strong>
                 </div>
               )}
-              {selectedBooking.distance_km && (
+              {viewedBooking.distance_km && (
                 <div className="text-forest-800 text-[11px] mt-0.5">
-                  Layo sa Hacienda: <strong>{selectedBooking.distance_km} km</strong> (Tinatayang {selectedBooking.eta_minutes || 10} mins)
+                  Layo sa Hacienda: <strong>{viewedBooking.distance_km} km</strong> (Tinatayang {viewedBooking.eta_minutes || 10} mins)
                 </div>
               )}
             </div>
 
             {/* Activity Log — who changed this, and when (ticket #11) */}
-            <BookingHistory bookingId={selectedBooking.id} />
+            <BookingHistory bookingId={viewedBooking.id} />
+
+            {/* Host review — read the ID, approve or refuse through the lifecycle (#13) */}
+            <div className="mt-6">
+              <BookingReview booking={viewedBooking} bookings={items} actor={hostActor} />
+            </div>
 
             {/* Actions Inside Modal */}
-            <div className="mt-6 pt-4 border-t border-forest-900/10 flex flex-wrap gap-2 justify-end">
-              {selectedBooking.status === 'Pending' && (
-                <button
-                  disabled={busy === selectedBooking.id}
-                  onClick={() => update(selectedBooking.id, { status: 'Reserved' }, 'Kumpirmado na ang booking!')}
-                  className="btn-primary text-xs bg-emerald-700 hover:bg-emerald-800"
-                >
-                  Kumpirmahin ang Booking (Confirm)
-                </button>
-              )}
+            <div className="mt-4 pt-4 border-t border-forest-900/10 flex flex-wrap gap-2 justify-end">
               <a
-                href={`tel:${selectedBooking.phone.replace(/\s+/g, '')}`}
+                href={`tel:${viewedBooking.phone.replace(/\s+/g, '')}`}
                 className="btn-ghost text-xs inline-flex items-center gap-1.5"
               >
                 <Phone size={13} /> Tawagan si Booker

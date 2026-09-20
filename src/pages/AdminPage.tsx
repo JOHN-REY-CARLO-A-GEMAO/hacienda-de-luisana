@@ -6,7 +6,8 @@ import { directionsUrl, hasPickup, pickupAge } from '../lib/tracking'
 import { smartLockDB, DOORS, type SmartLockRecord, type SmartLockAction } from '../lib/smartLockStorage'
 import { ACCOMMODATIONS } from '../config/site'
 import { BookingHistory } from '../components/Booking/BookingHistory'
-import { findDateConflicts, effectiveStatus } from '../lib/booking'
+import { effectiveStatus } from '../lib/booking'
+import { BookingReview } from '../components/Booking/BookingReview'
 import {
   Calendar,
   Users,
@@ -66,22 +67,6 @@ function statusChip(status: ReturnType<typeof effectiveStatus>): string {
   if (status === 'Pending') return 'bg-amber-100 text-amber-800'
   if (status === 'Expired') return 'bg-red-100 text-red-700'
   return 'bg-cream-100 text-forest-700'
-}
-
-/**
- * Which stored Bookings are holding this one's dates.
- *
- * The lifecycle module's rule, not a local one: ADR-0002's whole cost is that
- * every surface answering "are these dates free?" must apply the same overlap
- * rule, and a private copy here had already drifted — it ignored Date holds, so
- * it warned about a Booking whose hold had run out and stayed quiet about one
- * that was two minutes from being Approved.
- *
- * No unit count is passed because this is the Host's warning, not the approval
- * gate: they want to see everything holding the dates before they decide.
- */
-function findConflicts(items: Booking[], booking: Booking) {
-  return findDateConflicts(booking, items, { excludeId: booking.id })
 }
 
 export function AdminPage() {
@@ -226,17 +211,6 @@ export function AdminPage() {
     }
   }
 
-  const confirmWithRecheck = (booking: Booking) => {
-    const conflicts = findConflicts(bookings, booking)
-    if (conflicts.length > 0) {
-      const names = conflicts.map((c) => `${c.guest_name} (${c.check_in}→${c.check_out})`).join(', ')
-      return confirm(
-        `Babala: May conflict sa ${conflicts.length} active booking(s): ${names}. Sigurado ka bang i-confirm?`,
-      )
-    }
-    return true
-  }
-
   const handleDeleteBooking = async (id: string) => {
     if (!confirm('I-delete ang booking na ito? Hindi na ito mababawi.')) return
     setUpdatingId(id)
@@ -245,6 +219,18 @@ export function AdminPage() {
     } finally {
       setUpdatingId(null)
     }
+  }
+
+  // The modal must show what is stored now, not the snapshot the Host clicked:
+  // approving re-checks availability and can change this Booking under them.
+  const viewedBooking = viewingBooking
+    ? bookings.find((b) => b.id === viewingBooking.id) ?? viewingBooking
+    : null
+
+  const hostActor = {
+    actor: 'host' as const,
+    actor_id: user?.uid ?? 'host',
+    actor_name: user?.email ?? 'Host',
   }
 
   const firebaseStatus = getFirebaseStatus()
@@ -830,17 +816,12 @@ export function AdminPage() {
                               >
                                 View
                               </button>
-                              {b.status === 'Pending' && (
+                              {['Pending', 'KYC Submitted'].includes(effectiveStatus(b)) && (
                                 <button
-                                  onClick={() => {
-                                    if (confirmWithRecheck(b)) {
-                                      handleUpdateBooking(b.id, { status: 'Reserved' })
-                                    }
-                                  }}
-                                  disabled={updatingId === b.id}
-                                  className="px-2.5 py-1.5 rounded-lg text-xs bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition disabled:opacity-50"
+                                  onClick={() => setViewingBooking(b)}
+                                  className="px-2.5 py-1.5 rounded-lg text-xs bg-emerald-700 hover:bg-emerald-800 text-white font-medium transition"
                                 >
-                                  Confirm
+                                  Review
                                 </button>
                               )}
                               {b.status !== 'Cancelled' && b.status !== 'Completed' && (
@@ -960,7 +941,7 @@ export function AdminPage() {
       </div>
 
       {/* Booking View Modal */}
-      {viewingBooking && (
+      {viewedBooking && (
         <div
           className="fixed inset-0 z-50 bg-forest-950/60 flex items-center justify-center p-4"
           onClick={() => setViewingBooking(null)}
@@ -976,11 +957,11 @@ export function AdminPage() {
               <Close size={18} />
             </button>
             <div className="eyebrow">
-              Request {viewingBooking.ref_id || viewingBooking.id.slice(0, 8).toUpperCase()}
+              Request {viewedBooking.ref_id || viewedBooking.id.slice(0, 8).toUpperCase()}
             </div>
-            <h3 className="font-serif text-3xl text-forest-900 mt-2">{viewingBooking.guest_name}</h3>
+            <h3 className="font-serif text-3xl text-forest-900 mt-2">{viewedBooking.guest_name}</h3>
             <div className="mt-1 text-sm text-forest-700/80">
-              {viewingBooking.phone} · {viewingBooking.email}
+              {viewedBooking.phone} · {viewedBooking.email}
             </div>
 
             {/* Length of stay */}
@@ -989,55 +970,49 @@ export function AdminPage() {
                 Tagal ng Pananatili (Length of Stay)
               </div>
               <div className="font-serif text-xl text-forest-900 mt-1">
-                {formatStayDuration(viewingBooking.check_in, viewingBooking.check_out)}
+                {formatStayDuration(viewedBooking.check_in, viewedBooking.check_out)}
               </div>
               <div className="mt-2 text-xs text-forest-800 grid grid-cols-2 gap-2">
-                <div>Check-in: <strong>{viewingBooking.check_in} (2:00 PM)</strong></div>
-                <div>Check-out: <strong>{viewingBooking.check_out} (12:00 PM)</strong></div>
+                <div>Check-in: <strong>{viewedBooking.check_in} (2:00 PM)</strong></div>
+                <div>Check-out: <strong>{viewedBooking.check_out} (12:00 PM)</strong></div>
               </div>
             </div>
 
-            {viewingBooking.special_requests && (
+            {viewedBooking.special_requests && (
               <div className="mt-4">
                 <div className="eyebrow">Special Requests</div>
                 <p className="mt-1 text-xs text-forest-800 bg-cream-50 rounded-xl p-3">
-                  {viewingBooking.special_requests}
+                  {viewedBooking.special_requests}
                 </p>
               </div>
             )}
 
             {/* Proximity / Location */}
-            {(viewingBooking.pickup_area || viewingBooking.distance_km) && (
+            {(viewedBooking.pickup_area || viewedBooking.distance_km) && (
               <div className="mt-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-3 text-xs">
                 <span className="font-bold text-emerald-900">Live Location: </span>
-                <span>{viewingBooking.pickup_area}</span>
-                {viewingBooking.distance_km && (
+                <span>{viewedBooking.pickup_area}</span>
+                {viewedBooking.distance_km && (
                   <span className="block mt-0.5 text-emerald-800 font-semibold">
-                    {viewingBooking.distance_km} km away sa Hacienda
+                    {viewedBooking.distance_km} km away sa Hacienda
                   </span>
                 )}
               </div>
             )}
 
             {/* Activity Log — who changed this, and when (ticket #11) */}
-            <BookingHistory bookingId={viewingBooking.id} />
+            <BookingHistory bookingId={viewedBooking.id} />
 
-            <div className="mt-6 flex gap-2 flex-wrap justify-end">
-              {viewingBooking.status === 'Pending' && (
+            {/* Review: read the ID, then approve or refuse through the lifecycle (ticket #13) */}
+            <div className="mt-6">
+              <BookingReview booking={viewedBooking} bookings={bookings} actor={hostActor} />
+            </div>
+
+            <div className="mt-4 flex gap-2 flex-wrap justify-end">
+              {viewedBooking.status !== 'Cancelled' && (
                 <button
                   onClick={() => {
-                    handleUpdateBooking(viewingBooking.id, { status: 'Reserved' })
-                    setViewingBooking(null)
-                  }}
-                  className="btn-primary text-xs bg-emerald-700 hover:bg-emerald-800"
-                >
-                  Confirm Booking
-                </button>
-              )}
-              {viewingBooking.status !== 'Cancelled' && (
-                <button
-                  onClick={() => {
-                    handleUpdateBooking(viewingBooking.id, { status: 'Cancelled' })
+                    handleUpdateBooking(viewedBooking.id, { status: 'Cancelled' })
                     setViewingBooking(null)
                   }}
                   className="btn-ghost text-xs"

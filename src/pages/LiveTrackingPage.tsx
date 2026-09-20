@@ -17,6 +17,7 @@ import {
 } from '../lib/tracking'
 import { formatStayDuration } from '../lib/storage'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
+import { KycUpload } from '../components/Booking/KycUpload'
 import { MapPin, Navigation, Phone, Messenger, Copy, Check, Sparkle, ArrowRight, Clock } from '../lib/icons'
 
 export function LiveTrackingPage() {
@@ -212,6 +213,13 @@ export function LiveTrackingPage() {
         {booking && (
           <div className="mt-4">
             <HoldCountdown booking={booking} />
+          </div>
+        )}
+
+        {/* KYC — the Guest sends their ID from here, not only from the app (#13) */}
+        {booking && (
+          <div className="mt-3">
+            <KycUpload booking={booking} />
           </div>
         )}
 

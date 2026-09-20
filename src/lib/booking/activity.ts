@@ -18,6 +18,7 @@ const HEADLINES: Record<ActionType, string> = {
   UploadKyc: 'Government ID uploaded for KYC',
   Approve: 'Booking approved',
   Reject: 'Booking rejected',
+  RejectKyc: 'Government ID refused — the Guest can send another',
   ChoosePaymentPlan: 'Payment plan chosen',
   UploadPaymentProof: 'Payment proof uploaded',
   VerifyPayment: 'Payment proof verified — Booking Reserved',

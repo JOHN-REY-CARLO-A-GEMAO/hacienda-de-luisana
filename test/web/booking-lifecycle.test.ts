@@ -12,6 +12,7 @@ import {
   normalizeStatus,
   paymentOptions,
   quoteStay,
+  suggestAlternativeDates,
   settleRefund,
   type RateCard,
   type RefundPolicy,
@@ -565,5 +566,83 @@ describe('settleRefund', () => {
     expect(settled.refundTotal).toBe(10500)
     expect(settled.stayRefund).toBe(10000)
     expect(settled.depositRefund).toBe(500)
+  })
+})
+
+// Ticket #13: a clash refuses the approval and offers alternative dates instead,
+// so the Host keeps the Guest rather than losing them.
+describe('suggestAlternativeDates', () => {
+  const stored = (
+    id: string,
+    checkIn: string,
+    checkOut: string,
+    extra: Partial<HoldBearingBooking> = {},
+  ): HoldBearingBooking => ({
+    id,
+    accommodation: 'main-house',
+    check_in: checkIn,
+    check_out: checkOut,
+    status: 'Pending',
+    ...extra,
+  })
+
+  const taken = stored('taken', '2026-10-01', '2026-10-05', { status: 'Reserved' })
+  const request = { accommodation: 'main-house', check_in: '2026-10-01', check_out: '2026-10-04' }
+
+  it('offers nothing when the requested dates are already free', () => {
+    expect(
+      suggestAlternativeDates({ ...request, check_in: '2026-11-01', check_out: '2026-11-04' }, [taken], {
+        unitsAvailable: 1,
+        now: HOLD,
+      }),
+    ).toEqual([])
+  })
+
+  it('offers the nearest free windows of the same length, soonest first', () => {
+    const suggestions = suggestAlternativeDates(request, [taken], { unitsAvailable: 1, now: HOLD, limit: 4 })
+
+    expect(suggestions.length).toBeGreaterThan(0)
+    // Same Accommodation, same number of nights as the Guest asked for.
+    for (const s of suggestions) {
+      expect(s.accommodation).toBe('main-house')
+      expect(nightsBetween(s.check_in, s.check_out)).toBe(3)
+    }
+    // Nearest free window first, in either direction: the Guest asked for
+    // 1 Oct, so 28 Sep (three days nearer) beats 5 Oct (four days later).
+    expect(suggestions[0]).toEqual({
+      accommodation: 'main-house',
+      check_in: '2026-09-28',
+      check_out: '2026-10-01',
+    })
+    expect(suggestions[1]).toEqual({
+      accommodation: 'main-house',
+      check_in: '2026-10-05',
+      check_out: '2026-10-08',
+    })
+    // Equidistant either way, the later window wins: postponing a trip is
+    // easier than bringing it forward.
+    expect(suggestions[2].check_in).toBe('2026-09-27')
+    expect(suggestions[3].check_in).toBe('2026-10-06')
+  })
+
+  it('suggests only dates that are genuinely free by the same rule', () => {
+    const suggestions = suggestAlternativeDates(request, [taken], { unitsAvailable: 1, now: HOLD, limit: 8 })
+
+    for (const s of suggestions) {
+      expect(findDateConflicts(s, [taken], { unitsAvailable: 1, now: HOLD })).toEqual([])
+    }
+  })
+
+  it('stops at the number of suggestions asked for', () => {
+    expect(suggestAlternativeDates(request, [taken], { unitsAvailable: 1, now: HOLD, limit: 2 })).toHaveLength(2)
+  })
+
+  it('ignores a hold that has already run out, so the Guest is not pushed off free dates', () => {
+    const deadHold = stored('dead', '2026-10-01', '2026-10-05', {
+      status: 'Pending',
+      hold_expires_at: '2026-09-01T00:00:00.000Z',
+    })
+
+    expect(suggestAlternativeDates(request, [deadHold], { unitsAvailable: 1, now: HOLD })).toEqual([])
   })
 })

@@ -1,4 +1,4 @@
-import { applyAction, type BookingState } from '../../src/lib/booking'
+import { applyAction, holdsDates, type BookingState } from '../../src/lib/booking'
 
 // A Booking as stored, mid-review: submitted an hour ago, so its Date hold has
 // 23 hours left, and the Guest has not uploaded their ID yet.
@@ -574,5 +574,170 @@ describe('applyAction — nothing happens after the hold runs out', () => {
       applyAction(legacy, { type: 'Approve', availability: noConflicts }, { ...host, now: '2027-01-01T00:00:00.000Z' }),
     )
     expect(approved.patch.status).toBe('Approved')
+  })
+})
+
+// Flow §2 step 6b: refusing an ID asks the Guest for another one inside the
+// remaining hold, so it must not be terminal — while refusing the Booking
+// outright releases the dates. Two decisions, two actions.
+describe('applyAction — the KYC decision', () => {
+  const submitted = (): BookingState => ({
+    ...pendingBooking(),
+    status: 'KYC Submitted',
+    kyc_status: 'submitted',
+    kyc_id_url: 'gs://kyc/anon/HDL-4821/id.jpg',
+  })
+
+  it('refuses an ID without ending the Booking, so the Guest can send another', () => {
+    const refusedId = expectOk(
+      applyAction(submitted(), { type: 'RejectKyc', reason: 'The photo is cut off at the edges' }, { ...host, now: NOW }),
+    )
+
+    expect(refusedId.patch.status).toBe('KYC Submitted')
+    expect(refusedId.patch.kyc_status).toBe('rejected')
+    expect(refusedId.patch.kyc_reject_reason).toBe('The photo is cut off at the edges')
+    // The Date hold is untouched: the Guest still has the time they had left.
+    expect(refusedId.patch.hold_expires_at).toBeUndefined()
+    expect(refusedId.entries[0]).toMatchObject({
+      action: 'RejectKyc',
+      from_status: 'KYC Submitted',
+      to_status: 'KYC Submitted',
+      reason: 'The photo is cut off at the edges',
+    })
+  })
+
+  it('lets the Guest resubmit inside the same hold, clearing the rejection', () => {
+    const refusedId = expectOk(
+      applyAction(submitted(), { type: 'RejectKyc', reason: 'Expired ID' }, { ...host, now: NOW }),
+    )
+    const resubmitted = expectOk(
+      applyAction(
+        { ...submitted(), ...refusedId.patch },
+        { type: 'UploadKyc', kyc_id_url: 'gs://kyc/anon/HDL-4821/id-2.jpg' },
+        { ...guest, now: NOW },
+      ),
+    )
+
+    expect(resubmitted.patch.status).toBe('KYC Submitted')
+    expect(resubmitted.patch.kyc_status).toBe('submitted')
+    expect(resubmitted.patch.kyc_id_url).toBe('gs://kyc/anon/HDL-4821/id-2.jpg')
+    expect(resubmitted.patch.kyc_reject_reason).toBeNull()
+  })
+
+  it('needs a reason, because a Guest who is not told why cannot fix it', () => {
+    expectRefused(applyAction(submitted(), { type: 'RejectKyc', reason: '   ' }, { ...host, now: NOW }))
+  })
+
+  it('is the Host’s decision, not the Guest’s', () => {
+    expectRefused(
+      applyAction(submitted(), { type: 'RejectKyc', reason: 'nope' }, { ...guest, now: NOW }),
+    )
+  })
+
+  it('cannot be taken before an ID has been submitted', () => {
+    expectRefused(applyAction(pendingBooking(), { type: 'RejectKyc', reason: 'nope' }, { ...host, now: NOW }))
+  })
+
+  it('still refuses a Booking outright, releasing its dates', () => {
+    const rejected = expectOk(
+      applyAction(submitted(), { type: 'Reject', reason: 'Dates can no longer be offered' }, { ...host, now: NOW }),
+    )
+
+    expect(rejected.patch.status).toBe('Rejected')
+    // Rejected is terminal, so the dates go back into the pool (G1).
+    expect(holdsDates('Rejected')).toBe(false)
+  })
+})
+
+describe('applyAction — the Host refusing dates that are already taken', () => {
+  it('names the Booking in the way, so the Host can offer alternatives', () => {
+    const booking: BookingState = { ...pendingBooking(), status: 'KYC Submitted', kyc_status: 'submitted' }
+
+    const refused = expectRefused(
+      applyAction(
+        booking,
+        {
+          type: 'Approve',
+          availability: {
+            unitsAvailable: 1,
+            bookings: [
+              {
+                id: 'book-9',
+                accommodation: 'main-house',
+                check_in: '2026-10-02',
+                check_out: '2026-10-07',
+                status: 'Reserved',
+              },
+            ],
+          },
+        },
+        { ...host, now: NOW },
+      ),
+    )
+
+    expect(refused.conflicts).toHaveLength(1)
+    expect(refused.conflicts?.[0]).toMatchObject({ check_in: '2026-10-02', check_out: '2026-10-07' })
+    // The Booking is untouched, so the Guest keeps their hold while the Host
+    // offers them other dates.
+    expect(refused.ok).toBe(false)
+  })
+})
+
+// The Dart app submits the ID and its receipt in one step
+// (lib/models/booking.dart `applyKycSubmitted({idUrl, receiptUrl})`), and
+// /admin reviews both. The web cannot send only half of what the Host expects.
+describe('applyAction — UploadKyc with a receipt', () => {
+  it('records the ID and the receipt together', () => {
+    const uploaded = expectOk(
+      applyAction(
+        pendingBooking(),
+        {
+          type: 'UploadKyc',
+          kyc_id_url: 'https://storage/kyc/u1/HDL-4821/id.jpg',
+          kyc_receipt_url: 'https://storage/kyc/u1/HDL-4821/receipt.png',
+        },
+        { ...guest, now: NOW },
+      ),
+    )
+
+    expect(uploaded.patch.status).toBe('KYC Submitted')
+    expect(uploaded.patch.kyc_id_url).toBe('https://storage/kyc/u1/HDL-4821/id.jpg')
+    expect(uploaded.patch.kyc_receipt_url).toBe('https://storage/kyc/u1/HDL-4821/receipt.png')
+  })
+
+  it('refuses a receipt on its own, because the ID is what the Host has to see', () => {
+    const refused = expectRefused(
+      applyAction(
+        pendingBooking(),
+        { type: 'UploadKyc', kyc_id_url: '   ', kyc_receipt_url: 'https://storage/receipt.png' },
+        { ...guest, now: NOW },
+      ),
+    )
+
+    expect(refused.reason).toMatch(/government ID/i)
+  })
+
+  it('leaves a receipt already on file alone when the Guest resends just the ID', () => {
+    const withReceipt = expectOk(
+      applyAction(
+        pendingBooking(),
+        {
+          type: 'UploadKyc',
+          kyc_id_url: 'https://storage/id.jpg',
+          kyc_receipt_url: 'https://storage/receipt.png',
+        },
+        { ...guest, now: NOW },
+      ),
+    )
+    const resent = expectOk(
+      applyAction(
+        { ...pendingBooking(), ...withReceipt.patch, kyc_status: 'rejected', kyc_reject_reason: 'The photo was cut off.' },
+        { type: 'UploadKyc', kyc_id_url: 'https://storage/id-2.jpg' },
+        { ...guest, now: NOW },
+      ),
+    )
+
+    expect(resent.patch.kyc_id_url).toBe('https://storage/id-2.jpg')
+    expect(resent.patch).not.toHaveProperty('kyc_receipt_url')
   })
 })

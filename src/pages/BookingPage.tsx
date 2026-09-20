@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
+import { ensureGuestUid } from '../lib/guestAuth'
 import type { Booking } from '../lib/storage'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
+import { KycUpload } from '../components/Booking/KycUpload'
 
 type FormState = {
   check_in: string
@@ -130,6 +132,13 @@ export function BookingPage() {
     setStatus('submitting')
     setErrorMsg('')
     try {
+      // firestore.rules lets a Guest change their own Booking only when the
+      // document already carries their uid, and `uid` is not among the keys a
+      // Guest may add afterwards — so the anonymous identity is attached here, at
+      // creation, exactly as the mobile app does. Without Firebase, or with
+      // Anonymous sign-in disabled, the booking still goes through and the Guest
+      // is told at upload time what that costs them.
+      const uid = (await ensureGuestUid()) ?? undefined
       // Use cloud-aware service: Firestore if configured, else localStorage
       const b = await cloudBookingsDB.add({
         guest_name: form.name.trim(),
@@ -140,6 +149,7 @@ export function BookingPage() {
         guests: Number(form.guests),
         accommodation: form.accommodation,
         special_requests: form.special_requests.trim(),
+        ...(uid ? { uid } : {}),
       })
       // Small UX delay
       await new Promise((r) => setTimeout(r, 400))
@@ -500,6 +510,13 @@ function SuccessScreen({
           {booking && (
             <div className="mt-6 text-left">
               <HoldCountdown booking={booking} />
+            </div>
+          )}
+
+          {/* Step 2 — the ID goes with the request, not in a separate visit (#13) */}
+          {booking && (
+            <div className="mt-3 text-left">
+              <KycUpload booking={booking} />
             </div>
           )}
 

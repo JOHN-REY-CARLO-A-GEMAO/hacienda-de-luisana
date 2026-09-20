@@ -234,3 +234,61 @@ export function isAvailable<T extends HoldBearingBooking>(
 ): boolean {
   return findDateConflicts(request, bookings, options).length === 0
 }
+
+/** How far either side of the requested dates to look for a free window. */
+const DEFAULT_SEARCH_DAYS = 60
+
+export type AlternativeDateOptions = AvailabilityOptions & {
+  /** How many windows to offer. Default 3 — enough to choose from, not a list to trawl. */
+  limit?: number
+  /** Days to search on either side of the requested check-in. Default 60. */
+  searchDays?: number
+}
+
+/**
+ * The nearest free windows of the same length, when the Guest's dates are taken.
+ *
+ * Used by the clash path: refusing an approval or a request is only half an
+ * answer, and the other half is somewhere the Guest could go instead. Windows
+ * come back nearest-first in either direction, with the later one winning a tie
+ * because postponing a trip is easier than bringing it forward. Empty when the
+ * requested dates are free — there is nothing to suggest.
+ */
+export function suggestAlternativeDates<T extends HoldBearingBooking>(
+  request: DateRange,
+  bookings: readonly T[],
+  options: AlternativeDateOptions = {},
+): DateRange[] {
+  const limit = options.limit ?? 3
+  const searchDays = options.searchDays ?? DEFAULT_SEARCH_DAYS
+  const nights = nightsBetween(request.check_in, request.check_out)
+  const requested = parseDate(request.check_in)
+  if (requested === null || nights < 1 || limit < 1) return []
+
+  // Free already: suggesting elsewhere would only invite the Host to move a
+  // Guest who does not need moving.
+  if (findDateConflicts(request, bookings, options).length === 0) return []
+
+  const candidates: { range: DateRange; distance: number; offset: number }[] = []
+  for (let offset = -searchDays; offset <= searchDays; offset += 1) {
+    if (offset === 0) continue
+    const checkIn = requested + offset * DAY_MS
+    const range: DateRange = {
+      accommodation: request.accommodation,
+      check_in: isoDate(checkIn),
+      check_out: isoDate(checkIn + nights * DAY_MS),
+    }
+    if (findDateConflicts(range, bookings, options).length > 0) continue
+    candidates.push({ range, distance: Math.abs(offset), offset })
+  }
+
+  return candidates
+    .sort((a, b) => a.distance - b.distance || b.offset - a.offset)
+    .slice(0, limit)
+    .map((candidate) => candidate.range)
+}
+
+/** Local-date ISO string (YYYY-MM-DD) for a UTC ms timestamp. */
+function isoDate(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10)
+}

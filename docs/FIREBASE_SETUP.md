@@ -29,12 +29,17 @@ VITE_FIREBASE_APP_ID
 VITE_FIREBASE_MEASUREMENT_ID (optional)
 ```
 
-### 3. Authentication (Email + Google)
+### 3. Authentication (Email + Google for staff, Anonymous for guests)
 - `src/context/AuthContext.tsx`: Global auth state provider
   - Email/password login & registration
   - Google OAuth via popup
   - Password reset
   - `onAuthStateChanged` listener
+- `src/lib/guestAuth.ts`: Anonymous sign-in for guests
+  - `ensureGuestUid()` is called when `/book` creates a Booking, so the document
+    carries the uid that `firestore.rules` and `storage.rules` key guest access to
+  - Falls back to `null` (booking still created) when Firebase is absent or
+    Anonymous sign-in is disabled in the console
 - `src/hooks/useAuth.ts`: Reusable hook
 - `src/components/Auth/LoginForm.tsx`:
   - Reusable login/register/reset UI
@@ -87,7 +92,10 @@ VITE_FIREBASE_MEASUREMENT_ID (optional)
 1. Go to https://console.firebase.google.com
 2. Create new project (e.g., `hacienda-de-luisana`)
 3. Enable services:
-   - **Authentication**: Email/Password + Google
+   - **Authentication**: Email/Password + Google + **Anonymous**
+     (Anonymous is required for guest KYC uploads from the website — see
+     `docs/adr/0004-*.md`. Without it, bookings are created with no guest
+     identity and the site cannot attach an ID to them.)
    - **Firestore**: Start in production mode, choose region
    - **Storage**: Start in production mode
    - **Hosting** (optional): For deployment

@@ -27,7 +27,6 @@ export type Booking = BookingState & {
   created_at: string // ISO
   uid?: string
   source?: string
-  kyc_receipt_url?: string
   eta_share_url?: string
   // Booker live location sharing
   pickup_lat?: number

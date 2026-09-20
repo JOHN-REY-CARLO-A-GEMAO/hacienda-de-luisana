@@ -39,6 +39,8 @@ export type BookingState = {
   status: BookingStatus | string
   kyc_status?: KycStatus | string
   kyc_id_url?: string | null
+  /** The receipt the Guest sends alongside the ID; /admin reviews both. */
+  kyc_receipt_url?: string | null
   kyc_reject_reason?: string | null
   /** Why the Host refused this Booking at review. */
   rejection_reason?: string | null
@@ -83,9 +85,10 @@ export type AvailabilityCheck = {
 }
 
 export type BookingAction =
-  | { type: 'UploadKyc'; kyc_id_url: string }
+  | { type: 'UploadKyc'; kyc_id_url: string; kyc_receipt_url?: string }
   | { type: 'Approve'; availability: AvailabilityCheck }
   | { type: 'Reject'; reason: string }
+  | { type: 'RejectKyc'; reason: string }
   | { type: 'ChoosePaymentPlan'; plan: PaymentPlan; rateCard: RateCard }
   | { type: 'UploadPaymentProof'; payment_proof_url: string; amount_claimed?: number }
   | { type: 'VerifyPayment'; amount_verified: number }
@@ -167,6 +170,10 @@ const ACTION_RULES: Record<
   UploadKyc: { actors: ['guest'], from: ['Pending', 'KYC Submitted'], to: 'KYC Submitted' },
   Approve: { actors: ['host'], from: ['KYC Submitted'], to: 'Approved' },
   Reject: { actors: ['host'], from: ['Pending', 'KYC Submitted', 'Approved'], to: 'Rejected' },
+  // Refusing an ID asks the Guest for another one inside the remaining hold, so
+  // it records a decision rather than moving the Booking (flow §2 step 6b).
+  // Refusing the Booking outright is `Reject`, which releases the dates.
+  RejectKyc: { actors: ['host'], from: ['KYC Submitted'], to: 'stays' },
   ChoosePaymentPlan: { actors: ['guest'], from: ['Approved'], to: 'Payment Pending' },
   UploadPaymentProof: { actors: ['guest'], from: ['Payment Pending'], to: 'stays' },
   VerifyPayment: { actors: ['host'], from: ['Payment Pending'], to: 'Reserved' },
@@ -263,6 +270,9 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       if (!action.kyc_id_url.trim()) return refuse('A government ID has to be attached before it can be reviewed.')
       patch.kyc_status = 'submitted'
       patch.kyc_id_url = action.kyc_id_url
+      // Only touched when the Guest actually sent one, so resending the ID alone
+      // does not wipe a receipt that is already on file.
+      if (action.kyc_receipt_url !== undefined) patch.kyc_receipt_url = action.kyc_receipt_url
       // A resubmission clears the Host's rejection: the Guest fixed what was wrong.
       if (booking.kyc_reject_reason) patch.kyc_reject_reason = null
       break
@@ -299,6 +309,17 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
         patch.kyc_status = 'rejected'
         patch.kyc_reject_reason = action.reason
       }
+      break
+    }
+
+    case 'RejectKyc': {
+      if (!action.reason.trim()) {
+        return refuse('Say why the ID was refused — a Guest who is not told why cannot send the right one.')
+      }
+      if (!booking.kyc_id_url) return refuse('There is no government ID uploaded yet to review.')
+      reason = action.reason
+      patch.kyc_status = 'rejected'
+      patch.kyc_reject_reason = action.reason
       break
     }
 
@@ -448,6 +469,15 @@ function normalizeRefund(status: RefundStatus | string | undefined): RefundStatu
     default:
       return 'none'
   }
+}
+
+/**
+ * `kyc_status` as the lifecycle reads it, whatever casing the document was
+ * written with. Exported so the screens show the same verdict the rules apply,
+ * rather than each growing their own.
+ */
+export function normalizeKycStatus(status: KycStatus | string | undefined): KycStatus {
+  return normalizeKyc(status)
 }
 
 function normalizeKyc(status: KycStatus | string | undefined): KycStatus {
