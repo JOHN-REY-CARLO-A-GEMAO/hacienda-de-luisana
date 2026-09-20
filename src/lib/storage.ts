@@ -214,12 +214,36 @@ function writeAll(list: Booking[]) {
  */
 export const activityLogStorage = {
   list(bookingId: string): ActivityLogEntry[] {
-    return readActivity().filter((entry) => entry.booking_id === bookingId)
+    return inOrder(readActivity().filter((entry) => entry.booking_id === bookingId))
   },
   append(entries: readonly ActivityLogEntry[]): void {
     if (entries.length === 0) return
-    writeActivity([...readActivity(), ...entries])
+    writeActivity([...readActivity(), ...withSequence(entries)])
   },
+}
+
+/**
+ * Put entries in the order they happened.
+ *
+ * The clock is not enough: two changes can land in the same millisecond, and a
+ * Host reading the log the wrong way round draws the wrong conclusion.
+ */
+function inOrder(entries: readonly ActivityLogEntry[]): ActivityLogEntry[] {
+  return [...entries].sort((a, b) => {
+    if (a.at !== b.at) return a.at < b.at ? -1 : 1
+    return (a.seq ?? 0) - (b.seq ?? 0)
+  })
+}
+
+/** Assign each entry its position in its Booking's log, continuing from the last. */
+function withSequence(entries: readonly ActivityLogEntry[]): ActivityLogEntry[] {
+  const stored = readActivity()
+  return entries.map((entry) => {
+    const last = stored
+      .filter((e) => e.booking_id === entry.booking_id)
+      .reduce((max, e) => Math.max(max, e.seq ?? -1), -1)
+    return { ...entry, seq: last + 1 }
+  })
 }
 
 function readActivity(): ActivityLogEntry[] {

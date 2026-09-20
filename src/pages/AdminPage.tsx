@@ -5,6 +5,7 @@ import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { directionsUrl, hasPickup, pickupAge } from '../lib/tracking'
 import { smartLockDB, DOORS, type SmartLockRecord, type SmartLockAction } from '../lib/smartLockStorage'
 import { ACCOMMODATIONS } from '../config/site'
+import { BookingHistory } from '../components/Booking/BookingHistory'
 import {
   Calendar,
   Users,
@@ -1010,6 +1011,9 @@ export function AdminPage() {
                 )}
               </div>
             )}
+
+            {/* Activity Log — who changed this, and when (ticket #11) */}
+            <BookingHistory bookingId={viewingBooking.id} />
 
             <div className="mt-6 flex gap-2 flex-wrap justify-end">
               {viewingBooking.status === 'Pending' && (

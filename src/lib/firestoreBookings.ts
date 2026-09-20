@@ -17,6 +17,7 @@ import {
   query,
   orderBy,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
   type DocumentData,
   type QuerySnapshot,
@@ -124,7 +125,9 @@ export const activityLogDB = {
         orderBy('at', 'asc'),
       )
       const snap = await getDocs(q)
-      return snap.docs.map((d) => d.data() as ActivityLogEntry)
+      const entries = snap.docs.map((d) => d.data() as ActivityLogEntry)
+      // Two entries can share an instant; the sequence says which came first.
+      return entries.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
     } catch (e) {
       console.warn('[Firestore] activity list() failed, falling back to local', e)
       return activityLogStorage.list(bookingId)
@@ -138,8 +141,28 @@ export const activityLogDB = {
       return
     }
     try {
+      // Grouped per Booking, because the sequence continues from that Booking's
+      // last entry. The id is the sequence, so two appends that both think they
+      // are next collide instead of silently reordering the log.
+      const byBooking = new Map<string, ActivityLogEntry[]>()
+      for (const entry of entries) {
+        byBooking.set(entry.booking_id, [...(byBooking.get(entry.booking_id) ?? []), entry])
+      }
       await Promise.all(
-        entries.map((entry) => addDoc(collection(db!, COLLECTION, entry.booking_id, ACTIVITY_COLLECTION), entry)),
+        [...byBooking].map(async ([bookingId, batch]) => {
+          const log = collection(db!, COLLECTION, bookingId, ACTIVITY_COLLECTION)
+          const written = await getDocs(log)
+          let seq = written.docs.reduce((max, d) => {
+            const value = d.data().seq
+            return typeof value === 'number' && value > max ? value : max
+          }, -1)
+          await runTransaction(db!, async (tx) => {
+            for (const entry of batch) {
+              seq += 1
+              tx.set(doc(log, String(seq)), { ...entry, seq })
+            }
+          })
+        }),
       )
     } catch (e) {
       console.warn('[Firestore] activity append() failed, falling back to local', e)
@@ -164,6 +187,54 @@ function submissionEntry(bookingId: string, actor: Actor, at: string): ActivityL
     ...(actor.actor_name ? { actor_name: actor.actor_name } : {}),
     at,
   }
+}
+
+/** Store a patch, in Firestore when it is configured and locally when it is not. */
+async function writePatch(id: string, patch: Partial<Booking>): Promise<void> {
+  if (!isCloud || !db) {
+    bookingsDB.update(id, patch)
+    return
+  }
+  try {
+    // Remove id from patch if present
+    const { id: _omit, ...rest } = patch as any
+    await updateDoc(doc(db, COLLECTION, id), rest)
+  } catch (e) {
+    console.warn('[Firestore] update() failed, falling back to local', e)
+    bookingsDB.update(id, patch)
+  }
+}
+
+/**
+ * Record a status written straight to the store.
+ *
+ * Nothing is logged when the status did not actually move — a location patch
+ * from /track is not a state change and does not belong in the Activity log.
+ */
+async function logStatusChange(
+  id: string,
+  before: Booking | undefined,
+  patch: Partial<Booking>,
+  by?: Actor,
+): Promise<void> {
+  if (!before || patch.status === undefined) return
+  const to = normalizeStatus(patch.status)
+  const from = normalizeStatus(before.status)
+  if (to === from) return
+
+  await activityLogDB.append([
+    {
+      booking_id: id,
+      action: 'SetStatus',
+      from_status: from,
+      to_status: to,
+      actor: by?.actor ?? 'host',
+      actor_id: by?.actor_id ?? 'host-dashboard',
+      ...(by?.actor_name ? { actor_name: by.actor_name } : {}),
+      at: instantOf(by ?? {}),
+      reason: 'Set directly from the Host dashboard.',
+    },
+  ])
 }
 
 const isCloud = isFirebaseConfigured && Boolean(db)
@@ -270,6 +341,16 @@ export const cloudBookingsDB = {
   },
 
   /**
+   * This Booking's Activity log, in the order it happened.
+   *
+   * On the bookings interface because reading a Booking and reading its history
+   * is one job: the Host opens a Booking to answer "who changed this and when".
+   */
+  async history(id: string): Promise<ActivityLogEntry[]> {
+    return activityLogDB.list(id)
+  },
+
+  /**
    * Take one lifecycle action on a stored Booking.
    *
    * The rule lives in the lifecycle module, not here: this is the adapter that
@@ -284,25 +365,25 @@ export const cloudBookingsDB = {
     const result = applyAction(booking, action, actor)
     if (!result.ok) return result
 
-    await this.update(id, result.patch)
+    // The action logged this change itself, so the write must not log it again:
+    // one entry per state change, from the thing that made it.
+    await writePatch(id, result.patch)
     await activityLogDB.append(result.entries)
     return result
   },
 
-  async update(id: string, patch: Partial<Booking>): Promise<void> {
-    if (!this.isCloud || !db) {
-      bookingsDB.update(id, patch)
-      return
-    }
-    try {
-      const ref = doc(db, COLLECTION, id)
-      // Remove id from patch if present
-      const { id: _omit, ...rest } = patch as any
-      await updateDoc(ref, rest)
-    } catch (e) {
-      console.warn('[Firestore] update() failed, falling back to local', e)
-      bookingsDB.update(id, patch)
-    }
+  /**
+   * Write a patch to a stored Booking.
+   *
+   * Status changes made this way bypass the lifecycle's own rules, but they are
+   * never bypass-able *and* silent: the log entry is written here, by the change
+   * itself, so no surface can move a Booking without a trace (spec #9).
+   * `transition()` is the door that checks the rules as well.
+   */
+  async update(id: string, patch: Partial<Booking>, by?: Actor): Promise<void> {
+    const before = await this.get(id)
+    await writePatch(id, patch)
+    await logStatusChange(id, before, patch, by)
   },
 
   async remove(id: string): Promise<void> {

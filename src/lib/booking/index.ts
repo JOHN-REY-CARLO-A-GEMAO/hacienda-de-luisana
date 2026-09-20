@@ -55,6 +55,8 @@ export {
   type RefundTier,
 } from './money'
 
+export { describeActivity, type ActivityLine } from './activity'
+
 export {
   applyAction,
   instantOf,

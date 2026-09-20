@@ -109,8 +109,13 @@ export type BookingAction =
  * `Submit` is not a transition — it is the creation of the Booking itself, which
  * is a state change like any other and is logged the same way (spec #9: the log
  * is written by the state change, not by the UI that triggered it).
+ *
+ * `SetStatus` is not an action anybody can take: it is what the store records
+ * when a caller writes a status straight past the lifecycle, which the Host
+ * dashboard still does today. It exists so that no status change is unlogged;
+ * ticket #13 moves those writes onto the actions above and retires it.
  */
-export type ActionType = BookingAction['type'] | 'Submit'
+export type ActionType = BookingAction['type'] | 'Submit' | 'SetStatus'
 
 /** One Activity log entry. Append-only: nothing in the system edits or deletes these. */
 export type ActivityLogEntry = {
@@ -123,6 +128,14 @@ export type ActivityLogEntry = {
   actor_name?: string
   at: string
   reason?: string
+  /**
+   * Position in this Booking's log, assigned as the entry is appended.
+   *
+   * Two state changes can share an instant — a Guest's upload and the Host's
+   * approval inside the same millisecond — and the Host still has to read them
+   * in the order they happened, so the order cannot rest on the timestamp alone.
+   */
+  seq?: number
 }
 
 export type ActionAccepted = {

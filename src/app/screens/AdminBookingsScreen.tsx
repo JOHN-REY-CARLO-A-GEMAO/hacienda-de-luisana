@@ -5,6 +5,7 @@ import { formatStayDuration, calculateNights, getStayProgress, type Booking, typ
 import { hasPickup, pickupAge, getProximityStatus } from '../../lib/tracking'
 import { ACCOMMODATIONS } from '../../config/site'
 import { Screen, ScreenTitle } from '../components/Screen'
+import { BookingHistory } from '../../components/Booking/BookingHistory'
 import { Check, Close, Clock, MapPin, Phone, Users, Bed, Sparkle } from '../../lib/icons'
 
 export function AdminBookingsScreen() {
@@ -428,6 +429,9 @@ export function AdminBookingsScreen() {
                 </div>
               )}
             </div>
+
+            {/* Activity Log — who changed this, and when (ticket #11) */}
+            <BookingHistory bookingId={selectedBooking.id} />
 
             {/* Actions Inside Modal */}
             <div className="mt-6 pt-4 border-t border-forest-900/10 flex flex-wrap gap-2 justify-end">

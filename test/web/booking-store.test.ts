@@ -59,6 +59,7 @@ describe('the booking store seam', () => {
         actor_id: 'guest-1',
         actor_name: 'Maria Santos',
         at: NOW,
+        seq: 0,
       },
     ])
   })
