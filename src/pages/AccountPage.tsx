@@ -8,6 +8,7 @@ import { ACCOMMODATIONS } from '../config/site'
 import { BookingHistory } from '../components/Booking/BookingHistory'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
 import { KycUpload } from '../components/Booking/KycUpload'
+import { PaymentStep } from '../components/Booking/PaymentStep'
 import { useAuth } from '../hooks/useAuth'
 import { ArrowRight, Calendar, Sparkle } from '../lib/icons'
 
@@ -181,6 +182,12 @@ export function AccountPage() {
                 {can('kyc:upload') && (
                   <div className="mt-4">
                     <KycUpload booking={booking} />
+                  </div>
+                )}
+
+                {can('booking:update:own') && ['Approved', 'Payment Pending', 'Reserved'].includes(status) && (
+                  <div className="mt-4">
+                    <PaymentStep booking={booking} />
                   </div>
                 )}
 
