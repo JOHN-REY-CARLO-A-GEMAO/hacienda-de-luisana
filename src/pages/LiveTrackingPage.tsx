@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
+import { trackingSessionsDB, type TrackingSession } from '../lib/trackingSessions'
 import type { Booking } from '../lib/storage'
 import {
   calculateDistanceKm,
@@ -11,6 +12,8 @@ import {
   directionsUrl,
   hotelMapsUrl,
   startLiveLocationWatch,
+  getOneTapPosition,
+  pickupMapsUrl,
   SIMULATION_CHECKPOINTS,
   HOTEL_LAT,
   HOTEL_LNG,
@@ -33,7 +36,10 @@ export function LiveTrackingPage() {
 
   const [booking, setBooking] = useState<Booking | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isSharing, setIsSharing] = useState(false)
+  // The session IS the sharing: its existence is the ON state, its consent is
+  // the Share click that created it, and deleting it is stopping (G6).
+  const [session, setSession] = useState<TrackingSession | null>(null)
+  const isSharing = session !== null
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [copied, setCopied] = useState(false)
   const [simActive, setSimActive] = useState<string | null>(null)
@@ -46,19 +52,10 @@ export function LiveTrackingPage() {
         const found = list.find((b) => b.id === bookingId || b.ref_id === bookingId)
         if (found) {
           setBooking(found)
-          if (found.pickup_lat && found.pickup_lng) {
-            setCurrentCoords({ lat: found.pickup_lat, lng: found.pickup_lng })
-          }
-          if (found.is_live_sharing) {
-            setIsSharing(true)
-          }
         }
       } else if (list.length > 0) {
         // Fallback to most recent booking
         setBooking(list[0])
-        if (list[0].pickup_lat && list[0].pickup_lng) {
-          setCurrentCoords({ lat: list[0].pickup_lat, lng: list[0].pickup_lng })
-        }
       }
       setLoading(false)
     }
@@ -69,7 +66,23 @@ export function LiveTrackingPage() {
     return () => unsub()
   }, [bookingId, readsAll, user?.uid])
 
-  // Real GPS live watch when isSharing is active
+  // Subscribe to the live session. The traveller reads their own; the Host and
+  // Staff read every session (their radar), so a Host opening the share link
+  // sees the same state the traveller does — but never controls it.
+  useEffect(() => {
+    if (readsAll) {
+      return trackingSessionsDB.subscribe((sessions) => {
+        setSession(sessions.find((s) => s.bookingId === bookingId) ?? null)
+      })
+    }
+    return trackingSessionsDB.subscribeMine(user?.uid, (mine) => {
+      setSession(mine && mine.bookingId === bookingId ? mine : null)
+    })
+  }, [bookingId, readsAll, user?.uid])
+
+  // Real GPS live watch while the session exists. Each ping is an update to
+  // the session — never a write to the Booking, and never a touch to the
+  // consent that started it.
   useEffect(() => {
     if (!isSharing || !booking) return
 
@@ -81,14 +94,13 @@ export function LiveTrackingPage() {
         const area = guessAreaFromCoords(coords.lat, coords.lng)
 
         setCurrentCoords({ lat: coords.lat, lng: coords.lng })
-        await cloudBookingsDB.update(booking.id, {
-          pickup_lat: coords.lat,
-          pickup_lng: coords.lng,
-          pickup_area: area,
+        await trackingSessionsDB.update(booking.id, {
+          latitude: coords.lat,
+          longitude: coords.lng,
+          area,
           distance_km: dist,
           eta_minutes: eta,
-          is_live_sharing: true,
-          pickup_updated_at: new Date().toISOString(),
+          lastUpdated: new Date().toISOString(),
           last_speed_kmh: coords.speed ? Math.round(coords.speed * 3.6) : undefined,
         })
       },
@@ -102,49 +114,90 @@ export function LiveTrackingPage() {
     }
   }, [isSharing, booking?.id])
 
-  // Calculate metrics
-  const activeLat = currentCoords?.lat ?? booking?.pickup_lat ?? 14.1850
-  const activeLng = currentCoords?.lng ?? booking?.pickup_lng ?? 121.5150
+  // Calculate metrics — from the live watch first, then the session's last ping
+  const activeLat = currentCoords?.lat ?? session?.latitude ?? 14.1850
+  const activeLng = currentCoords?.lng ?? session?.longitude ?? 121.5150
   const distanceKm = useMemo(() => calculateDistanceKm(activeLat, activeLng), [activeLat, activeLng])
   const etaMinutes = useMemo(() => estimateEtaMinutes(distanceKm), [distanceKm])
   const proximity = useMemo(() => getProximityStatus(distanceKm), [distanceKm])
-  const currentArea = booking?.pickup_area || guessAreaFromCoords(activeLat, activeLng)
+  const currentArea = session?.area || guessAreaFromCoords(activeLat, activeLng)
+
+  // The traveller's own uid for a new session: their signed-in identity first,
+  // the Booking's recorded identity if this link was opened from an older
+  // session. The rules refuse a session whose uid is not the writer's own.
+  const sessionUid = () => user?.uid ?? booking?.uid ?? ''
 
   const handleSimulateCheckpoint = async (checkpoint: (typeof SIMULATION_CHECKPOINTS)[0]) => {
     setSimActive(checkpoint.id)
     const dist = calculateDistanceKm(checkpoint.lat, checkpoint.lng)
     const eta = estimateEtaMinutes(dist)
+    const now = new Date().toISOString()
 
     setCurrentCoords({ lat: checkpoint.lat, lng: checkpoint.lng })
-    setIsSharing(true)
     setStatusMessage(`Location updated: ${checkpoint.area}. Client can now see your area in real-time!`)
 
-    if (booking) {
-      await cloudBookingsDB.update(booking.id, {
-        pickup_lat: checkpoint.lat,
-        pickup_lng: checkpoint.lng,
-        pickup_area: checkpoint.area,
+    if (!booking) return
+    if (session) {
+      await trackingSessionsDB.update(booking.id, {
+        latitude: checkpoint.lat,
+        longitude: checkpoint.lng,
+        area: checkpoint.area,
+        label: checkpoint.label,
         distance_km: dist,
         eta_minutes: eta,
-        is_live_sharing: true,
-        pickup_updated_at: new Date().toISOString(),
+        lastUpdated: now,
+      })
+    } else {
+      // Tapping a checkpoint with no session is itself sharing, so the
+      // consent goes in the same write as the position.
+      await trackingSessionsDB.create({
+        bookingId: booking.id,
+        uid: sessionUid(),
+        tracking_consent_at: now,
+        latitude: checkpoint.lat,
+        longitude: checkpoint.lng,
+        lastUpdated: now,
+        area: checkpoint.area,
+        label: checkpoint.label,
+        distance_km: dist,
+        eta_minutes: eta,
       })
     }
   }
 
   const handleToggleSharing = async () => {
-    const next = !isSharing
-    setIsSharing(next)
-    if (booking) {
-      await cloudBookingsDB.update(booking.id, {
-        is_live_sharing: next,
-        pickup_updated_at: new Date().toISOString(),
-      })
+    if (!booking) return
+
+    if (session) {
+      // Stopping the share: the session document is the consent, so deleting
+      // it removes the position and the consent together.
+      await trackingSessionsDB.remove(booking.id)
+      setStatusMessage('Live location sharing paused. The Client can no longer see your route.')
+      return
     }
-    if (next) {
+
+    try {
+      setStatusMessage('Locating you — this tap is the consent, and it is stored with your first position…')
+      const pos = await getOneTapPosition()
+      const dist = calculateDistanceKm(pos.lat, pos.lng)
+      const eta = estimateEtaMinutes(dist)
+      const now = new Date().toISOString()
+      setCurrentCoords({ lat: pos.lat, lng: pos.lng })
+      await trackingSessionsDB.create({
+        bookingId: booking.id,
+        uid: sessionUid(),
+        tracking_consent_at: now,
+        latitude: pos.lat,
+        longitude: pos.lng,
+        lastUpdated: now,
+        area: guessAreaFromCoords(pos.lat, pos.lng),
+        distance_km: dist,
+        eta_minutes: eta,
+        eta_share_url: pickupMapsUrl(pos.lat, pos.lng),
+      })
       setStatusMessage('Live location sharing activated! The Client / Host can now see your route and proximity.')
-    } else {
-      setStatusMessage('Live location sharing paused.')
+    } catch (err: any) {
+      setStatusMessage(`Sharing did not start: ${err?.message || 'location unavailable'}`)
     }
   }
 
@@ -255,17 +308,23 @@ export function LiveTrackingPage() {
               </div>
             </div>
 
-            <button
-              onClick={handleToggleSharing}
-              className={`px-5 py-3 rounded-2xl text-sm font-medium transition flex items-center justify-center gap-2 ${
-                isSharing
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md'
-                  : 'bg-forest-800 text-cream-50 hover:bg-forest-900'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${isSharing ? 'bg-white animate-ping' : 'bg-cream-100/50'}`} />
-              {isSharing ? 'Live Sharing Naka-ON' : 'Simulan ang Live Sharing'}
-            </button>
+            {readsAll ? (
+              <div className="px-5 py-3 rounded-2xl text-xs font-medium bg-cream-100 text-forest-800">
+                Host view — sharing is controlled by the Guest on their phone.
+              </div>
+            ) : (
+              <button
+                onClick={handleToggleSharing}
+                className={`px-5 py-3 rounded-2xl text-sm font-medium transition flex items-center justify-center gap-2 ${
+                  isSharing
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md'
+                    : 'bg-forest-800 text-cream-50 hover:bg-forest-900'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${isSharing ? 'bg-white animate-ping' : 'bg-cream-100/50'}`} />
+                {isSharing ? 'Live Sharing Naka-ON' : 'Simulan ang Live Sharing'}
+              </button>
+            )}
           </div>
 
           {statusMessage && (
@@ -397,8 +456,9 @@ export function LiveTrackingPage() {
               return (
                 <button
                   key={cp.id}
+                  disabled={readsAll}
                   onClick={() => handleSimulateCheckpoint(cp)}
-                  className={`text-left p-3.5 rounded-2xl border transition text-xs flex items-center justify-between ${
+                  className={`text-left p-3.5 rounded-2xl border transition text-xs flex items-center justify-between disabled:opacity-40 ${
                     isSelected
                       ? 'bg-forest-900 text-cream-50 border-forest-900 ring-2 ring-emerald-400'
                       : 'bg-cream-50/60 hover:bg-cream-100/80 border-forest-900/10 text-forest-800'

@@ -1,5 +1,6 @@
 import {
   BOOKING_STATUSES,
+  approvalCouplingSet,
   canTransition,
   datesOverlap,
   effectiveStatus,
@@ -11,6 +12,7 @@ import {
   nightsBetween,
   normalizeStatus,
   paymentOptions,
+  paymentOptionsForTotal,
   quoteStay,
   suggestAlternativeDates,
   settleRefund,
@@ -458,6 +460,44 @@ describe('paymentOptions', () => {
   })
 })
 
+describe('paymentOptionsForTotal', () => {
+  // The rate card is not yet a machine-readable document (site.ts carries
+  // placeholder prices), so a quote can be the number the Booking carries —
+  // and the money the Guest is asked for must come from that number.
+
+  it('offers the same plans a card would, quoted off the recorded total', () => {
+    expect(paymentOptionsForTotal(30000, { securityDeposit: 500, downPaymentPercent: 50 })).toEqual([
+      { plan: 'down-payment', stayTotal: 30000, dueNow: 15000, securityDeposit: 500, balance: 15000 },
+      { plan: 'full', stayTotal: 30000, dueNow: 30000, securityDeposit: 500, balance: 0 },
+    ])
+  })
+
+  it('floors the down payment at whole centavos, and the plans re-add to the quote', () => {
+    const options = paymentOptionsForTotal(1234.5678, { securityDeposit: 0, downPaymentPercent: 33 })
+
+    expect(options[0]).toEqual({
+      plan: 'down-payment',
+      stayTotal: 1234.57,
+      dueNow: 407.41,
+      securityDeposit: 0,
+      balance: 827.16,
+    })
+    expect(options[0].dueNow + options[0].balance).toBe(options[0].stayTotal)
+  })
+
+  it('offers full payment only when no down payment percentage is published', () => {
+    expect(paymentOptionsForTotal(10000, { securityDeposit: 500 })).toEqual([
+      { plan: 'full', stayTotal: 10000, dueNow: 10000, securityDeposit: 500, balance: 0 },
+    ])
+  })
+
+  it('never asks for less than nothing, for a total that is not a price', () => {
+    expect(paymentOptionsForTotal(-5, { securityDeposit: 0 })).toEqual([
+      { plan: 'full', stayTotal: 0, dueNow: 0, securityDeposit: 0, balance: 0 },
+    ])
+  })
+})
+
 describe('settleRefund', () => {
   const rateCard: RateCard = { nightlyRate: 10000, securityDeposit: 500 }
   const stay = { check_in: '2026-10-01', check_out: '2026-10-04' }
@@ -644,5 +684,69 @@ describe('suggestAlternativeDates', () => {
     })
 
     expect(suggestAlternativeDates(request, [deadHold], { unitsAvailable: 1, now: HOLD })).toEqual([])
+  })
+})
+
+// ADR-0006: the Bookings an approval must re-read through the transaction.
+// Wider than the forApproval conflict count on purpose: a rival changes the
+// count through a Booking that is merely queued today, so every overlapping
+// date-holder couples the two approvals and forces the abort-and-rerun.
+describe('approvalCouplingSet', () => {
+  const stored = (
+    id: string,
+    checkIn: string,
+    checkOut: string,
+    extra: Partial<HoldBearingBooking> = {},
+  ): HoldBearingBooking => ({
+    id,
+    accommodation: 'main-house',
+    check_in: checkIn,
+    check_out: checkOut,
+    status: 'Pending',
+    ...extra,
+  })
+
+  // A Pending booking with no recorded hold reads as Expired (ADR-0002), so
+  // the live queue entries carry a hold that is still running at HOLD.
+  const LIVE_HOLD = { hold_expires_at: '2026-10-02T00:00:00.000Z' }
+  const target = stored('target', '2026-10-01', '2026-10-05', LIVE_HOLD)
+
+  it('couples every overlapping date-holder, committed or merely queued', () => {
+    const queued = stored('queued', '2026-10-03', '2026-10-06', { status: 'Pending', ...LIVE_HOLD })
+    const committed = stored('committed', '2026-10-01', '2026-10-03', { status: 'Reserved' })
+    const staying = stored('staying', '2026-09-28', '2026-10-04', { status: 'Staying' })
+
+    const rivals = approvalCouplingSet(target, [target, queued, committed, staying], HOLD)
+    expect(rivals.map((b) => b.id).sort()).toEqual(['committed', 'queued', 'staying'])
+  })
+
+  it('excludes the terminals: a released date cannot change the count', () => {
+    const cancelled = stored('cancelled', '2026-10-01', '2026-10-05', { status: 'Cancelled' })
+    const rejected = stored('rejected', '2026-10-01', '2026-10-05', { status: 'Rejected' })
+    const completed = stored('completed', '2026-10-01', '2026-10-05', { status: 'Completed' })
+
+    expect(approvalCouplingSet(target, [target, cancelled, rejected, completed], HOLD)).toEqual([])
+  })
+
+  it('excludes a hold that has run out: Expired is a read, and it releases dates', () => {
+    const expiredHold = stored('expired', '2026-10-01', '2026-10-05', {
+      status: 'Pending',
+      hold_expires_at: '2026-09-01T00:00:00.000Z',
+    })
+    const expired = stored('expired-status', '2026-10-01', '2026-10-05', { status: 'Expired' })
+
+    expect(approvalCouplingSet(target, [target, expiredHold, expired], HOLD)).toEqual([])
+  })
+
+  it('excludes another Accommodation and non-overlapping nights', () => {
+    const otherUnit = stored('other-unit', '2026-10-01', '2026-10-05', { accommodation: 'house-a-camping' })
+    const before = stored('before', '2026-09-27', '2026-10-01')
+    const after = stored('after', '2026-10-05', '2026-10-09')
+
+    expect(approvalCouplingSet(target, [target, otherUnit, before, after], HOLD)).toEqual([])
+  })
+
+  it('excludes itself: an approval never conflicts with its own doc', () => {
+    expect(approvalCouplingSet(target, [target], HOLD)).toEqual([])
   })
 })

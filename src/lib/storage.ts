@@ -27,17 +27,10 @@ export type Booking = BookingState & {
   created_at: string // ISO
   uid?: string
   source?: string
-  eta_share_url?: string
-  // Booker live location sharing
-  pickup_lat?: number
-  pickup_lng?: number
-  pickup_updated_at?: string // ISO
-  pickup_label?: string
-  pickup_area?: string // e.g. 'Luisiana Town Proper'
-  distance_km?: number // Distance to Hacienda in km
-  eta_minutes?: number // Estimated time of arrival
-  is_live_sharing?: boolean // Whether live location is active
-  last_speed_kmh?: number
+  // Live location does not live here: it is a fact about the present moment,
+  // written by the traveller's phone, and it rides on its own document —
+  // tracking_sessions/{bookingId} (G6, src/lib/trackingSessions.ts). A Booking
+  // is the promise about the stay; the session is where the guest is right now.
 }
 
 const KEY = 'hdl:bookings'
@@ -115,13 +108,6 @@ function generateSampleBookings(): Booking[] {
       created_at: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
       ref_id: 'HDL-7821',
       kyc_status: 'approved',
-      is_live_sharing: true,
-      pickup_lat: 14.1850,
-      pickup_lng: 121.5150,
-      pickup_area: 'Luisiana Town Proper (~2.4 km away)',
-      distance_km: 2.4,
-      eta_minutes: 6,
-      pickup_updated_at: new Date(Date.now() - 1000 * 60 * 3).toISOString(),
     },
     {
       id: 'book-sample-2',
@@ -137,13 +123,6 @@ function generateSampleBookings(): Booking[] {
       created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
       ref_id: 'HDL-5510',
       kyc_status: 'submitted',
-      is_live_sharing: true,
-      pickup_lat: 14.2150,
-      pickup_lng: 121.5050,
-      pickup_area: 'Cavinti - Luisiana Road (~8.2 km away)',
-      distance_km: 8.2,
-      eta_minutes: 16,
-      pickup_updated_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
     },
     {
       id: 'book-sample-3',

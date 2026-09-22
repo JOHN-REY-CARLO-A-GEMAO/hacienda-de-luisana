@@ -24,6 +24,8 @@ const HEADLINES: Record<ActionType, string> = {
   VerifyPayment: 'Payment proof verified — Booking Reserved',
   RejectPaymentProof: 'Payment proof rejected',
   MarkRefunded: 'Refund returned to the Guest',
+  PurgeKyc: 'Government ID and receipt purged after the stay',
+  RevokeKey: 'Credential revoked by the Host',
   Cancel: 'Booking cancelled',
   Expire: 'Date hold ran out',
   CheckIn: 'First Credential use — Guest checked in',

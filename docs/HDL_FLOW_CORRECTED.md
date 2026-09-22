@@ -1,5 +1,5 @@
 # PROPERTY MANAGEMENT, SMART LOCK (RFID + MOBILE KEY / ESP32) & TRACKING SYSTEM
-### Corrected Flow Chart Spec v2 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling
+### Corrected Flow Chart Spec v2.1 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling; v2.1 adds the implementation status (§12)
 
 > Paste-ready textual spec, same structure as the original export.
 > **Global Conventions (render as a legend/annotation box):**
@@ -104,7 +104,7 @@
    - [Yes] → Loop back to Get Guest Location
    - [No] → Proceed to CHECK-OUT
 7. Stop Location Tracking → Save Final Location
-8. **Retention rule:** auto-purge location history N days after check-out → Save Purge Log (G6)
+8. **Retention rule (as built, §12):** the session forgets itself — a session not updated for 30 days reads as nonexistent (read-time expiry, no backend worker), and the Host's delete is the physical erasure (G6)
 9. Disable Guest Credential (RFID + Mobile Key)
 
 ---
@@ -250,6 +250,21 @@ The Central Database stores and interconnects:
 
 ---
 
+## 12. Implementation status (v2.1, 2026-09-22)
+
+Where each convention lives in code, and where the build is deliberately short of the chart.
+
+- **G1 — no dangling ENDs.** `src/lib/booking/actions.ts` is the one place a Booking's state changes, and every accepted action returns the Activity log entries it owes — a transition cannot happen unlogged, and a terminal status releases the dates because `holdsDates` is false for Rejected, Cancelled, Expired and Completed. The one clause not yet built is **(3) notify the customer**: the system has no notification channel, so the Guest sees the terminal status in their own dashboard / app instead of a message arriving at them.
+- **G2 — the system enforces availability.** Overlap is re-checked at submit (the create path, against the stored Bookings) and at approval — and since ADR-0006 the approval re-check and the approval write run in one Firestore transaction, so a rival Booking committed in between aborts the transaction and the approval is rerun on the fresh state.
+- **G3 — money last.** ADR-0001: the Host approves before any money moves, `VerifyPayment` refuses less than what was asked, and `settleRefund` in `src/lib/booking/money.ts` is the only path money leaves.
+- **G4 — 24h TTL.** The hold is stored data (`hold_expires_at`), and expiry is a read-time rule (ADR-0002) — no timer, no worker: a Booking that sat 24 hours reads as Expired, and Expired holds no dates. The two stages that expire are the two pre-approval ones, Pending and KYC Submitted; once the Host approves, the hold becomes firm.
+- **G6 — consent-based tracking.** Live location no longer rides on the Booking: it is the `tracking_sessions/{bookingId}` session, created by the traveller's own device, with `tracking_consent_at` written in the same write as the first ping (the Share click is the consent — a session without a consent cannot exist). Retention as built: 30 days from the last update, at read time; the Host's delete is the physical erasure.
+- **G7 — every state change is logged.** Same contract as G1: `applyAction` owes its log entries, and `firestore.rules` keeps `bookings/{id}/activity` append-only, written in the writer's own role.
+- **Payment plans and the policy stamp (new in v2.1).** The Host publishes figures once — the `site_config/rates` document, `FIREBASE_SETUP.md` step 6 — and `ChoosePaymentPlan` quotes the stay from them (or from the recorded total, when the quote is a phone call rather than a card), stamping the policy version and effective date on the Booking at choice time. Republishing changes the terms of future choices only, never of a stay already promised; a Booking stamped with nothing refunds nothing.
+- **Charted, not yet built:** the customer notifications at every terminal path (§2, §3, §5); the credential pipeline of Module 3 (RFID / Mobile Key / ESP32) in code; moving the full lifecycle table from `src/lib/booking` into `firestore.rules`, waiting on the dashboard's `SetStatus` writes to retire (ticket #13).
+
+---
+
 ## Changelog vs. original chart
 
 | # | Fix | Where |
@@ -265,3 +280,4 @@ The Central Database stores and interconnects:
 | 9 | **Account provisioning** — who creates Staff/Admins; register = Customer only | §1; §8; §9 |
 | 10 | **Notifications everywhere**, not just payment rejection | §2, §3, §5 |
 | 11 | **Archive checks active bookings first** (G1) | §9 |
+| 12 | **(v2.1) Implementation status** — where each G lives in code, the G6 retention rule corrected to what is built, the policy stamp added, and the not-yet-built clauses named | §4 step 8; §12 |

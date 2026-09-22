@@ -197,11 +197,14 @@ describe('a status written straight to the store is still logged', () => {
     })
   })
 
-  it('logs nothing for a patch that changes no status, so location sharing stays out of the log', () => {
+  it('logs nothing for a patch that changes no status, so a non-state write stays out of the log', () => {
     return (async () => {
       const booking = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
-      await cloudBookingsDB.update(booking.id, { pickup_area: 'Luisiana Town Proper', distance_km: 2.4 })
+      // Live location no longer rides on the Booking at all (G6): a session
+      // write never touches the Activity log. A plain Booking patch that
+      // changes nothing but a note must be just as quiet.
+      await cloudBookingsDB.update(booking.id, { special_requests: 'Birthday celebration — no candles' })
 
       expect((await activityLogDB.list(booking.id)).map((entry) => entry.action)).toEqual(['Submit'])
     })()

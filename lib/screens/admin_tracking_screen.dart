@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/booking.dart';
+import '../models/tracking_session.dart';
 import '../services/booking_store.dart';
 import '../theme/app_theme.dart';
 import '../utils/tracking.dart';
@@ -28,11 +29,25 @@ class AdminTrackingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = context.watch<BookingStore>();
-    final withPickup = store.bookings.where(Tracking.hasPickup).toList()
-      ..sort((a, b) => (b.pickupUpdatedAt ?? b.createdAt)
-          .compareTo(a.pickupUpdatedAt ?? a.createdAt));
+    // The radar is the sessions, joined to their Bookings for the name and
+    // status (G6): the session doc id is the booking's Firestore id.
+    final bookingByCloudId = {
+      for (final b in store.bookings)
+        if (b.firestoreId != null) b.firestoreId: b,
+    };
+    final withPickup = <_RadarRow>[];
+    for (final s in store.sessions) {
+      final booking = bookingByCloudId[s.bookingId];
+      if (booking == null) continue; // a stranger's session, not our booker
+      withPickup.add(_RadarRow(session: s, booking: booking));
+    }
+    withPickup.sort(
+        (a, b) => b.session.lastUpdated.compareTo(a.session.lastUpdated));
+    final sessionCloudIds = store.sessions.map((s) => s.bookingId).toSet();
     final waiting = store.bookings
-        .where((b) => !Tracking.hasPickup(b) && b.isActive)
+        .where((b) =>
+            b.isActive &&
+            (b.firestoreId == null || !sessionCloudIds.contains(b.firestoreId)))
         .toList();
 
     return Scaffold(
@@ -99,10 +114,10 @@ class AdminTrackingScreen extends StatelessWidget {
                 style: GoogleFonts.inter(fontSize: 13, color: AppTheme.forest800.withOpacity(0.7))),
             )
           else
-            ...withPickup.map((b) => _TrackingCard(
-                  booking: b,
+            ...withPickup.map((row) => _TrackingCard(
+                  row: row,
                   onOpen: _open,
-                  onCall: () => _call(b.phone),
+                  onCall: () => _call(row.booking.phone),
                 )),
           if (waiting.isNotEmpty) ...[
             const SizedBox(height: 20),
@@ -130,17 +145,25 @@ class AdminTrackingScreen extends StatelessWidget {
   }
 }
 
-class _TrackingCard extends StatelessWidget {
+/// One radar row: a live session joined to its booking (G6).
+class _RadarRow {
+  final TrackingSession session;
   final Booking booking;
+  const _RadarRow({required this.session, required this.booking});
+}
+
+class _TrackingCard extends StatelessWidget {
+  final _RadarRow row;
   final Future<void> Function(String url) onOpen;
   final VoidCallback onCall;
 
-  const _TrackingCard({required this.booking, required this.onOpen, required this.onCall});
+  const _TrackingCard({required this.row, required this.onOpen, required this.onCall});
 
   @override
   Widget build(BuildContext context) {
-    final lat = booking.pickupLat!;
-    final lng = booking.pickupLng!;
+    final booking = row.booking;
+    final lat = row.session.latitude;
+    final lng = row.session.longitude;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -155,7 +178,7 @@ class _TrackingCard extends StatelessWidget {
                       style: GoogleFonts.inter(
                           fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.forest900)),
                 ),
-                Text(Tracking.pickupAge(booking),
+                Text(Tracking.sessionAge(row.session),
                     style: GoogleFonts.inter(fontSize: 11, color: AppTheme.forest800.withOpacity(0.6))),
               ],
             ),

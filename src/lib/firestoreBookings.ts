@@ -28,6 +28,7 @@ import { activityLogStorage, bookingsDB, type Booking } from './storage'
 import { ACCOMMODATIONS } from '../config/site'
 import {
   applyAction,
+  approvalCouplingSet,
   effectiveStatus,
   findDateConflicts,
   formatHoldCountdown,
@@ -98,6 +99,10 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     refund_total: typeof data.refund_total === 'number' ? data.refund_total : undefined,
     refund_breakdown: data.refund_breakdown ?? null,
     cancellation_reason: data.cancellation_reason ?? null,
+    // The policy in force at choice time (additive — absent on Bookings stored
+    // before it): nulls on read mean the Host had published nothing.
+    policy_version: data.policy_version ?? null,
+    policy_effective_date: data.policy_effective_date ?? null,
     // P3 KYC (additive — absent on web-only bookings)
     ref_id: data.ref_id,
     uid: data.uid,
@@ -106,16 +111,10 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     kyc_id_url: data.kyc_id_url,
     kyc_receipt_url: data.kyc_receipt_url,
     kyc_reject_reason: data.kyc_reject_reason,
-    eta_share_url: data.eta_share_url,
-    pickup_lat: typeof data.pickup_lat === 'number' ? data.pickup_lat : undefined,
-    pickup_lng: typeof data.pickup_lng === 'number' ? data.pickup_lng : undefined,
-    pickup_updated_at: data.pickup_updated_at,
-    pickup_label: data.pickup_label,
-    pickup_area: data.pickup_area,
-    distance_km: typeof data.distance_km === 'number' ? data.distance_km : undefined,
-    eta_minutes: typeof data.eta_minutes === 'number' ? data.eta_minutes : undefined,
-    is_live_sharing: Boolean(data.is_live_sharing),
-    last_speed_kmh: typeof data.last_speed_kmh === 'number' ? data.last_speed_kmh : undefined,
+    // Live location never crosses this mapping: old documents may still carry
+    // pickup_* keys from before the cutover, and they are ignored on purpose —
+    // the session at tracking_sessions/{bookingId} is where location lives now
+    // (G6), and a stray key on the Booking is not a position.
   }
 }
 
@@ -478,8 +477,16 @@ export const cloudBookingsDB = {
    * loads the Booking, applies the action, stores the patch and appends the
    * Activity log entries the action owes. A refused action stores nothing and
    * logs nothing, so a Booking can never change state unlogged.
+   *
+   * Approve takes the transactional path: its availability re-check (G2) must
+   * be atomic with the write, or two simultaneous approvals can both read the
+   * dates as free and both claim the last unit (ADR-0006).
    */
   async transition(id: string, action: BookingAction, actor: Actor): Promise<ActionAccepted | ActionRefused> {
+    if (action.type === 'Approve' && this.isCloud && db) {
+      return this.transitionApprove(id, action, actor)
+    }
+
     const booking = await this.get(id)
     if (!booking) return { ok: false, reason: 'No Booking with that id.' }
 
@@ -490,6 +497,75 @@ export const cloudBookingsDB = {
     // one entry per state change, from the thing that made it.
     await writePatch(id, result.patch)
     await activityLogDB.append(result.entries)
+    return result
+  },
+
+  /**
+   * Approve, with the G2 re-check made atomic with the write (ADR-0006).
+   *
+   * The browser SDK's transaction reads documents, not queries, so the
+   * protocol is split:
+   *
+   *   1. The callback — which the SDK reruns from the top on every abort —
+   *      first reads the Bookings collection fresh. That read is not part of
+   *      the transaction; it only decides whom to verify next.
+   *   2. The Booking being approved, and every other Booking that still holds
+   *      its dates, are then read through the transaction (approvalCouplingSet
+   *      says who). Their data is not used — the reads are what couple
+   *      concurrent approvals: a rival approval that commits in between makes
+   *      one of the reads stale, this transaction aborts, and the callback
+   *      reruns on the changed world.
+   *   3. The decision is re-applied to the fresh document, and the patch is
+   *      written through the same transaction.
+   *
+   * A refused approval writes nothing, so there is nothing to roll back: a
+   * refused action stores nothing and logs nothing, as ever. The Activity
+   * entry follows the commit through the regular append-only path — the log's
+   * sequence is managed with a query of its own, and it must not start before
+   * this transaction has actually committed (a logged approval whose write
+   * aborted would be a false record, and the log is append-only).
+   */
+  async transitionApprove(
+    id: string,
+    action: Extract<BookingAction, { type: 'Approve' }>,
+    actor: Actor,
+  ): Promise<ActionAccepted | ActionRefused> {
+    const result = await runTransaction(db!, async (tx) => {
+      // 1. The world as it is now — inside the retryable callback, so a rerun
+      //    sees whatever a rival approval has committed.
+      const snapshot = await getDocs(query(collection(db!, COLLECTION), orderBy('created_at', 'desc')))
+      const bookings = snapshot.docs.map((d) => mapDocToBooking(d.id, d.data()))
+
+      // 2a. The Booking being approved, transactionally: a Booking cancelled
+      //     or expired between the Host's click and now is refused here, not
+      //     approved on a stale read.
+      const target = await tx.get(doc(db!, COLLECTION, id))
+      if (!target.exists()) return { ok: false as const, reason: 'No Booking with that id.' }
+      const booking = mapDocToBooking(target.id, target.data())
+
+      // 2b. The coupling reads: one per overlapping date-holder, data unused.
+      for (const rival of approvalCouplingSet(booking, bookings, instantOf(actor))) {
+        await tx.get(doc(db!, COLLECTION, rival.id))
+      }
+
+      // 3. The decision on the fresh state, then the write — one atomic step.
+      //    The action's payload carries the unit count the Host published;
+      //    the booking list is this fresh read, not the Host's screen copy.
+      const decision = applyAction(
+        booking,
+        { ...action, availability: { ...action.availability, bookings } },
+        actor,
+      )
+      if (!decision.ok) return decision
+
+      const { id: _omit, ...rest } = decision.patch as Record<string, unknown>
+      tx.update(target.ref, rest)
+      return decision
+    })
+
+    if (result.ok) {
+      await activityLogDB.append(result.entries)
+    }
     return result
   },
 

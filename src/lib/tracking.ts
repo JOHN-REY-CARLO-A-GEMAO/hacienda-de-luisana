@@ -8,7 +8,6 @@
 // ----------------------------------------------------------------------------
 
 import { BUSINESS } from '../config/site'
-import type { Booking } from './storage'
 
 export const HOTEL_LAT = BUSINESS.coordinates.lat
 export const HOTEL_LNG = BUSINESS.coordinates.lng
@@ -180,13 +179,10 @@ export const SIMULATION_CHECKPOINTS = [
   },
 ]
 
-export function hasPickup(b: Booking): boolean {
-  return typeof b.pickup_lat === 'number' && typeof b.pickup_lng === 'number'
-}
-
-export function pickupAge(b: Booking): string {
-  if (!b.pickup_updated_at) return 'unknown time'
-  const t = new Date(b.pickup_updated_at).getTime()
+/** How long ago a session was last pinged, in words the Host can read. */
+export function sessionAge(lastUpdated: string | undefined): string {
+  if (!lastUpdated) return 'unknown time'
+  const t = new Date(lastUpdated).getTime()
   if (Number.isNaN(t)) return 'unknown time'
   const secs = Math.max(0, Math.round((Date.now() - t) / 1000))
   if (secs < 30) return 'just now'
@@ -194,7 +190,7 @@ export function pickupAge(b: Booking): string {
   if (mins < 60) return `${mins}m ago`
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h ${mins % 60}m ago`
-  return new Date(b.pickup_updated_at).toLocaleDateString('en-PH', {
+  return new Date(lastUpdated).toLocaleDateString('en-PH', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

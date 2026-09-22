@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
+import { trackingSessionsDB } from '../lib/trackingSessions'
 import { ensureGuestUid } from '../lib/guestAuth'
 import type { Booking } from '../lib/storage'
 import { isFirebaseConfigured } from '../lib/firebase'
@@ -479,15 +480,22 @@ function SuccessScreen({
       const dist = calculateDistanceKm(pos.lat, pos.lng)
       const eta = estimateEtaMinutes(dist)
       const area = guessAreaFromCoords(pos.lat, pos.lng)
-
-      await cloudBookingsDB.update(bookingId, {
-        pickup_lat: pos.lat,
-        pickup_lng: pos.lng,
-        pickup_area: area,
+      const now = new Date().toISOString()
+      // This tap is the consent: it is stored in the same write as the first
+      // position, on the booking's tracking session — not on the Booking
+      // (G6). The session carries the Guest's own uid, and the rules refuse
+      // any other.
+      const uid = (await ensureGuestUid()) ?? booking?.uid ?? ''
+      await trackingSessionsDB.create({
+        bookingId,
+        uid,
+        tracking_consent_at: now,
+        latitude: pos.lat,
+        longitude: pos.lng,
+        lastUpdated: now,
+        area,
         distance_km: dist,
         eta_minutes: eta,
-        is_live_sharing: true,
-        pickup_updated_at: new Date().toISOString(),
         eta_share_url: pickupMapsUrl(pos.lat, pos.lng),
       })
       setShareState('done')

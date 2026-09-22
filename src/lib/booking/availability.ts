@@ -235,6 +235,31 @@ export function isAvailable<T extends HoldBearingBooking>(
   return findDateConflicts(request, bookings, options).length === 0
 }
 
+/**
+ * The Bookings an approval of this one must re-read through the transaction
+ * (ADR-0006): same Accommodation, overlapping nights, still holding their
+ * dates as at `now`.
+ *
+ * This is deliberately wider than `findDateConflicts(..., { forApproval })`:
+ * the approval decision only counts the committed ones, but a rival approval
+ * can change that count through a Booking that is merely *queued* (Pending)
+ * today. Every overlapping date-holder is therefore read inside the
+ * transaction — none of their data is used — so a rival commit in between
+ * aborts this one and the re-check runs again on the changed world.
+ */
+export function approvalCouplingSet<T extends HoldBearingBooking>(
+  booking: T,
+  bookings: readonly T[],
+  now: string | number | Date = Date.now(),
+): T[] {
+  return bookings.filter((other) => {
+    if (other.id === booking.id) return false
+    if (other.accommodation !== booking.accommodation) return false
+    if (!holdsDates(effectiveStatus(other, now))) return false
+    return datesOverlap(booking.check_in, booking.check_out, other.check_in, other.check_out)
+  })
+}
+
 /** How far either side of the requested dates to look for a free window. */
 const DEFAULT_SEARCH_DAYS = 60
 
