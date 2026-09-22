@@ -10,6 +10,7 @@ import { BookingPage } from './pages/BookingPage'
 import { LiveTrackingPage } from './pages/LiveTrackingPage'
 import { AdminPage } from './pages/AdminPage'
 import { AccountPage } from './pages/AccountPage'
+import { GuestAuthPage, AdminAuthPage } from './pages/AuthPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { LoginForm } from './components/Auth/LoginForm'
 import { useReveal } from './lib/reveal'
@@ -88,6 +89,11 @@ export default function App() {
           <Route path="/track" element={<LiveTrackingPage />} />
           <Route path="/share-location" element={<LiveTrackingPage />} />
           <Route path="/login" element={<SignInPage />} />
+          {/* Scoped sign-in pages: Guests enter through /guest/auth, the Host
+              through /admin/auth. Both use the one form, so email and Google
+              arrive through the same session either way. */}
+          <Route path="/guest/auth" element={<GuestAuthPage />} />
+          <Route path="/admin/auth" element={<AdminAuthPage />} />
 
           {/* The Guest's own page: their Bookings, their ID, their Date hold */}
           <Route

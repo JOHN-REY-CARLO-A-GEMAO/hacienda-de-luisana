@@ -1,4 +1,4 @@
-package com.haciendadeluisana.app;
+package com.haciendadeluisana.client2;
 
 import io.flutter.embedding.android.FlutterActivity;
 

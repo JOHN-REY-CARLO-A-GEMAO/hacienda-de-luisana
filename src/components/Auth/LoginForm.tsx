@@ -12,6 +12,14 @@ import { useAuth } from '../../hooks/useAuth'
 type Mode = 'login' | 'register' | 'reset'
 
 /**
+ * Scoped copy for a page that signs one role in: the form stays the same —
+ * Google and email both arrive through the same session — only the heading a
+ * person reads changes, so `/guest/auth` and `/admin/auth` do not look like
+ * two different systems.
+ */
+export type AuthIntro = { eyebrow: string; title: string; body: string }
+
+/**
  * The one form every role signs in through.
  *
  * Signing up makes a Guest — there is no role to pick, because a role picked in a
@@ -22,7 +30,7 @@ type Mode = 'login' | 'register' | 'reset'
  * Every failure arrives as an AuthError with a message for a person, so this form
  * has no list of provider codes of its own to keep in step.
  */
-export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
+export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?: AuthIntro }) {
   const { login, register, loginWithGoogle, resetPassword, signInAsRole, isConfigured, role } = useAuth()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
@@ -33,7 +41,7 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false)
 
   const copy = {
-    login: {
+    login: intro ?? {
       eyebrow: 'Welcome back',
       title: 'Sign in',
       body: 'Guests, Staff and the Host all sign in here — the page you land on follows your role.',

@@ -37,20 +37,45 @@ extension BookingStatusX on BookingStatus {
     }
   }
 
+  /// The exact status string the website stores (src/lib/booking/statuses.ts).
+  /// The app writes these so /admin and /account read them back correctly.
+  String get webName {
+    switch (this) {
+      case BookingStatus.pending:
+        return 'Pending';
+      case BookingStatus.confirmed:
+        return 'Approved';
+      case BookingStatus.checkedIn:
+        return 'Checked-In';
+      case BookingStatus.completed:
+        return 'Completed';
+      case BookingStatus.cancelled:
+        return 'Cancelled';
+    }
+  }
+
   static BookingStatus fromString(String val) {
-    switch (val.toLowerCase()) {
+    switch (val.toLowerCase().replaceAll('-', '').replaceAll(' ', '')) {
       case 'confirmed':
+      case 'approved':
+      case 'paymentverified':
+      case 'reserved':
         return BookingStatus.confirmed;
       case 'checkedin':
       case 'checked_in':
       case 'staying':
         return BookingStatus.checkedIn;
+      case 'checkedout':
       case 'completed':
         return BookingStatus.completed;
       case 'cancelled':
       case 'canceled':
+      case 'rejected':
+      case 'expired':
         return BookingStatus.cancelled;
       case 'pending':
+      case 'kycsubmitted':
+      case 'paymentpending':
       default:
         return BookingStatus.pending;
     }
@@ -90,18 +115,34 @@ class BookingModel {
     this.trackingSessionId,
   });
 
+  /// Website docs store Firestore Timestamps (created_at, check_in,
+  /// check_out) while local mocks use ISO strings — accept both.
+  static DateTime _parseDate(Object? raw, DateTime fallback) {
+    if (raw == null) return fallback;
+    if (raw is String) {
+      try {
+        return DateTime.parse(raw);
+      } catch (_) {
+        return fallback;
+      }
+    }
+    try {
+      return (raw as dynamic).toDate() as DateTime;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   factory BookingModel.fromJson(Map<String, dynamic> json, [String? docId]) {
+    final now = DateTime.now();
     final checkIn = json['checkInDate'] != null
-        ? (json['checkInDate'] is String
-            ? DateTime.parse(json['checkInDate'])
-            : (json['checkInDate'] as dynamic).toDate())
-        : (json['check_in'] != null ? DateTime.parse(json['check_in']) : DateTime.now());
+        ? _parseDate(json['checkInDate'], now)
+        : _parseDate(json['check_in'], now);
 
     final checkOut = json['checkOutDate'] != null
-        ? (json['checkOutDate'] is String
-            ? DateTime.parse(json['checkOutDate'])
-            : (json['checkOutDate'] as dynamic).toDate())
-        : (json['check_out'] != null ? DateTime.parse(json['check_out']) : DateTime.now().add(const Duration(days: 2)));
+        ? _parseDate(json['checkOutDate'], now.add(const Duration(days: 2)))
+        : _parseDate(
+            json['check_out'], now.add(const Duration(days: 2)));
 
     final nights = checkOut.difference(checkIn).inDays <= 0 ? 1 : checkOut.difference(checkIn).inDays;
 
@@ -119,8 +160,8 @@ class BookingModel {
       totalNights: json['totalNights'] ?? nights,
       totalAmount: (json['totalAmount'] ?? json['total_amount'] ?? (nights * 12000.0)).toDouble(),
       createdAt: json['createdAt'] != null
-          ? (json['createdAt'] is String ? DateTime.parse(json['createdAt']) : (json['createdAt'] as dynamic).toDate())
-          : (json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now()),
+          ? _parseDate(json['createdAt'], now)
+          : _parseDate(json['created_at'], now),
       trackingSessionId: json['trackingSessionId'] ?? json['tracking_session_id'],
     );
   }

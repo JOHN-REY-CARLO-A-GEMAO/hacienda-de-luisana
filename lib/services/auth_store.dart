@@ -16,7 +16,8 @@ class AppUser {
 
   const AppUser({required this.name, required this.email, required this.phone});
 
-  Map<String, dynamic> toJson() => {'name': name, 'email': email, 'phone': phone};
+  Map<String, dynamic> toJson() =>
+      {'name': name, 'email': email, 'phone': phone};
 
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
         name: json['name'] as String,
@@ -79,8 +80,21 @@ class AuthStore extends ChangeNotifier {
   /// Either allowlisted role may use the owner APK (anak = view-only).
   bool get isAuthorizedRole => isOwner || isAnak;
 
+  /// Web OAuth client (type 3 in google-services.json). google_sign_in v7
+  /// needs this to mint an ID token on Android — without it the account
+  /// picker opens but sign-in dies right after picking an account.
+  static const String kServerClientId =
+      '648433185-oionh5246016o76d7hnr8fv2q35h4v9j.apps.googleusercontent.com';
+
   StreamSubscription<User?>? _authSub;
-  final GoogleSignIn _google = GoogleSignIn(scopes: const ['email']);
+  // google_sign_in v7: singleton, initialize() once per app start.
+  bool _googleInitialized = false;
+
+  Future<void> _ensureGoogleInitialized() async {
+    if (_googleInitialized) return;
+    await GoogleSignIn.instance.initialize(serverClientId: kServerClientId);
+    _googleInitialized = true;
+  }
 
   AuthStore() {
     _restoreSession();
@@ -129,11 +143,13 @@ class AuthStore extends ChangeNotifier {
     required String phone,
     required String password,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 600)); // simulated network
+    await Future.delayed(
+        const Duration(milliseconds: 600)); // simulated network
     final key = email.trim().toLowerCase();
     final accounts = await _readAccounts();
     if (accounts.containsKey(key)) {
-      throw const AuthException('An account with this email already exists. Try logging in instead.');
+      throw const AuthException(
+          'An account with this email already exists. Try logging in instead.');
     }
     accounts[key] = {
       'name': name.trim(),
@@ -153,11 +169,13 @@ class AuthStore extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 600)); // simulated network
+    await Future.delayed(
+        const Duration(milliseconds: 600)); // simulated network
     final key = email.trim().toLowerCase();
     final accounts = await _readAccounts();
     if (!accounts.containsKey(key)) {
-      throw const AuthException('No account found with this email. Create one below.');
+      throw const AuthException(
+          'No account found with this email. Create one below.');
     }
     final record = accounts[key] as Map<String, dynamic>;
     if (record['hash'] != _hash(password)) {
@@ -241,17 +259,15 @@ class AuthStore extends ChangeNotifier {
         throw const AuthException(
             'Cloud not configured on this build — connect Firebase first.');
       }
-      final account = await _google.signIn();
-      if (account == null) {
-        throw const AuthException('Sign-in cancelled.');
-      }
-      final googleAuth = await account.authentication;
+      await _ensureGoogleInitialized();
+      // v7: throws GoogleSignInException(code: canceled) on dismiss.
+      final account = await GoogleSignIn.instance.authenticate();
+      final googleAuth = account.authentication;
+      // v7 only mints an idToken; Firebase accepts credential with idToken alone.
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
-        accessToken: googleAuth.accessToken,
       );
-      final cred =
-          await FirebaseAuth.instance.signInWithCredential(credential);
+      final cred = await FirebaseAuth.instance.signInWithCredential(credential);
       _firebaseUser = cred.user;
       final email = _firebaseUser?.email ?? '';
       if (email.isEmpty) {
@@ -262,6 +278,13 @@ class AuthStore extends ChangeNotifier {
       return email;
     } on AuthException {
       rethrow;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        throw const AuthException('Sign-in cancelled.');
+      }
+      debugPrint('[Auth] Google sign-in failed: $e');
+      throw AuthException(
+          'Google sign-in failed (${e.toString().split('\n').first}). Check SHA-1 + network, then retry.');
     } catch (e) {
       debugPrint('[Auth] Google sign-in failed: $e');
       throw AuthException(
@@ -269,10 +292,47 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
+  /// Email/password sign-in for the owner APK. Unlike Google sign-in this
+  /// needs no SHA-1 / OAuth client registration, so it works while the
+  /// new applicationId is still unregistered in the Firebase console.
+  /// Returns the signed-in email. Throws [AuthException] on failure.
+  Future<String> signInOwnerEmail({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        throw const AuthException(
+            'Cloud not configured on this build — connect Firebase first.');
+      }
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      _firebaseUser = cred.user;
+      final signedIn = _firebaseUser?.email ?? '';
+      if (signedIn.isEmpty) {
+        throw const AuthException(
+            'No email on this account — use another account.');
+      }
+      notifyListeners();
+      return signedIn;
+    } on AuthException {
+      rethrow;
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(
+          'Email sign-in failed (${e.message ?? e.code}). Check email + password, then retry.');
+    } catch (e) {
+      debugPrint('[Auth] Email sign-in failed: $e');
+      throw AuthException(
+          'Email sign-in failed (${e.toString().split('\n').first}). Check network, then retry.');
+    }
+  }
+
   /// Clears Google + Firebase session (local demo session untouched).
   Future<void> signOutGoogle() async {
     try {
-      await _google.signOut();
+      await GoogleSignIn.instance.signOut();
     } catch (_) {}
     try {
       if (Firebase.apps.isNotEmpty) {

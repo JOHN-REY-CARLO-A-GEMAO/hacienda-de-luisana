@@ -279,8 +279,10 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
           const SizedBox(height: 10),
 
           // Date timeline
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            spacing: 8,
+            runSpacing: 2,
+            alignment: WrapAlignment.spaceBetween,
             children: [
               Text(
                 'Check-in: ${DateFormatter.formatDate(stay.checkInDate)} (2:00 PM)',

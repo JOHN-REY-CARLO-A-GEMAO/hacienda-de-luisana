@@ -260,16 +260,20 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      booking.accommodation,
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textDark,
+                    Expanded(
+                      child: Text(
+                        booking.accommodation,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textDark,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
@@ -284,6 +288,8 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                           fontWeight: FontWeight.bold,
                           color: AppColors.primaryForest,
                         ),
+                        maxLines: 1,
+                        softWrap: false,
                       ),
                     ),
                   ],

@@ -160,24 +160,34 @@ class RoomsScreen extends ConsumerWidget {
                 const SizedBox(height: 10),
 
                 // Controls Row (Status dropdown & Price adjust)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    Text('Status Control:', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
-                    DropdownButton<RoomStatus>(
-                      value: room.status,
-                      underline: const SizedBox.shrink(),
-                      items: RoomStatus.values.map((s) {
-                        return DropdownMenuItem(
-                          value: s,
-                          child: Text(s.displayName, style: GoogleFonts.inter(fontSize: 12)),
-                        );
-                      }).toList(),
-                      onChanged: (newStatus) {
-                        if (newStatus != null) {
-                          firestoreService.updateRoomStatus(room.id, newStatus);
-                        }
-                      },
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Status Control:', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
+                        Flexible(
+                          child: DropdownButton<RoomStatus>(
+                            value: room.status,
+                            underline: const SizedBox.shrink(),
+                            items: RoomStatus.values.map((s) {
+                              return DropdownMenuItem(
+                                value: s,
+                                child: Text(s.displayName, style: GoogleFonts.inter(fontSize: 12)),
+                              );
+                            }).toList(),
+                            onChanged: (newStatus) {
+                              if (newStatus != null) {
+                                firestoreService.updateRoomStatus(room.id, newStatus);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                     OutlinedButton.icon(
                       onPressed: () => _showPriceOverrideDialog(context, room, firestoreService),

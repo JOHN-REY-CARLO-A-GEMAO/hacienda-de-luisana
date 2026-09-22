@@ -6,7 +6,7 @@ import '../models/guest_location_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
-import '../constants/app_constants.dart';
+import '../core/constants/app_constants.dart';
 import 'mock_data_service.dart';
 
 class FirestoreService {
@@ -58,93 +58,165 @@ class FirestoreService {
     _crmController.add(List.unmodifiable(_crmProfiles));
   }
 
+  /// Replays the current in-memory snapshot to every new subscriber, then
+  /// forwards live updates. Broadcast controllers drop events emitted before
+  /// a listener attaches, so without this the UI would hang on loading forever.
+  Stream<List<T>> _withInitial<T>(
+      List<T> current, StreamController<List<T>> controller) {
+    return Stream<List<T>>.multi((mc) {
+      mc.add(List<T>.unmodifiable(current));
+      final sub = controller.stream.listen(
+        mc.add,
+        onError: mc.addError,
+        onDone: mc.close,
+      );
+      mc.onCancel = sub.cancel;
+    });
+  }
+
+  /// Converts a Firestore snapshots stream into one that NEVER errors out:
+  /// permission-denied / offline / parse failures fall back to local data
+  /// so tabs render instantly instead of spinning forever.
+  Stream<List<T>> _cloudOrLocal<T>(
+    Stream<List<T>> cloud,
+    List<T> local,
+  ) {
+    return cloud.transform(
+      StreamTransformer<List<T>, List<T>>.fromHandlers(
+        handleData: (data, sink) => sink.add(data),
+        handleError: (_, __, sink) =>
+            sink.add(List<T>.unmodifiable(local)),
+      ),
+    );
+  }
+
   // ---- STREAMS ----
 
   Stream<List<BookingModel>> streamBookings() {
     if (_isFirebaseReady && _firestore != null) {
       try {
-        return _firestore!
-            .collection(AppConstants.colBookings)
-            .orderBy('createdAt', descending: true)
-            .snapshots()
-            .map((snap) {
-          if (snap.docs.isEmpty) return _bookings;
-          return snap.docs
-              .map((doc) => BookingModel.fromJson(doc.data(), doc.id))
-              .toList();
-        }).handleError((_) => _bookings);
+        return _cloudOrLocal(
+          _firestore!
+              .collection(AppConstants.colBookings)
+              // Website docs carry created_at (snake_case, serverTimestamp).
+              // Ordering by the app's old createdAt excluded every web doc.
+              .orderBy('created_at', descending: true)
+              .snapshots()
+              .map((snap) {
+            if (snap.docs.isEmpty) return _bookings;
+            try {
+              return snap.docs
+                  .map((doc) => BookingModel.fromJson(doc.data(), doc.id))
+                  .toList();
+            } catch (_) {
+              return _bookings;
+            }
+          }),
+          _bookings,
+        );
       } catch (_) {}
     }
-    return _bookingsController.stream;
+    return _withInitial(_bookings, _bookingsController);
   }
 
   Stream<List<GuestLocationModel>> streamTrackingSessions() {
     if (_isFirebaseReady && _firestore != null) {
       try {
-        return _firestore!
-            .collection(AppConstants.colTrackingSessions)
-            .snapshots()
-            .map((snap) {
-          if (snap.docs.isEmpty) return _trackingSessions;
-          return snap.docs
-              .map((doc) => GuestLocationModel.fromJson(doc.data(), doc.id))
-              .toList();
-        }).handleError((_) => _trackingSessions);
+        return _cloudOrLocal(
+          _firestore!
+              .collection(AppConstants.colTrackingSessions)
+              .snapshots()
+              .map((snap) {
+            if (snap.docs.isEmpty) return _trackingSessions;
+            try {
+              return snap.docs
+                  .map((doc) => GuestLocationModel.fromJson(doc.data(), doc.id))
+                  .toList();
+            } catch (_) {
+              return _trackingSessions;
+            }
+          }),
+          _trackingSessions,
+        );
       } catch (_) {}
     }
-    return _trackingController.stream;
+    return _withInitial(_trackingSessions, _trackingController);
   }
 
+  /// Reads the website's access_logs collection (src/lib/smartLockStorage.ts)
+  /// — same docs /admin sees. Field mapping lives in
+  /// SmartLockEventModel.fromJson, which accepts both shapes.
   Stream<List<SmartLockEventModel>> streamSmartLockLogs() {
     if (_isFirebaseReady && _firestore != null) {
       try {
-        return _firestore!
-            .collection(AppConstants.colSmartLockLogs)
-            .orderBy('timestamp', descending: true)
-            .snapshots()
-            .map((snap) {
-          if (snap.docs.isEmpty) return _lockLogs;
-          return snap.docs
-              .map((doc) => SmartLockEventModel.fromJson(doc.data(), doc.id))
-              .toList();
-        }).handleError((_) => _lockLogs);
+        return _cloudOrLocal(
+          _firestore!
+              .collection('access_logs')
+              .orderBy('created_at', descending: true)
+              .snapshots()
+              .map((snap) {
+            if (snap.docs.isEmpty) return _lockLogs;
+            try {
+              return snap.docs
+                  .map((doc) => SmartLockEventModel.fromJson(doc.data(), doc.id))
+                  .toList();
+            } catch (_) {
+              return _lockLogs;
+            }
+          }),
+          _lockLogs,
+        );
       } catch (_) {}
     }
-    return _lockLogsController.stream;
+    return _withInitial(_lockLogs, _lockLogsController);
   }
 
   Stream<List<RoomModel>> streamRooms() {
     if (_isFirebaseReady && _firestore != null) {
       try {
-        return _firestore!
-            .collection(AppConstants.colRooms)
-            .snapshots()
-            .map((snap) {
-          if (snap.docs.isEmpty) return _rooms;
-          return snap.docs
-              .map((doc) => RoomModel.fromJson(doc.data(), doc.id))
-              .toList();
-        }).handleError((_) => _rooms);
+        return _cloudOrLocal(
+          _firestore!
+              .collection(AppConstants.colRooms)
+              .snapshots()
+              .map((snap) {
+            if (snap.docs.isEmpty) return _rooms;
+            try {
+              return snap.docs
+                  .map((doc) => RoomModel.fromJson(doc.data(), doc.id))
+                  .toList();
+            } catch (_) {
+              return _rooms;
+            }
+          }),
+          _rooms,
+        );
       } catch (_) {}
     }
-    return _roomsController.stream;
+    return _withInitial(_rooms, _roomsController);
   }
 
   Stream<List<GuestCrmModel>> streamGuestProfiles() {
     if (_isFirebaseReady && _firestore != null) {
       try {
-        return _firestore!
-            .collection(AppConstants.colGuestProfiles)
-            .snapshots()
-            .map((snap) {
-          if (snap.docs.isEmpty) return _crmProfiles;
-          return snap.docs
-              .map((doc) => GuestCrmModel.fromJson(doc.data(), doc.id))
-              .toList();
-        }).handleError((_) => _crmProfiles);
+        return _cloudOrLocal(
+          _firestore!
+              .collection(AppConstants.colGuestProfiles)
+              .snapshots()
+              .map((snap) {
+            if (snap.docs.isEmpty) return _crmProfiles;
+            try {
+              return snap.docs
+                  .map((doc) => GuestCrmModel.fromJson(doc.data(), doc.id))
+                  .toList();
+            } catch (_) {
+              return _crmProfiles;
+            }
+          }),
+          _crmProfiles,
+        );
       } catch (_) {}
     }
-    return _crmController.stream;
+    return _withInitial(_crmProfiles, _crmController);
   }
 
   // ---- MUTATION METHODS ----
@@ -158,10 +230,12 @@ class FirestoreService {
 
     if (_isFirebaseReady && _firestore != null) {
       try {
+        // Write the website's exact status string so /admin and /account
+        // read the owner action back (e.g. Approved, Cancelled).
         await _firestore!
             .collection(AppConstants.colBookings)
             .doc(bookingId)
-            .update({'status': newStatus.name});
+            .update({'status': newStatus.webName});
       } catch (_) {}
     }
   }

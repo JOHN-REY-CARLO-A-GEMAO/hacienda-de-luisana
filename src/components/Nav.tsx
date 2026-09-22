@@ -112,7 +112,7 @@ export function Nav() {
             </>
           ) : (
             <Link
-              to="/login"
+              to="/guest/auth"
               className={`text-xs px-3 py-1.5 rounded-full border transition ${
                 transparent
                   ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
@@ -193,7 +193,7 @@ export function Nav() {
               Sign out ({user.email})
             </button>
           ) : (
-            <Link to="/login" className="btn-ghost w-full text-xs mt-3">
+            <Link to="/guest/auth" className="btn-ghost w-full text-xs mt-3">
               Sign in / Create a Guest account
             </Link>
           )}

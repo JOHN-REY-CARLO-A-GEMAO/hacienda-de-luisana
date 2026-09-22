@@ -34,13 +34,17 @@ class SimulationBar extends StatelessWidget {
             children: [
               const Icon(Icons.touch_app, size: 14, color: AppColors.accentGold),
               const SizedBox(width: 6),
-              Text(
-                'DEMO SIMULATION CONTROLLER (ONE-TAP CHECKPOINTS)',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.8,
-                  color: AppColors.accentGoldLight,
+              Expanded(
+                child: Text(
+                  'DEMO SIMULATION CONTROLLER (ONE-TAP CHECKPOINTS)',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: AppColors.accentGoldLight,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

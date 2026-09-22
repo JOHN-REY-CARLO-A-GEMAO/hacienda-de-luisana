@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/booking_model.dart';
 import '../models/guest_location_model.dart';
@@ -8,7 +10,11 @@ import '../services/firestore_service.dart';
 
 // Service provider
 final firestoreServiceProvider = Provider<FirestoreService>((ref) {
-  final service = FirestoreService();
+  FirebaseFirestore? fs;
+  try {
+    if (Firebase.apps.isNotEmpty) fs = FirebaseFirestore.instance;
+  } catch (_) {}
+  final service = FirestoreService(fs);
   ref.onDispose(() => service.dispose());
   return service;
 });

@@ -48,16 +48,20 @@ class RadarAlertBanner extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                '🚨 GUEST APPROACHING · MALAPIT NA!',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.8,
-                  color: const Color(0xFF64DFDF),
+              Expanded(
+                child: Text(
+                  '🚨 GUEST APPROACHING · MALAPIT NA!',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.6,
+                    color: const Color(0xFF64DFDF),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
@@ -71,6 +75,8 @@ class RadarAlertBanner extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
+                  maxLines: 1,
+                  softWrap: false,
                 ),
               ),
             ],

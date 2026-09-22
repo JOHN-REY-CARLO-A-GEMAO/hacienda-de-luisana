@@ -132,6 +132,16 @@ cp .env.example .env.local
 npm run dev
 ```
 
+### 3b. Google sign-in (powers `/guest/auth` and `/admin/auth`)
+1. Console → Authentication → Sign-in method → enable **Google** (Email/Password stays on).
+2. Console → Authentication → Settings → Authorized domains → add every host that
+   serves the site: `localhost`, your Vercel preview domain, `haciendadeluisana.com`.
+   An unlisted domain fails with `auth/unauthorized-domain`, which the sign-in form
+   says in words.
+3. Open `/guest/auth` (or `/admin/auth`) with keys configured: the
+   **Continue with Google** button is there; without keys the same pages run in demo
+   mode and offer the three demo roles instead.
+
 ### 4. Deploy Firestore Rules & Indexes
 ```bash
 npm install -g firebase-tools

@@ -258,6 +258,39 @@ service cloud.firestore {
       allow write: if isHost();
     }
 
+    // Guest live-location sessions (Flutter radar reader; web /track writer).
+    // Shape: {bookingId, uid, latitude, longitude, currentArea,
+    //   distanceRemainingKm, estimatedMinutesRemaining, isNearResort,
+    //   hasArrived, lastUpdated}.
+    // - CREATE: any signed-in traveller (incl. anon uid) with the shape.
+    // - READ: Host + Staff for the radar, and the traveller's own session.
+    // - UPDATE: the Host, or the traveller on their own session.
+    // - DELETE: Host only.
+    match /tracking_sessions/{sessionId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['bookingId','latitude','longitude','lastUpdated']);
+      allow read: if isHost() || isStaff()
+        || (isSignedIn() && resource.data.get('uid', '') != ''
+            && resource.data.get('uid', '') == request.auth.uid);
+      allow update: if isHost()
+        || (isSignedIn() && resource.data.get('uid', '') != ''
+            && resource.data.get('uid', '') == request.auth.uid);
+      allow delete: if isHost();
+    }
+
+    // Rooms + guest CRM (owner-ops reference data, seeded by the Host).
+    // No public writer: Host writes, Host/Staff read. Until seeded, the
+    // app shows its local reference copy.
+    match /rooms/{roomId} {
+      allow read: if isHost() || isStaff();
+      allow write: if isHost();
+    }
+
+    match /guest_profiles/{profileId} {
+      allow read: if isHost() || isStaff();
+      allow write: if isHost();
+    }
+
     // Deny all other collections by default unless explicitly allowed
     match /{document=**} {
       allow read, write: if false;

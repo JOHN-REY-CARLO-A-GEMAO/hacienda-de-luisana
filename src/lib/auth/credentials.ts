@@ -27,6 +27,9 @@ export type AuthErrorCode =
   | 'auth/user-token-expired'
   | 'auth/network-request-failed'
   | 'auth/popup-closed-by-user'
+  | 'auth/cancelled-popup-request'
+  | 'auth/popup-blocked'
+  | 'auth/unauthorized-domain'
   | 'auth/operation-not-allowed'
   // This system's own refusals.
   | 'hdl/forbidden'
@@ -45,7 +48,10 @@ const MESSAGES: Record<AuthErrorCode, string> = {
   'auth/user-token-expired': 'Your session has expired. Please sign in again.',
   'auth/network-request-failed': 'Cannot reach the server. Check your connection and try again.',
   'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
+  'auth/cancelled-popup-request': 'Google sign-in was cancelled.',
+  'auth/popup-blocked': 'The Google sign-in popup was blocked. Allow popups for this site and try again.',
   'auth/operation-not-allowed': 'That sign-in method is not enabled on this project.',
+  'auth/unauthorized-domain': 'This site is not allowed to sign in with Google yet. Add its domain in Firebase Console → Auth → Settings → Authorized domains.',
   'hdl/forbidden': 'Your role does not allow that.',
   'hdl/not-configured': 'Firebase Auth is not configured. Check your .env.local',
   'hdl/unavailable': 'That is not available here.',

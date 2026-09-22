@@ -42,6 +42,7 @@ Only **Flutter app + Vite** are tracked. Build outputs (`dist/`, `build/`, `.dar
 - Booking inquiry → Firestore (localStorage fallback)
 - Authentication for all three roles — Email/Password + Google on Firebase, sign-up, sign-out, password reset, session kept across reloads
 - Role-based access: Host Admin at `/admin`, the Host + Staff client app at `/app`, the Guest's own Bookings at `/account`
+- Scoped sign-in: `/guest/auth` for Guests only (lands straight on `/book`), `/admin/auth` for the Host only — one form, email + Google; the wrong role meets the same 403 every other page gives
 - Firebase: Auth, Firestore (`profiles` holds each person's role), Storage, Hosting
 - Guest mobile shell at `/app` (capacitor)
 

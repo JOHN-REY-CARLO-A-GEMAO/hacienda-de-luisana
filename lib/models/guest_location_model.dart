@@ -1,4 +1,4 @@
-import '../constants/app_constants.dart';
+import '../core/constants/app_constants.dart';
 import '../core/utils/geo_utils.dart';
 
 class GuestLocationModel {

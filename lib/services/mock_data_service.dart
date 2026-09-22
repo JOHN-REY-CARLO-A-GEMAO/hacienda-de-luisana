@@ -3,7 +3,7 @@ import '../models/guest_location_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
-import '../constants/app_constants.dart';
+import '../core/constants/app_constants.dart';
 
 class MockDataService {
   static List<BookingModel> get initialBookings {
