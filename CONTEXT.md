@@ -18,6 +18,18 @@ _Avoid_: Owner, admin (reserve admin for the system role)
 A caretaker or cleaner who works assigned cleaning tasks and inspections, and cannot approve bookings or verify payments.
 _Avoid_: Worker, employee
 
+**Role**:
+Exactly one of Guest, Host or Staff, held by every signed-in person and read by the Firestore rules before anything is allowed. Nobody signs up as anything but a Guest; the Host gives the other two, and cannot take their own away.
+_Avoid_: Permission level, user type, actor (an actor is a Role acting on a Booking — or the system, which is never a Role)
+
+**Profile**:
+The document at `profiles/{uid}` that stores a person's Role and the name the Activity log shows for them. No Profile means Guest.
+_Avoid_: User record, account (the account is the sign-in; the Profile is the Role it carries)
+
+**Permission**:
+One named act a Role may perform: reviewing a Booking, verifying Payment proof, reading the Access log, marking a cleaned Stay Complete. Pages and buttons ask for a Permission by name; `firestore.rules` enforces the same one, so hiding a control is a courtesy and never the authorization.
+_Avoid_: Scope, entitlement, access level
+
 ### Stay
 
 **Accommodation**:

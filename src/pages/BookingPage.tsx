@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
@@ -9,6 +9,7 @@ import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib
 import { SmartImage } from '../components/SmartImage'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
 import { KycUpload } from '../components/Booking/KycUpload'
+import { useAuth } from '../hooks/useAuth'
 
 type FormState = {
   check_in: string
@@ -31,6 +32,7 @@ const OPTIONS = [
 ]
 
 export function BookingPage() {
+  const { user } = useAuth()
   const [params] = useSearchParams()
   const initialAccommodation = params.get('accommodation') || ACCOMMODATIONS[0].id
 
@@ -57,6 +59,19 @@ export function BookingPage() {
   useEffect(() => {
     if (status === 'success') window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [status])
+
+  // A signed-in Guest does not type their own details again. Filled once, and
+  // only into fields they have left empty: a name they are typing is theirs.
+  const prefilled = useRef(false)
+  useEffect(() => {
+    if (prefilled.current || !user) return
+    prefilled.current = true
+    setForm((current) => ({
+      ...current,
+      name: current.name || user.displayName || '',
+      email: current.email || user.email || '',
+    }))
+  }, [user])
 
   const selectedAcc = useMemo(
     () => ACCOMMODATIONS.find((a) => a.id === form.accommodation),
@@ -202,7 +217,7 @@ export function BookingPage() {
           {!isFirebaseConfigured && (
             <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
               <strong>Demo mode:</strong> Firebase not configured — your request will be stored locally in this browser.
-              Owner can see it at <Link to="/admin" className="underline">/admin</Link> on this device.
+              The Host can see it at <Link to="/admin" className="underline">/admin</Link> on this device.
             </div>
           )}
           {cloudBookingsDB.isCloud && (

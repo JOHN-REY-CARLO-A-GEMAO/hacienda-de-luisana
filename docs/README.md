@@ -40,16 +40,44 @@ Only **Flutter app + Vite** are tracked. Build outputs (`dist/`, `build/`, `.dar
 
 - Responsive landing (Hero, Accommodations, Experience, Gallery, Location, Reviews, FAQ)
 - Booking inquiry → Firestore (localStorage fallback)
-- Owner Admin at `/admin` — Firebase Auth (Email + Google), real-time bookings, stats/calendar
-- Firebase: Auth, Firestore, Storage, Hosting
+- Authentication for all three roles — Email/Password + Google on Firebase, sign-up, sign-out, password reset, session kept across reloads
+- Role-based access: Host Admin at `/admin`, the Host + Staff client app at `/app`, the Guest's own Bookings at `/account`
+- Firebase: Auth, Firestore (`profiles` holds each person's role), Storage, Hosting
 - Guest mobile shell at `/app` (capacitor)
+
+### Roles and access
+
+The three roles are the three kinds of person in [CONTEXT.md](../CONTEXT.md) § People. A role is **stored**, not chosen:
+signing up makes a Guest, and the Host gives anybody the Staff role from `/admin?tab=team`.
+
+| | Guest | Staff | Host |
+| --- | --- | --- | --- |
+| Public site, `/book`, `/track` | ✅ | ✅ | ✅ |
+| `/account` — own Bookings, own ID, own Date hold | ✅ | — | ✅ |
+| `/app` — Bookings, Analytics, Smart Lock records | — | read | ✅ |
+| `/app/tracking` — Guest live location | — | — | ✅ |
+| `/admin` — review, KYC, payments, refunds, delete, team | — | — | ✅ |
+| Approve / refuse a Booking, verify a Payment proof | — | — | ✅ |
+| Mark a cleaned Stay Complete | — | ✅ | ✅ |
+| Read a government ID | — | — | ✅ |
+
+Enforcement is in `firestore.rules`, which resolves a role the same way `src/lib/auth` does: the bootstrap
+allowlist first, then `profiles/{uid}`, then Guest. Hiding a page or a button is the courtesy half; a person who
+calls Firestore directly is refused by the rules. See
+[ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md).
+
+With no Firebase keys configured the site runs in **demo mode**: accounts, roles and Bookings live in this
+browser (passwords PBKDF2-hashed, never plaintext), the login card offers *Continue as Host / Staff / Guest*,
+and a banner says so on every protected page.
 
 ### Quick Start (Vite)
 
 ```bash
 npm install
-cp .env.example .env.local   # fill VITE_FIREBASE_* keys
-npm run dev                  # http://localhost:5173  (+ /app)
+cp .env.example .env.local   # fill VITE_FIREBASE_* keys (skip this to run in demo mode)
+npm run dev                  # http://localhost:3000  (+ /app, /admin, /account)
+npm run lint                 # tsc -b
+npm test                     # vitest: booking lifecycle + auth/RBAC
 npm run build
 npm run preview
 ```
@@ -59,8 +87,9 @@ npm run preview
 See [FIREBASE_SETUP.md](./FIREBASE_SETUP.md). TL;DR:
 
 1. Create project at https://console.firebase.google.com
-2. Enable Auth (Email + Google), Firestore, Storage
-3. `firebase deploy --only firestore:rules,storage,hosting`
+2. Enable Auth (Email/Password + Google + **Anonymous**), Firestore, Storage
+3. `firebase deploy --only firestore:rules,firestore:indexes,storage,hosting`
+4. Sign in once with the Host address in `firestore.rules`'s `hostEmails()` — that account needs no Profile
 
 ### Deployment
 

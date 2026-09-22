@@ -12,6 +12,7 @@ import {
   type HoldBearingBooking,
 } from '../../lib/booking'
 import type { Booking } from '../../lib/storage'
+import { ROLE_LABELS, can, isRole } from '../../lib/auth'
 
 /**
  * A conflicting Booking as the Host reads it. The lifecycle knows dates and
@@ -52,6 +53,14 @@ export function BookingReview({
   const kyc = normalizeKycStatus(booking.kyc_status)
   const host = actor ?? { actor: 'host', actor_id: 'host', actor_name: 'Host' }
   const unitsAvailable = unitsForAccommodation(booking.accommodation, ACCOMMODATIONS)
+
+  // The panel reads its own actor's role, so a Staff session handed this component
+  // gets the read-only version of it without the caller having to remember: the
+  // buttons that would be refused by `applyAction` are never offered, and a
+  // government ID is never shown to a role storage.rules would refuse it to.
+  const role = isRole(host.actor) ? host.actor : null
+  const mayReview = can(role, 'bookings:review')
+  const mayReadKyc = can(role, 'kyc:read')
 
   // A preview with the gate's own parameters, so it cannot drift from what
   // approval will actually do: the Host sees the clash before pressing, and the
@@ -120,25 +129,36 @@ export function BookingReview({
   return (
     <div className="rounded-2xl border border-forest-900/10 bg-cream-50/60 p-4">
       <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
-        Host review · {status}
+        {mayReview ? 'Host review' : `${role ? ROLE_LABELS[role] : 'Read-only'} view`} · {status}
       </div>
+
+      {!mayReview && (
+        <p className="mt-2 text-xs text-forest-700/80 leading-relaxed">
+          Only the Host approves or refuses a Booking, verifies a payment or reads a government ID. What you can do
+          here is read the request — and mark a cleaned stay Complete from the Bookings list.
+        </p>
+      )}
 
       {/* The documents. A government ID is only reviewable if it can be seen. */}
       <div className="mt-3">
-        {booking.kyc_id_url ? (
+        {booking.kyc_id_url && mayReadKyc ? (
           <div className="flex flex-wrap gap-3">
             <KycImage label="Government ID" url={booking.kyc_id_url} />
             {booking.kyc_receipt_url && <KycImage label="Receipt" url={booking.kyc_receipt_url} />}
           </div>
+        ) : booking.kyc_id_url ? (
+          <p className="text-xs text-forest-700/80 leading-relaxed">
+            A government ID is on file. It is the Host who reads it.
+          </p>
         ) : (
           <p className="text-xs text-forest-700/80 leading-relaxed">
-            No government ID uploaded yet. The Guest sends it from their own tracking page
+            No government ID uploaded yet. The Guest sends it from their own account page
             (or the mobile app) before this Booking can be approved.
           </p>
         )}
       </div>
 
-      {datesAlreadyGone && (
+      {mayReview && datesAlreadyGone && (
         <p className="mt-3 text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2 leading-relaxed">
           These dates are already committed to {datesAlreadyGone.length} other{' '}
           {datesAlreadyGone.length === 1 ? 'Booking' : 'Bookings'}, so approval will be refused.
@@ -153,8 +173,8 @@ export function BookingReview({
         </p>
       )}
 
-      {/* Decisions the lifecycle will accept from this status. */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* Decisions the lifecycle will accept from this status, from this role. */}
+      {mayReview && <div className="mt-4 flex flex-wrap gap-2">
         {status === 'Pending' && kyc !== 'submitted' && (
           <span className="text-xs text-forest-700/70 self-center">
             Waiting on the Guest's ID. You can refuse the Booking outright below.
@@ -194,9 +214,9 @@ export function BookingReview({
             Refuse booking
           </button>
         )}
-      </div>
+      </div>}
 
-      {reasonFor && (
+      {mayReview && reasonFor && (
         <div className="mt-3">
           <label className="block text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold mb-1">
             {reasonFor === 'RejectKyc'

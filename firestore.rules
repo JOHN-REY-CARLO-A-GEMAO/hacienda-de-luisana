@@ -1,52 +1,160 @@
 rules_version = '2';
 
+// ============================================================================
+// Hacienda de LuisAna — Firestore authorization
+// ============================================================================
+// This file is the enforcement. Everything in `src/` is a courtesy: a page that
+// hides a button, a lifecycle that refuses an action, a form that will not
+// submit. A person who opens the browser console and calls Firestore directly
+// bypasses all of that and lands here.
+//
+// Three roles, from CONTEXT.md § People:
+//
+//   Guest — books and stays. Reads and changes their own Booking, sends their
+//           own ID and payment proof, shares their own location. Sees nothing of
+//           anybody else's.
+//   Host  — operates the hacienda. Everything: reviews Bookings, reads IDs,
+//           verifies payments, refunds, deletes, reads the Access log, and
+//           decides who has which role.
+//   Staff — cleans and inspects. Reads Bookings and the Access log, and makes
+//           the one transition that is theirs (a cleaned stay is Completed).
+//           Never approves, never verifies money, never opens a government ID.
+//
+// A role is *stored*, not claimed: `profiles/{uid}` holds one of the three, and
+// `role()` below reads it. `src/lib/auth` resolves a role in exactly this order,
+// so a page never offers what this file is about to refuse. See ADR-0005.
+// ============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------
+    // Who is asking
+    // ------------------------------------------------------------------
 
     // Helper: is authenticated (includes Firebase anonymous uid)
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // P3: admin = owner allowlist only (keep in sync with storage.rules
-    // isOwnerEmail + site.ts contact email). Anonymous uids have no email
-    // token, so guests can never satisfy this — they use isOwnDoc().
-    // Owner login: Google sign-in with haciendadeluisiana@gmail.com in /admin.
-    function ownerEmails() {
-      return ['haciendadeluisiana@gmail.com'];
-    }
-
-    function isAdmin() {
-      return isSignedIn() && request.auth.token.email in ownerEmails();
-    }
-
-    // Role split: anak = locks-readonly placeholder.
-    // SWAP 1 LINE when the real Gmail arrives (no code change, redeploy only).
-    function anakEmails() {
-      return ['gemaojohnreycarloarguilles@gmail.com'];
-    }
-
-    // Anak may READ bookings (to make sense of lock records) + READ
-    // access_logs. No create/update/delete anywhere, no KYC, no confirm.
-    function isAnak() {
-      return isSignedIn() && request.auth.token.email in anakEmails();
-    }
-
-    // P2: guest owns docs carrying their anon uid.
+    // A Guest's own document: it carries the identity attached when it was
+    // created (ADR-0004), and that key is never among the ones they may change.
     function isOwnDoc() {
       return isSignedIn()
         && resource.data.get('uid', '') != ''
         && resource.data.get('uid', '') == request.auth.uid;
     }
 
-    // Bookings collection (shared by web /book + Flutter app, P2/P3)
-    // - CREATE stays public pending-only so web inquiry works unauthenticated.
+    // ------------------------------------------------------------------
+    // Roles
+    // ------------------------------------------------------------------
+
+    // The bootstrap allowlist: two addresses that carry a role with no Profile
+    // written, so a deployment can never be locked out of itself by a missing
+    // document. Kept in step with BOOTSTRAP_ROLES in src/lib/auth/profile.ts,
+    // isHostEmail() in storage.rules and AuthStore.kOwnerEmail / kAnakEmail in
+    // lib/services/auth_store.dart.
+    //   host  — the owner's address (also site.ts BUSINESS.email).
+    //   staff — the locks-readonly address the rules have always called `anak`.
+    // Anonymous uids carry no email claim, so a Guest can never satisfy either.
+    function hostEmails() {
+      return ['haciendadeluisiana@gmail.com'];
+    }
+
+    function staffEmails() {
+      return ['gemaojohnreycarloarguilles@gmail.com'];
+    }
+
+    function profileOf(uid) {
+      return /databases/$(database)/documents/profiles/$(uid);
+    }
+
+    // A stored role that is not one of the three is no role at all, and reads as
+    // Guest: a document nobody can explain must not grant anything.
+    function knownRole(value) {
+      return value in ['guest', 'host', 'staff'] ? value : 'guest';
+    }
+
+    // The role a Profile stores. No Profile is a Guest, so a signed-in person
+    // with nothing written down holds the fewest permissions, not the most.
+    // One `exists()` and one `get()`, and only for a request that got this far.
+    function storedRole() {
+      return isSignedIn() && exists(profileOf(request.auth.uid))
+        ? knownRole(get(profileOf(request.auth.uid)).data.get('role', 'guest'))
+        : 'guest';
+    }
+
+    // The role of this request, in the order src/lib/auth uses: the bootstrap
+    // allowlist, then the Profile, then Guest. Somebody signed out is 'none',
+    // which matches no role and therefore no rule below.
+    function role() {
+      return !isSignedIn() ? 'none'
+        : (request.auth.token.email in hostEmails()) ? 'host'
+        : (request.auth.token.email in staffEmails()) ? 'staff'
+        : storedRole();
+    }
+
+    function isHost() {
+      return role() == 'host';
+    }
+
+    function isStaff() {
+      return role() == 'staff';
+    }
+
+    // ------------------------------------------------------------------
+    // Profiles — who has which role
+    // ------------------------------------------------------------------
+    // The whole of RBAC rests on this collection, so it is the one place that has
+    // to be impossible to talk into a lie:
+    //   - you may write your own Profile, but only as a Guest;
+    //   - the Host may write anybody's, with one of the three roles;
+    //   - nobody may write a role that is not one of the three.
+    match /profiles/{userId} {
+
+      // A Profile carries its own uid, one of the three roles, and nothing else:
+      // a document that arrives with extra keys is refused rather than stored and
+      // wondered about later.
+      function isProfileShape() {
+        return request.resource.data.uid == userId
+          && request.resource.data.role in ['guest', 'host', 'staff']
+          && request.resource.data.keys()
+               .hasOnly(['uid', 'role', 'email', 'display_name', 'created_at', 'updated_at']);
+      }
+
+      // Your own Profile, and the team's if you are the Host.
+      allow read: if isSignedIn() && (request.auth.uid == userId || isHost());
+
+      // Signing up writes this, and a sign-up is always a Guest. The Host may
+      // open a Profile for somebody whose sign-up did not leave one.
+      allow create: if isProfileShape()
+        && ((isSignedIn() && request.auth.uid == userId && request.resource.data.role == 'guest')
+            || isHost());
+
+      // The Host decides roles. A person may correct their own name and address,
+      // but never their own role — that is the one field this collection exists
+      // to keep out of their hands.
+      allow update: if isProfileShape()
+        && (isHost()
+            || (isSignedIn() && request.auth.uid == userId
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['display_name', 'email', 'updated_at'])));
+
+      // Removing an account's role. Never your own: one click should not be able
+      // to leave the hacienda with no Host signed in.
+      allow delete: if isHost() && request.auth.uid != userId;
+    }
+
+    // ------------------------------------------------------------------
+    // Bookings (shared by web /book, /account and the Flutter app — P2/P3)
+    // ------------------------------------------------------------------
+    // - CREATE stays public pending-only so a web inquiry works unauthenticated.
     //   Extra app keys (ref_id, uid, kyc_status, kyc urls, source,
     //   eta_share_url) are additive.
-    // - READ: owner full + anak (locks-readonly) + guest read-own (anon uid).
-    // - UPDATE/DELETE: owner only + guest self-serve below. Anak can NEVER
-    //   approve/cancel — update/delete exclude isAnak() on purpose.
-    //   Host MUST re-check availability at approve time (G2), and the system
+    // - READ: own (the identity attached at creation), Host, Staff.
+    // - UPDATE: Host anything; Staff the one transition that is theirs; a Guest
+    //   their own self-serve keys. DELETE: Host.
+    //   The Host MUST re-check availability at approve time (G2), and the system
     //   re-checks it for them: see src/lib/booking (forApproval).
     match /bookings/{bookingId} {
       allow create: if true
@@ -57,63 +165,97 @@ service cloud.firestore {
         && request.resource.data.check_out is string
         && request.resource.data.status == 'Pending';
 
-      allow read: if isAdmin() || isAnak() || isOwnDoc();
+      // Cheapest check first: a Guest reading their own Booking should not pay
+      // for a Profile read to find out they are allowed.
+      allow read: if isOwnDoc() || isHost() || isStaff();
 
-      allow update: if isAdmin()
+      allow update: if isHost()
+        // Staff: a cleaned, inspected stay is Completed (flow §5 step 10) — the
+        // only move in the whole lifecycle that is theirs, and only the status
+        // key. No approval, no payment, no cancellation, no KYC.
+        || (isStaff()
+          && resource.data.status == 'Checked-Out'
+          && request.resource.data.status == 'Completed'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+        // A Guest may withdraw, upload or resend their ID and payment proof,
+        // choose a payment plan, and share their own location while they travel.
+        // They may never approve or verify anything themselves (ADR-0001: money
+        // moves only after the Host), and never touch the identity the Booking
+        // was created with.
         || (isSignedIn()
           && resource.data.get('uid', '') == request.auth.uid
-          && resource.data.status in ['Pending', 'KYC Submitted']
-          // A Guest may withdraw, upload or resend their ID and payment proof,
-          // and choose a payment plan. They may never approve or verify
-          // anything themselves (ADR-0001: money moves only after the Host).
-          && request.resource.data.status in ['Pending', 'KYC Submitted', 'Payment Pending', 'Cancelled']
+          // Forward or out, never backwards: a Guest may take their own Booking
+          // to the next stage the lifecycle gives them, or withdraw it, but can
+          // never write a status that un-does a decision the Host already made.
+          && ((resource.data.status in ['Pending', 'KYC Submitted']
+                 && request.resource.data.status in ['Pending', 'KYC Submitted', 'Payment Pending', 'Cancelled'])
+              || (resource.data.status == 'Approved'
+                 && request.resource.data.status in ['Approved', 'Payment Pending', 'Cancelled'])
+              || (resource.data.status == 'Payment Pending'
+                 && request.resource.data.status in ['Payment Pending', 'Cancelled'])
+              || (resource.data.status == 'Reserved'
+                 && request.resource.data.status in ['Reserved', 'Cancelled']))
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'kyc_status', 'kyc_id_url', 'kyc_receipt_url', 'kyc_reject_reason',
                       'eta_share_url', 'payment_plan', 'payment_status', 'payment_proof_url',
                       'amount_claimed', 'stay_total', 'amount_due', 'security_deposit',
-                      'balance_due', 'cancellation_reason', 'hold_expires_at']));
+                      'balance_due', 'cancellation_reason', 'hold_expires_at',
+                      'pickup_lat', 'pickup_lng', 'pickup_area', 'pickup_label', 'pickup_updated_at',
+                      'distance_km', 'eta_minutes', 'is_live_sharing', 'last_speed_kmh']));
 
-      allow delete: if isAdmin();
+      allow delete: if isHost();
 
       // Activity log (spec #9, ticket #11): the append-only record of every
       // state change, with the actor and timestamp that made it.
-      // - CREATE: anyone who may change the Booking, with the entry shape.
-      // - READ: owner + anak + the Guest it belongs to.
-      // - UPDATE/DELETE: nobody. Not the owner. An audit record that can be
+      // - CREATE: anybody who may change the Booking, naming themselves truthfully.
+      // - READ: the Host, Staff, and the Guest it belongs to.
+      // - UPDATE/DELETE: nobody. Not the Host. An audit record that can be
       //   edited is not an audit record (CONTEXT.md § Activity log).
       match /activity/{entryId} {
         allow create: if request.resource.data.keys().hasAll(
             ['booking_id', 'action', 'from_status', 'to_status', 'actor', 'actor_id', 'at'])
-          && request.resource.data.booking_id == bookingId;
-        allow read: if isAdmin() || isAnak() || isOwnDoc();
+          && request.resource.data.booking_id == bookingId
+          // An entry has to be written in the name of whoever is writing it. An
+          // audit log that lets a Guest sign the Host's name to an approval is
+          // worse than no log at all.
+          && (request.resource.data.actor == role()
+              // A Date hold running out is the system's doing, recorded by the
+              // first Host or Staff surface that saw it (ADR-0002).
+              || (request.resource.data.actor == 'system' && (isHost() || isStaff()))
+              // The public inquiry path: no identity at all, so the only entry it
+              // can write is a Guest's own submission.
+              || (!isSignedIn() && request.resource.data.actor == 'guest'));
+        allow read: if isOwnDoc() || isHost() || isStaff();
         allow update, delete: if false;
       }
     }
 
-    // Smart-lock access logs (P4 Central DB sync target).
+    // ------------------------------------------------------------------
+    // Smart-lock Access logs (P4 Central DB sync target)
+    // ------------------------------------------------------------------
     // Shape: {timestamp, uid, ref_id, result: granted|denied, reason}.
     // - CREATE: any signed-in client (guest app / lock gateway, incl. anon)
     //   with the exact shape — append-only telemetry, no PII beyond uid.
-    // - READ: owner full + anak locks-readonly (admin lock-records view).
-    // - UPDATE/DELETE: owner only (tamper-evident history).
+    // - READ: Host, and Staff (locks-readonly is exactly what Staff is for).
+    // - UPDATE/DELETE: Host only (tamper-evident history).
     match /access_logs/{logId} {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['timestamp','uid','ref_id','result','reason'])
         && request.resource.data.result in ['granted', 'denied'];
-      allow read: if isAdmin() || isAnak();
-      allow update, delete: if isAdmin();
+      allow read: if isHost() || isStaff();
+      allow update, delete: if isHost();
     }
 
-    // Gallery images metadata (public read, owner write)
+    // Gallery images metadata (public read, Host write)
     match /gallery/{imageId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isHost();
     }
 
-    // Site config (public read, owner write)
+    // Site config (public read, Host write)
     match /site_config/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isHost();
     }
 
     // Deny all other collections by default unless explicitly allowed

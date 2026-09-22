@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Logo } from './Logo'
 import { Menu, Close } from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
+import { ROLE_LABELS, canOpenPage, homeForRole } from '../lib/auth'
 
 const LINKS = [
   { href: '/', label: 'Home' },
@@ -18,7 +19,7 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const location = useLocation()
-  const { user, logout } = useAuth()
+  const { user, role, logout } = useAuth()
   const transparent = location.pathname === '/' && !scrolled
 
   useEffect(() => {
@@ -60,38 +61,66 @@ export function Nav() {
         </nav>
 
         <div className="hidden lg:flex items-center gap-2.5">
-          {/* Quick shortcuts to the 3 main parts requested */}
-          <Link
-            to="/app"
-            className={`text-xs px-3 py-1.5 rounded-full border transition ${
-              transparent
-                ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
-                : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
-            }`}
-            title="App for Client (Incoming bookings, confirmation, analytics, length of stay)"
-          >
-            Client App
-          </Link>
-
-          <Link
-            to="/admin"
-            className={`text-xs px-3 py-1.5 rounded-full border transition ${
-              transparent
-                ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
-                : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
-            }`}
-            title="Website for Admin (Smart lock records: lock/unlock counts and timestamps)"
-          >
-            Admin Website
-          </Link>
-
-          {user && (
-            <button
-              onClick={() => logout()}
-              className={`text-xs ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 hover:text-forest-900'}`}
+          {/* Shortcuts to the parts of the site this role may actually open */}
+          {canOpenPage(role, '/app') && (
+            <Link
+              to="/app"
+              className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                transparent
+                  ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
+                  : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
+              }`}
+              title="App for Client (Incoming bookings, confirmation, analytics, length of stay)"
             >
-              Sign out
-            </button>
+              Client App
+            </Link>
+          )}
+
+          {canOpenPage(role, '/admin') && (
+            <Link
+              to="/admin"
+              className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                transparent
+                  ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
+                  : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
+              }`}
+              title="Website for Admin (Smart lock records: lock/unlock counts and timestamps)"
+            >
+              Admin Website
+            </Link>
+          )}
+
+          {user ? (
+            <>
+              <Link
+                to={homeForRole(role)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                  transparent
+                    ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
+                    : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
+                }`}
+                title={user.email ?? undefined}
+              >
+                {role ? ROLE_LABELS[role] : 'My page'}
+              </Link>
+              <button
+                onClick={() => void logout()}
+                className={`text-xs ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 hover:text-forest-900'}`}
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <Link
+              to="/login"
+              className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                transparent
+                  ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
+                  : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
+              }`}
+            >
+              Sign in
+            </Link>
           )}
 
           <Link
@@ -139,21 +168,34 @@ export function Nav() {
             <Link to="/book" className="btn-primary w-full text-xs">
               Website for Bookers (/book)
             </Link>
-            <Link to="/app" className="btn-ghost w-full text-xs">
-              App for Client (/app)
-            </Link>
-            <Link to="/admin" className="btn-ghost w-full text-xs">
-              Website for Admin (/admin)
-            </Link>
+            {canOpenPage(role, '/app') && (
+              <Link to="/app" className="btn-ghost w-full text-xs">
+                App for Client (/app)
+              </Link>
+            )}
+            {canOpenPage(role, '/admin') && (
+              <Link to="/admin" className="btn-ghost w-full text-xs">
+                Website for Admin (/admin)
+              </Link>
+            )}
+            {canOpenPage(role, '/account') && (
+              <Link to="/account" className="btn-ghost w-full text-xs">
+                My Bookings (/account)
+              </Link>
+            )}
             <Link to="/track" className="btn bg-cream-100 text-forest-800 w-full text-xs">
               Live Location Sharing (/track)
             </Link>
           </div>
 
-          {user && (
-            <button onClick={() => logout()} className="text-xs text-forest-600 mt-3 text-center underline w-full">
+          {user ? (
+            <button onClick={() => void logout()} className="text-xs text-forest-600 mt-3 text-center underline w-full">
               Sign out ({user.email})
             </button>
+          ) : (
+            <Link to="/login" className="btn-ghost w-full text-xs mt-3">
+              Sign in / Create a Guest account
+            </Link>
           )}
         </div>
       </div>

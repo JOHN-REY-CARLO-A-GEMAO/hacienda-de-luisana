@@ -16,13 +16,20 @@ import {
   HOTEL_LNG,
 } from '../lib/tracking'
 import { formatStayDuration } from '../lib/storage'
+import { useAuth } from '../hooks/useAuth'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
 import { KycUpload } from '../components/Booking/KycUpload'
 import { MapPin, Navigation, Phone, Messenger, Copy, Check, Sparkle, ArrowRight, Clock } from '../lib/icons'
 
 export function LiveTrackingPage() {
   const [params] = useSearchParams()
+  const { user, can } = useAuth()
   const bookingId = params.get('id') || ''
+  // The Host and Staff read every Booking; a Guest reads the ones that are
+  // theirs. Asking Firestore for the whole collection as a Guest is refused by
+  // the rules, so the page never asks — and never shows somebody else's name,
+  // phone or location by falling back to "the most recent one".
+  const readsAll = can('bookings:read:all')
 
   const [booking, setBooking] = useState<Booking | null>(null)
   const [loading, setLoading] = useState(true)
@@ -32,9 +39,9 @@ export function LiveTrackingPage() {
   const [simActive, setSimActive] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState('')
 
-  // Subscribe to bookings
+  // Subscribe to the bookings this person may read
   useEffect(() => {
-    const unsub = cloudBookingsDB.subscribe((list) => {
+    const onList = (list: Booking[]) => {
       if (bookingId) {
         const found = list.find((b) => b.id === bookingId || b.ref_id === bookingId)
         if (found) {
@@ -54,9 +61,13 @@ export function LiveTrackingPage() {
         }
       }
       setLoading(false)
-    })
+    }
+
+    const unsub = readsAll
+      ? cloudBookingsDB.subscribe(onList)
+      : cloudBookingsDB.subscribeMine(user?.uid, onList)
     return () => unsub()
-  }, [bookingId])
+  }, [bookingId, readsAll, user?.uid])
 
   // Real GPS live watch when isSharing is active
   useEffect(() => {

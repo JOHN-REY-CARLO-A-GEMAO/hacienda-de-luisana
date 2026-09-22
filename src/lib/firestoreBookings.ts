@@ -16,6 +16,7 @@ import {
   getDocs,
   query,
   orderBy,
+  where,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -280,6 +281,60 @@ export const cloudBookingsDB = {
       console.warn('[Firestore] list() failed, falling back to local', e)
       return bookingsDB.list()
     }
+  },
+
+  /**
+   * The Bookings that hang off one Guest identity.
+   *
+   * Queried by `uid` rather than fetched and filtered: firestore.rules lets a
+   * Guest read a Booking only when it carries their own uid (ADR-0004), so a
+   * Guest asking for everybody's Bookings is refused by the database, not by this
+   * function. The composite index it needs (`uid`, `created_at`) is already in
+   * firestore.indexes.json.
+   */
+  async listMine(uid: string | null | undefined): Promise<Booking[]> {
+    if (!uid) return []
+    if (!isCloud || !db) return bookingsDB.list().filter((booking) => booking.uid === uid)
+    try {
+      const q = query(collection(db, COLLECTION), where('uid', '==', uid), orderBy('created_at', 'desc'))
+      const snap = await getDocs(q)
+      return snap.docs.map((d) => mapDocToBooking(d.id, d.data()))
+    } catch (e) {
+      console.warn('[Firestore] listMine() failed, falling back to local', e)
+      return bookingsDB.list().filter((booking) => booking.uid === uid)
+    }
+  },
+
+  /** This Guest's own Bookings, as they change. */
+  subscribeMine(
+    uid: string | null | undefined,
+    callback: (bookings: Booking[]) => void,
+    onError?: (e: any) => void,
+  ): () => void {
+    if (!uid) {
+      callback([])
+      return () => {}
+    }
+    if (!this.isCloud || !db) {
+      const handler = () => callback(bookingsDB.list().filter((booking) => booking.uid === uid))
+      handler()
+      window.addEventListener('hdl:bookings-updated', handler)
+      return () => window.removeEventListener('hdl:bookings-updated', handler)
+    }
+
+    const q = query(collection(db, COLLECTION), where('uid', '==', uid), orderBy('created_at', 'desc'))
+    const unsub = onSnapshot(
+      q,
+      (snap: QuerySnapshot<DocumentData>) => {
+        callback(snap.docs.map((d) => mapDocToBooking(d.id, d.data())))
+      },
+      (err) => {
+        console.error('[Firestore] subscribeMine error', err)
+        onError?.(err)
+        callback(bookingsDB.list().filter((booking) => booking.uid === uid))
+      },
+    )
+    return unsub
   },
 
   // Real-time subscription for admin page
