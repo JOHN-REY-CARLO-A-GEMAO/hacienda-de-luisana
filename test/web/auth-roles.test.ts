@@ -75,6 +75,7 @@ describe('what each role may do', () => {
     expect(can('staff', 'team:manage')).toBe(false)
     expect(can('staff', 'guest-location:read')).toBe(false)
     expect(can('staff', 'site:manage')).toBe(false)
+    expect(can('staff', 'rates:publish')).toBe(false)
   })
 
   it('gives a Guest their own Booking and nothing of anybody else’s', () => {
@@ -89,6 +90,7 @@ describe('what each role may do', () => {
     expect(can('guest', 'kyc:read')).toBe(false)
     expect(can('guest', 'access-logs:read')).toBe(false)
     expect(can('guest', 'team:manage')).toBe(false)
+    expect(can('guest', 'rates:publish')).toBe(false)
   })
 
   it('fails closed for anybody who is not one of the three roles', () => {

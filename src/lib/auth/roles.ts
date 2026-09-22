@@ -95,6 +95,9 @@ export const PERMISSIONS = [
   'analytics:read',
   'team:manage',
   'site:manage',
+  // The Host's published figures the Guest's payment choice is quoted from
+  // (ticket #14). Publishing is the Host's alone; reading is public.
+  'rates:publish',
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]

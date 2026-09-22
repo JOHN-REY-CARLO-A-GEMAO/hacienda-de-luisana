@@ -69,6 +69,7 @@ const CAN: Record<Role, Permission[]> = {
     'analytics:read',
     'team:manage',
     'site:manage',
+    'rates:publish',
   ],
   staff: ['bookings:read:all', 'access-logs:read', 'analytics:read', 'stays:complete'],
 }

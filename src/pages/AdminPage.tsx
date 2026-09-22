@@ -9,6 +9,7 @@ import { ACCOMMODATIONS } from '../config/site'
 import { BookingHistory } from '../components/Booking/BookingHistory'
 import { effectiveStatus } from '../lib/booking'
 import { BookingReview } from '../components/Booking/BookingReview'
+import { PaymentReview } from '../components/Booking/PaymentReview'
 import {
   Calendar,
   Users,
@@ -28,11 +29,26 @@ import { useAuth } from '../hooks/useAuth'
 import { getFirebaseStatus } from '../lib/firebase'
 import { ROLE_LABELS } from '../lib/auth'
 import { TeamPanel } from '../components/Auth/TeamPanel'
+import { RatesPanel } from '../components/Admin/RatesPanel'
 
-const STATUSES: BookingStatus[] = ['Pending', 'Reserved', 'Cancelled', 'Completed']
+/**
+ * Every status the Host filters by. Intermediate money and review stages are
+ * listed, not collapsed: a Booking waiting on payment verification must be
+ * findable, not hidden behind Reserved (ticket #14).
+ */
+const STATUSES: BookingStatus[] = [
+  'Pending',
+  'KYC Submitted',
+  'Approved',
+  'Payment Pending',
+  'Payment Verified',
+  'Reserved',
+  'Cancelled',
+  'Completed',
+]
 
-/** The tabs of the Host dashboard. `team` is the Host's alone. */
-type AdminTab = 'smartlock' | 'bookings' | 'analytics' | 'team'
+/** The tabs of the Host dashboard. `team` and `rates` are the Host's alone. */
+type AdminTab = 'smartlock' | 'bookings' | 'analytics' | 'team' | 'rates'
 
 function fmtDate(iso: string) {
   if (!iso) return '—'
@@ -69,10 +85,26 @@ function accName(id: string) {
 
 /** One read of the rule per row, rather than four. */
 function statusChip(status: ReturnType<typeof effectiveStatus>): string {
-  if (status === 'Reserved') return 'bg-emerald-100 text-emerald-800'
-  if (status === 'Pending') return 'bg-amber-100 text-amber-800'
-  if (status === 'Expired') return 'bg-red-100 text-red-700'
+  if (status === 'Reserved' || status === 'Payment Verified') return 'bg-emerald-100 text-emerald-800'
+  if (status === 'Pending' || status === 'KYC Submitted' || status === 'Approved') {
+    return 'bg-amber-100 text-amber-800'
+  }
+  if (status === 'Payment Pending') return 'bg-sky-100 text-sky-800'
+  if (status === 'Expired' || status === 'Rejected' || status === 'Cancelled') return 'bg-red-100 text-red-700'
   return 'bg-cream-100 text-forest-700'
+}
+
+/** Bordered tone for the bookings-table badge, by what the Booking reads as. */
+function badgeTone(status: ReturnType<typeof effectiveStatus>): string {
+  if (status === 'Reserved' || status === 'Payment Verified') {
+    return 'bg-emerald-50 text-emerald-800 border-emerald-200'
+  }
+  if (status === 'Pending' || status === 'KYC Submitted' || status === 'Approved') {
+    return 'bg-amber-50 text-amber-800 border-amber-200'
+  }
+  if (status === 'Payment Pending') return 'bg-sky-50 text-sky-800 border-sky-200'
+  if (status === 'Completed') return 'bg-forest-50 text-forest-800 border-forest-200'
+  return 'bg-red-50 text-red-800 border-red-200'
 }
 
 export function AdminPage() {
@@ -153,10 +185,11 @@ export function AdminPage() {
     })
   }, [smartLockRecords, doorFilter, actionFilter, searchQuery])
 
-  // Filtered bookings
+  // Filtered bookings, by what each Booking reads as right now — the read-time
+  // rule from ADR-0002, so an expired hold never hides behind a stored Pending.
   const filteredBookings = useMemo(() => {
     if (bookingFilter === 'All') return bookings
-    return bookings.filter((b) => b.status === bookingFilter)
+    return bookings.filter((b) => effectiveStatus(b) === bookingFilter)
   }, [bookings, bookingFilter])
 
   // Simulate smart lock actions
@@ -349,7 +382,7 @@ export function AdminPage() {
             <Calendar size={16} />
             Booking Requests & Approvals
             <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px]">
-              {bookings.filter((b) => b.status === 'Pending').length} pending
+              {bookings.filter((b) => effectiveStatus(b) === 'Pending').length} pending
             </span>
           </button>
 
@@ -376,6 +409,20 @@ export function AdminPage() {
             >
               <Users size={16} />
               Team & Roles
+            </button>
+          )}
+
+          {can('rates:publish') && (
+            <button
+              onClick={() => switchTab('rates')}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+                activeTab === 'rates'
+                  ? 'border-forest-800 text-forest-900'
+                  : 'border-transparent text-forest-600 hover:text-forest-900'
+              }`}
+            >
+              <Sparkle size={16} />
+              Rates & Policy
             </button>
           )}
         </div>
@@ -834,17 +881,9 @@ export function AdminPage() {
                           </td>
                           <td className="px-5 py-4">
                             <span
-                              className={`text-[10px] uppercase tracking-eyebrow px-2.5 py-1 rounded-full font-bold border ${
-                                b.status === 'Pending'
-                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                  : b.status === 'Reserved'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                  : b.status === 'Completed'
-                                  ? 'bg-forest-50 text-forest-800 border-forest-200'
-                                  : 'bg-red-50 text-red-800 border-red-200'
-                              }`}
+                              className={`text-[10px] uppercase tracking-eyebrow px-2.5 py-1 rounded-full font-bold border ${badgeTone(effectiveStatus(b))}`}
                             >
-                              {b.status}
+                              {effectiveStatus(b)}
                             </span>
                           </td>
                           <td className="px-5 py-4 text-right">
@@ -863,7 +902,8 @@ export function AdminPage() {
                                   Review
                                 </button>
                               )}
-                              {can('bookings:cancel:any') && b.status !== 'Cancelled' && b.status !== 'Completed' && (
+                              {can('bookings:cancel:any') &&
+                                !['Cancelled', 'Completed', 'Expired', 'Rejected'].includes(effectiveStatus(b)) && (
                                 <button
                                   onClick={() => handleUpdateBooking(b.id, { status: 'Cancelled' })}
                                   disabled={updatingId === b.id}
@@ -985,6 +1025,13 @@ export function AdminPage() {
             <TeamPanel />
           </div>
         )}
+
+        {/* TAB 5: RATES & POLICY — the figures a payment choice is quoted from (#14) */}
+        {activeTab === 'rates' && can('rates:publish') && (
+          <div className="mt-8">
+            <RatesPanel />
+          </div>
+        )}
       </div>
 
       {/* Booking View Modal */}
@@ -1066,6 +1113,11 @@ export function AdminPage() {
             {/* Review: read the ID, then approve or refuse through the lifecycle (ticket #13) */}
             <div className="mt-6">
               <BookingReview booking={viewedBooking} bookings={bookings} actor={hostActor} />
+            </div>
+
+            {/* Payment: verify the proof into a Reservation, or refuse it (ticket #14) */}
+            <div className="mt-4">
+              <PaymentReview booking={viewedBooking} actor={hostActor} />
             </div>
 
             <div className="mt-4 flex gap-2 flex-wrap justify-end">
