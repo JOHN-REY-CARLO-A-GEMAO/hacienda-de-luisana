@@ -1,8 +1,13 @@
 import { Link } from 'react-router-dom'
 import { BUSINESS } from '../config/site'
 import { Facebook, Instagram, Mail, Phone, MapPin } from '../lib/icons'
+import { useAuth } from '../hooks/useAuth'
 
 export function Footer() {
+  // The Host's door. Everybody else signs in from the Nav, and is not handed a
+  // link to a page that would turn them away.
+  const { canOpen } = useAuth()
+
   return (
     <footer className="bg-forest-950 text-cream-100 pt-20 pb-10">
       <div className="mx-auto max-w-7xl px-5 lg:px-8 grid gap-12 lg:grid-cols-4">
@@ -61,9 +66,11 @@ export function Footer() {
         <div className="text-xs text-cream-100/50">
           © {new Date().getFullYear()} Hacienda de LuisAna. Munting mansyon ng Luisiana.
         </div>
-        <div className="text-xs text-cream-100/40">
-          <Link to="/admin" className="hover:text-cream-100/80 transition">Admin</Link>
-        </div>
+        {canOpen('/admin') ? (
+          <div className="text-xs text-cream-100/40">
+            <Link to="/admin" className="hover:text-cream-100/80 transition">Admin</Link>
+          </div>
+        ) : null}
       </div>
     </footer>
   )

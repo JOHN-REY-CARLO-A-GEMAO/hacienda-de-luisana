@@ -25,8 +25,13 @@ import {
 } from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
 import { getFirebaseStatus } from '../lib/firebase'
+import { ROLE_LABELS } from '../lib/auth'
+import { TeamPanel } from '../components/Auth/TeamPanel'
 
 const STATUSES: BookingStatus[] = ['Pending', 'Reserved', 'Cancelled', 'Completed']
+
+/** The tabs of the Host dashboard. `team` is the Host's alone. */
+type AdminTab = 'smartlock' | 'bookings' | 'analytics' | 'team'
 
 function fmtDate(iso: string) {
   if (!iso) return '—'
@@ -71,10 +76,10 @@ function statusChip(status: ReturnType<typeof effectiveStatus>): string {
 
 export function AdminPage() {
   const [params, setParams] = useSearchParams()
-  const initialTab = (params.get('tab') as 'smartlock' | 'bookings' | 'analytics') || 'smartlock'
-  const [activeTab, setActiveTab] = useState<'smartlock' | 'bookings' | 'analytics'>(initialTab)
+  const initialTab = (params.get('tab') as AdminTab) || 'smartlock'
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab)
 
-  const { user, logout, isConfigured } = useAuth()
+  const { user, logout, isConfigured, role, can, actor: sessionActor } = useAuth()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [smartLockRecords, setSmartLockRecords] = useState<SmartLockRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -92,7 +97,7 @@ export function AdminPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   // Sync tab with URL
-  const switchTab = (tab: 'smartlock' | 'bookings' | 'analytics') => {
+  const switchTab = (tab: AdminTab) => {
     setActiveTab(tab)
     setParams({ tab })
   }
@@ -203,15 +208,19 @@ export function AdminPage() {
   }
 
   const handleUpdateBooking = async (id: string, patch: Partial<Booking>) => {
+    if (!can('bookings:cancel:any')) return
     setUpdatingId(id)
     try {
-      await cloudBookingsDB.update(id, patch)
+      // The actor goes with the write, so the Activity log names the person who
+      // cancelled rather than whoever happens to be reading it later.
+      await cloudBookingsDB.update(id, patch, sessionActor ?? undefined)
     } finally {
       setUpdatingId(null)
     }
   }
 
   const handleDeleteBooking = async (id: string) => {
+    if (!can('bookings:delete')) return
     if (!confirm('I-delete ang booking na ito? Hindi na ito mababawi.')) return
     setUpdatingId(id)
     try {
@@ -227,11 +236,11 @@ export function AdminPage() {
     ? bookings.find((b) => b.id === viewingBooking.id) ?? viewingBooking
     : null
 
-  const hostActor = {
-    actor: 'host' as const,
-    actor_id: user?.uid ?? 'host',
-    actor_name: user?.email ?? 'Host',
-  }
+  // Every decision here is attributed to the person who made it, in the role the
+  // session resolved for them — not in a role this page assumed. A session that
+  // is not the Host's cannot produce a Host's approval: the lifecycle refuses it
+  // and firestore.rules refuses it again (ticket #11, ADR-0005).
+  const hostActor = sessionActor ?? { actor: 'host' as const, actor_id: 'host', actor_name: 'Host' }
 
   const firebaseStatus = getFirebaseStatus()
 
@@ -249,6 +258,10 @@ export function AdminPage() {
               Dito papasok ang <strong>Smart lock records</strong> kung naka ilang lock at unlock sila ng pinto and kung anong oras, kasama ang pamamahala ng lahat ng bookings mula sa website bookers.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-forest-900 px-3 py-1 text-cream-50">
+                Signed in as {role ? ROLE_LABELS[role] : '…'}
+                {user?.email ? ` · ${user.email}` : ''}
+              </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-emerald-800">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Smart Lock Engine: Online ({DOORS.length} Doors Active)
@@ -339,6 +352,20 @@ export function AdminPage() {
             <Clock size={16} />
             Analytics & Length of Stay
           </button>
+
+          {can('team:manage') && (
+            <button
+              onClick={() => switchTab('team')}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+                activeTab === 'team'
+                  ? 'border-forest-800 text-forest-900'
+                  : 'border-transparent text-forest-600 hover:text-forest-900'
+              }`}
+            >
+              <Users size={16} />
+              Team & Roles
+            </button>
+          )}
         </div>
 
         {/* TAB 1: SMART LOCK RECORDS & DOOR LOGS */}
@@ -824,7 +851,7 @@ export function AdminPage() {
                                   Review
                                 </button>
                               )}
-                              {b.status !== 'Cancelled' && b.status !== 'Completed' && (
+                              {can('bookings:cancel:any') && b.status !== 'Cancelled' && b.status !== 'Completed' && (
                                 <button
                                   onClick={() => handleUpdateBooking(b.id, { status: 'Cancelled' })}
                                   disabled={updatingId === b.id}
@@ -835,6 +862,7 @@ export function AdminPage() {
                               )}
                               <button
                                 onClick={() => handleDeleteBooking(b.id)}
+                                hidden={!can('bookings:delete')}
                                 disabled={updatingId === b.id}
                                 className="px-2 py-1.5 rounded-lg text-xs bg-red-50 text-red-700 border border-red-100 hover:bg-red-100 transition disabled:opacity-50"
                               >
@@ -938,6 +966,13 @@ export function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* TAB 4: TEAM & ROLES — the Host decides who is Staff */}
+        {activeTab === 'team' && can('team:manage') && (
+          <div className="mt-8">
+            <TeamPanel />
+          </div>
+        )}
       </div>
 
       {/* Booking View Modal */}
@@ -1009,7 +1044,7 @@ export function AdminPage() {
             </div>
 
             <div className="mt-4 flex gap-2 flex-wrap justify-end">
-              {viewedBooking.status !== 'Cancelled' && (
+              {can('bookings:cancel:any') && viewedBooking.status !== 'Cancelled' && (
                 <button
                   onClick={() => {
                     handleUpdateBooking(viewedBooking.id, { status: 'Cancelled' })

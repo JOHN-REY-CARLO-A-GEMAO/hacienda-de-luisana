@@ -8,6 +8,7 @@ import { Screen, ScreenTitle } from '../components/Screen'
 import { BookingHistory } from '../../components/Booking/BookingHistory'
 import { BookingReview } from '../../components/Booking/BookingReview'
 import { useAuth } from '../../hooks/useAuth'
+import type { Permission } from '../../lib/auth'
 import { effectiveStatus } from '../../lib/booking'
 import { Check, Close, Clock, MapPin, Phone, Users, Bed, Sparkle } from '../../lib/icons'
 
@@ -18,15 +19,13 @@ export function AdminBookingsScreen() {
   const [durationFilter, setDurationFilter] = useState<'all' | '1-night' | '2-nights' | '3-plus'>('all')
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [notification, setNotification] = useState<string | null>(null)
-  const { user } = useAuth()
+  const { can, actor: sessionActor } = useAuth()
 
-  // Every decision here is attributed: the Activity log is worth nothing
-  // without knowing which Host made it (ticket #11).
-  const hostActor = {
-    actor: 'host' as const,
-    actor_id: user?.uid ?? 'host',
-    actor_name: user?.email ?? 'Host',
-  }
+  // Every decision here is attributed: the Activity log is worth nothing without
+  // knowing who made it, and the role in that entry is the one the session
+  // resolved — a Staff caretaker finishing a cleaned stay is logged as Staff, not
+  // as the Host (ticket #11, ADR-0005).
+  const hostActor = sessionActor ?? { actor: 'host' as const, actor_id: 'host', actor_name: 'Host' }
 
   // A Date hold that has run out is written down the first time a Host surface
   // sees it, so the Activity log says when the expiry happened instead of only
@@ -50,10 +49,17 @@ export function AdminBookingsScreen() {
     return () => unsub()
   }, [])
 
-  const update = async (id: string, patch: Partial<Booking>, successNotice?: string) => {
+  const update = async (id: string, patch: Partial<Booking>, permission: Permission, successNotice?: string) => {
+    // The button is hidden from a role that may not use it, and the write is
+    // refused here too: hiding a control is a courtesy, not an authorization.
+    if (!can(permission)) {
+      setNotification('Your role does not allow that — the Host does.')
+      setTimeout(() => setNotification(null), 3500)
+      return
+    }
     setBusy(id)
     try {
-      await cloudBookingsDB.update(id, patch)
+      await cloudBookingsDB.update(id, patch, sessionActor ?? undefined)
       if (successNotice) {
         setNotification(successNotice)
         setTimeout(() => setNotification(null), 3500)
@@ -131,9 +137,11 @@ export function AdminBookingsScreen() {
           <div className="font-serif text-xl text-emerald-300">
             {items.filter((b) => b.is_live_sharing || hasPickup(b)).length} Booker
           </div>
-          <Link to="/app/tracking" className="text-[10px] text-cream-100/80 underline hover:text-white mt-1">
-            Tingnan ang radar →
-          </Link>
+          {can('guest-location:read') && (
+            <Link to="/app/tracking" className="text-[10px] text-cream-100/80 underline hover:text-white mt-1">
+              Tingnan ang radar →
+            </Link>
+          )}
         </div>
       </div>
 
@@ -321,12 +329,14 @@ export function AdminBookingsScreen() {
                         </div>
                       </div>
                     </div>
-                    <Link
-                      to="/app/tracking"
-                      className="px-2.5 py-1 rounded-lg bg-emerald-700 text-white text-[10px] font-medium hover:bg-emerald-800 shrink-0"
-                    >
-                      Bantayan →
-                    </Link>
+                    {can('guest-location:read') && (
+                      <Link
+                        to="/app/tracking"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-700 text-white text-[10px] font-medium hover:bg-emerald-800 shrink-0"
+                      >
+                        Bantayan →
+                      </Link>
+                    )}
                   </div>
                 )}
 
@@ -334,7 +344,7 @@ export function AdminBookingsScreen() {
                 <div className="mt-4 pt-3 border-t border-forest-900/5 flex flex-wrap items-center gap-2 justify-between">
                   <div className="flex items-center gap-2">
                     {/* Review — approval re-checks the dates and can refuse (#13) */}
-                    {['Pending', 'KYC Submitted'].includes(readsAs) && (
+                    {can('bookings:review') && ['Pending', 'KYC Submitted'].includes(readsAs) && (
                       <button
                         onClick={() => setSelectedBooking(b)}
                         className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm flex items-center gap-1.5 transition"
@@ -344,22 +354,24 @@ export function AdminBookingsScreen() {
                       </button>
                     )}
 
-                    {/* Mark as Completed */}
-                    {readsAs === 'Reserved' && (
+                    {/* Mark as Completed — the one transition Staff may make */}
+                    {can('stays:complete') && readsAs === 'Reserved' && (
                       <button
                         disabled={busy === b.id}
-                        onClick={() => update(b.id, { status: 'Completed' }, `Nai-tag bilang Completed ang stay ni ${b.guest_name}.`)}
+                        onClick={() =>
+                          update(b.id, { status: 'Completed' }, 'stays:complete', `Nai-tag bilang Completed ang stay ni ${b.guest_name}.`)
+                        }
                         className="px-3 py-1.5 rounded-xl text-xs font-medium bg-forest-800 hover:bg-forest-900 text-cream-50 disabled:opacity-50 transition"
                       >
                         Mark as Completed
                       </button>
                     )}
 
-                    {/* Cancel / Decline button */}
-                    {readsAs !== 'Cancelled' && readsAs !== 'Completed' && readsAs !== 'Expired' && (
+                    {/* Cancel / Decline button — the Host's, not the caretaker's */}
+                    {can('bookings:cancel:any') && readsAs !== 'Cancelled' && readsAs !== 'Completed' && readsAs !== 'Expired' && (
                       <button
                         disabled={busy === b.id}
-                        onClick={() => update(b.id, { status: 'Cancelled' }, `Nai-cancel ang booking ni ${b.guest_name}.`)}
+                        onClick={() => update(b.id, { status: 'Cancelled' }, 'bookings:cancel:any', `Nai-cancel ang booking ni ${b.guest_name}.`)}
                         className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-forest-900/10 text-red-700 hover:bg-red-50 disabled:opacity-50 transition"
                       >
                         Kanselahin

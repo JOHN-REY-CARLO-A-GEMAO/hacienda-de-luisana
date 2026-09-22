@@ -3,8 +3,12 @@ import { Link } from 'react-router-dom'
 import { smartLockDB, DOORS, type SmartLockRecord } from '../../lib/smartLockStorage'
 import { Screen, ScreenTitle } from '../components/Screen'
 import { Lock, Unlock, Key, Refresh, Check, Sparkle, ArrowRight } from '../../lib/icons'
+import { useAuth } from '../../hooks/useAuth'
 
 export function AdminRecordsScreen() {
+  // Which of the two websites this role may open, so nobody is handed a link
+  // that would only turn them away.
+  const { canOpen } = useAuth()
   const [records, setRecords] = useState<SmartLockRecord[]>([])
   const [activeDoor, setActiveDoor] = useState(DOORS[0].id)
   const [simMessage, setSimMessage] = useState<string | null>(null)
@@ -113,20 +117,22 @@ export function AdminRecordsScreen() {
         </div>
       </div>
 
-      {/* Link to Full Admin Website */}
-      <div className="rounded-3xl bg-forest-900 text-cream-50 p-5 shadow-card">
-        <div className="eyebrow text-cream-100/60">Website for Admin</div>
-        <h4 className="font-serif text-xl text-cream-50 mt-1">Buong Smart Lock Records & Oras</h4>
-        <p className="mt-1 text-xs text-cream-100/75 leading-relaxed">
-          Para sa buong audit trail, detalyadong timestamp kung anong oras at ilang lock/unlock ang nagawa, pumunta sa Website for Admin:
-        </p>
-        <Link
-          to="/admin"
-          className="mt-4 px-4 py-2.5 rounded-xl bg-cream-50 text-forest-900 font-semibold text-xs inline-flex items-center gap-1.5 hover:bg-white transition"
-        >
-          Buksan ang Website for Admin <ArrowRight size={14} />
-        </Link>
-      </div>
+      {/* Link to Full Admin Website — hidden for anyone who cannot open it */}
+      {canOpen('/admin') ? (
+        <div className="rounded-3xl bg-forest-900 text-cream-50 p-5 shadow-card">
+          <div className="eyebrow text-cream-100/60">Website for Admin</div>
+          <h4 className="font-serif text-xl text-cream-50 mt-1">Buong Smart Lock Records & Oras</h4>
+          <p className="mt-1 text-xs text-cream-100/75 leading-relaxed">
+            Para sa buong audit trail, detalyadong timestamp kung anong oras at ilang lock/unlock ang nagawa, pumunta sa Website for Admin:
+          </p>
+          <Link
+            to="/admin"
+            className="mt-4 px-4 py-2.5 rounded-xl bg-cream-50 text-forest-900 font-semibold text-xs inline-flex items-center gap-1.5 hover:bg-white transition"
+          >
+            Buksan ang Website for Admin <ArrowRight size={14} />
+          </Link>
+        </div>
+      ) : null}
 
       {/* Recent Access Logs List */}
       <div className="mt-6">

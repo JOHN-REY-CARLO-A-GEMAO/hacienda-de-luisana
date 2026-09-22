@@ -7,44 +7,46 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // P3: owner allowlist (same address as firestore isAdmin).
-    // Keep in sync with firestore.rules OWNER_EMAILS.
-    function isOwnerEmail() {
+    // The Host, by the bootstrap allowlist (ADR-0005).
+    //
+    // Deliberately NOT the `profiles/{uid}` role that firestore.rules reads:
+    // Storage rules would have to reach into Firestore to see it, and nothing in
+    // either app writes to the two paths a Host-only Storage grant covers
+    // (/gallery, /accommodations — site images, published by the owner). The one
+    // Host-only read that matters, a Guest's government ID under /kyc, is keyed
+    // by uid and listed here by the same allowlist. If the site ever grows an
+    // image-publishing screen for a promoted Host, this becomes the place to
+    // teach Storage about Profiles.
+    // Keep this address in sync with hostEmails() in firestore.rules and
+    // BOOTSTRAP_ROLES in src/lib/auth/profile.ts.
+    function isHostEmail() {
       return isSignedIn()
         && request.auth.token.email in ['haciendadeluisiana@gmail.com'];
     }
 
-    // Role split: anak = locks-readonly placeholder (SWAP 1 LINE when the
-    // real Gmail arrives — same address as firestore anakEmails).
-    // Anak gets NO storage grants beyond public reads: /kyc holds gov IDs
-    // (PII, RA10173) and stays owner-only on purpose. Anak reads lock
-    // records from Firestore access_logs, never from Storage.
-    function anakEmails() {
-      return ['gemaojohnreycarloarguilles@gmail.com'];
-    }
+    // Staff (the address firestore.rules keeps in staffEmails()) get NO storage
+    // grants beyond public reads: /kyc holds government IDs (PII, RA 10173) and
+    // stays Host-only on purpose. Staff read lock records from Firestore
+    // access_logs, never from Storage — so that address appears nowhere in this
+    // file, and the absence is the decision, not an oversight.
 
-    function isAnak() {
-      return isSignedIn()
-        && request.auth.token.email in anakEmails();
-    }
-
-    // Public read for site assets, owner-only write (tightened P3:
-    // was any-signed-in; site images are owner-published).
+    // Public read for site assets, Host-only write (tightened P3:
+    // was any-signed-in; site images are Host-published).
     match /gallery/{allPaths=**} {
       allow read: if true;
-      allow write: if isOwnerEmail()
+      allow write: if isHostEmail()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
     match /accommodations/{allPaths=**} {
       allow read: if true;
-      allow write: if isOwnerEmail()
+      allow write: if isHostEmail()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
-    // User avatars (only owner can write own)
+    // User avatars (only the person themselves can write their own)
     match /avatars/{userId}/{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId
@@ -54,13 +56,13 @@ service firebase.storage {
     // P3 ENABLED: KYC ID + receipt uploads (sensitive PII, RA10173).
     // Layout: /kyc/{uid}/{bookingRef}/{id|receipt}.jpg
     // - WRITE own-uid only, 5MB, image/* (guest uploads own docs only).
-    // - READ own uid + owner allowlist (host review). Anak is BLOCKED
-    //   from IDs (locks-readonly ≠ ID review) — isAnak() deliberately
-    //   absent here. No public read.
+    // - READ own uid + the Host allowlist (Host review). Staff are BLOCKED
+    //   from IDs (locks-readonly ≠ ID review) — no Staff address appears in
+    //   this file at all. No public read.
     // - Deletes/overwrites follow the same write gate (resubmit loop).
     match /kyc/{userId}/{allPaths=**} {
       allow read: if request.auth != null
-        && (request.auth.uid == userId || isOwnerEmail());
+        && (request.auth.uid == userId || isHostEmail());
       allow write: if request.auth != null && request.auth.uid == userId
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');

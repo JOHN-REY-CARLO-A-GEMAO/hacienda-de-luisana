@@ -1,10 +1,29 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  MIN_PASSWORD_LENGTH,
+  ROLE_LABELS,
+  describeAuthError,
+  homeForRole,
+  type Role,
+} from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 
 type Mode = 'login' | 'register' | 'reset'
 
+/**
+ * The one form every role signs in through.
+ *
+ * Signing up makes a Guest — there is no role to pick, because a role picked in a
+ * browser is a role anybody could pick. The Host gives Staff their role from the
+ * team panel on `/admin`, and the Host themselves is the address the Firestore
+ * rules already allowlist (ADR-0005).
+ *
+ * Every failure arrives as an AuthError with a message for a person, so this form
+ * has no list of provider codes of its own to keep in step.
+ */
 export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
-  const { login, register, loginWithGoogle, resetPassword, isConfigured } = useAuth()
+  const { login, register, loginWithGoogle, resetPassword, signInAsRole, isConfigured, role } = useAuth()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -13,32 +32,23 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
   const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // If Firebase not configured, show setup instructions
-  if (!isConfigured) {
-    return (
-      <div className="bg-white rounded-[28px] border border-amber-200 shadow-card p-8 sm:p-10">
-        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4">⚙️</div>
-        <h2 className="font-serif text-2xl text-forest-900">Firebase Setup Required</h2>
-        <p className="mt-3 text-sm text-forest-800/80 leading-relaxed">
-          Firebase is not configured. Authentication and cloud bookings are disabled and the app is using local fallback.
-        </p>
-        <div className="mt-6 rounded-2xl bg-cream-100 p-4 text-xs font-mono leading-relaxed text-forest-800">
-          <div className="font-semibold mb-2 font-sans text-[11px] uppercase tracking-eyebrow">Steps to enable:</div>
-          <ol className="list-decimal list-inside space-y-1">
-            <li>Copy <code>.env.example</code> → <code>.env.local</code></li>
-            <li>Fill in your Firebase project keys from console.firebase.google.com</li>
-            <li>Restart dev server</li>
-          </ol>
-          <div className="mt-3 text-[11px] text-forest-600">
-            See README or PR description for full guide.
-          </div>
-        </div>
-        <div className="mt-6 rounded-xl bg-forest-50 border border-forest-100 p-3 text-xs text-forest-700">
-          You can still browse the site and test bookings — they will be stored locally in this browser.
-        </div>
-      </div>
-    )
-  }
+  const copy = {
+    login: {
+      eyebrow: 'Welcome back',
+      title: 'Sign in',
+      body: 'Guests, Staff and the Host all sign in here — the page you land on follows your role.',
+    },
+    register: {
+      eyebrow: 'Create account',
+      title: 'Join Hacienda',
+      body: `Make a Guest account to follow your own Booking, send your ID and keep your dates.`,
+    },
+    reset: {
+      eyebrow: 'Reset password',
+      title: 'Forgot password?',
+      body: 'Enter your email to receive a reset link.',
+    },
+  }[mode]
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,31 +61,15 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
         await login(email, password)
         onSuccess?.()
       } else if (mode === 'register') {
-        if (password.length < 6) throw new Error('Password must be at least 6 characters')
         await register(email, password, displayName || undefined)
+        setInfo('Your Guest account is ready — your Bookings are now tied to it.')
         onSuccess?.()
-      } else if (mode === 'reset') {
+      } else {
         await resetPassword(email)
         setInfo('Password reset email sent! Check your inbox.')
       }
-    } catch (err: any) {
-      // Map Firebase errors to friendly messages
-      const code = err?.code || ''
-      if (code.includes('auth/invalid-credential') || code.includes('auth/wrong-password')) {
-        setError('Invalid email or password. Please try again.')
-      } else if (code.includes('auth/user-not-found')) {
-        setError('No account found with this email.')
-      } else if (code.includes('auth/email-already-in-use')) {
-        setError('An account with this email already exists. Try logging in.')
-      } else if (code.includes('auth/invalid-email')) {
-        setError('Please enter a valid email address.')
-      } else if (code.includes('auth/too-many-requests')) {
-        setError('Too many attempts. Please try again later.')
-      } else if (code.includes('auth/popup-closed-by-user')) {
-        setError('Google sign-in was cancelled.')
-      } else {
-        setError(err?.message || 'Something went wrong. Please try again.')
-      }
+    } catch (err) {
+      setError(describeAuthError(err).message)
     } finally {
       setLoading(false)
     }
@@ -88,10 +82,22 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
     try {
       await loginWithGoogle()
       onSuccess?.()
-    } catch (err: any) {
-      const code = err?.code || ''
-      if (code.includes('popup-closed')) setError('Google sign-in was cancelled.')
-      else setError(err?.message || 'Google sign-in failed')
+    } catch (err) {
+      setError(describeAuthError(err).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDemoRole = async (demoRole: Role) => {
+    setError(null)
+    setInfo(null)
+    setLoading(true)
+    try {
+      await signInAsRole(demoRole)
+      onSuccess?.()
+    } catch (err) {
+      setError(describeAuthError(err).message)
     } finally {
       setLoading(false)
     }
@@ -100,29 +106,49 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
   return (
     <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 lg:p-10 w-full max-w-md mx-auto">
       <div className="text-center mb-8">
-        <div className="eyebrow">
-          {mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Create account' : 'Reset password'}
-        </div>
-        <h2 className="font-serif text-3xl mt-2 text-forest-900">
-          {mode === 'login' ? 'Sign in' : mode === 'register' ? 'Join Hacienda' : 'Forgot password?'}
-        </h2>
-        <p className="mt-2 text-sm text-forest-700/70">
-          {mode === 'login'
-            ? 'Access your owner dashboard and bookings.'
-            : mode === 'register'
-            ? 'Create an owner account to manage bookings.'
-            : 'Enter your email to receive a reset link.'}
-        </p>
+        <div className="eyebrow">{copy.eyebrow}</div>
+        <h2 className="font-serif text-3xl mt-2 text-forest-900">{copy.title}</h2>
+        <p className="mt-2 text-sm text-forest-700/70">{copy.body}</p>
       </div>
 
       {error && (
-        <div className="mb-5 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm px-4 py-3">
+        <div className="mb-5 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm px-4 py-3" role="alert">
           {error}
         </div>
       )}
       {info && (
         <div className="mb-5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm px-4 py-3">
           {info}
+        </div>
+      )}
+
+      {!isConfigured && (
+        <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 p-4">
+          <div className="text-[11px] uppercase tracking-eyebrow text-amber-800 font-semibold">
+            Demo mode — no Firebase configured
+          </div>
+          <p className="mt-1.5 text-xs text-amber-900/85 leading-relaxed">
+            Accounts, roles and Bookings stay in this browser. Step into a role to walk the flows through, or sign up
+            normally as a Guest. Copy <code className="font-mono">.env.example</code> to{' '}
+            <code className="font-mono">.env.local</code> with real Firebase keys for cloud sign-in.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(['host', 'staff', 'guest'] as Role[]).map((demoRole) => (
+              <button
+                key={demoRole}
+                type="button"
+                onClick={() => void handleDemoRole(demoRole)}
+                disabled={loading || role === demoRole}
+                className={`px-3 py-1.5 rounded-full border text-xs font-medium transition disabled:opacity-60 ${
+                  role === demoRole
+                    ? 'bg-amber-900 text-amber-50 border-amber-900'
+                    : 'bg-white border-amber-300 text-amber-900 hover:bg-amber-100'
+                }`}
+              >
+                {role === demoRole ? `Signed in as ${ROLE_LABELS[demoRole]}` : `Continue as ${ROLE_LABELS[demoRole]}`}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -136,6 +162,7 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               autoComplete="name"
+              maxLength={80}
             />
           </label>
         )}
@@ -149,6 +176,7 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            maxLength={254}
             autoComplete="email"
           />
         </label>
@@ -163,31 +191,30 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={MIN_PASSWORD_LENGTH}
+              maxLength={200}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
             {mode === 'register' && (
-              <span className="text-[11px] text-forest-600 mt-1 block">At least 6 characters</span>
+              <span className="text-[11px] text-forest-600 mt-1 block">
+                At least {MIN_PASSWORD_LENGTH} characters
+              </span>
             )}
           </label>
         )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="btn-primary w-full justify-center disabled:opacity-60"
-        >
+        <button type="submit" disabled={loading} className="btn-primary w-full justify-center disabled:opacity-60">
           {loading
             ? 'Please wait…'
             : mode === 'login'
-            ? 'Sign In'
-            : mode === 'register'
-            ? 'Create Account'
-            : 'Send Reset Link'}
+              ? 'Sign In'
+              : mode === 'register'
+                ? 'Create Guest Account'
+                : 'Send Reset Link'}
         </button>
       </form>
 
-      {mode !== 'reset' && (
+      {isConfigured && mode !== 'reset' && (
         <>
           <div className="my-6 flex items-center gap-3">
             <div className="h-px flex-1 bg-forest-900/10" />
@@ -243,6 +270,11 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
             </button>
           </div>
         )}
+        <div className="pt-1 text-forest-600">
+          <Link to={homeForRole(role)} className="underline underline-offset-4 hover:text-forest-900">
+            {role ? `Go to the ${ROLE_LABELS[role]} page` : 'Continue browsing the Hacienda'}
+          </Link>
+        </div>
       </div>
     </div>
   )
