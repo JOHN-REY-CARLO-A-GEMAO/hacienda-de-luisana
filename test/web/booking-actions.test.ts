@@ -324,6 +324,81 @@ describe('applyAction — money', () => {
     })
   })
 
+  it('quotes from the recorded total when the Host has published no card for the stay', () => {
+    const chosen = expectOk(
+      applyAction(
+        approvedBooking(),
+        {
+          type: 'ChoosePaymentPlan',
+          plan: 'down-payment',
+          stayTotal: 30000,
+          rate: { securityDeposit: 500, downPaymentPercent: 50 },
+        },
+        { ...guest, now: NOW },
+      ),
+    )
+
+    expect(chosen.patch).toMatchObject({
+      status: 'Payment Pending',
+      payment_plan: 'down-payment',
+      payment_status: 'pending',
+      stay_total: 30000,
+      amount_due: 15000,
+      security_deposit: 500,
+      balance_due: 15000,
+    })
+  })
+
+  it('refuses a choice the Host has published nothing to quote', () => {
+    const refused = expectRefused(
+      applyAction(approvedBooking(), { type: 'ChoosePaymentPlan', plan: 'full' }, { ...guest, now: NOW }),
+    )
+
+    expect(refused.reason).toMatch(/has not published/)
+  })
+
+  it('refuses a recorded total with no deposit and no down payment percent to apply', () => {
+    // A total without any published figures is not a price the Guest can be
+    // committed to: nothing is owed, nothing is held, nothing is promised.
+    const refused = expectRefused(
+      applyAction(approvedBooking(), { type: 'ChoosePaymentPlan', plan: 'down-payment', stayTotal: 30000 }, { ...guest, now: NOW }),
+    )
+
+    expect(refused.reason).toMatch(/has not published/)
+  })
+
+  it('stamps the published policy in force on the Booking at choice time', () => {
+    const chosen = expectOk(
+      applyAction(
+        approvedBooking(),
+        {
+          type: 'ChoosePaymentPlan',
+          plan: 'full',
+          rateCard: RATE_CARD,
+          policy: { version: 'v2026-09', effectiveDate: '2026-09-01' },
+        },
+        { ...guest, now: NOW },
+      ),
+    )
+
+    expect(chosen.patch).toMatchObject({
+      policy_version: 'v2026-09',
+      policy_effective_date: '2026-09-01',
+    })
+  })
+
+  it('stamps nulls when the Host had published no policy, so the stay refunds nothing', () => {
+    const chosen = expectOk(
+      applyAction(
+        approvedBooking(),
+        { type: 'ChoosePaymentPlan', plan: 'full', rateCard: RATE_CARD },
+        { ...guest, now: NOW },
+      ),
+    )
+
+    expect(chosen.patch).toMatchObject({ policy_version: null, policy_effective_date: null })
+  })
+
   it('refuses a payment plan the Host has not published', () => {
     const refused = expectRefused(
       applyAction(
@@ -739,5 +814,81 @@ describe('applyAction — UploadKyc with a receipt', () => {
 
     expect(resent.patch.kyc_id_url).toBe('https://storage/id-2.jpg')
     expect(resent.patch).not.toHaveProperty('kyc_receipt_url')
+  })
+})
+
+// A Booking with its ID on file, parked at whatever status the test names.
+// The Date hold was released at approval, so nothing here can read as Expired.
+function bookingAt(status: string, overrides: Partial<BookingState> = {}): BookingState {
+  return {
+    ...pendingBooking(),
+    status: status as BookingState['status'],
+    kyc_status: 'approved',
+    kyc_id_url: 'gs://ids/maria.jpg',
+    kyc_receipt_url: 'gs://ids/maria-receipt.jpg',
+    hold_expires_at: null,
+    ...overrides,
+  }
+}
+
+describe('applyAction — PurgeKyc: the ID leaves after the stay', () => {
+  it('clears the ID and receipt URLs without moving the Booking, and logs the purge', () => {
+    const result = expectOk(applyAction(bookingAt('Staying'), { type: 'PurgeKyc' }, { ...host, now: NOW }))
+
+    expect(result.patch.kyc_id_url).toBeNull()
+    expect(result.patch.kyc_receipt_url).toBeNull()
+    expect(result.patch.status).toBe('Staying')
+    expect(result.entries).toHaveLength(1)
+    expect(result.entries[0]).toMatchObject({
+      action: 'PurgeKyc',
+      from_status: 'Staying',
+      to_status: 'Staying',
+      actor: 'host',
+      actor_id: 'host-1',
+    })
+    expect(result.entries[0].reason).toMatch(/purged/i)
+  })
+
+  it('is available from Staying, Checked-Out and Completed — erasure does not wait for the door to close', () => {
+    for (const status of ['Staying', 'Checked-Out', 'Completed']) {
+      expect(applyAction(bookingAt(status), { type: 'PurgeKyc' }, { ...host, now: NOW }).ok).toBe(true)
+    }
+  })
+
+  it('refuses while the ID is still working: before the stay, or once it has ended as a stay', () => {
+    // Not yet Reserved — the Host still needs the ID to trust the person at the door.
+    expectRefused(applyAction(bookingAt('Reserved'), { type: 'PurgeKyc' }, { ...host, now: NOW }))
+    expectRefused(applyAction(pendingBooking(), { type: 'PurgeKyc' }, { ...host, now: NOW }))
+  })
+
+  it('is the Host’s call, not the Guest’s and not the system’s', () => {
+    expectRefused(applyAction(bookingAt('Staying'), { type: 'PurgeKyc' }, { ...guest, now: NOW }))
+    expectRefused(applyAction(bookingAt('Staying'), { type: 'PurgeKyc' }, { ...system, now: NOW }))
+  })
+
+  it('refuses when there is nothing left to erase, so the log never claims a false purge', () => {
+    const alreadyGone = bookingAt('Staying', { kyc_id_url: null, kyc_receipt_url: null })
+    expectRefused(applyAction(alreadyGone, { type: 'PurgeKyc' }, { ...host, now: NOW }))
+  })
+})
+
+describe('applyAction — RevokeKey: the Credential leaves a live stay', () => {
+  it('moves the Booking nowhere — an access decision is logged, not a lifecycle step', () => {
+    for (const status of ['Reserved', 'Checked-In', 'Staying']) {
+      const result = expectOk(applyAction(bookingAt(status), { type: 'RevokeKey' }, { ...host, now: NOW }))
+      expect(result.patch.status).toBe(status)
+      expect(result.entries[0]).toMatchObject({ action: 'RevokeKey', from_status: status, to_status: status, actor: 'host' })
+    }
+  })
+
+  it('is the Host’s: a Guest cannot revoke their own way in', () => {
+    expectRefused(applyAction(bookingAt('Staying'), { type: 'RevokeKey' }, { ...guest, now: NOW }))
+  })
+
+  it('refuses before a Credential exists and after the stay is over', () => {
+    // No credential is issued before Reserved, and a Completed stay has none to pull.
+    expectRefused(applyAction(pendingBooking(), { type: 'RevokeKey' }, { ...host, now: NOW }))
+    expectRefused(applyAction(bookingAt('Completed'), { type: 'RevokeKey' }, { ...host, now: NOW }))
+    expectRefused(applyAction(bookingAt('Checked-Out'), { type: 'RevokeKey' }, { ...host, now: NOW }))
   })
 })

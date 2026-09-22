@@ -163,13 +163,27 @@ service cloud.firestore {
         && request.resource.data.email is string
         && request.resource.data.check_in is string
         && request.resource.data.check_out is string
-        && request.resource.data.status == 'Pending';
+        && request.resource.data.status == 'Pending'
+        && request.resource.data.get('uid', '') != '';
 
       // Cheapest check first: a Guest reading their own Booking should not pay
       // for a Profile read to find out they are allowed.
       allow read: if isOwnDoc() || isHost() || isStaff();
 
-      allow update: if isHost()
+      allow update: if (isHost()
+        // The Host's writes are checked at the rule layer for the moves that
+        // must never go wrong: nothing leaves a terminal status, and the two
+        // money gates cannot be skipped — Approved needs a reviewed ID,
+        // Reserved needs verified money. The full lifecycle table stays in
+        // src/lib/booking until the dashboard's SetStatus writes retire
+        // (ticket #13), when the table moves here in full.
+        && !(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
+             && request.resource.data.status != resource.data.status)
+        && !(request.resource.data.status == 'Approved'
+             && resource.data.status != 'KYC Submitted')
+        && !(request.resource.data.status == 'Reserved'
+             && resource.data.status != 'Payment Pending')
+      )
         // Staff: a cleaned, inspected stay is Completed (flow §5 step 10) — the
         // only move in the whole lifecycle that is theirs, and only the status
         // key. No approval, no payment, no cancellation, no KYC.
@@ -178,10 +192,12 @@ service cloud.firestore {
           && request.resource.data.status == 'Completed'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
         // A Guest may withdraw, upload or resend their ID and payment proof,
-        // choose a payment plan, and share their own location while they travel.
-        // They may never approve or verify anything themselves (ADR-0001: money
-        // moves only after the Host), and never touch the identity the Booking
-        // was created with.
+        // choose a payment plan, and stamp the cancellation policy their plan
+        // was quoted under. They may never approve or verify anything
+        // themselves (ADR-0001: money moves only after the Host), and never
+        // touch the identity the Booking was created with. Live location no
+        // longer rides on the Booking: it is a tracking_sessions document
+        // owned by the same uid (G6).
         || (isSignedIn()
           && resource.data.get('uid', '') == request.auth.uid
           // Forward or out, never backwards: a Guest may take their own Booking
@@ -197,11 +213,10 @@ service cloud.firestore {
                  && request.resource.data.status in ['Reserved', 'Cancelled']))
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'kyc_status', 'kyc_id_url', 'kyc_receipt_url', 'kyc_reject_reason',
-                      'eta_share_url', 'payment_plan', 'payment_status', 'payment_proof_url',
+                      'payment_plan', 'payment_status', 'payment_proof_url',
                       'amount_claimed', 'stay_total', 'amount_due', 'security_deposit',
                       'balance_due', 'cancellation_reason', 'hold_expires_at',
-                      'pickup_lat', 'pickup_lng', 'pickup_area', 'pickup_label', 'pickup_updated_at',
-                      'distance_km', 'eta_minutes', 'is_live_sharing', 'last_speed_kmh']));
+                      'policy_version', 'policy_effective_date']));
 
       allow delete: if isHost();
 
@@ -235,13 +250,17 @@ service cloud.firestore {
     // ------------------------------------------------------------------
     // Shape: {timestamp, uid, ref_id, result: granted|denied, reason}.
     // - CREATE: any signed-in client (guest app / lock gateway, incl. anon)
-    //   with the exact shape — append-only telemetry, no PII beyond uid.
+    //   with the exact shape, in their own name: the uid is the writer's, so
+    //   a row is attributable. That matters because a granted row is the
+    //   Host's check-in cue — a row written in somebody else's uid is a cue
+    //   about the wrong person.
     // - READ: Host, and Staff (locks-readonly is exactly what Staff is for).
     // - UPDATE/DELETE: Host only (tamper-evident history).
     match /access_logs/{logId} {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['timestamp','uid','ref_id','result','reason'])
-        && request.resource.data.result in ['granted', 'denied'];
+        && request.resource.data.result in ['granted', 'denied']
+        && request.resource.data.uid == request.auth.uid;
       allow read: if isHost() || isStaff();
       allow update, delete: if isHost();
     }
@@ -258,24 +277,36 @@ service cloud.firestore {
       allow write: if isHost();
     }
 
-    // Guest live-location sessions (Flutter radar reader; web /track writer).
-    // Shape: {bookingId, uid, latitude, longitude, currentArea,
-    //   distanceRemainingKm, estimatedMinutesRemaining, isNearResort,
-    //   hasArrived, lastUpdated}.
-    // - CREATE: any signed-in traveller (incl. anon uid) with the shape.
+    // Guest live-location sessions — one document per Booking (doc id = the
+    // booking id), written by the traveller's own device: the web /track share
+    // button and the Flutter one-tap pickup.
+    // Shape: {bookingId, uid, tracking_consent_at, latitude, longitude,
+    //   currentArea, distanceRemainingKm, estimatedMinutesRemaining,
+    //   isNearResort, hasArrived, lastUpdated}.
+    // G6: the Share click is the consent. It lands in the same write as the
+    // first ping, so a session without a consent cannot exist, and neither the
+    // consent nor the identity may be rewritten afterwards.
+    // - CREATE: the traveller only, with the shape.
     // - READ: Host + Staff for the radar, and the traveller's own session.
-    // - UPDATE: the Host, or the traveller on their own session.
-    // - DELETE: Host only.
+    // - UPDATE: the Host, or the traveller on their own session, touching
+    //   nothing but position and the derived fields.
+    // - DELETE: the Host, or the traveller — deleting one's own session IS
+    //   stopping the share.
+    // Readers treat a session whose lastUpdated is older than 30 days as
+    // nonexistent; there is no backend worker to purge, so the Host's delete is
+    // the physical erasure (G6).
     match /tracking_sessions/{sessionId} {
       allow create: if isSignedIn()
-        && request.resource.data.keys().hasAll(['bookingId','latitude','longitude','lastUpdated']);
+        && request.resource.data.keys().hasAll(['bookingId', 'uid', 'tracking_consent_at', 'latitude', 'longitude', 'lastUpdated'])
+        && request.resource.data.uid == request.auth.uid;
       allow read: if isHost() || isStaff()
-        || (isSignedIn() && resource.data.get('uid', '') != ''
-            && resource.data.get('uid', '') == request.auth.uid);
+        || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
       allow update: if isHost()
-        || (isSignedIn() && resource.data.get('uid', '') != ''
-            && resource.data.get('uid', '') == request.auth.uid);
-      allow delete: if isHost();
+        || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['uid', 'bookingId', 'tracking_consent_at']));
+      allow delete: if isHost()
+        || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
     }
 
     // Rooms + guest CRM (owner-ops reference data, seeded by the Host).

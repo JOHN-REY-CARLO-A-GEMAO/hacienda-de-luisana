@@ -58,6 +58,7 @@ const bookings = block(rules, 'match /bookings/{bookingId}')
 const activity = block(bookings, 'match /activity/{entryId}')
 const profiles = block(rules, 'match /profiles/{userId}')
 const accessLogs = block(rules, 'match /access_logs/{logId}')
+const trackingSessions = block(rules, 'match /tracking_sessions/{sessionId}')
 
 describe('how the rules decide who is asking', () => {
   it('reads the bootstrap allowlist before the Profile, and lands on Guest', () => {
@@ -143,10 +144,30 @@ describe('Bookings', () => {
     expect(read).toBe('allow read: if isOwnDoc() || isHost() || isStaff();')
   })
 
-  it('still let anybody submit a Pending inquiry, and nothing else', () => {
+  it('still let anybody submit a Pending inquiry, but never without a Guest identity', () => {
     const create = allow(bookings, 'create:')
     expect(create).toContain("request.resource.data.status == 'Pending'")
     expect(create).toContain("hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at'])")
+    // A Booking minted while anonymous sign-in is down is unclaimable forever,
+    // so a broken console fails loud: the write is refused, not silently
+    // minted (ADR-0004 consequence, amended).
+    expect(create).toContain("request.resource.data.get('uid', '') != ''")
+  })
+
+  it('keeps the Host from un-rejecting, and from skipping the two money gates', () => {
+    // Three guard lines on the Host branch: terminals never leave, Approved
+    // only from a reviewed ID, Reserved only from verified money. The full
+    // table stays in src/lib/booking until SetStatus retires (ticket #13).
+    const update = allow(bookings, 'update:')
+    expect(update).toContain(
+      "!(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired'] && request.resource.data.status != resource.data.status)",
+    )
+    expect(update).toContain(
+      "!(request.resource.data.status == 'Approved' && resource.data.status != 'KYC Submitted')",
+    )
+    expect(update).toContain(
+      "!(request.resource.data.status == 'Reserved' && resource.data.status != 'Payment Pending')",
+    )
   })
 
   it('give Staff exactly one move: a checked-out stay becomes Completed', () => {
@@ -155,8 +176,10 @@ describe('Bookings', () => {
     expect(update).toContain("hasOnly(['status'])")
   })
 
-  it('let the Host do anything, and delete', () => {
-    expect(allow(bookings, 'update:')).toContain('if isHost()')
+  it('let the Host move a Booking through the lifecycle, inside the guard lines, and delete', () => {
+    // The Host branch is parenthesised: the three guard lines (terminals,
+    // Approved, Reserved) are checked before anything else the Host may write.
+    expect(allow(bookings, 'update:')).toContain('if (isHost()')
     expect(allow(bookings, 'delete:')).toBe('allow delete: if isHost();')
   })
 
@@ -179,11 +202,44 @@ describe('Bookings', () => {
     expect(update).not.toMatch(/hasOnly\(\[[^\]]*'uid'/)
   })
 
-  it('let a Guest share their own location, which is what /track writes', () => {
+  it('no longer carry live location: the session is its own document (G6)', () => {
+    // The pickup_* / is_live_sharing / eta_share_url family moved off the
+    // Booking onto tracking_sessions, so it is no longer a key a Guest may
+    // write on their own Booking.
     const update = allow(bookings, 'update:')
-    for (const key of ['pickup_lat', 'pickup_lng', 'pickup_area', 'distance_km', 'eta_minutes', 'is_live_sharing']) {
-      expect(update, `${key} is a Guest's own to write`).toContain(`'${key}'`)
+    for (const key of ['pickup_lat', 'pickup_lng', 'pickup_area', 'pickup_label', 'pickup_updated_at', 'distance_km', 'eta_minutes', 'is_live_sharing', 'last_speed_kmh', 'eta_share_url']) {
+      expect(update, `${key} no longer rides on the Booking`).not.toContain(`'${key}'`)
     }
+    // The plan's policy snapshot stays on the Booking, though.
+    expect(update).toContain("'policy_version'")
+    expect(update).toContain("'policy_effective_date'")
+  })
+})
+
+describe('the Tracking sessions (G6: the Share click is the consent)', () => {
+  it('are created by the traveller only, and only with a consent in the same write', () => {
+    const create = allow(trackingSessions, 'create:')
+    expect(create).toContain(
+      "hasAll(['bookingId', 'uid', 'tracking_consent_at', 'latitude', 'longitude', 'lastUpdated'])",
+    )
+    expect(create).toContain('request.resource.data.uid == request.auth.uid')
+  })
+
+  it('are readable by the Host and Staff for the radar, and by the traveller', () => {
+    const read = allow(trackingSessions, 'read:')
+    expect(read).toContain('isHost() || isStaff()')
+    expect(read).toContain("resource.data.get('uid', '') == request.auth.uid")
+  })
+
+  it('let the traveller update position, but never the consent or the identity', () => {
+    const update = allow(trackingSessions, 'update:')
+    expect(update).toContain(".hasAny(['uid', 'bookingId', 'tracking_consent_at'])")
+  })
+
+  it('are deletable by the Host — and by the traveller, because deleting is stopping', () => {
+    const deleteRule = allow(trackingSessions, 'delete:')
+    expect(deleteRule).toContain('isHost()')
+    expect(deleteRule).toContain("resource.data.get('uid', '') == request.auth.uid")
   })
 })
 
@@ -211,10 +267,13 @@ describe('the Access log', () => {
     expect(allow(accessLogs, 'read:')).toBe('allow read: if isHost() || isStaff();')
   })
 
-  it('is corrected by the Host alone, and written by any signed-in client', () => {
+  it('is corrected by the Host alone, and written in the writer’s own name', () => {
     expect(allow(accessLogs, 'update, delete:')).toBe('allow update, delete: if isHost();')
     expect(allow(accessLogs, 'create:')).toContain('isSignedIn()')
     expect(allow(accessLogs, 'create:')).toContain("request.resource.data.result in ['granted', 'denied']")
+    // A granted row is the Host's check-in cue, so a row written in somebody
+    // else's uid is a cue about the wrong person.
+    expect(allow(accessLogs, 'create:')).toContain('request.resource.data.uid == request.auth.uid')
   })
 })
 
@@ -238,6 +297,21 @@ describe('Storage, where the government IDs live', () => {
     const kyc = block(storageRules, 'match /kyc/{userId}/{allPaths=**}')
     expect(allow(kyc, 'read:')).toContain('request.auth.uid == userId || isHostEmail()')
     expect(allow(kyc, 'write:')).toContain('request.auth.uid == userId')
+  })
+
+  it('lets the Host delete on PurgeKyc, and delete only — a delete carries no resource', () => {
+    // The ID's purpose ended at approval, so within 30 days after the stay the
+    // Host erases it. Storage rules have no delete verb and no way to see a
+    // check-out date; `request.resource == null` is the only tell that a write
+    // is a delete. The Host still cannot upload or overwrite an ID — the
+    // guest-uid write gate above is the only grant that touches a real object.
+    const kyc = block(storageRules, 'match /kyc/{userId}/{allPaths=**}')
+    expect(kyc).toContain('allow write: if isHostEmail() && request.resource == null;')
+    // The guest write gate must stay size- and type-checked, so it cannot be
+    // the rule that accidentally lets the Host through with a payload.
+    const guestWrite = allow(kyc, 'write:')
+    expect(guestWrite).toContain('request.resource.size < 5 * 1024 * 1024')
+    expect(guestWrite).toContain("request.resource.contentType.matches('image/.*')")
   })
 
   it('has no Staff address in it at all — the absence is the decision', () => {

@@ -77,16 +77,16 @@ class Booking {
 
   /// Keys a guest may self-write on their own pending doc (rules mirror).
   /// kyc_reject_reason is deliberately absent — admin-only.
+  ///
+  /// Live location is deliberately absent: since G6 it rides on
+  /// tracking_sessions/{bookingId}, not on this doc — firestore.rules refuses
+  /// those keys here. The model keeps the pickup fields as LOCAL state for
+  /// offline screens only (never written to the cloud anymore).
   static const guestUpdatableKeys = {
     'status',
     'kyc_status',
     'kyc_id_url',
     'kyc_receipt_url',
-    'eta_share_url',
-    'pickup_lat',
-    'pickup_lng',
-    'pickup_updated_at',
-    'pickup_label',
   };
 
   /// P2: guest identity (Firebase anonymous uid, or local fallback uuid).
@@ -276,11 +276,9 @@ class Booking {
       'kyc_receipt_url': kycReceiptUrl,
       'kyc_reject_reason': kycRejectReason,
       'uid': uid,
-      'eta_share_url': etaShareUrl,
-      'pickup_lat': pickupLat,
-      'pickup_lng': pickupLng,
-      'pickup_updated_at': pickupUpdatedAt?.toIso8601String(),
-      'pickup_label': pickupLabel,
+      // Live location never crosses this map: it is written to
+      // tracking_sessions/{docId} instead (G6). Old cloud docs may still
+      // carry pickup_* keys; fromCloud ignores them for the same reason.
       'source': cloudSource,
       // created_at is set with serverTimestamp() by the service;
       // kept here as ISO for offline queue debugging.
@@ -316,14 +314,9 @@ class Booking {
       kycStatus: (data['kyc_status'] ?? data['kycStatus'] ?? 'required')
           .toString(),
       uid: data['uid']?.toString(),
-      etaShareUrl: (data['eta_share_url'] as String?) ??
-          (data['etaShareUrl'] as String?),
-      pickupLat: (data['pickup_lat'] as num?)?.toDouble(),
-      pickupLng: (data['pickup_lng'] as num?)?.toDouble(),
-      pickupUpdatedAt: data['pickup_updated_at'] != null
-          ? _parseDate(data['pickup_updated_at'], now)
-          : null,
-      pickupLabel: data['pickup_label']?.toString(),
+      // Live location is not read back from the cloud doc (G6): it lives on
+      // the tracking session. The local pickup fields stay null for cloud
+      // bookings; local-only bookings keep theirs from fromJson.
       firestoreId: docId,
       synced: true,
       govtIdPath: data['kyc_id_url']?.toString() ??

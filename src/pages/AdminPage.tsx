@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { type Booking, type BookingStatus, calculateNights, formatStayDuration } from '../lib/storage'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
-import { directionsUrl, hasPickup, pickupAge } from '../lib/tracking'
+import { trackingSessionsDB, type TrackingSession } from '../lib/trackingSessions'
+import { directionsUrl, sessionAge } from '../lib/tracking'
 import { smartLockDB, DOORS, type SmartLockRecord, type SmartLockAction } from '../lib/smartLockStorage'
 import { ACCOMMODATIONS } from '../config/site'
 import { BookingHistory } from '../components/Booking/BookingHistory'
@@ -95,6 +96,8 @@ export function AdminPage() {
   const [bookingFilter, setBookingFilter] = useState<'All' | BookingStatus>('All')
   const [viewingBooking, setViewingBooking] = useState<Booking | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  // Where the Guests are right now: one document per sharing Booking (G6)
+  const [sessions, setSessions] = useState<TrackingSession[]>([])
 
   // Sync tab with URL
   const switchTab = (tab: AdminTab) => {
@@ -102,21 +105,29 @@ export function AdminPage() {
     setParams({ tab })
   }
 
-  // Subscribe to bookings and smart lock records
+  // Subscribe to bookings, live sessions and smart lock records
   useEffect(() => {
     setLoading(true)
     const unsubBookings = cloudBookingsDB.subscribe((list) => {
       setBookings(list)
       setLoading(false)
     })
+    const unsubSessions = trackingSessionsDB.subscribe(setSessions)
     const unsubSmartLock = smartLockDB.subscribe((logs) => {
       setSmartLockRecords(logs)
     })
     return () => {
       unsubBookings()
+      unsubSessions()
       unsubSmartLock()
     }
   }, [])
+
+  // One session per sharing booking, keyed by the booking id
+  const sessionByBooking = useMemo(
+    () => new Map(sessions.map((s) => [s.bookingId, s])),
+    [sessions],
+  )
 
   // Smart lock stats computation ("naka ilang lock at unlock sila ng pinto")
   const lockStats = useMemo(() => {
@@ -235,6 +246,7 @@ export function AdminPage() {
   const viewedBooking = viewingBooking
     ? bookings.find((b) => b.id === viewingBooking.id) ?? viewingBooking
     : null
+  const viewedSession = viewedBooking ? sessionByBooking.get(viewedBooking.id) : undefined
 
   // Every decision here is attributed to the person who made it, in the role the
   // session resolved for them — not in a role this page assumed. A session that
@@ -1022,16 +1034,29 @@ export function AdminPage() {
               </div>
             )}
 
-            {/* Proximity / Location */}
-            {(viewedBooking.pickup_area || viewedBooking.distance_km) && (
+            {/* Proximity / Location — the session, where the Guest's phone writes (G6) */}
+            {viewedSession && (
               <div className="mt-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-3 text-xs">
-                <span className="font-bold text-emerald-900">Live Location: </span>
-                <span>{viewedBooking.pickup_area}</span>
-                {viewedBooking.distance_km && (
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-900">Live Location: </span>
+                  <a
+                    href={directionsUrl(viewedSession.latitude, viewedSession.longitude)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-emerald-800 underline hover:text-emerald-900"
+                  >
+                    Directions ↗
+                  </a>
+                </div>
+                <span>{viewedSession.area}</span>
+                {typeof viewedSession.distance_km === 'number' && (
                   <span className="block mt-0.5 text-emerald-800 font-semibold">
-                    {viewedBooking.distance_km} km away sa Hacienda
+                    {viewedSession.distance_km} km away sa Hacienda
                   </span>
                 )}
+                <span className="block mt-1 text-emerald-700/80">
+                  Update {sessionAge(viewedSession.lastUpdated)} · inihahanap ng Guest {fmtDate(viewedSession.tracking_consent_at)}
+                </span>
               </div>
             )}
 

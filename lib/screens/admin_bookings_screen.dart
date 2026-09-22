@@ -26,6 +26,12 @@ class AdminBookingsScreen extends StatelessWidget {
     final readOnly = !auth.isOwner;
     final items = store.bookings.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    // Live location is a session, not a booking field (G6): index them by the
+    // booking's Firestore id so each card can show "where they are" without
+    // the Booking carrying it.
+    final sessionByCloudId = {
+      for (final s in store.sessions) s.bookingId: s,
+    };
 
     return Scaffold(
       appBar: AppBar(title: const Text('Requests')),
@@ -56,7 +62,8 @@ class AdminBookingsScreen extends StatelessWidget {
                 itemCount: items.length,
                 itemBuilder: (context, i) {
                   final b = items[i];
-                  final pickup = Tracking.hasPickup(b);
+                  final session =
+                      b.firestoreId != null ? sessionByCloudId[b.firestoreId] : null;
                   return Card(
                     margin: const EdgeInsets.only(bottom: 12),
                     child: Padding(
@@ -86,7 +93,7 @@ class AdminBookingsScreen extends StatelessWidget {
                               '${b.checkOutDate.month}/${b.checkOutDate.day} · '
                               '${b.guestCount} guests · Ref ${b.referenceId}',
                               style: GoogleFonts.inter(fontSize: 12, color: AppTheme.forest800.withOpacity(0.7))),
-                          if (pickup) ...[
+                          if (session != null) ...[
                             const SizedBox(height: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -94,7 +101,7 @@ class AdminBookingsScreen extends StatelessWidget {
                                   color: Colors.green.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(color: Colors.green.withOpacity(0.4))),
-                              child: Text('📍 pickup ${Tracking.pickupAge(b)} — see Tracking tab',
+                              child: Text('📍 sharing ${Tracking.sessionAge(session)} — see Tracking tab',
                                   style: GoogleFonts.inter(fontSize: 11, color: Colors.green.shade900)),
                             ),
                           ],

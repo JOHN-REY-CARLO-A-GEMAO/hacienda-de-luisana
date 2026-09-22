@@ -1,12 +1,12 @@
 import { useEffect, useState, useMemo } from 'react'
 import { BUSINESS } from '../../config/site'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
+import { trackingSessionsDB, sessionIsStale, type TrackingSession } from '../../lib/trackingSessions'
 import type { Booking } from '../../lib/storage'
 import {
   directionsUrl,
   hotelMapsUrl,
-  hasPickup,
-  pickupAge,
+  sessionAge,
   calculateDistanceKm,
   estimateEtaMinutes,
   getProximityStatus,
@@ -19,26 +19,40 @@ import { Navigation, Phone, MapPin, Sparkle, Clock, Check } from '../../lib/icon
 
 export function AdminTrackingScreen() {
   const [items, setItems] = useState<Booking[]>([])
+  // The radar is the sessions, joined to their Bookings for the names and the
+  // status. A session without a readable Booking is a stranger's document, not
+  // a booker, and a session that stopped pinging 30 days ago reads as gone.
+  const [sessions, setSessions] = useState<TrackingSession[]>([])
   const [activeTab, setActiveTab] = useState<'all' | 'nearby' | 'traveling'>('all')
 
   useEffect(() => {
-    const unsub = cloudBookingsDB.subscribe(setItems)
-    return () => unsub()
+    const unsubBookings = cloudBookingsDB.subscribe(setItems)
+    const unsubSessions = trackingSessionsDB.subscribe(setSessions)
+    return () => {
+      unsubBookings()
+      unsubSessions()
+    }
   }, [])
 
-  // Process items with live location data
+  const bookingById = useMemo(() => new Map(items.map((b) => [b.id, b])), [items])
+  const sessionByBooking = useMemo(() => new Map(sessions.map((s) => [s.bookingId, s])), [sessions])
+
+  // Process the sessions into radar rows
   const bookersWithLocation = useMemo(() => {
-    return items
-      .filter((b) => (hasPickup(b) || b.is_live_sharing) && b.status !== 'Cancelled')
-      .map((b) => {
-        const lat = b.pickup_lat ?? HOTEL_LAT + 0.01
-        const lng = b.pickup_lng ?? HOTEL_LNG + 0.01
-        const dist = typeof b.distance_km === 'number' ? b.distance_km : calculateDistanceKm(lat, lng)
-        const eta = typeof b.eta_minutes === 'number' ? b.eta_minutes : estimateEtaMinutes(dist)
-        const area = b.pickup_area || guessAreaFromCoords(lat, lng)
+    return sessions
+      .filter((s) => !sessionIsStale(s))
+      .map((s) => ({ s, b: bookingById.get(s.bookingId) }))
+      .filter(({ b }) => Boolean(b) && b!.status !== 'Cancelled')
+      .map(({ s, b }) => {
+        const lat = s.latitude
+        const lng = s.longitude
+        const dist = typeof s.distance_km === 'number' ? s.distance_km : calculateDistanceKm(lat, lng)
+        const eta = typeof s.eta_minutes === 'number' ? s.eta_minutes : estimateEtaMinutes(dist)
+        const area = s.area || guessAreaFromCoords(lat, lng)
         const proximity = getProximityStatus(dist)
         return {
-          ...b,
+          ...b!,
+          session: s,
           computedLat: lat,
           computedLng: lng,
           computedDist: dist,
@@ -48,11 +62,13 @@ export function AdminTrackingScreen() {
         }
       })
       .sort((a, b) => a.computedDist - b.computedDist) // nearest first
-  }, [items])
+  }, [sessions, bookingById])
 
   // Filter based on proximity
   const nearbyBookers = bookersWithLocation.filter((b) => b.proximity.isNearby)
-  const waitingForShare = items.filter((b) => !hasPickup(b) && !b.is_live_sharing && b.status !== 'Cancelled')
+  const waitingForShare = items.filter(
+    (b) => b.status !== 'Cancelled' && !sessionByBooking.get(b.id),
+  )
 
   const displayedList = useMemo(() => {
     if (activeTab === 'nearby') return nearbyBookers
@@ -222,7 +238,7 @@ export function AdminTrackingScreen() {
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-forest-900/5 text-[10px] text-forest-700/60 font-mono">
-                  <span>Huling Update: {pickupAge(b)}</span>
+                  <span>Huling Update: {sessionAge(b.session.lastUpdated)}</span>
                   <span>{b.computedLat.toFixed(4)}, {b.computedLng.toFixed(4)}</span>
                 </div>
               </div>

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
+import { trackingSessionsDB, sessionIsStale, type TrackingSession } from '../../lib/trackingSessions'
 import { formatStayDuration, calculateNights, getStayProgress, type Booking, type BookingStatus } from '../../lib/storage'
-import { hasPickup, pickupAge, getProximityStatus } from '../../lib/tracking'
+import { sessionAge, getProximityStatus, calculateDistanceKm } from '../../lib/tracking'
 import { ACCOMMODATIONS } from '../../config/site'
 import { Screen, ScreenTitle } from '../components/Screen'
 import { BookingHistory } from '../../components/Booking/BookingHistory'
@@ -10,6 +11,7 @@ import { BookingReview } from '../../components/Booking/BookingReview'
 import { useAuth } from '../../hooks/useAuth'
 import type { Permission } from '../../lib/auth'
 import { effectiveStatus } from '../../lib/booking'
+import { purgeKycDocuments } from '../../lib/kyc/purge'
 import { Check, Close, Clock, MapPin, Phone, Users, Bed, Sparkle } from '../../lib/icons'
 
 export function AdminBookingsScreen() {
@@ -19,6 +21,9 @@ export function AdminBookingsScreen() {
   const [durationFilter, setDurationFilter] = useState<'all' | '1-night' | '2-nights' | '3-plus'>('all')
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [notification, setNotification] = useState<string | null>(null)
+  // Where the bookers are right now: the sessions, not the Bookings (G6).
+  // A session that stopped pinging 30 days ago reads as gone.
+  const [sessions, setSessions] = useState<TrackingSession[]>([])
   const { can, actor: sessionActor } = useAuth()
 
   // Every decision here is attributed: the Activity log is worth nothing without
@@ -46,8 +51,18 @@ export function AdminBookingsScreen() {
     const unsub = cloudBookingsDB.subscribe((list) => {
       setItems(list)
     })
-    return () => unsub()
+    const unsubSessions = trackingSessionsDB.subscribe(setSessions)
+    return () => {
+      unsub()
+      unsubSessions()
+    }
   }, [])
+
+  // One fresh session per booking, keyed by the booking id
+  const sessionByBooking = useMemo(
+    () => new Map(sessions.filter((s) => !sessionIsStale(s)).map((s) => [s.bookingId, s])),
+    [sessions],
+  )
 
   const update = async (id: string, patch: Partial<Booking>, permission: Permission, successNotice?: string) => {
     // The button is hidden from a role that may not use it, and the write is
@@ -72,12 +87,58 @@ export function AdminBookingsScreen() {
     }
   }
 
+  // Purge the ID — the caller's half of PurgeKyc. The objects leave Storage
+  // first and the lifecycle action is logged only if the erasure actually
+  // happened: a logged purge with a live object would be a false record, and
+  // the log is append-only (RA 10173).
+  const purgeId = async (b: Booking) => {
+    if (!can('kyc:read')) {
+      setNotification('Your role does not allow that — the Host does.')
+      setTimeout(() => setNotification(null), 3500)
+      return
+    }
+    setBusy(b.id)
+    try {
+      const purge = await purgeKycDocuments({ id: b.kyc_id_url, receipt: b.kyc_receipt_url })
+      if (!purge.ok) {
+        setNotification(purge.message)
+        setTimeout(() => setNotification(null), 6000)
+        return
+      }
+      const result = await cloudBookingsDB.transition(b.id, { type: 'PurgeKyc' }, hostActor)
+      setNotification(result.ok ? `Nai-purge ang ID ni ${b.guest_name}.` : result.reason)
+      setTimeout(() => setNotification(null), 5000)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Pull the Credential off a live stay. The Booking does not move — this is
+  // an access decision; the Activity log records who made it and when, and
+  // the lock's allowlist entry leaves on the next physical touch.
+  const revokeKey = async (b: Booking) => {
+    if (!can('stays:progress')) {
+      setNotification('Your role does not allow that — the Host does.')
+      setTimeout(() => setNotification(null), 3500)
+      return
+    }
+    setBusy(b.id)
+    try {
+      const result = await cloudBookingsDB.transition(b.id, { type: 'RevokeKey' }, hostActor)
+      setNotification(result.ok ? `Nai-revoke ang Credential ni ${b.guest_name}.` : result.reason)
+      setTimeout(() => setNotification(null), 5000)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   // Filter items
   // The modal shows what is stored now, not the card the Host tapped: approving
   // re-checks availability and can move this Booking underneath them.
   const viewedBooking = selectedBooking
     ? items.find((b) => b.id === selectedBooking.id) ?? selectedBooking
     : null
+  const viewedSession = viewedBooking ? sessionByBooking.get(viewedBooking.id) : undefined
 
   const filtered = useMemo(() => {
     return items.filter((b) => {
@@ -135,7 +196,7 @@ export function AdminBookingsScreen() {
         <div className="col-span-2 sm:col-span-1 bg-forest-900 text-cream-50 rounded-2xl p-3 shadow-sm flex flex-col justify-between">
           <div className="text-[10px] uppercase tracking-eyebrow text-cream-100/60">Live Sharing</div>
           <div className="font-serif text-xl text-emerald-300">
-            {items.filter((b) => b.is_live_sharing || hasPickup(b)).length} Booker
+            {sessions.filter((s) => !sessionIsStale(s)).length} Booker
           </div>
           {can('guest-location:read') && (
             <Link to="/app/tracking" className="text-[10px] text-cream-100/80 underline hover:text-white mt-1">
@@ -211,7 +272,16 @@ export function AdminBookingsScreen() {
           {filtered.map((b) => {
             const stayProgress = getStayProgress(b.check_in, b.check_out)
             const nights = calculateNights(b.check_in, b.check_out)
-            const prox = b.distance_km ? getProximityStatus(b.distance_km) : null
+            // The booker's live position, if they are sharing: their session,
+            // not a field on the Booking (G6).
+            const session = sessionByBooking.get(b.id)
+            const prox = session
+              ? getProximityStatus(
+                  typeof session.distance_km === 'number'
+                    ? session.distance_km
+                    : calculateDistanceKm(session.latitude, session.longitude),
+                )
+              : null
             // ADR-0002: the Host reads the same status the Guest does, so a hold
             // that ran out shows as Expired here without anybody writing it.
             const readsAs = effectiveStatus(b)
@@ -315,8 +385,8 @@ export function AdminBookingsScreen() {
                   </div>
                 )}
 
-                {/* Live Location Alert / Booker Proximity */}
-                {(b.is_live_sharing || hasPickup(b)) && (
+                {/* Live Location Alert / Booker Proximity — from the session (G6) */}
+                {session && (
                   <div className="mt-3 rounded-2xl bg-emerald-50/90 border border-emerald-200 p-2.5 text-xs flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -325,7 +395,9 @@ export function AdminBookingsScreen() {
                           {prox ? prox.tagalogText : 'Live Location Ibinahagi'}
                         </div>
                         <div className="text-[10px] text-emerald-700">
-                          {b.pickup_area || 'On route'} {b.distance_km ? `(${b.distance_km} km away)` : ''} · {pickupAge(b)}
+                          {session.area || 'On route'}{' '}
+                          {typeof session.distance_km === 'number' ? `(${session.distance_km} km away)` : ''} ·{' '}
+                          {sessionAge(session.lastUpdated)}
                         </div>
                       </div>
                     </div>
@@ -375,6 +447,41 @@ export function AdminBookingsScreen() {
                         className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-forest-900/10 text-red-700 hover:bg-red-50 disabled:opacity-50 transition"
                       >
                         Kanselahin
+                      </button>
+                    )}
+
+                    {/*
+                      Purge ID — the Host's erasure duty once the stay is
+                      live or over: the ID's purpose ended at approval.
+                      Available while the Guest is still staying (erasure is
+                      the data subject's right, RA 10173), hidden the moment
+                      the URLs are gone so a second purge cannot be logged.
+                    */}
+                    {can('kyc:read') &&
+                      (readsAs === 'Staying' || readsAs === 'Checked-Out' || readsAs === 'Completed') &&
+                      (b.kyc_id_url || b.kyc_receipt_url) && (
+                      <button
+                        disabled={busy === b.id}
+                        onClick={() => purgeId(b)}
+                        className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-forest-900/10 text-red-700 hover:bg-red-50 disabled:opacity-50 transition"
+                      >
+                        Purge ID
+                      </button>
+                    )}
+
+                    {/*
+                      Revoke key — an access decision on a live stay, not a
+                      lifecycle move. The Booking stays where it is; the log
+                      records who pulled the Credential and when.
+                    */}
+                    {can('stays:progress') &&
+                      (readsAs === 'Reserved' || readsAs === 'Checked-In' || readsAs === 'Staying') && (
+                      <button
+                        disabled={busy === b.id}
+                        onClick={() => revokeKey(b)}
+                        className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-forest-900/10 text-amber-700 hover:bg-amber-50 disabled:opacity-50 transition"
+                      >
+                        Revoke Credential
                       </button>
                     )}
                   </div>
@@ -459,23 +566,28 @@ export function AdminBookingsScreen() {
               </div>
             )}
 
-            {/* Location Status */}
+            {/* Location Status — the session the Guest's phone is writing (G6) */}
             <div className="mt-4 rounded-2xl border border-forest-900/10 p-3.5 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">Live Location Sharing</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] ${viewedBooking.is_live_sharing ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-cream-100 text-forest-700'}`}>
-                  {viewedBooking.is_live_sharing ? 'Aktibo / Sharing' : 'Hindi pa nag-share'}
+                <span className={`px-2 py-0.5 rounded-full text-[10px] ${viewedSession ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-cream-100 text-forest-700'}`}>
+                  {viewedSession ? 'Aktibo / Sharing' : 'Hindi pa nag-share'}
                 </span>
               </div>
-              {viewedBooking.pickup_area && (
-                <div className="mt-2 text-forest-900">
-                  Kasalukuyang Area: <strong>{viewedBooking.pickup_area}</strong>
-                </div>
-              )}
-              {viewedBooking.distance_km && (
-                <div className="text-forest-800 text-[11px] mt-0.5">
-                  Layo sa Hacienda: <strong>{viewedBooking.distance_km} km</strong> (Tinatayang {viewedBooking.eta_minutes || 10} mins)
-                </div>
+              {viewedSession && (
+                <>
+                  <div className="mt-2 text-forest-900">
+                    Kasalukuyang Area: <strong>{viewedSession.area || '—'}</strong>
+                  </div>
+                  {typeof viewedSession.distance_km === 'number' && (
+                    <div className="text-forest-800 text-[11px] mt-0.5">
+                      Layo sa Hacienda: <strong>{viewedSession.distance_km} km</strong> (Tinatayang {viewedSession.eta_minutes || 10} mins)
+                    </div>
+                  )}
+                  <div className="text-forest-700/70 text-[10px] mt-1">
+                    Huling update: {sessionAge(viewedSession.lastUpdated)}
+                  </div>
+                </>
               )}
             </div>
 

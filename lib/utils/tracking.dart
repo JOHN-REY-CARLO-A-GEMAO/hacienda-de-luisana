@@ -1,7 +1,8 @@
 // Rider-style pickup -> drop-off helpers (owner app).
-// Pickup = guest one-tap GPS. Drop-off = hotel fixed pin verified from
+// Pickup = guest one-tap GPS, now written to tracking_sessions (G6).
+// Drop-off = hotel fixed pin verified from
 // https://maps.app.goo.gl/GajLm6NHCqsMBnj57 -> 14.1754304, 121.519389
-import '../models/booking.dart';
+import '../models/tracking_session.dart';
 
 class Tracking {
   static const double hotelLat = 14.1754304;
@@ -23,12 +24,9 @@ class Tracking {
   static String pickupMapsUrl(double lat, double lng) =>
       'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
 
-  static bool hasPickup(Booking b) =>
-      b.pickupLat != null && b.pickupLng != null;
-
-  static String pickupAge(Booking b) {
-    final t = b.pickupUpdatedAt;
-    if (t == null) return 'unknown time';
+  /// How long ago a session was last pinged, in words the owner can read.
+  static String sessionAge(TrackingSession s) {
+    final t = s.lastUpdated;
     final mins = DateTime.now().difference(t).inMinutes;
     if (mins < 1) return 'just now';
     if (mins < 60) return '${mins}m ago';

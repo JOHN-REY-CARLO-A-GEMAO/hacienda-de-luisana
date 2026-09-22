@@ -16,6 +16,7 @@ import { canTransition, normalizeStatus, type BookingStatus } from './statuses'
 import { effectiveStatus, findDateConflicts, type HoldBearingBooking } from './availability'
 import {
   paymentOptions,
+  paymentOptionsForTotal,
   settleRefund,
   type RateCard,
   type RefundPolicy,
@@ -23,6 +24,7 @@ import {
 } from './money'
 import { roundMoney } from './internal'
 import type { PaymentPlan } from './money'
+import type { PolicySnapshot } from './rates'
 
 export type KycStatus = 'required' | 'submitted' | 'approved' | 'rejected'
 export type PaymentStatus = 'unpaid' | 'pending' | 'verified' | 'rejected'
@@ -59,6 +61,16 @@ export type BookingState = {
   refund_total?: number
   refund_breakdown?: RefundSettlement | null
   cancellation_reason?: string | null
+  /**
+   * The published policy version in force when the Guest chose their payment
+   * plan, stamped so a later republish changes the terms of future choices
+   * only — never the refund terms of a stay already promised. Null when the
+   * Host had published nothing: that refunds nothing, which is what an
+   * unpublished policy amounts to.
+   */
+  policy_version?: string | null
+  /** When the stamped policy version took effect (YYYY-MM-DD). */
+  policy_effective_date?: string | null
   hold_expires_at?: string | null
   created_at?: string
 }
@@ -89,7 +101,18 @@ export type BookingAction =
   | { type: 'Approve'; availability: AvailabilityCheck }
   | { type: 'Reject'; reason: string }
   | { type: 'RejectKyc'; reason: string }
-  | { type: 'ChoosePaymentPlan'; plan: PaymentPlan; rateCard: RateCard }
+  | {
+      type: 'ChoosePaymentPlan'
+      plan: PaymentPlan
+      /** The Host's published figures; the stay is quoted from them when no total is recorded. */
+      rateCard?: RateCard
+      /** The quoted stay total, when the quote is a recorded number rather than a card quote. */
+      stayTotal?: number
+      /** The deposit and down-payment percent, when quoting from a recorded total. */
+      rate?: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent'>
+      /** The published policy in force at choice time; stamped on the Booking so a later republish cannot change this stay's refund terms. */
+      policy?: PolicySnapshot
+    }
   | { type: 'UploadPaymentProof'; payment_proof_url: string; amount_claimed?: number }
   | { type: 'VerifyPayment'; amount_verified: number }
   | { type: 'RejectPaymentProof'; reason: string; guestResubmits: boolean }
@@ -100,6 +123,8 @@ export type BookingAction =
       refund?: { rateCard?: RateCard; policy?: RefundPolicy; damageDeduction?: number }
     }
   | { type: 'MarkRefunded' }
+  | { type: 'PurgeKyc' }
+  | { type: 'RevokeKey' }
   | { type: 'Expire' }
   | { type: 'CheckIn' }
   | { type: 'BeginStay' }
@@ -186,6 +211,16 @@ const ACTION_RULES: Record<
   // Flow §2 step 11: the Refund pipeline ends when the money is back with the
   // Guest. The Booking stays Cancelled; the Refund is what moves.
   MarkRefunded: { actors: ['host'], from: ['Cancelled'], to: 'stays' },
+  // The ID's purpose ended at approval, so purging erases the documents from
+  // Storage and clears the URLs, within 30 days of check-out (RA 10173). It
+  // stays available while the Guest is still staying: erasure is the data
+  // subject's right and does not wait for the door to close.
+  PurgeKyc: { actors: ['host'], from: ['Staying', 'Checked-Out', 'Completed'], to: 'stays' },
+  // An access decision, not a lifecycle move: the Host pulls the Credential
+  // from a stay that is live. The Booking does not move; the lock's allowlist
+  // entry is removed on the next physical touch (first hardware generation),
+  // and the log records who decided and when.
+  RevokeKey: { actors: ['host'], from: ['Reserved', 'Checked-In', 'Staying'], to: 'stays' },
   Expire: { actors: ['system'], from: ['Pending', 'KYC Submitted'], to: 'Expired' },
   // The first successful Credential use on the check-in day (flow §3 step 6).
   CheckIn: { actors: ['system', 'host'], from: ['Reserved'], to: 'Checked-In' },
@@ -324,7 +359,19 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
     }
 
     case 'ChoosePaymentPlan': {
-      const option = paymentOptions(booking, action.rateCard).find((o) => o.plan === action.plan)
+      // The money the Guest commits to must come from a quote: from the
+      // published card when the Host has one, from the recorded total when the
+      // quote is a number the Booking carries (the card for this property is
+      // not yet a machine-readable document). Neither is published — there is
+      // no price to commit the Guest to, so the choice is refused.
+      let option: ReturnType<typeof paymentOptions>[number] | undefined
+      if (action.stayTotal !== undefined) {
+        option = paymentOptionsForTotal(action.stayTotal, action.rate ?? { securityDeposit: 0 }).find(
+          (o) => o.plan === action.plan,
+        )
+      } else if (action.rateCard) {
+        option = paymentOptions(booking, action.rateCard).find((o) => o.plan === action.plan)
+      }
       if (!option) {
         return refuse('The Host has not published that payment option for this Accommodation.')
       }
@@ -334,6 +381,12 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       patch.amount_due = option.dueNow
       patch.security_deposit = option.securityDeposit
       patch.balance_due = option.balance
+      // The policy in force is stamped with the choice: republishing later
+      // changes the terms of future choices, never of a stay already promised.
+      // A Booking chosen under no published policy carries nulls and refunds
+      // nothing — which is what an unpublished policy amounts to.
+      patch.policy_version = action.policy?.version ?? null
+      patch.policy_effective_date = action.policy?.effectiveDate ?? null
       break
     }
 
@@ -405,6 +458,27 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       }
       reason = 'Refund returned to the Guest.'
       patch.refund_status = 'refunded'
+      break
+    }
+
+    case 'PurgeKyc': {
+      // The erasure has to be real: nothing is cleared and nothing is logged
+      // when there is nothing left to erase, so the Activity log never claims
+      // a purge that did not happen.
+      if (!booking.kyc_id_url && !booking.kyc_receipt_url) {
+        return refuse('There is no government ID or receipt left to purge on this Booking.')
+      }
+      reason = 'Government ID and receipt purged from Storage after the stay; the URLs are cleared (RA 10173).'
+      patch.kyc_id_url = null
+      patch.kyc_receipt_url = null
+      break
+    }
+
+    case 'RevokeKey': {
+      // Nothing moves on the Booking: the Host is pulling the Credential off a
+      // stay that is live. The lock's allowlist entry leaves on the next
+      // physical touch; what is stored is the decision, and who made it.
+      reason = 'Credential revoked by the Host.'
       break
     }
 

@@ -158,6 +158,74 @@ npm run build
 firebase deploy --only hosting
 ```
 
+### 6. Publish the rate card & cancellation policy (`site_config/rates`)
+
+The lifecycle module moves no money on guesses: when the Host approves a
+Booking, `ChoosePaymentPlan` quotes the stay from the published figures, and a
+cancellation refunds by the published policy. Until the document below exists,
+the choice is refused ("The Host has not published that payment option for
+this Accommodation.") and a cancellation refunds nothing — the safe defaults,
+not an error.
+
+**Where:** one document, `site_config/rates`, in the Firestore console
+(Database → Firestore → `site_config` → Add document, id `rates`, type
+Document). The rules grant it public read and Host-only write; the rules do
+not shape-check it, so run the checklist below before you write it. The same
+check lives in code — `validatePublishedRates` in `src/lib/booking/rates.ts` —
+and a publishing surface runs that function before it writes, so console and
+code can never drift.
+
+**Shape** (the `PublishedRates` type in `src/lib/booking/rates.ts`):
+
+```json
+{
+  "version": "v2026-09",
+  "effective_date": "2026-09-01",
+  "accommodations": {
+    "main-house": { "nightly_rate": 10000, "security_deposit": 500, "down_payment_percent": 50 },
+    "house-a-camping": { "nightly_rate": 1200, "security_deposit": 0 }
+  },
+  "refund": {
+    "tiers": [
+      { "min_days_before_check_in": 14, "refund_percent": 100 },
+      { "min_days_before_check_in": 7, "refund_percent": 50 }
+    ],
+    "deposit_refund_percent": 100
+  }
+}
+```
+
+**Checklist** (every line is what `validatePublishedRates` asserts):
+
+- [ ] `version` is a non-empty string — the name the Booking is stamped with.
+- [ ] `effective_date` is a real calendar date in `YYYY-MM-DD` (not `2026-02-30`).
+- [ ] `accommodations` is an object keyed by the ids the site actually lists
+      (`main-house`, `house-a-camping`) — a figure for an id the site does not
+      list is a price nobody can be charged, and is refused.
+- [ ] Each listed Accommodation: `nightly_rate` in pesos, greater than zero;
+      `security_deposit` zero or more; `down_payment_percent` strictly between
+      0 and 100, or **omitted** for full-payment-only.
+- [ ] Every Accommodation the site lists is present — an absent one has no
+      machine price, so a Guest cannot choose a plan for it.
+- [ ] `refund` (optional): a flat `refund_percent` (0–100) **or** `tiers` of
+      `{ min_days_before_check_in, refund_percent }` (tiers win when both are
+      published); `deposit_refund_percent` 0–100 (defaults to 100). Omit
+      `refund` entirely to publish rates without a refund policy — then a
+      cancellation refunds nothing.
+
+**Semantics the Host should know:**
+
+- `ChoosePaymentPlan` stamps `policy_version` and `policy_effective_date` on
+  the Booking at the moment the Guest commits to a plan. **Republishing later
+  (a new `version`) changes the terms of future choices only — never the
+  refund terms of a stay already promised.** The stamped Booking settles its
+  refund by the policy it was stamped under.
+- A Booking chosen while nothing was published carries nulls in both fields
+  and refunds nothing — the same as an unpublished policy.
+- The document is read by the lifecycle's money module, not yet by the web
+  UI: `src/config/site.ts` prices remain display placeholders until the
+  publishing surface lands with the booking-flow work.
+
 ## 🔐 Security Notes
 
 - API keys in `.env.local` are safe to expose client-side; security is enforced by Firestore Rules & Auth.

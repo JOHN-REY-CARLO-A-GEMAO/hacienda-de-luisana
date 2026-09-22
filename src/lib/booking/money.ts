@@ -41,8 +41,6 @@ export type RefundPolicy = {
   depositRefundPercent?: number
 }
 
-/** Round to whole centavos — the smallest unit the Guest can actually send. */
-
 /** The stay total for a date range under a rate card. */
 export function quoteStay(dates: { check_in: string; check_out: string }, rateCard: RateCard): number {
   return roundMoney(nightsBetween(dates.check_in, dates.check_out) * rateCard.nightlyRate)
@@ -62,42 +60,69 @@ export type PaymentOption = {
 }
 
 /**
- * The payment choices a Guest is offered once the Host has approved.
+ * The payment choices for a stay total, under the Host's published figures.
  *
  * Flow §2 step 7: 50% down payment plus a refundable Security deposit, or full
  * payment plus the same deposit. The down payment is rounded down to whole
  * centavos so the Guest is never asked for more than the stay costs.
  */
-export function paymentOptions(
-  dates: { check_in: string; check_out: string },
-  rateCard: RateCard,
+function optionsFromTotal(
+  stayTotal: number,
+  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent'>,
 ): PaymentOption[] {
-  const stayTotal = quoteStay(dates, rateCard)
+  const total = roundMoney(Math.max(0, stayTotal))
   const options: PaymentOption[] = []
 
-  const percent = rateCard.downPaymentPercent
+  const percent = rate.downPaymentPercent
   if (typeof percent === 'number' && percent > 0 && percent < 100) {
     // Floor at whole centavos, off the quoted total, so the down payment and
     // the balance add back up to exactly what the Guest was quoted.
-    const dueNow = Math.floor(roundMoney((stayTotal * percent) / 100) * 100) / 100
+    const dueNow = Math.floor(roundMoney((total * percent) / 100) * 100) / 100
     options.push({
       plan: 'down-payment',
-      stayTotal,
+      stayTotal: total,
       dueNow,
-      securityDeposit: rateCard.securityDeposit,
-      balance: roundMoney(stayTotal - dueNow),
+      securityDeposit: rate.securityDeposit,
+      balance: roundMoney(total - dueNow),
     })
   }
 
   options.push({
     plan: 'full',
-    stayTotal,
-    dueNow: stayTotal,
-    securityDeposit: rateCard.securityDeposit,
+    stayTotal: total,
+    dueNow: total,
+    securityDeposit: rate.securityDeposit,
     balance: 0,
   })
 
   return options
+}
+
+/**
+ * The payment choices a Guest is offered once the Host has approved, quoted
+ * from the rate card.
+ */
+export function paymentOptions(
+  dates: { check_in: string; check_out: string },
+  rateCard: RateCard,
+): PaymentOption[] {
+  return optionsFromTotal(quoteStay(dates, rateCard), rateCard)
+}
+
+/**
+ * The payment choices for a stay whose total is already quoted and recorded.
+ *
+ * The Host's rate card for this property is not yet a machine-readable
+ * document — a quote can be a phone call the Host made and the amount the
+ * Booking carries. Quoting from the recorded total keeps the Guest's money
+ * tied to the number they were actually offered, while the arithmetic stays
+ * identical to quoting from a card: same flooring, same deposit, same balance.
+ */
+export function paymentOptionsForTotal(
+  stayTotal: number,
+  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent'>,
+): PaymentOption[] {
+  return optionsFromTotal(stayTotal, rate)
 }
 
 /**

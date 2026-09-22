@@ -26,6 +26,7 @@ export {
 
 export {
   DATE_HOLD_MS,
+  approvalCouplingSet,
   datesOverlap,
   effectiveStatus,
   findDateConflicts,
@@ -45,6 +46,7 @@ export {
 
 export {
   paymentOptions,
+  paymentOptionsForTotal,
   quoteStay,
   settleRefund,
   stayQuote,
@@ -58,6 +60,18 @@ export {
 } from './money'
 
 export { describeActivity, type ActivityLine } from './activity'
+
+export {
+  ratesForAccommodation,
+  quotedStayTotal,
+  validatePublishedRates,
+  type AccommodationRates,
+  type PolicySnapshot,
+  type PublishedRates,
+  type PublishedRefundPolicy,
+  type PublishedRefundTier,
+  type RatesProblem,
+} from './rates'
 
 export { formatHoldCountdown, unitsForAccommodation, type UnitBearing } from './holds'
 

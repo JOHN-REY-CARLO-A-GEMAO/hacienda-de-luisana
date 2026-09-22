@@ -56,6 +56,14 @@ The terminal Booking status reached when a date hold runs out. Releasing the dat
 
 ### Money
 
+**Payment plan**:
+The Guest's promise of money for a stay: Full Payment, or a Down Payment — both plus the refundable Security deposit. Offered from the Published rates, chosen from the moment the Host approves, and recorded on the Booking the moment it is chosen.
+_Avoid_: Payment option (an option is one of the plans on offer), rate, price
+
+**Down payment**:
+A percentage of the stay the Guest sends up front, offered alongside Full Payment when the Host has published a down-payment percentage. Floored to whole centavos, so the down payment and the balance add back to exactly what was quoted.
+_Avoid_: Deposit (the Security deposit is a different, refundable-at-check-out amount), advance, retainer
+
 **Payment proof**:
 The receipt or screenshot a Guest uploads to claim a payment made outside the system.
 _Avoid_: OR, receipt, transaction
@@ -67,6 +75,14 @@ _Avoid_: Bond, caution money
 **Refund**:
 Money returned to a Guest through the refund pipeline after verified payment.
 _Avoid_: Reversal, reimbursement
+
+**Published rates**:
+The Host's published figures — the per-Accommodation nightly rate, Security deposit, down-payment percentage and cancellation policy — under a version that takes effect on a date. Until they are published, no Payment plan can be chosen and a cancellation refunds nothing.
+_Avoid_: Price list (the prices in the page copy are display placeholders), tariff, menu
+
+**Policy stamp**:
+The version and effective date of the Published rates that the Booking is quoted under, stamped on it the moment the Guest chooses their Payment plan. A later republish changes the terms of future choices only, never the refund terms of a stay already promised; a Booking stamped with nothing refunds nothing.
+_Avoid_: Policy lock, snapshot (the snapshot is what an action is handed; the stamp is what the Booking carries)
 
 ### Access
 
@@ -88,7 +104,7 @@ Identity verification: the government ID a Guest uploads and the Host reviews be
 _Avoid_: Verification, ID check, eKYC
 
 **Guest identity**:
-The anonymous sign-in a Guest's own Booking and uploaded documents are keyed to, attached when the Booking is created. A Booking created without one cannot be claimed later (ADR-0004).
+The anonymous sign-in a Guest's own Booking and uploaded documents are keyed to, attached when the Booking is created. A Booking created without one cannot be claimed later — in the cloud the rules now refuse such a creation outright, so the failure is loud (ADR-0004, as amended).
 _Avoid_: User account, login, session
 
 **Activity log**:
@@ -96,9 +112,13 @@ The append-only audit record of every state change in the system, with a timesta
 _Avoid_: Audit trail, system log, history (per-Booking history is a view over this log)
 
 **Tracking consent**:
-A Guest's explicit, recorded permission for the system to record their Guest location during a stay. No consent means access logs only.
+A Guest's explicit, recorded permission for the system to record their Guest location during a stay. No consent means access logs only. The share click is the consent: it is recorded (`tracking_consent_at`) in the same write as the first location ping, so a location session without a consent cannot exist.
 _Avoid_: Geolocation permission, opt-in
 
+**Tracking session**:
+The document at `tracking_sessions/{bookingId}` — one per Booking, created by the traveller's own device, holding the live Guest location of a consented stay. It carries the consent (Tracking consent); its self-deletion is how the Guest stops sharing, and its 30-day read-time expiry is how the location is forgotten.
+_Avoid_: Breadcrumb store, location log (the Access log is about doors, not position)
+
 **Guest location**:
-A province / city / GPS reading recorded during a consented stay.
+A province / city / GPS reading recorded during a consented stay. It lives in the stay's Tracking session, never on the Booking.
 _Avoid_: Breadcrumb, ping, route

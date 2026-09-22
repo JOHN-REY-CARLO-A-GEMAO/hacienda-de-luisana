@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
 import '../models/booking.dart';
+import '../models/tracking_session.dart';
 
 /// P2 Firestore sync — same `bookings` collection the web /book form uses.
 /// P3: App Check attestation + KYC Storage uploads to /kyc/{uid}/{ref}/.
@@ -121,6 +122,11 @@ class CloudBookings {  static const _uidKey = 'hdl_anon_uid';
   CollectionReference<Map<String, dynamic>>? get _col =>
       _available && _db != null ? _db!.collection(_collection) : null;
 
+  /// Where live location lives (G6): `tracking_sessions/{bookingDocId}` —
+  /// one session per booking, written by the traveller's phone.
+  CollectionReference<Map<String, dynamic>>? get _sessionCol =>
+      _available && _db != null ? _db!.collection('tracking_sessions') : null;
+
   /// Creates bookings/{id} in web shape. Returns doc id, or null offline.
   /// created_at uses serverTimestamp so host ordering + 24h TTL share a clock.
   Future<String?> submitBooking(Booking booking) async {
@@ -173,9 +179,13 @@ class CloudBookings {  static const _uidKey = 'hdl_anon_uid';
     }
   }
 
-  /// Saves the one-time ETA Maps link on own doc.
+  /// Saves the one-time ETA Maps link on the booking's tracking session.
+  ///
+  /// The link no longer rides on the booking doc (G6): it is part of "where
+  /// the booker is right now". Best-effort — with no session there is nothing
+  /// to carry the link, and there is nowhere else it may go.
   Future<bool> setEtaShareUrl(String docId, String url) async {
-    final col = _col;
+    final col = _sessionCol;
     if (col == null) return false;
     try {
       await col.doc(docId).update({'eta_share_url': url});
@@ -186,25 +196,64 @@ class CloudBookings {  static const _uidKey = 'hdl_anon_uid';
     }
   }
 
-  /// Owner: saves rider-style pickup (guest one-tap GPS) on any booking doc.
+  /// Saves rider-style pickup (guest one-tap GPS) as a tracking session.
+  ///
+  /// The Share click IS the consent: the first write carries
+  /// `tracking_consent_at` with the first position, and afterwards the
+  /// consent and the identity are frozen (firestore.rules). A session can
+  /// only be CREATED by the traveller's own app — the uid written here is
+  /// this app's own identity — while the Host may update any existing one.
   Future<bool> setPickup(String docId,
       {required double lat, required double lng, String? label}) async {
-    final col = _col;
-    if (col == null) return false;
+    final col = _sessionCol;
+    final uid = _uid;
+    if (col == null || uid == null || uid.isEmpty) return false;
     try {
-      await col.doc(docId).update({
-        'pickup_lat': lat,
-        'pickup_lng': lng,
-        'pickup_updated_at': DateTime.now().toIso8601String(),
-        if (label != null) 'pickup_label': label,
-        'eta_share_url':
-            'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
-      });
+      final now = DateTime.now().toIso8601String();
+      final ref = col.doc(docId);
+      final snap = await ref.get();
+      if (snap.exists) {
+        // Resume: the consent is the one from the original share tap.
+        await ref.update({
+          'latitude': lat,
+          'longitude': lng,
+          'lastUpdated': now,
+          if (label != null) 'label': label,
+        });
+      } else {
+        await ref.set({
+          'bookingId': docId,
+          'uid': uid,
+          'tracking_consent_at': now,
+          'latitude': lat,
+          'longitude': lng,
+          'lastUpdated': now,
+          if (label != null) 'label': label,
+          'eta_share_url':
+              'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+        });
+      }
       return true;
     } catch (e) {
-      debugPrint('[Cloud] pickup save failed: $e');
+      debugPrint('[Cloud] session save failed: $e');
       return false;
     }
+  }
+
+  /// Owner radar: every live session, as they change (G6). The doc id is the
+  /// booking's Firestore id, so a join to `Booking.firestoreId` finds the
+  /// name and the status. Emits empty offline.
+  Stream<List<TrackingSession>> streamSessions() {
+    final col = _sessionCol;
+    if (col == null) return const Stream.empty();
+    return col
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => TrackingSession.fromCloud(d.id, d.data())).toList())
+        .handleError((Object e) {
+      debugPrint('[Cloud] sessions stream failed: $e');
+      return <TrackingSession>[];
+    });
   }
 
   /// Owner: confirm any booking (host approve path, G2 re-check first).

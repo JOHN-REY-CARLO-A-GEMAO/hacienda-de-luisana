@@ -107,8 +107,17 @@ void main() {
       expect(Booking.guestUpdatableKeys, contains('kyc_id_url'));
       expect(Booking.guestUpdatableKeys, contains('kyc_receipt_url'));
       expect(Booking.guestUpdatableKeys, contains('kyc_status'));
-      expect(Booking.guestUpdatableKeys, contains('eta_share_url'));
       expect(Booking.guestUpdatableKeys, isNot(contains('kyc_reject_reason')));
+    });
+
+    test('live location no longer rides on the booking doc (G6)', () {
+      // The ETA link and the pickup family moved to tracking_sessions;
+      // firestore.rules refuses them on the guest's self-serve update.
+      expect(Booking.guestUpdatableKeys, isNot(contains('eta_share_url')));
+      expect(Booking.guestUpdatableKeys, isNot(contains('pickup_lat')));
+      expect(Booking.guestUpdatableKeys, isNot(contains('pickup_lng')));
+      expect(Booking.guestUpdatableKeys, isNot(contains('pickup_updated_at')));
+      expect(Booking.guestUpdatableKeys, isNot(contains('pickup_label')));
     });
   });
 

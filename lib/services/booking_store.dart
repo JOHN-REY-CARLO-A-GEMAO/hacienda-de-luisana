@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/booking.dart';
+import '../models/tracking_session.dart';
 import 'cloud_bookings.dart';
 
 /// Guest-side booking state.
@@ -24,9 +25,11 @@ class BookingStore extends ChangeNotifier {
   static const String _storeKey = 'hdl_demo_bookings';
 
   final List<Booking> _bookings = [];
+  final List<TrackingSession> _sessions = [];
 
   CloudBookings? _cloud;
   StreamSubscription<List<Booking>>? _watchSub;
+  StreamSubscription<List<TrackingSession>>? _sessionsSub;
 
   /// True once Firebase init succeeded (cloud live, own stream attached).
   bool cloudLive = false;
@@ -56,6 +59,11 @@ class BookingStore extends ChangeNotifier {
   }
 
   List<Booking> get bookings => List.unmodifiable(_bookings);
+
+  /// Live tracking sessions (owner mode, G6) — the radar rows. Each one's
+  /// `bookingId` is the booking's Firestore doc id; local-only bookings can
+  /// never have a session.
+  List<TrackingSession> get sessions => List.unmodifiable(_sessions);
 
   /// The booking the dashboard should surface (latest active one).
   /// Expired-pending is terminal locally, so it never surfaces as current.
@@ -100,8 +108,9 @@ class BookingStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Owner mode: streams ALL bookings (not uid-scoped) for the owner APK
-  /// triage + tracking tabs. Falls back to local cache offline.
+  /// Owner mode: streams ALL bookings (not uid-scoped) and every live
+  /// tracking session (G6) for the owner APK triage + tracking tabs. Falls
+  /// back to local cache offline.
   Future<void> attachOwnerCloud(CloudBookings cloud, {String? anonUid}) async {
     _cloud = cloud;
     try {
@@ -109,6 +118,7 @@ class BookingStore extends ChangeNotifier {
       uid = cloud.uid ?? anonUid ?? uid;
       if (cloudLive) {
         await _watchAll();
+        _watchSessions();
       }
       await syncPending();
     } catch (e) {
@@ -116,6 +126,23 @@ class BookingStore extends ChangeNotifier {
       cloudLive = false;
     }
     notifyListeners();
+  }
+
+  void _watchSessions() {
+    final cloud = _cloud;
+    if (cloud == null || !cloudLive) return;
+    _sessionsSub = cloud.streamSessions().listen(
+      (list) {
+        _sessions
+          ..clear()
+          ..addAll(list);
+        notifyListeners();
+      },
+      onError: (Object e) {
+        syncError = e.toString();
+        notifyListeners();
+      },
+    );
   }
 
   Future<void> _watchAll() async {
@@ -158,25 +185,19 @@ class BookingStore extends ChangeNotifier {
         _bookings.add(r);
         changed = true;
       } else {
+        // Live location is never merged here: the cloud booking doc does not
+        // carry it anymore (G6) — it arrives on the sessions stream instead.
         if (local.status != r.status ||
             local.kycStatus != r.kycStatus ||
             local.kycIdUrl != r.kycIdUrl ||
             local.kycReceiptUrl != r.kycReceiptUrl ||
             local.kycRejectReason != r.kycRejectReason ||
-            local.etaShareUrl != r.etaShareUrl ||
-            local.pickupLat != r.pickupLat ||
-            local.pickupLng != r.pickupLng ||
             local.firestoreId != r.firestoreId) {
           local.status = r.status;
           local.kycStatus = r.kycStatus;
           local.kycIdUrl = r.kycIdUrl ?? local.kycIdUrl;
           local.kycReceiptUrl = r.kycReceiptUrl ?? local.kycReceiptUrl;
           local.kycRejectReason = r.kycRejectReason;
-          local.etaShareUrl = r.etaShareUrl ?? local.etaShareUrl;
-          local.pickupLat = r.pickupLat ?? local.pickupLat;
-          local.pickupLng = r.pickupLng ?? local.pickupLng;
-          local.pickupUpdatedAt = r.pickupUpdatedAt ?? local.pickupUpdatedAt;
-          local.pickupLabel = r.pickupLabel ?? local.pickupLabel;
           local.firestoreId = r.firestoreId ?? local.firestoreId;
           local.synced = true;
           changed = true;
