@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../core/constants/app_constants.dart';
 import '../providers/app_providers.dart';
+import '../widgets/animated_badge.dart';
+import '../widgets/animated_tab_page.dart';
+import '../widgets/pressable_card.dart';
+import '../widgets/section_header.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'bookings/bookings_screen.dart';
 import 'tracking/tracking_radar_screen.dart';
@@ -32,14 +36,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     final stats = ref.watch(dashboardStatsProvider);
 
     final List<Widget> screens = [
-      DashboardScreen(onNavigateTab: _navigateToTab),
-      const BookingsScreen(),
-      const TrackingRadarScreen(),
-      const StayDurationScreen(),
-      const AnalyticsScreen(),
-      const SmartLockScreen(),
-      const RoomsScreen(),
-      const GuestCrmScreen(),
+      AnimatedTabPage(
+        isActive: _currentIndex == 0,
+        child: DashboardScreen(onNavigateTab: _navigateToTab),
+      ),
+      AnimatedTabPage(isActive: _currentIndex == 1, child: const BookingsScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 2, child: const TrackingRadarScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 3, child: const StayDurationScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 4, child: const AnalyticsScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 5, child: const SmartLockScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 6, child: const RoomsScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 7, child: const GuestCrmScreen()),
     ];
 
     return Scaffold(
@@ -86,19 +93,11 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   const Icon(Icons.confirmation_number_outlined),
-                  if (stats.pendingRequests > 0)
-                    Positioned(
-                      top: -4,
-                      right: -6,
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: const BoxDecoration(color: AppColors.statusAlert, shape: BoxShape.circle),
-                        child: Text(
-                          '${stats.pendingRequests}',
-                          style: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
+                  Positioned(
+                    top: -4,
+                    right: -6,
+                    child: AnimatedBadge(count: stats.pendingRequests),
+                  ),
                 ],
               ),
               activeIcon: const Icon(Icons.confirmation_number),
@@ -109,16 +108,27 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   const Icon(Icons.radar_outlined),
-                  if (approachingGuest != null)
-                    Positioned(
-                      top: -3,
-                      right: -4,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(color: AppColors.statusSuccess, shape: BoxShape.circle),
+                  Positioned(
+                    top: -3,
+                    right: -4,
+                    child: AnimatedScale(
+                      scale: approachingGuest != null ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOutBack,
+                      child: AnimatedOpacity(
+                        opacity: approachingGuest != null ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 180),
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: AppColors.statusSuccess,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                       ),
                     ),
+                  ),
                 ],
               ),
               activeIcon: const Icon(Icons.radar),
@@ -149,7 +159,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       builder: (ctx) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,57 +169,60 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
+                      color: AppColors.cardBorder,
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'RESORT OPERATIONS & TOOLS',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.8,
-                    color: AppColors.textMuted,
-                  ),
+                const SectionHeader(
+                  title: 'Resort operations & tools',
+                  padding: EdgeInsets.symmetric(horizontal: 8),
                 ),
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: const Icon(Icons.lock_clock_rounded, color: AppColors.primaryForest),
-                  title: const Text('Smart Lock Security Logs'),
-                  subtitle: const Text('Real-time door access audit trail & simulator'),
+                const SizedBox(height: 4),
+                PressableCard(
                   onTap: () {
                     Navigator.pop(ctx);
                     _navigateToTab(5); // Smart lock
                   },
+                  child: const ListTile(
+                    leading: Icon(Icons.lock_clock_rounded),
+                    title: Text('Smart Lock Security Logs'),
+                    subtitle: Text('Real-time door access audit trail & simulator'),
+                  ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.analytics_outlined, color: AppColors.primaryForest),
-                  title: const Text('Revenue & Stay Analytics'),
-                  subtitle: const Text('Financial charts, KPIs & occupancy breakdown'),
+                PressableCard(
                   onTap: () {
                     Navigator.pop(ctx);
                     _navigateToTab(4); // Analytics
                   },
+                  child: const ListTile(
+                    leading: Icon(Icons.analytics_outlined),
+                    title: Text('Revenue & Stay Analytics'),
+                    subtitle: Text('Financial charts, KPIs & occupancy breakdown'),
+                  ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.hotel_outlined, color: AppColors.primaryForest),
-                  title: const Text('Rooms & Accommodations'),
-                  subtitle: const Text('Manage status (Available/Occupied) & pricing'),
+                PressableCard(
                   onTap: () {
                     Navigator.pop(ctx);
                     _navigateToTab(6); // Rooms
                   },
+                  child: const ListTile(
+                    leading: Icon(Icons.hotel_outlined),
+                    title: Text('Rooms & Accommodations'),
+                    subtitle: Text('Manage status (Available/Occupied) & pricing'),
+                  ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.people_outline, color: AppColors.primaryForest),
-                  title: const Text('Guest CRM & History'),
-                  subtitle: const Text('Past guest lookups, VIP badges & preferences'),
+                PressableCard(
                   onTap: () {
                     Navigator.pop(ctx);
                     _navigateToTab(7); // CRM
                   },
+                  child: const ListTile(
+                    leading: Icon(Icons.people_outline),
+                    title: Text('Guest CRM & History'),
+                    subtitle: Text('Past guest lookups, VIP badges & preferences'),
+                  ),
                 ),
               ],
             ),

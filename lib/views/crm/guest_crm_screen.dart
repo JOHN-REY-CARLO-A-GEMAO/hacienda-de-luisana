@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_constants.dart';
 import '../../models/guest_crm_model.dart';
 import '../../providers/app_providers.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/hacienda_card.dart';
 
 class GuestCrmScreen extends ConsumerStatefulWidget {
   const GuestCrmScreen({super.key});
@@ -64,22 +66,10 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                 }).toList();
 
                 if (filtered.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.person_search, size: 48, color: AppColors.textMuted.withOpacity(0.5)),
-                          const SizedBox(height: 12),
-                          Text('No guest profiles found',
-                              style: GoogleFonts.cinzel(fontSize: 16, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text('Try searching with a different name or number.',
-                              style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
-                        ],
-                      ),
-                    ),
+                  return const EmptyState(
+                    icon: Icons.person_search,
+                    title: 'No guest profiles found',
+                    subtitle: 'Try searching with a different name or number.',
                   );
                 }
 
@@ -103,23 +93,10 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
   }
 
   Widget _buildCrmCard(GuestCrmModel guest, NumberFormat currencyFmt) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: guest.isVip ? AppColors.accentGold.withOpacity(0.5) : AppColors.cardBorder,
-          width: guest.isVip ? 1.5 : 1.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    return HaciendaCard(
+      borderColor:
+          guest.isVip ? AppColors.accentGold.withOpacity(0.5) : AppColors.cardBorder,
+      borderWidth: guest.isVip ? 1.5 : 1.0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

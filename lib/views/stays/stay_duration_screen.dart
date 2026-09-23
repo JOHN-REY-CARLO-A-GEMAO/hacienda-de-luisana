@@ -5,6 +5,10 @@ import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/hacienda_card.dart';
+import '../../widgets/luxe_progress.dart';
+import '../../widgets/status_pill.dart';
 
 class StayDurationScreen extends ConsumerStatefulWidget {
   const StayDurationScreen({super.key});
@@ -87,26 +91,10 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
                 }).toList();
 
                 if (activeStays.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.hourglass_empty_rounded, size: 48, color: AppColors.textMuted.withOpacity(0.5)),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No active stays found',
-                            style: GoogleFonts.cinzel(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Try selecting another stay duration filter above.',
-                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
-                          ),
-                        ],
-                      ),
-                    ),
+                  return const EmptyState(
+                    icon: Icons.hourglass_empty_rounded,
+                    title: 'No active stays found',
+                    subtitle: 'Try selecting another stay duration filter above.',
                   );
                 }
 
@@ -145,23 +133,9 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
         ? (elapsedHours ~/ 24) + 1
         : 1;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isStayingNow ? AppColors.statusSuccess.withOpacity(0.4) : AppColors.cardBorder,
-          width: isStayingNow ? 1.5 : 1.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    return HaciendaCard(
+      borderColor: isStayingNow ? AppColors.statusSuccess.withOpacity(0.4) : AppColors.cardBorder,
+      borderWidth: isStayingNow ? 1.5 : 1.0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -188,35 +162,22 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isStayingNow ? AppColors.statusSuccess.withOpacity(0.12) : AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isStayingNow ? AppColors.statusSuccess : AppColors.cardBorder,
-                  ),
-                ),
-                child: Text(
-                  isStayingNow ? '🟢 IN RESORT NOW' : stay.status.displayName,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: isStayingNow ? AppColors.statusSuccess : AppColors.textMuted,
-                  ),
-                ),
+              StatusPill(
+                label: isStayingNow ? '🟢 IN RESORT NOW' : stay.status.displayName,
+                color: isStayingNow ? AppColors.statusSuccess : AppColors.textMuted,
+                radius: 16,
               ),
             ],
           ),
           const SizedBox(height: 14),
 
           // Duration Badge & Check-out Countdown
-          Container(
+          HaciendaCard(
+            color: AppColors.surfaceLight,
+            borderColor: null,
+            shadows: const [],
+            borderRadius: BorderRadius.circular(14),
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceLight,
-              borderRadius: BorderRadius.circular(14),
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -245,17 +206,11 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // Stay Progress Bar
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: Colors.black.withOpacity(0.08),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      isStayingNow ? AppColors.statusSuccess : AppColors.primaryForest,
-                    ),
-                    minHeight: 8,
-                  ),
+                // Stay Progress Bar (animates as the stay advances)
+                LuxeProgress(
+                  value: progress,
+                  height: 8,
+                  color: isStayingNow ? AppColors.statusSuccess : AppColors.primaryForest,
                 ),
                 const SizedBox(height: 6),
                 Row(

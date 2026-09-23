@@ -5,6 +5,9 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_constants.dart';
 import '../../models/room_model.dart';
 import '../../providers/app_providers.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/hacienda_card.dart';
+import '../../widgets/status_pill.dart';
 
 class RoomsScreen extends ConsumerWidget {
   const RoomsScreen({super.key});
@@ -25,6 +28,13 @@ class RoomsScreen extends ConsumerWidget {
       ),
       body: roomsAsync.when(
         data: (rooms) {
+          if (rooms.isEmpty) {
+            return const EmptyState(
+              icon: Icons.hotel_outlined,
+              title: 'No rooms published',
+              subtitle: 'Accommodations appear here once the host publishes rates.',
+            );
+          }
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: rooms.length,
@@ -60,19 +70,8 @@ class RoomsScreen extends ConsumerWidget {
         break;
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    return HaciendaCard(
+      padding: const EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -95,21 +94,10 @@ class RoomsScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: statusColor.withOpacity(0.4)),
-                      ),
-                      child: Text(
-                        room.status.displayName,
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: statusColor,
-                        ),
-                      ),
+                    StatusPill(
+                      label: room.status.displayName,
+                      color: statusColor,
+                      radius: 14,
                     ),
                   ],
                 ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/guest_location_model.dart';
 import '../core/constants/app_constants.dart';
+import 'pulse_dot.dart';
 
 class RadarAlertBanner extends StatelessWidget {
   final GuestLocationModel guest;
@@ -15,6 +16,17 @@ class RadarAlertBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      header: true,
+      label: 'Guest approaching: ${guest.guestName}, '
+          '${guest.distanceRemainingKm.toStringAsFixed(1)} km away, about '
+          '${guest.estimatedMinutesRemaining} minutes',
+      child: _buildBanner(),
+    );
+  }
+
+  Widget _buildBanner() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(14),
@@ -39,14 +51,7 @@ class RadarAlertBanner extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: AppColors.statusSuccess,
-                  shape: BoxShape.circle,
-                ),
-              ),
+              const PulseDot(size: 10),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

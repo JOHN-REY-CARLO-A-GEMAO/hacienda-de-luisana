@@ -6,6 +6,8 @@ import '../../core/utils/date_formatter.dart';
 import '../../models/smart_lock_event_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/notification_service.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/staggered_entrance.dart';
 
 class SmartLockScreen extends ConsumerStatefulWidget {
   const SmartLockScreen({super.key});
@@ -64,29 +66,38 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: _buildCounterTile(
-                        title: 'TOTAL UNLOCKS',
-                        value: '$totalUnlocks',
-                        color: AppColors.statusSuccess,
-                        icon: Icons.lock_open_rounded,
+                      child: StaggeredEntrance(
+                        index: 0,
+                        child: _buildCounterTile(
+                          title: 'TOTAL UNLOCKS',
+                          value: '$totalUnlocks',
+                          color: AppColors.statusSuccess,
+                          icon: Icons.lock_open_rounded,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _buildCounterTile(
-                        title: 'AUTO-RELOCKS',
-                        value: '$totalRelocks',
-                        color: AppColors.primaryForest,
-                        icon: Icons.lock_clock_rounded,
+                      child: StaggeredEntrance(
+                        index: 1,
+                        child: _buildCounterTile(
+                          title: 'AUTO-RELOCKS',
+                          value: '$totalRelocks',
+                          color: AppColors.primaryForest,
+                          icon: Icons.lock_clock_rounded,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _buildCounterTile(
-                        title: 'ACCESS DENIED',
-                        value: '$totalDenied',
-                        color: AppColors.statusAlert,
-                        icon: Icons.gpp_bad_rounded,
+                      child: StaggeredEntrance(
+                        index: 2,
+                        child: _buildCounterTile(
+                          title: 'ACCESS DENIED',
+                          value: '$totalDenied',
+                          color: AppColors.statusAlert,
+                          icon: Icons.gpp_bad_rounded,
+                        ),
                       ),
                     ),
                   ],
@@ -151,17 +162,33 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
               ),
 
               // 3. Audit Trail List
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                itemCount: filteredLogs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, i) {
-                  final log = filteredLogs[i];
-                  return _buildLogCard(log);
-                },
-              ),
+              if (filteredLogs.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                  child: EmptyState(
+                    icon: Icons.lock_clock_outlined,
+                    title: 'No lock activity',
+                    subtitle: 'Simulate an RFID swipe to see the audit trail.',
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  itemCount: filteredLogs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, i) {
+                    final log = filteredLogs[i];
+                    // New events animate in; existing rows keep their settled
+                    // state because they are keyed by event id.
+                    return StaggeredEntrance(
+                      key: ValueKey('lock-${log.id}'),
+                      index: i.clamp(0, 5),
+                      child: _buildLogCard(log),
+                    );
+                  },
+                ),
             ],
           );
         },
