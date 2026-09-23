@@ -7,6 +7,7 @@ import '../../core/utils/geo_utils.dart';
 import '../../models/guest_location_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/notification_service.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/simulation_bar.dart';
 
 class TrackingRadarScreen extends ConsumerStatefulWidget {
@@ -32,16 +33,23 @@ class _TrackingRadarScreenState extends ConsumerState<TrackingRadarScreen> {
           style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(trackingSessionsStreamProvider),
+          Tooltip(
+            message: 'Refresh tracking sessions',
+            child: IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => ref.invalidate(trackingSessionsStreamProvider),
+            ),
           ),
         ],
       ),
       body: sessionsAsync.when(
         data: (sessions) {
           if (sessions.isEmpty) {
-            return const Center(child: Text('No active guest tracking sessions.'));
+            return const EmptyState(
+              icon: Icons.radar,
+              title: 'No active guest tracking sessions',
+              subtitle: 'Guests appear here when they start sharing their location.',
+            );
           }
 
           final activeGuest = _selectedGuest ?? sessions.first;
@@ -67,12 +75,15 @@ class _TrackingRadarScreenState extends ConsumerState<TrackingRadarScreen> {
                           ],
                         ),
                       ),
-                      child: CustomPaint(
-                        painter: _RadarGridPainter(
-                          guestDistKm: activeGuest.distanceRemainingKm,
-                          isNearby: activeGuest.isNearResort,
-                          hasArrived: activeGuest.hasArrived,
-                        ),
+                      // Isolate the radar's repaints from the rest of the tab:
+                      // every tracking-session tick only re-paints this layer.
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: _RadarGridPainter(
+                            guestDistKm: activeGuest.distanceRemainingKm,
+                            isNearby: activeGuest.isNearResort,
+                            hasArrived: activeGuest.hasArrived,
+                          ),
                         child: Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -117,8 +128,9 @@ class _TrackingRadarScreenState extends ConsumerState<TrackingRadarScreen> {
                             ],
                           ),
                         ),
+                          ),
+                        ),
                       ),
-                    ),
 
                     // Top Floating Active Guests Selector
                     Positioned(

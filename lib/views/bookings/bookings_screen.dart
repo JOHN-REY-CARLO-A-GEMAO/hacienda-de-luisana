@@ -7,6 +7,9 @@ import '../../core/utils/date_formatter.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/notification_service.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/hacienda_card.dart';
+import '../../widgets/status_pill.dart';
 
 class BookingsScreen extends ConsumerStatefulWidget {
   const BookingsScreen({super.key});
@@ -40,9 +43,12 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
           style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(bookingsStreamProvider),
+          Tooltip(
+            message: 'Refresh bookings',
+            child: IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => ref.invalidate(bookingsStreamProvider),
+            ),
           ),
         ],
       ),
@@ -109,27 +115,10 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                 }).toList();
 
                 if (filtered.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.event_busy, size: 48, color: AppColors.textMuted.withOpacity(0.5)),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No bookings found',
-                            style: GoogleFonts.cinzel(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'No reservations match the selected filter category.',
-                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
+                  return const EmptyState(
+                    icon: Icons.event_busy,
+                    title: 'No bookings found',
+                    subtitle: 'No reservations match the selected filter category.',
                   );
                 }
 
@@ -172,24 +161,12 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
         break;
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: booking.status == BookingStatus.pending
-              ? AppColors.statusWarning.withOpacity(0.4)
-              : AppColors.cardBorder,
-          width: booking.status == BookingStatus.pending ? 1.5 : 1.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    final isPending = booking.status == BookingStatus.pending;
+
+    return HaciendaCard(
+      padding: const EdgeInsets.zero,
+      borderColor: isPending ? AppColors.statusWarning.withOpacity(0.4) : AppColors.cardBorder,
+      borderWidth: isPending ? 1.5 : 1.0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -228,35 +205,25 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: statusColor.withOpacity(0.4)),
-                  ),
-                  child: Text(
-                    booking.status.displayName,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: statusColor,
-                    ),
-                  ),
+                StatusPill(
+                  label: booking.status.displayName,
+                  color: statusColor,
+                  radius: 20,
                 ),
               ],
             ),
           ),
 
           // Stay Details & Badges
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: HaciendaCard(
               color: AppColors.surfaceLight,
+              borderColor: null,
+              shadows: const [],
               borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
+              padding: const EdgeInsets.all(12),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -326,6 +293,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                   ),
                 ],
               ],
+            ),
             ),
           ),
 
