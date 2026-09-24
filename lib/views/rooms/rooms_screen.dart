@@ -71,7 +71,7 @@ class RoomsScreen extends ConsumerWidget {
     }
 
     return HaciendaCard(
-      padding: const EdgeInsets.zero,
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

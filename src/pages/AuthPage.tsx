@@ -1,7 +1,7 @@
 import { Link, Navigate } from 'react-router-dom'
-import { ROLE_LABELS } from '../lib/auth'
+import { BOOTSTRAP_ROLES, ROLE_LABELS } from '../lib/auth'
 import { useAuth } from '../hooks/useAuth'
-import { LoginForm, type AuthIntro } from '../components/Auth/LoginForm'
+import { LoginForm, type AuthIntro, type RegisterIntro } from '../components/Auth/LoginForm'
 import { TurnedAway } from '../components/Auth/ProtectedRoute'
 
 /**
@@ -54,6 +54,24 @@ const ADMIN_INTRO: AuthIntro = {
   eyebrow: 'Host sign-in',
   title: 'Sign in as Host',
   body: 'This page is for the Host — reviewing Bookings, reading IDs and verifying payments. Guests sign in on the Guest page.',
+}
+
+/**
+ * Registering on the Host page: the only address worth typing here is the
+ * owner's, which carries the Host role the moment it is created (ADR-0005).
+ * Any other address still becomes a Guest — and meets the 403 below.
+ */
+function adminRegisterIntro(): RegisterIntro {
+  const hostEmail = BOOTSTRAP_ROLES.find((entry) => entry.role === 'host')?.email
+  return {
+    eyebrow: 'First time here',
+    title: 'Create the Host account',
+    body: hostEmail
+      ? `Register ${hostEmail} below — that address carries the Host role automatically. Any other address becomes a Guest.`
+      : 'Register the owner address below — it carries the Host role automatically. Any other address becomes a Guest.',
+    submitLabel: 'Create Host Account',
+    successMessage: 'Host account ready — welcome to the Hacienda.',
+  }
 }
 
 export function GuestAuthPage() {
@@ -113,6 +131,7 @@ export function AdminAuthPage() {
           title: 'Sign in',
           body: 'The Host signs in here with email or Google.',
         }}
+        registerIntro={adminRegisterIntro()}
       />
       <div className="mt-6 text-xs text-forest-700/60 text-center space-y-2">
         <p>

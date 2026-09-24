@@ -26,7 +26,7 @@ vercel.json
 package.json
 
 # Flutter Mobile
-lib/                    # Flutter app (main.dart, models/, services/, theme/)
+lib/                    # Flutter app (main.dart, models/, services/, views/, core/theme/)
 assets/images/gmaps/    # Flutter asset images
 pubspec.yaml
 android/                # Flutter Android project (Gradle 8.11.1, Kotlin 2.2.20)
@@ -107,7 +107,7 @@ Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH
 ### Tech Stack
 
 - **Flutter 3.44.4 / Dart 3.12** — `provider: ^6.1.2`, `google_fonts: ^6.2.1`, `flutter_spinkit: ^5.2.1`, `url_launcher: ^6.2.5`, `image_picker: ^1.1.2`, `intl: ^0.19.0`
-- Theme palette (`lib/theme/app_theme.dart`): `forest900 #0F1C11`, `forest800 #243B26`, `olive #8A9A5B`, `cream50 #FBF9F3`, `cream100 #F3EFE0`, `goldAccent #C5A059`
+- Theme palette (`lib/core/theme/app_theme.dart`): `forest900 #0F1C11`, `forest800 #243B26`, `olive #8A9A5B`, `cream50 #FBF9F3`, `cream100 #F3EFE0`, `goldAccent #C5A059`
 
 ### App Structure (`lib/main.dart`)
 

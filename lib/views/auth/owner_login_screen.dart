@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import '../services/auth_store.dart';
-import '../services/booking_store.dart';
-import '../services/cloud_bookings.dart';
-import '../theme/app_theme.dart';
-import '../utils/validators.dart';
-import '../widgets/staggered_entrance.dart';
+import '../../services/auth_store.dart';
+import '../../services/booking_store.dart';
+import '../../services/cloud_bookings.dart';
+import '../../core/theme/app_theme.dart';
+import '../../utils/validators.dart';
+import '../../widgets/staggered_entrance.dart';
 
 /// Owner APK gate (Android only). First launch: 1-tap Google sign-in with the
 /// anak email hint pre-filled. Stays signed-in via Firebase persistence.

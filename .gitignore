@@ -12,6 +12,10 @@ yarn-error.log*
 !.env.example
 !.firebaserc.example
 
+# Local Firebase emulator data (imported on start, written on exit — never commit)
+emulator-data/*
+!emulator-data/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db

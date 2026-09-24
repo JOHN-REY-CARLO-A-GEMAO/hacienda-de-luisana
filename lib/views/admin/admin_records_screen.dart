@@ -3,8 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../services/esp32_service.dart';
-import '../theme/app_theme.dart';
+import '../../services/esp32_service.dart';
+import '../../core/theme/app_theme.dart';
 
 /// Owner tab 3: smart-lock records. No ESP32 hardware yet -> SIM MODE.
 /// Shows the local access-log buffer (what WILL sync to `access_logs` once

@@ -3,11 +3,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../models/booking.dart';
-import '../models/tracking_session.dart';
-import '../services/booking_store.dart';
-import '../theme/app_theme.dart';
-import '../utils/tracking.dart';
+import '../../models/booking.dart';
+import '../../models/tracking_session.dart';
+import '../../services/booking_store.dart';
+import '../../core/theme/app_theme.dart';
+import '../../utils/tracking.dart';
 
 /// Owner tab 2: rider-style PICKUP (guest, moving) -> DROP-OFF (hotel, fixed).
 /// Guest sends pickup with ONE TAP from the /book success screen.

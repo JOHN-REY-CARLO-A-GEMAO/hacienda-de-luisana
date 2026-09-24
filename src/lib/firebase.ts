@@ -13,9 +13,9 @@
 // ----------------------------------------------------------------------------
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
-import { getAuth, type Auth, GoogleAuthProvider } from 'firebase/auth'
-import { getFirestore, type Firestore } from 'firebase/firestore'
-import { getStorage, type FirebaseStorage } from 'firebase/storage'
+import { connectAuthEmulator, getAuth, type Auth, GoogleAuthProvider } from 'firebase/auth'
+import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore'
+import { connectStorageEmulator, getStorage, type FirebaseStorage } from 'firebase/storage'
 
 // ----------------------------------------------------------------------------
 // Environment Variables
@@ -73,12 +73,27 @@ export const isFirebaseConfigured = Boolean(
   isValidConfigValue(firebaseConfig.appId)
 )
 
+// Practice database: the Firebase Emulator Suite on localhost (Auth :9099,
+// Firestore :8080, Storage :9199). Set VITE_USE_FIREBASE_EMULATORS=true in
+// .env.local to talk to the emulators instead of the live project — same SDK,
+// same rules files, zero quota, uploads included. Never enabled by accident:
+// the flag must read exactly 'true'.
+export const isUsingEmulators =
+  isFirebaseConfigured && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true'
+
 // Warn in development if not configured, but don't crash the app
 if (!isFirebaseConfigured && import.meta.env.DEV) {
   console.info(
     '[Firebase] Running in local offline mode. ' +
     'To connect to Firebase, update .env.local with valid Firebase credentials (API key starting with AIza). ' +
     'Bookings and admin dashboard will use local persistence.'
+  )
+}
+
+if (isUsingEmulators && import.meta.env.DEV) {
+  console.info(
+    '[Firebase] Talking to the local Emulator Suite (Auth :9099, Firestore :8080, Storage :9199). ' +
+    'Nothing here touches the live project. Inspect data at http://127.0.0.1:4000.',
   )
 }
 
@@ -91,6 +106,10 @@ let db: Firestore | null = null
 let storage: FirebaseStorage | null = null
 let googleProvider: GoogleAuthProvider | null = null
 
+// connect*Emulator warn when called twice (HMR re-runs this module), so the
+// connection happens once per page load.
+let emulatorsConnected = false
+
 if (isFirebaseConfigured) {
   try {
     // Avoid re-initializing during HMR
@@ -98,6 +117,23 @@ if (isFirebaseConfigured) {
     auth = getAuth(app)
     db = getFirestore(app)
     storage = getStorage(app)
+    if (isUsingEmulators && !emulatorsConnected) {
+      emulatorsConnected = true
+      // Phones on the same Wi-Fi load the site via the laptop's LAN IP
+      // (e.g. http://192.168.1.6:3000), so 127.0.0.1 would point at the phone
+      // itself and refuse to connect. Use the page's own hostname so both
+      // laptop (localhost) and phone (LAN IP) reach the same emulators.
+      // Requires emulators listening on LAN: `firebase emulators:start --host 0.0.0.0`
+      const emulatorHost =
+        typeof window !== 'undefined' &&
+        window.location.hostname !== 'localhost' &&
+        window.location.hostname !== '127.0.0.1'
+          ? window.location.hostname
+          : '127.0.0.1'
+      connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true })
+      connectFirestoreEmulator(db, emulatorHost, 8080)
+      connectStorageEmulator(storage, emulatorHost, 9199)
+    }
     googleProvider = new GoogleAuthProvider()
     googleProvider.setCustomParameters({ prompt: 'select_account' })
 
@@ -146,6 +182,7 @@ export function getFirebaseStatus() {
   const isReady = isFirebaseConfigured && Boolean(app)
   return {
     configured: isReady,
+    emulators: isUsingEmulators,
     projectId: isReady ? (firebaseConfig.projectId || 'not-set') : 'local-mode',
     authDomain: isReady ? (firebaseConfig.authDomain || 'not-set') : 'local-mode',
     hasApiKey: isValidApiKey(firebaseConfig.apiKey),

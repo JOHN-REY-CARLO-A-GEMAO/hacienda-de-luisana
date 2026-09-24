@@ -10,8 +10,7 @@ import '../constants/app_constants.dart';
 /// * the quiet-luxury forest/cream/gold tokens (`forest900`, `cream50`, …)
 ///   used by the owner login and admin surfaces.
 ///
-/// `lib/theme/app_theme.dart` is a re-export shim kept so existing imports
-/// keep resolving to this one class.
+/// Admin surfaces live in `lib/views/admin/` and auth in `lib/views/auth/`.
 class AppTheme {
   // ---- Quiet-luxury brand tokens (login + admin surfaces) ----
   static const Color forest900 = Color(0xFF0F1C11); // deepest pine-ink
@@ -191,7 +190,6 @@ class AppTheme {
       // ---------- Progress indicators ----------
       progressIndicatorTheme: ProgressIndicatorThemeData(
         color: AppColors.primaryForest,
-        linearTrackHeight: 8,
       ),
 
       // ---------- Floating action buttons ----------
@@ -200,7 +198,6 @@ class AppTheme {
         foregroundColor: Colors.white,
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: baseInter(fontSize: 14, fontWeight: FontWeight.w600),
       ),
 
       // ---------- List tiles (More sheet, etc.) ----------

@@ -27,6 +27,29 @@ export const PROOF_UPLOAD_UNAVAILABLE_MESSAGE =
   `quoting your booking reference, and the Host will verify it from there.`
 
 /**
+ * How long one upload may run before the UI stops waiting for it.
+ *
+ * A stalled connection can leave the Storage promise unsettled forever, which
+ * sticks the form on "Uploading…" with no way out. Racing the upload against
+ * this timeout unblocks the Guest with words and a next step instead.
+ */
+const UPLOAD_TIMEOUT_MS = 60_000
+
+async function uploadWithTimeout(target: ReturnType<typeof ref>, file: File, contentType: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      uploadBytes(target, file, { contentType }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('upload-timeout')), UPLOAD_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+/**
  * Uploads one payment proof and returns the Storage download URL to record on
  * the Booking as `payment_proof_url`.
  *
@@ -53,16 +76,20 @@ export async function uploadPaymentProof(input: {
   const target = ref(storage, path)
 
   try {
-    await uploadBytes(target, input.file, { contentType: proofContentType(input.file.name) })
+    await uploadWithTimeout(target, input.file, proofContentType(input.file.name))
     return { ok: true, url: await getDownloadURL(target), uid }
   } catch (e) {
     console.warn('[Payments] upload failed', e)
+    const stalled = e instanceof Error && e.message === 'upload-timeout'
     return {
       ok: false,
       reason: 'failed',
-      message:
-        'That upload did not go through. Please check your connection and try again, ' +
-        `or email the receipt to ${BUSINESS.contact.email} quoting your booking reference.`,
+      message: stalled
+        ? 'That upload is taking too long — your connection may have stalled. Please try again ' +
+          'on a steadier connection, with a smaller photo, ' +
+          `or email the receipt to ${BUSINESS.contact.email} quoting your booking reference.`
+        : 'That upload did not go through. Please check your connection and try again, ' +
+          `or email the receipt to ${BUSINESS.contact.email} quoting your booking reference.`,
     }
   }
 }

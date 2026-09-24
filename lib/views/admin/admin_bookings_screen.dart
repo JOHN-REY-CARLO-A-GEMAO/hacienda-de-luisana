@@ -3,10 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../services/auth_store.dart';
-import '../services/booking_store.dart';
-import '../theme/app_theme.dart';
-import '../utils/tracking.dart';
+import '../../services/auth_store.dart';
+import '../../services/booking_store.dart';
+import '../../core/theme/app_theme.dart';
+import '../../utils/tracking.dart';
 
 /// Owner tab 1: booking requests (Confirm / Cancel). Full review stays on
 /// the /admin website; this is the on-the-go owner triage view.

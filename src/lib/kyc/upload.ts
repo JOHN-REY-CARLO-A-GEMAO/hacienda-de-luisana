@@ -27,6 +27,30 @@ export const KYC_UPLOAD_UNAVAILABLE_MESSAGE =
   `mobile app, or email it to ${BUSINESS.contact.email}.`
 
 /**
+ * How long one upload may run before the UI stops waiting for it.
+ *
+ * A stalled connection can leave the Storage promise unsettled forever, which
+ * used to stick the form on "Uploading…" with no way out. Racing the upload
+ * against this timeout unblocks the Guest with words and a next step; a late
+ * upload that lands afterwards is harmless (same address, same contents).
+ */
+const UPLOAD_TIMEOUT_MS = 60_000
+
+async function uploadWithTimeout(target: ReturnType<typeof ref>, file: File, contentType: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      uploadBytes(target, file, { contentType }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('upload-timeout')), UPLOAD_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+/**
  * Uploads one document and returns the Storage download URL to record on the
  * Booking — the same value `kyc_id_url`/`kyc_receipt_url` already carry from the
  * mobile app, so /admin reviews both alike.
@@ -56,16 +80,20 @@ export async function uploadKycDocument(input: {
   const target = ref(storage, path)
 
   try {
-    await uploadBytes(target, input.file, { contentType: kycContentType(input.file.name) })
+    await uploadWithTimeout(target, input.file, kycContentType(input.file.name))
     return { ok: true, url: await getDownloadURL(target), uid }
   } catch (e) {
     console.warn(`[KYC] upload failed (${input.kind})`, e)
+    const stalled = e instanceof Error && e.message === 'upload-timeout'
     return {
       ok: false,
       reason: 'failed',
-      message:
-        'That upload did not go through. Please check your connection and try again, ' +
-        `or email the photo to ${BUSINESS.contact.email}.`,
+      message: stalled
+        ? 'That upload is taking too long — your connection may have stalled. Please try again ' +
+          'on a steadier connection, with a smaller photo, ' +
+          `or email it to ${BUSINESS.contact.email}.`
+        : 'That upload did not go through. Please check your connection and try again, ' +
+          `or email the photo to ${BUSINESS.contact.email}.`,
     }
   }
 }

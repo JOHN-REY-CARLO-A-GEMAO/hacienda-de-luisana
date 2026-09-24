@@ -1,0 +1,13 @@
+[
+  {
+    "origin": [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "https://haciendadeluisana.com",
+      "https://haciendadeluisana.vercel.app"
+    ],
+    "method": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+    "responseHeader": ["Content-Type", "Authorization"],
+    "maxAgeSeconds": 3600
+  }
+]

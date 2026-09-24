@@ -7,7 +7,7 @@ import 'services/auth_store.dart';
 import 'services/booking_store.dart';
 import 'services/cloud_bookings.dart';
 import 'services/notification_service.dart';
-import 'screens/owner_login_screen.dart';
+import 'views/auth/owner_login_screen.dart';
 import 'views/main_shell_screen.dart';
 
 void main() async {

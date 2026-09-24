@@ -16,10 +16,10 @@ import { LoginForm } from './components/Auth/LoginForm'
 import { useReveal } from './lib/reveal'
 import { isNativeApp } from './lib/native'
 import { AdminApp } from './app/AdminApp'
-import { AdminBookingsScreen } from './app/screens/AdminBookingsScreen'
-import { AdminTrackingScreen } from './app/screens/AdminTrackingScreen'
-import { ClientAnalyticsScreen } from './app/screens/ClientAnalyticsScreen'
-import { AdminRecordsScreen } from './app/screens/AdminRecordsScreen'
+import { AdminBookingsScreen } from './app/pages/AdminBookingsScreen'
+import { AdminTrackingScreen } from './app/pages/AdminTrackingScreen'
+import { ClientAnalyticsScreen } from './app/pages/ClientAnalyticsScreen'
+import { AdminRecordsScreen } from './app/pages/AdminRecordsScreen'
 
 function ScrollHandler() {
   const location = useLocation()

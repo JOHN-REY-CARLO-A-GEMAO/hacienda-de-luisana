@@ -20,6 +20,21 @@ type Mode = 'login' | 'register' | 'reset'
 export type AuthIntro = { eyebrow: string; title: string; body: string }
 
 /**
+ * Scoped copy for the register mode. The default says Guest because that is
+ * all a sign-up can make — except on `/admin/auth`, where the only address
+ * worth registering is the owner's, which arrives as the Host (ADR-0005).
+ */
+export type RegisterIntro = AuthIntro & { submitLabel: string; successMessage: string }
+
+const DEFAULT_REGISTER_INTRO: RegisterIntro = {
+  eyebrow: 'Create account',
+  title: 'Join Hacienda',
+  body: 'Make a Guest account to follow your own Booking, send your ID and keep your dates.',
+  submitLabel: 'Create Guest Account',
+  successMessage: 'Your Guest account is ready — your Bookings are now tied to it.',
+}
+
+/**
  * The one form every role signs in through.
  *
  * Signing up makes a Guest — there is no role to pick, because a role picked in a
@@ -30,7 +45,15 @@ export type AuthIntro = { eyebrow: string; title: string; body: string }
  * Every failure arrives as an AuthError with a message for a person, so this form
  * has no list of provider codes of its own to keep in step.
  */
-export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?: AuthIntro }) {
+export function LoginForm({
+  onSuccess,
+  intro,
+  registerIntro = DEFAULT_REGISTER_INTRO,
+}: {
+  onSuccess?: () => void
+  intro?: AuthIntro
+  registerIntro?: RegisterIntro
+}) {
   const { login, register, loginWithGoogle, resetPassword, signInAsRole, isConfigured, role } = useAuth()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
@@ -39,6 +62,12 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  /**
+   * Registering an address that already has an account is not a failure to
+   * fix — it is a login wearing the wrong mode. Offer the one-click switch
+   * instead of leaving the person to find the link below.
+   */
+  const [suggestLogin, setSuggestLogin] = useState(false)
 
   const copy = {
     login: intro ?? {
@@ -46,11 +75,7 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
       title: 'Sign in',
       body: 'Guests, Staff and the Host all sign in here — the page you land on follows your role.',
     },
-    register: {
-      eyebrow: 'Create account',
-      title: 'Join Hacienda',
-      body: `Make a Guest account to follow your own Booking, send your ID and keep your dates.`,
-    },
+    register: registerIntro,
     reset: {
       eyebrow: 'Reset password',
       title: 'Forgot password?',
@@ -58,10 +83,19 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
     },
   }[mode]
 
+  /** A mode switch starts clean: an error from the last mode must not greet the next. */
+  const switchMode = (next: Mode) => {
+    setMode(next)
+    setError(null)
+    setInfo(null)
+    setSuggestLogin(false)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setInfo(null)
+    setSuggestLogin(false)
     setLoading(true)
 
     try {
@@ -70,14 +104,16 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
         onSuccess?.()
       } else if (mode === 'register') {
         await register(email, password, displayName || undefined)
-        setInfo('Your Guest account is ready — your Bookings are now tied to it.')
+        setInfo(registerIntro.successMessage)
         onSuccess?.()
       } else {
         await resetPassword(email)
         setInfo('Password reset email sent! Check your inbox.')
       }
     } catch (err) {
-      setError(describeAuthError(err).message)
+      const described = describeAuthError(err)
+      setError(described.message)
+      setSuggestLogin(mode === 'register' && described.code === 'auth/email-already-in-use')
     } finally {
       setLoading(false)
     }
@@ -86,6 +122,7 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
   const handleGoogle = async () => {
     setError(null)
     setInfo(null)
+    setSuggestLogin(false)
     setLoading(true)
     try {
       await loginWithGoogle()
@@ -100,6 +137,7 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
   const handleDemoRole = async (demoRole: Role) => {
     setError(null)
     setInfo(null)
+    setSuggestLogin(false)
     setLoading(true)
     try {
       await signInAsRole(demoRole)
@@ -122,6 +160,15 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
       {error && (
         <div className="mb-5 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm px-4 py-3" role="alert">
           {error}
+          {suggestLogin && (
+            <button
+              type="button"
+              onClick={() => switchMode('login')}
+              className="mt-2 block font-semibold underline underline-offset-4 hover:text-red-900"
+            >
+              Sign in instead — your email stays filled in
+            </button>
+          )}
         </div>
       )}
       {info && (
@@ -217,7 +264,7 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
             : mode === 'login'
               ? 'Sign In'
               : mode === 'register'
-                ? 'Create Guest Account'
+                ? registerIntro.submitLabel
                 : 'Send Reset Link'}
         </button>
       </form>
@@ -250,13 +297,13 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
         {mode === 'login' && (
           <>
             <div>
-              <button onClick={() => setMode('reset')} className="underline underline-offset-4 hover:text-forest-900">
+              <button onClick={() => switchMode('reset')} className="underline underline-offset-4 hover:text-forest-900">
                 Forgot password?
               </button>
             </div>
             <div>
               Don't have an account?{' '}
-              <button onClick={() => setMode('register')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
+              <button onClick={() => switchMode('register')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
                 Create one
               </button>
             </div>
@@ -265,7 +312,7 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
         {mode === 'register' && (
           <div>
             Already have an account?{' '}
-            <button onClick={() => setMode('login')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
+            <button onClick={() => switchMode('login')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
               Sign in
             </button>
           </div>
@@ -273,7 +320,7 @@ export function LoginForm({ onSuccess, intro }: { onSuccess?: () => void; intro?
         {mode === 'reset' && (
           <div>
             Remember your password?{' '}
-            <button onClick={() => setMode('login')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
+            <button onClick={() => switchMode('login')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
               Back to login
             </button>
           </div>

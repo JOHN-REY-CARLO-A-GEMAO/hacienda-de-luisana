@@ -266,6 +266,27 @@ describe('the sign-in form itself', () => {
     expect(page.text()).toContain('An account with this email already exists. Try logging in.')
   })
 
+  it('offers a one-click switch to sign-in when the address already has an account', async () => {
+    const value = session({
+      register: async () => {
+        throw new AuthError('auth/email-already-in-use')
+      },
+    })
+    const page = renderForm(value)
+
+    openSignUp(page.container)
+    await fillAndSubmit(page.container, 'twice@example.com', 'bahay-kubo')
+
+    clickButton(page.container, /Sign in instead/)
+
+    // Login mode, with the email kept: the person only types the password.
+    expect(page.text()).toContain('Sign In')
+    expect(page.container.querySelector<HTMLInputElement>('input[type="email"]')?.value).toBe(
+      'twice@example.com',
+    )
+    expect(page.text()).not.toContain('already exists')
+  })
+
   it('shows the session’s refusal of a password too short to keep', async () => {
     // Validation lives in the session, where every surface shares it (and is
     // tested there); the form's job is to say what came back, in words.

@@ -164,7 +164,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     final isPending = booking.status == BookingStatus.pending;
 
     return HaciendaCard(
-      padding: const EdgeInsets.zero,
+      padding: EdgeInsets.zero,
       borderColor: isPending ? AppColors.statusWarning.withOpacity(0.4) : AppColors.cardBorder,
       borderWidth: isPending ? 1.5 : 1.0,
       child: Column(
