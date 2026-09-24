@@ -111,15 +111,15 @@ is *rule text executed by the in-repo evaluator* (`test/rules/engine.ts` parses
 the real `firestore.rules` / `storage.rules` with the `@firebase/rules-unit-testing`
 ANTLR grammar and evaluates the request against them). The canonical check
 already exists in `test/emulator/rules.emulator.test.ts` (auth, bookings,
-activity, payments/references, chat, reviews, smart lock, tracker, storage — plus
-four `console.info` probes for the open questions); it runs with
+activity, payments/references, chat, reviews, smart lock, tracker, storage — 40
+cases, the former probes now asserting the fixed behaviour); it runs with
 `npm run test:emulator` on a machine that has Java and can reach
 `storage.googleapis.com`. Run it before treating any ⚠️ below as settled.
 
 | Checked how | Count |
 | --- | --- |
 | Emulator-verified | **0** |
-| Rule-text-executed (in-repo evaluator, real rules file) | 107 rule assertions + 16 recorded findings/semantics cases |
+| Rule-text-executed (in-repo evaluator, real rules file) | 151 assertions — including the 16 cases that used to record findings, now asserted refusals |
 | Executed application code (website modules, offline adapters) | 20 of the 37 E2E steps |
 
 ### 3.2 What each required area shows
@@ -132,7 +132,7 @@ four `console.info` probes for the open questions); it runs with
 | | admin works | ✅ allowlisted Admin reads any Booking, approves, verifies, deletes |
 | **Bookings** | own read | ✅ |
 | | other-user denial | ✅ (get + list) |
-| | protected-field denial | ✅ status → Approved/Reserved, `uid` re-point, `amount_verified`, `payment_verified_by`, refund fields, `guests` all denied |
+| | protected-field denial | ✅ status → Approved/Reserved, `uid` re-point, `amount_verified`, `payment_verified_by`, `payment_verified_at` all denied; a refund may be recorded only up to the verified amount, and `refunded` is the Admin's |
 | | admin ops | ✅ approve/reject/verify/delete, terminal-status guard holds, no status skip |
 | **Payments** | guest submits proof | ✅ proof keys accepted on own `Payment Pending` Booking |
 | | cannot set verified | ❌ **Finding 1** — see below |
