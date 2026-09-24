@@ -89,6 +89,11 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     payment_proof_url: data.payment_proof_url ?? null,
     payment_reject_reason: data.payment_reject_reason ?? null,
     amount_claimed: typeof data.amount_claimed === 'number' ? data.amount_claimed : undefined,
+    payment_reference: data.payment_reference,
+    ocr_reference: data.ocr_reference,
+    ocr_amount: data.ocr_amount,
+    payment_verified_at: data.payment_verified_at ?? null,
+    payment_verified_by: data.payment_verified_by ?? null,
     stay_total: typeof data.stay_total === 'number' ? data.stay_total : undefined,
     amount_due: typeof data.amount_due === 'number' ? data.amount_due : undefined,
     security_deposit: typeof data.security_deposit === 'number' ? data.security_deposit : undefined,
@@ -110,10 +115,7 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     kyc_id_url: data.kyc_id_url,
     kyc_receipt_url: data.kyc_receipt_url,
     kyc_reject_reason: data.kyc_reject_reason,
-    // Live location never crosses this mapping: old documents may still carry
-    // pickup_* keys from before the cutover, and they are ignored on purpose —
-    // the session at tracking_sessions/{bookingId} is where location lives now
-    // (G6), and a stray key on the Booking is not a position.
+    // Live location keys on old documents are ignored. Tracking is retired.
   }
 }
 

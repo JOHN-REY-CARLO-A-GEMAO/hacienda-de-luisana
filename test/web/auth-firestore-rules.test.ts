@@ -123,15 +123,15 @@ describe('the Profiles collection', () => {
 
     expect(create).toContain('|| isAdmin()')
     expect(shape).toContain("request.resource.data.role in ['guest', 'admin']")
-    expect(shape).toContain(
-      "hasOnly(['uid', 'role', 'email', 'display_name', 'created_at', 'updated_at'])",
-    )
+    expect(shape).toContain("hasOnly(['uid', 'role', 'email', 'display_name', 'created_at', 'updated_at'")
+    expect(shape).toContain("'terms_accepted_at'")
   })
 
   it('lets a person change their own name but never their own role', () => {
     const update = allow(profiles, 'update:')
     expect(update).toContain('isAdmin()')
-    expect(update).toContain("hasOnly(['display_name', 'email', 'updated_at'])")
+    expect(update).toContain("'display_name'")
+    expect(update).toContain("'terms_accepted_at'")
   })
 
   it('lets only the Admin remove a Profile, and never their own', () => {
@@ -223,30 +223,13 @@ describe('Bookings', () => {
   })
 })
 
-describe('the Tracking sessions (G6: the Share click is the consent)', () => {
-  it('are created by the traveller only, and only with a consent in the same write', () => {
-    const create = allow(trackingSessions, 'create:')
-    expect(create).toContain(
-      "hasAll(['bookingId', 'uid', 'tracking_consent_at', 'latitude', 'longitude', 'lastUpdated'])",
-    )
-    expect(create).toContain('request.resource.data.uid == request.auth.uid')
+describe('the Tracking sessions (retired — location tracker removed)', () => {
+  it('refuse create, read and update for everyone', () => {
+    expect(allow(trackingSessions, 'read, create, update:')).toBe('allow read, create, update: if false;')
   })
 
-  it('are readable by the Admin for the radar, and by the traveller', () => {
-    const read = allow(trackingSessions, 'read:')
-    expect(read).toContain('isAdmin()')
-    expect(read).toContain("resource.data.get('uid', '') == request.auth.uid")
-  })
-
-  it('let the traveller update position, but never the consent or the identity', () => {
-    const update = allow(trackingSessions, 'update:')
-    expect(update).toContain(".hasAny(['uid', 'bookingId', 'tracking_consent_at'])")
-  })
-
-  it('are deletable by the Admin — and by the traveller, because deleting is stopping', () => {
-    const deleteRule = allow(trackingSessions, 'delete:')
-    expect(deleteRule).toContain('isAdmin()')
-    expect(deleteRule).toContain("resource.data.get('uid', '') == request.auth.uid")
+  it('let the Admin delete leftover sessions only', () => {
+    expect(allow(trackingSessions, 'delete:')).toBe('allow delete: if isAdmin();')
   })
 })
 

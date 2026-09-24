@@ -27,6 +27,7 @@ export type Accommodation = {
   amenities: string[]      // keys into AMENITIES
   images: string[]         // paths in /public or full URLs
   active: boolean
+  category: 'main-house' | 'camping'
 }
 
 export type NearbyAttraction = {
@@ -176,6 +177,7 @@ export const ACCOMMODATIONS: Accommodation[] = [
       '/images/gmaps/img-06.jpg',
     ],
     active: true,
+    category: 'main-house',
   },
   {
     id: 'house-a-camping',
@@ -197,6 +199,7 @@ export const ACCOMMODATIONS: Accommodation[] = [
       '/images/gmaps/img-12.jpg',
     ],
     active: true,
+    category: 'camping',
   },
 ]
 

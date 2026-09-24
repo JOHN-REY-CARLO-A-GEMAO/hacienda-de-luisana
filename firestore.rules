@@ -111,7 +111,8 @@ service cloud.firestore {
         return request.resource.data.uid == userId
           && request.resource.data.role in ['guest', 'admin']
           && request.resource.data.keys()
-               .hasOnly(['uid', 'role', 'email', 'display_name', 'created_at', 'updated_at']);
+               .hasOnly(['uid', 'role', 'email', 'display_name', 'created_at', 'updated_at',
+                         'phone', 'birthdate', 'terms_version', 'terms_accepted_at']);
       }
 
       // Your own Profile, and everybody's if you are the Admin.
@@ -130,7 +131,8 @@ service cloud.firestore {
         && (isAdmin()
             || (isSignedIn() && request.auth.uid == userId
                 && request.resource.data.diff(resource.data).affectedKeys()
-                     .hasOnly(['display_name', 'email', 'updated_at'])));
+                     .hasOnly(['display_name', 'email', 'updated_at', 'phone', 'birthdate',
+                               'terms_version', 'terms_accepted_at'])));
 
       // Removing an account's role. Never your own: one click should not be able
       // to leave the hacienda with no Admin signed in.
@@ -200,7 +202,9 @@ service cloud.firestore {
                       'payment_plan', 'payment_status', 'payment_proof_url',
                       'amount_claimed', 'stay_total', 'amount_due', 'security_deposit',
                       'balance_due', 'cancellation_reason', 'hold_expires_at',
-                      'policy_version', 'policy_effective_date']));
+                      'policy_version', 'policy_effective_date',
+                      'payment_reference', 'ocr_reference', 'ocr_amount',
+                      'terms_version', 'terms_accepted_at']));
 
       allow delete: if isAdmin();
 
@@ -281,17 +285,52 @@ service cloud.firestore {
     // nonexistent; there is no backend worker to purge, so the Admin's delete is
     // the physical erasure (G6).
     match /tracking_sessions/{sessionId} {
+      allow read, create, update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /payment_references/{refId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasAll(['reference', 'amount', 'status'])
+        && request.resource.data.status in ['available', 'used', 'void'];
+    }
+
+    match /conversations/{convoId} {
       allow create: if isSignedIn()
-        && request.resource.data.keys().hasAll(['bookingId', 'uid', 'tracking_consent_at', 'latitude', 'longitude', 'lastUpdated'])
-        && request.resource.data.uid == request.auth.uid;
+        && request.resource.data.keys().hasAll(['guest_uid', 'category', 'created_at', 'updated_at'])
+        && request.resource.data.guest_uid == request.auth.uid;
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.get('guest_uid', '') == request.auth.uid);
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.get('guest_uid', '') == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['updated_at', 'last_message', 'unread_admin', 'unread_guest']));
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow create: if isSignedIn()
+          && request.resource.data.keys().hasAll(['sender_uid', 'sender_role', 'text', 'created_at'])
+          && request.resource.data.sender_uid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() < 2001;
+        allow read: if isAdmin()
+          || (isSignedIn() && get(/databases/$(database)/documents/conversations/$(convoId)).data.get('guest_uid', '') == request.auth.uid);
+        allow update, delete: if false;
+      }
+    }
+
+    match /reviews/{reviewId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['booking_id', 'uid', 'stars', 'created_at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.stars is int
+        && request.resource.data.stars >= 1
+        && request.resource.data.stars <= 5;
       allow read: if isAdmin()
         || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
-      allow update: if isAdmin()
-        || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid
-            && !request.resource.data.diff(resource.data).affectedKeys()
-                 .hasAny(['uid', 'bookingId', 'tracking_consent_at']));
-      allow delete: if isAdmin()
-        || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
+      allow update, delete: if isAdmin();
     }
 
     // Rooms + guest CRM (operations reference data, seeded by the Admin).

@@ -52,6 +52,11 @@ export type BookingState = {
   payment_reject_reason?: string | null
   /** What the Guest says they sent, before the Admin verifies it. */
   amount_claimed?: number
+  payment_reference?: string
+  ocr_reference?: string
+  ocr_amount?: string
+  payment_verified_at?: string | null
+  payment_verified_by?: string | null
   stay_total?: number
   amount_due?: number
   security_deposit?: number
@@ -113,7 +118,14 @@ export type BookingAction =
       /** The published policy in force at choice time; stamped on the Booking so a later republish cannot change this stay's refund terms. */
       policy?: PolicySnapshot
     }
-  | { type: 'UploadPaymentProof'; payment_proof_url: string; amount_claimed?: number }
+  | {
+      type: 'UploadPaymentProof'
+      payment_proof_url: string
+      amount_claimed?: number
+      payment_reference?: string
+      ocr_reference?: string
+      ocr_amount?: string
+    }
   | { type: 'VerifyPayment'; amount_verified: number }
   | { type: 'RejectPaymentProof'; reason: string; guestResubmits: boolean }
   | {
@@ -396,6 +408,9 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       patch.payment_proof_url = action.payment_proof_url
       patch.payment_status = 'pending'
       if (action.amount_claimed !== undefined) patch.amount_claimed = action.amount_claimed
+      if (action.payment_reference) patch.payment_reference = action.payment_reference
+      if (action.ocr_reference) patch.ocr_reference = action.ocr_reference
+      if (action.ocr_amount) patch.ocr_amount = action.ocr_amount
       if (booking.payment_reject_reason) patch.payment_reject_reason = null
       break
     }
@@ -412,6 +427,8 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       // Reserved is the first status a Guest can truly rely on (ADR-0001).
       patch.payment_status = 'verified'
       patch.amount_verified = action.amount_verified
+      patch.payment_verified_at = at
+      patch.payment_verified_by = actor.actor_id
       break
     }
 

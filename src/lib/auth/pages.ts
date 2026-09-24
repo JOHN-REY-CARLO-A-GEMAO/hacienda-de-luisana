@@ -24,6 +24,7 @@ import { ROLES, can, type Permission, type Role } from './roles'
  */
 const GATED_PAGES: ReadonlyArray<{ path: string; permission: Permission }> = [
   { path: '/account', permission: 'booking:read:own' },
+  { path: '/messages', permission: 'booking:read:own' },
 ]
 
 /**

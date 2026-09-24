@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MIN_PASSWORD_LENGTH, describeAuthError, homeForRole } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
+import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
+import { validateBirthdate, validateEmail, validateName } from '../../lib/validation'
+import { LEGAL_VERSION } from '../../lib/legal'
 
 type Mode = 'login' | 'register' | 'reset'
 
@@ -50,6 +53,8 @@ export function LoginForm({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [birthdate, setBirthdate] = useState('')
+  const [acceptTerms, setAcceptTerms] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -168,6 +173,7 @@ export function LoginForm({
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {mode === 'register' && (
+          <>
           <label className="block">
             <span className="label">Display Name (optional)</span>
             <input
@@ -179,6 +185,25 @@ export function LoginForm({
               maxLength={80}
             />
           </label>
+          <label className="block">
+            <span className="label">Date of birth</span>
+            <input
+              className="field"
+              type="date"
+              value={birthdate}
+              onChange={(e) => setBirthdate(e.target.value)}
+              required
+            />
+            <span className="text-[11px] text-forest-600 mt-1 block">You must be at least 10 years old.</span>
+          </label>
+          <label className="flex items-start gap-2 text-xs text-forest-800">
+            <input type="checkbox" className="mt-0.5" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
+            <span>
+              I have read and accept the{' '}
+              <Link to="/legal" className="underline">Terms and Conditions</Link> (version {LEGAL_VERSION}).
+            </span>
+          </label>
+          </>
         )}
 
         <label className="block">

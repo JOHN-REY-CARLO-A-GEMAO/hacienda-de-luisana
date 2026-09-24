@@ -12,6 +12,11 @@ import {
 } from '../../lib/booking'
 import { PROOF_UPLOAD_UNAVAILABLE_MESSAGE, uploadPaymentProof } from '../../lib/payments'
 import type { Booking } from '../../lib/storage'
+import { extractReceiptFields, runReceiptOcr } from '../../lib/payments/ocr'
+import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
+import { validateAmount, validateReference } from '../../lib/validation'
+import { LEGAL_VERSION } from '../../lib/legal'
+import { Link } from 'react-router-dom'
 
 /**
  * The Guest's own payment step: choose a payment plan on an approved Booking,
@@ -31,6 +36,9 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   const [plan, setPlan] = useState<PaymentPlan>('full')
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [amountClaimed, setAmountClaimed] = useState('')
+  const [reference, setReference] = useState('')
+  const [ocrNotes, setOcrNotes] = useState<string[]>([])
+  const [acceptPayTerms, setAcceptPayTerms] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
   const [sent, setSent] = useState(false)
@@ -95,6 +103,25 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       setMessage({ tone: 'bad', text: 'Choose a photo or screenshot of your payment receipt first.' })
       return
     }
+    if (!acceptPayTerms) {
+      setMessage({ tone: 'bad', text: `Accept the payment and smart-lock rules (version ${LEGAL_VERSION}) before submitting.` })
+      return
+    }
+    const refCheck = validateReference(reference)
+    if (!refCheck.ok) {
+      setMessage({ tone: 'bad', text: refCheck.message })
+      return
+    }
+    const amtCheck = validateAmount(amountClaimed)
+    if (!amtCheck.ok) {
+      setMessage({ tone: 'bad', text: amtCheck.message })
+      return
+    }
+    const limited = checkRateLimit(`payment:${booking.id}`, LIMITS.payment)
+    if (!limited.ok) {
+      setMessage({ tone: 'bad', text: limited.message })
+      return
+    }
     setBusy(true)
     setMessage(null)
     try {
@@ -104,13 +131,16 @@ export function PaymentStep({ booking }: { booking: Booking }) {
         setMessage({ tone: 'bad', text: uploaded.message })
         return
       }
-      const claimed = amountClaimed.trim() === '' ? undefined : Number(amountClaimed)
+      const claimed = Number(amtCheck.value)
       const result = await cloudBookingsDB.transition(
         booking.id,
         {
           type: 'UploadPaymentProof',
           payment_proof_url: uploaded.url,
-          ...(claimed !== undefined && Number.isFinite(claimed) && claimed > 0 ? { amount_claimed: claimed } : {}),
+          amount_claimed: claimed,
+          payment_reference: refCheck.value,
+          ocr_reference: reference,
+          ocr_amount: amtCheck.value,
         },
         {
           actor: 'guest',
@@ -212,19 +242,17 @@ export function PaymentStep({ booking }: { booking: Booking }) {
             </p>
           )}
 
-          <div className="mt-2 rounded-xl bg-cream-50 border border-forest-900/10 px-3 py-2.5 text-xs text-forest-800 leading-relaxed">
-            <strong className="block text-forest-900">Where to send it</strong>
-            <span className="block mt-1">
-              <strong>GCash</strong> — message the Admin at {BUSINESS.contact.phone} to confirm the current
-              number before sending.
-            </span>
-            <span className="block mt-1">
-              <strong>Bank transfer</strong> — ask the Admin for the current account details at{' '}
-              {BUSINESS.contact.email}.
-            </span>
-            <span className="block mt-1 text-forest-700/70">
-              No card details are taken here — the payment happens in your own e-wallet or bank app.
-            </span>
+          <div className="mt-2 rounded-xl bg-cream-50 border border-forest-900/10 px-3 py-2.5 text-xs text-forest-800 leading-relaxed space-y-1.5">
+            <strong className="block text-forest-900">Payment information</strong>
+            <p><strong>Who receives it:</strong> Hacienda de LuisAna ({BUSINESS.name}).</p>
+            <p><strong>Methods:</strong> GCash or bank transfer (external). No card data is collected here.</p>
+            <p><strong>Account details:</strong> confirm the current GCash number at {BUSINESS.contact.phone} or bank details at {BUSINESS.contact.email} before sending. Secret API keys are never shown.</p>
+            <p><strong>Required amount:</strong> {owed > 0 ? peso(owed) : 'the quoted amount on your plan'}.</p>
+            <p><strong>Reference:</strong> keep the unique GCash/bank reference. Do not reuse a number from another stay.</p>
+            <p><strong>Receipt:</strong> upload a clear photo under 5MB. OCR may suggest fields; you must confirm them.</p>
+            <p><strong>Deadline:</strong> send proof before the date hold on this booking expires.</p>
+            <p><strong>Verification:</strong> status stays Pending until an Admin matches reference and amount. OCR never verifies payment.</p>
+            <p><strong>After verification:</strong> the booking becomes Reserved and smart-lock credentials work on stay dates.</p>
           </div>
 
           {booking.payment_status === 'rejected' && booking.payment_reject_reason && (
@@ -251,7 +279,27 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   ref={fileInput}
                   type="file"
                   accept="image/*"
-                  onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null
+                    setProofFile(file)
+                    if (!file) return
+                    const ocrLimit = checkRateLimit(`ocr:${booking.id}`, LIMITS.ocr)
+                    if (!ocrLimit.ok) {
+                      setOcrNotes([ocrLimit.message])
+                      return
+                    }
+                    void runReceiptOcr(file).then((extracted) => {
+                      const fromName = extractReceiptFields(file.name.replace(/[_-]/g, ' '))
+                      const referenceGuess = extracted.reference || fromName.reference
+                      const amountGuess = extracted.amount || fromName.amount
+                      if (referenceGuess) setReference(referenceGuess)
+                      if (amountGuess) setAmountClaimed(amountGuess)
+                      setOcrNotes([
+                        ...extracted.notes,
+                        'Confirm or correct the fields below. OCR is not verification.',
+                      ])
+                    })
+                  }}
                   className="block w-full text-xs text-forest-800 file:mr-3 file:px-3 file:py-2 file:rounded-xl file:border-0 file:bg-cream-100 file:text-forest-800 file:text-xs file:font-medium hover:file:bg-cream-200 file:cursor-pointer"
                 />
                 {proofFile && <span className="block mt-1 text-[11px] text-forest-700">{proofFile.name} chosen.</span>}

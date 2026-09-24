@@ -6,7 +6,7 @@ import { KYC_UPLOAD_UNAVAILABLE_MESSAGE, uploadKycDocument } from '../../lib/kyc
 import type { Booking } from '../../lib/storage'
 
 /**
- * The Guest's own KYC step, on the tracking page they already have the link to.
+ * The Guest's own KYC step on the booking / account flow.
  *
  * Documents go to Firebase Storage under the Guest's own uid and the Booking is
  * moved with the lifecycle's `UploadKyc`, so the web and the mobile app leave the

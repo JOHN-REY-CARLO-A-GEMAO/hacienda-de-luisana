@@ -13,6 +13,7 @@ const LINKS = [
   { href: '/#location', label: 'Location' },
   { href: '/#faqs', label: 'FAQs' },
   { href: '/#contact', label: 'Contact' },
+  { href: '/legal', label: 'Terms' },
 ]
 
 export function Nav() {
@@ -145,9 +146,14 @@ export function Nav() {
                 My Bookings (/account)
               </Link>
             )}
-            <Link to="/track" className="btn bg-cream-100 text-forest-800 w-full text-xs">
-              Live Location Sharing (/track)
+            <Link to="/legal" className="btn bg-cream-100 text-forest-800 w-full text-xs">
+              Terms & policies
             </Link>
+            {canOpenPage(role, '/messages') && (
+              <Link to="/messages" className="btn-ghost w-full text-xs">
+                Messages
+              </Link>
+            )}
           </div>
 
           {user ? (
