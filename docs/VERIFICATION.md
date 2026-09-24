@@ -205,6 +205,8 @@ firmware exists in this repository) replayed against the rules.
 37 | Cross-user document access                                                                     | rule-text | other guest’s KYC read denied, Admin read allowed, guest rates write denied, own payment proof write allowed
 ```
 
+The Booking reference, the uid and the conversation id are generated per run.
+
 Reading the record honestly: `executed` steps ran the shipped modules, but on the
 offline adapters (localStorage) — the Firestore documents they would write in
 production were not written, because there are no credentials and no emulator in
