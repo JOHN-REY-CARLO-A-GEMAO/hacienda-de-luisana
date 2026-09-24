@@ -23,6 +23,10 @@ class BookingsScreen extends ConsumerStatefulWidget {
 
 class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   int _selectedFilterIndex = 0;
+  String _query = '';
+  String _sort = 'date';
+  int _page = 0;
+  static const int _pageSize = 10;
 
   final List<String> _filters = [
     'All',
@@ -109,11 +113,39 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
             ),
           ),
           const Divider(height: 1, color: AppColors.cardBorder),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: TextField(
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Search name, email, ref, stay…',
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() {
+                _query = v;
+                _page = 0;
+              }),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: DropdownButton<String>(
+              value: _sort,
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(value: 'date', child: Text('Sort by booking date')),
+                DropdownMenuItem(value: 'name', child: Text('Sort by guest name')),
+                DropdownMenuItem(value: 'status', child: Text('Sort by status')),
+              ],
+              onChanged: (v) => setState(() => _sort = v ?? 'date'),
+            ),
+          ),
 
           // Live Stream List
           Expanded(
             child: bookingsAsync.when(
               data: (allBookings) {
+                final q = _query.trim().toLowerCase();
                 final filtered = allBookings.where((b) {
                   switch (_selectedFilterIndex) {
                     case 1:
@@ -132,7 +164,25 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                     default:
                       return true;
                   }
+                }).where((b) {
+                  if (q.isEmpty) return true;
+                  if (q.length > 80) return false;
+                  final blob = '${b.guestName} ${b.guestEmail} ${b.accommodation} ${b.refId} ${b.rawStatus}'.toLowerCase();
+                  return blob.contains(q);
                 }).toList();
+                filtered.sort((a, b) {
+                  switch (_sort) {
+                    case 'name':
+                      return a.guestName.compareTo(b.guestName);
+                    case 'status':
+                      return a.rawStatus.compareTo(b.rawStatus);
+                    default:
+                      return b.checkIn.compareTo(a.checkIn);
+                  }
+                });
+                final totalPages = (filtered.length / _pageSize).ceil().clamp(1, 9999);
+                final page = _page.clamp(0, totalPages - 1);
+                final slice = filtered.skip(page * _pageSize).take(_pageSize).toList();
 
                 if (filtered.isEmpty) {
                   return const EmptyState(
@@ -142,14 +192,41 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                   );
                 }
 
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 14),
-                  itemBuilder: (context, i) {
-                    final booking = filtered[i];
-                    return _buildBookingCard(booking);
-                  },
+                return Column(
+                  children: [
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: slice.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 14),
+                        itemBuilder: (context, i) {
+                          final booking = slice[i];
+                          return _buildBookingCard(booking);
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Row(
+                        children: [
+                          TextButton(
+                            onPressed: page > 0 ? () => setState(() => _page = page - 1) : null,
+                            child: const Text('Previous'),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Page ${page + 1} of $totalPages · ${filtered.length}',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: page < totalPages - 1 ? () => setState(() => _page = page + 1) : null,
+                            child: const Text('Next'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),

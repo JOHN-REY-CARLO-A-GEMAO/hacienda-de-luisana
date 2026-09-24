@@ -11,7 +11,8 @@ import '../widgets/pressable_card.dart';
 import '../widgets/section_header.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'bookings/bookings_screen.dart';
-import 'tracking/tracking_radar_screen.dart';
+import 'inbox/inbox_screen.dart';
+import 'payments/payment_refs_screen.dart';
 import 'stays/stay_duration_screen.dart';
 import 'smartlock/smart_lock_screen.dart';
 import 'analytics/analytics_screen.dart';
@@ -44,13 +45,14 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
         child: DashboardScreen(onNavigateTab: _navigateToTab),
       ),
       AnimatedTabPage(isActive: _currentIndex == 1, child: const BookingsScreen()),
-      AnimatedTabPage(isActive: _currentIndex == 2, child: const TrackingRadarScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 2, child: const InboxScreen()),
       AnimatedTabPage(isActive: _currentIndex == 3, child: const StayDurationScreen()),
       AnimatedTabPage(isActive: _currentIndex == 4, child: const AnalyticsScreen()),
       AnimatedTabPage(isActive: _currentIndex == 5, child: const SmartLockScreen()),
       AnimatedTabPage(isActive: _currentIndex == 6, child: const RoomsScreen()),
       AnimatedTabPage(isActive: _currentIndex == 7, child: const GuestCrmScreen()),
       AnimatedTabPage(isActive: _currentIndex == 8, child: const RatesScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 9, child: const PaymentRefsScreen()),
     ];
 
     return Scaffold(
@@ -111,7 +113,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
               icon: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  const Icon(Icons.radar_outlined),
+                  const Icon(Icons.chat_bubble_outline),
                   Positioned(
                     top: -3,
                     right: -4,
@@ -136,7 +138,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                 ],
               ),
               activeIcon: const Icon(Icons.radar),
-              label: 'Radar',
+              label: 'Chat',
             ),
             const BottomNavigationBarItem(
               icon: Icon(Icons.hourglass_bottom_outlined),
@@ -194,6 +196,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                     leading: Icon(Icons.payments_outlined),
                     title: Text('Rates & Cancellation Policy'),
                     subtitle: Text('Publish the prices and refund terms the website quotes'),
+                  ),
+                ),
+                PressableCard(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _navigateToTab(9);
+                  },
+                  child: const ListTile(
+                    leading: Icon(Icons.receipt_long_outlined),
+                    title: Text('Payment references'),
+                    subtitle: Text('Valid GCash/bank refs — verify, never trust OCR alone'),
                   ),
                 ),
                 PressableCard(

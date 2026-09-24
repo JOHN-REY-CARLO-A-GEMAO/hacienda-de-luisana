@@ -7,7 +7,6 @@ import '../../core/utils/date_formatter.dart';
 import '../../providers/app_providers.dart';
 import '../../models/smart_lock_event_model.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/radar_alert_banner.dart';
 import '../../widgets/metric_stat_card.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/staggered_entrance.dart';
@@ -23,7 +22,6 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stats = ref.watch(dashboardStatsProvider);
-    final approachingGuest = ref.watch(approachingGuestProvider);
     final smartLockLogsAsync = ref.watch(smartLockLogsStreamProvider);
     // Keep the bookings stream warm so pull-to-refresh can re-attach it.
     ref.watch(bookingsStreamProvider);
@@ -105,7 +103,7 @@ class DashboardScreen extends ConsumerWidget {
                   },
                 ),
               ),
-              if (stats.pendingRequests > 0 || approachingGuest != null)
+              if (stats.pendingRequests > 0)
                 Positioned(
                   top: 10,
                   right: 12,
@@ -116,7 +114,7 @@ class DashboardScreen extends ConsumerWidget {
                       shape: BoxShape.circle,
                     ),
                     child: Text(
-                      '${stats.pendingRequests + (approachingGuest != null ? 1 : 0)}',
+                      '${stats.pendingRequests}',
                       style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -129,23 +127,12 @@ class DashboardScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(bookingsStreamProvider);
-          ref.invalidate(trackingSessionsStreamProvider);
           ref.invalidate(smartLockLogsStreamProvider);
         },
         child: ListView(
           padding: const EdgeInsets.only(bottom: 32),
           children: [
-            // 1. Urgent Guest Approaching Banner (< 5km) — staggered in
-            if (approachingGuest != null)
-              StaggeredEntrance(
-                index: 0,
-                child: RadarAlertBanner(
-                  guest: approachingGuest,
-                  onViewRadar: () => onNavigateTab(2), // Jump to Tracking tab
-                ),
-              ),
-
-            // 2. Summary Metric Cards — responsive grid, staggered in
+            // 2. Summary Metric Cards — staggered in
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: LayoutBuilder(
@@ -184,9 +171,9 @@ class DashboardScreen extends ConsumerWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () => onNavigateTab(2), // Tracking tab
-                        icon: const Icon(Icons.radar, size: 16),
-                        label: const Text('Open Live Radar'),
+                        onPressed: () => onNavigateTab(2),
+                        icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                        label: const Text('Guest chat'),
                       ),
                     ),
                   ],

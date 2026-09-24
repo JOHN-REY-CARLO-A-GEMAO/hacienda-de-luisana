@@ -27,10 +27,7 @@ export type Booking = BookingState & {
   created_at: string // ISO
   uid?: string
   source?: string
-  // Live location does not live here: it is a fact about the present moment,
-  // written by the traveller's phone, and it rides on its own document —
-  // tracking_sessions/{bookingId} (G6, src/lib/trackingSessions.ts). A Booking
-  // is the promise about the stay; the session is where the guest is right now.
+  // Live location tracking was retired. Access logs remain on access_logs.
 }
 
 const KEY = 'hdl:bookings'

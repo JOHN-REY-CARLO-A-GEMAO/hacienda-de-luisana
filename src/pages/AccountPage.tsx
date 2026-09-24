@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ROLE_LABELS } from '../lib/auth'
 import { effectiveStatus } from '../lib/booking'
@@ -10,6 +10,11 @@ import { HoldCountdown } from '../components/Booking/HoldCountdown'
 import { KycUpload } from '../components/Booking/KycUpload'
 import { PaymentStep } from '../components/Booking/PaymentStep'
 import { useAuth } from '../hooks/useAuth'
+import { paginate, sortBy } from '../lib/pagination'
+import { caseInsensitiveIncludes } from '../lib/pagination'
+import { validateSearch } from '../lib/validation'
+import { Pager } from '../components/Pager'
+import { ReviewForm } from '../components/ReviewForm'
 import { ArrowRight, Calendar, Sparkle } from '../lib/icons'
 
 /** Statuses a Guest may still withdraw from themselves — the list firestore.rules allows. */
@@ -44,6 +49,11 @@ export function AccountPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
+  const [q, setQ] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortKey, setSortKey] = useState<'created_at' | 'check_in' | 'accommodation'>('created_at')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(5)
 
   useEffect(() => {
     setLoading(true)
@@ -82,6 +92,21 @@ export function AccountPage() {
     }
   }
 
+  const filtered = useMemo(() => {
+    const search = validateSearch(q)
+    const needle = search.ok ? search.value : ''
+    let rows = bookings.filter((b) => {
+      const status = effectiveStatus(b)
+      if (statusFilter !== 'all' && status !== statusFilter) return false
+      const blob = `${b.guest_name} ${b.accommodation} ${b.email} ${b.ref_id ?? ''} ${b.id} ${status}`
+      return caseInsensitiveIncludes(blob, needle)
+    })
+    rows = sortBy(rows, sortKey, sortKey === 'accommodation' ? 'asc' : 'desc')
+    return rows
+  }, [bookings, q, statusFilter, sortKey])
+
+  const paged = paginate(filtered, { page, pageSize })
+
   return (
     <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
       <div className="mx-auto max-w-4xl px-5 lg:px-8">
@@ -96,6 +121,9 @@ export function AccountPage() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
+            <Link to="/messages" className="btn-ghost text-xs">
+              Messages
+            </Link>
             <Link to="/book" className="btn-primary text-xs">
               Book another stay
             </Link>
@@ -140,8 +168,45 @@ export function AccountPage() {
           </div>
         )}
 
+        {!loading && bookings.length > 0 && (
+          <div className="mt-8 grid sm:grid-cols-3 gap-3">
+            <input
+              className="field text-sm"
+              placeholder="Search bookings"
+              value={q}
+              maxLength={80}
+              onChange={(e) => {
+                setQ(e.target.value)
+                setPage(1)
+              }}
+            />
+            <select
+              className="field text-sm"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value)
+                setPage(1)
+              }}
+            >
+              <option value="all">All statuses</option>
+              {['Pending', 'KYC Submitted', 'Approved', 'Payment Pending', 'Reserved', 'Completed', 'Cancelled'].map(
+                (s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ),
+              )}
+            </select>
+            <select className="field text-sm" value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)}>
+              <option value="created_at">Sort by created</option>
+              <option value="check_in">Sort by check-in</option>
+              <option value="accommodation">Sort by stay</option>
+            </select>
+          </div>
+        )}
+
         <div className="mt-8 space-y-5">
-          {bookings.map((booking) => {
+          {paged.items.map((booking) => {
             const status = effectiveStatus(booking)
             return (
               <article key={booking.id} className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-6">
@@ -192,6 +257,10 @@ export function AccountPage() {
                 )}
 
                 <BookingHistory bookingId={booking.id} />
+
+                {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
+                  <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
+                )}
 
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {can('booking:update:own') && WITHDRAWABLE.includes(status) && (

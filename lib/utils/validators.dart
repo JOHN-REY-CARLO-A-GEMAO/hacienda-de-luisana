@@ -83,6 +83,38 @@ class Validators {
   }
 
   /// Combined trip validation for the Book tab. Returns first error or null.
+  static const int minGuestAge = 10;
+
+  /// Age from calendar dates — not a hard-coded birth year.
+  static int? ageOn(DateTime birth, DateTime today) {
+    final t = DateTime(today.year, today.month, today.day);
+    final b = DateTime(birth.year, birth.month, birth.day);
+    if (b.isAfter(t)) return null;
+    var age = t.year - b.year;
+    if (t.month < b.month || (t.month == b.month && t.day < b.day)) age -= 1;
+    return age;
+  }
+
+  static String? birthdate(DateTime? value, [DateTime? now]) {
+    if (value == null) return 'Please enter your date of birth';
+    final today = now ?? DateTime.now();
+    if (DateTime(value.year, value.month, value.day).isAfter(DateTime(today.year, today.month, today.day))) {
+      return 'Date of birth cannot be in the future';
+    }
+    final age = ageOn(value, today);
+    if (age == null) return 'Enter a valid calendar date';
+    if (age < minGuestAge) {
+      return 'You must be at least $minGuestAge years old to create an account';
+    }
+    return null;
+  }
+
+  static String explainPaymentVerify() {
+    return 'Pending until an Admin matches the reference and amount on the valid list. '
+        'Reject unknown, mismatched, or reused references. Record verifier and timestamp. '
+        'Never auto-verify because OCR found a number.';
+  }
+
   static String? trip({
     required DateTime checkIn,
     required DateTime checkOut,

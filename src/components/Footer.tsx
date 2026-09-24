@@ -31,6 +31,8 @@ export function Footer() {
             <li><a href="/#faqs" className="hover:text-white">FAQs</a></li>
             <li><Link to="/book" className="hover:text-white">Book Your Stay</Link></li>
             <li><Link to="/account" className="hover:text-white">My Bookings</Link></li>
+            <li><Link to="/legal" className="hover:text-white">Terms & policies</Link></li>
+            <li><Link to="/messages" className="hover:text-white">Message the Admin</Link></li>
           </ul>
         </div>
 

@@ -94,20 +94,7 @@ final filteredBookingsProvider = Provider<List<BookingModel>>((ref) {
 });
 
 // Urgent Approaching Guest Provider (< 5km)
-final approachingGuestProvider = Provider<GuestLocationModel?>((ref) {
-  final sessionsAsync = ref.watch(trackingSessionsStreamProvider);
-
-  return sessionsAsync.when(
-    data: (sessions) {
-      final nearList = sessions.where((s) => s.isNearResort && !s.hasArrived).toList();
-      if (nearList.isEmpty) return null;
-      nearList.sort((a, b) => a.distanceRemainingKm.compareTo(b.distanceRemainingKm));
-      return nearList.first;
-    },
-    loading: () => null,
-    error: (_, __) => null,
-  );
-});
+final approachingGuestProvider = Provider<GuestLocationModel?>((ref) => null);
 
 // Dashboard Summary Stats Provider
 class DashboardStats {

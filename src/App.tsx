@@ -7,8 +7,10 @@ import { Footer } from './components/Footer'
 import { MobileStickyCTA } from './components/MobileStickyCTA'
 import { Home } from './pages/Home'
 import { BookingPage } from './pages/BookingPage'
-import { LiveTrackingPage } from './pages/LiveTrackingPage'
 import { AccountPage } from './pages/AccountPage'
+import { LegalPage } from './pages/LegalPage'
+import { MessagesPage } from './pages/MessagesPage'
+import { Tutorial } from './components/Tutorial'
 import { GuestAuthPage } from './pages/AuthPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { LoginForm } from './components/Auth/LoginForm'
@@ -40,6 +42,7 @@ function WebsiteLayout() {
       </main>
       <Footer />
       <MobileStickyCTA />
+      <Tutorial />
     </div>
   )
 }
@@ -59,8 +62,7 @@ export default function App() {
         <Route element={<WebsiteLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/book" element={<BookingPage />} />
-          <Route path="/track" element={<LiveTrackingPage />} />
-          <Route path="/share-location" element={<LiveTrackingPage />} />
+          <Route path="/legal" element={<LegalPage />} />
           <Route path="/login" element={<SignInPage />} />
           {/* The Guest's sign-in page. Email and Google arrive through the
               same session either way. */}
@@ -72,6 +74,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <AccountPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute>
+                <MessagesPage />
               </ProtectedRoute>
             }
           />
@@ -126,7 +136,7 @@ function AdminMoved() {
         <div className="eyebrow">Admin</div>
         <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">The Admin dashboard moved</h1>
         <p className="mt-4 text-forest-800/80 text-sm leading-relaxed">
-          Bookings, KYC review, payment verification, stays, the smart lock, guest tracking and analytics are all in
+          Bookings, KYC review, payment verification, stays, the smart lock, chat and analytics are all in
           the <strong>Hacienda de LuisAna Admin</strong> mobile app. This website is for Guests: browsing, booking,
           and following their own stay.
         </p>

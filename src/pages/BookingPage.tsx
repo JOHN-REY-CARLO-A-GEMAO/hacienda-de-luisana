@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
-import { trackingSessionsDB } from '../lib/trackingSessions'
 import { ensureGuestUid } from '../lib/guestAuth'
 import type { Booking } from '../lib/storage'
 import { isFirebaseConfigured } from '../lib/firebase'
@@ -11,6 +10,15 @@ import { SmartImage } from '../components/SmartImage'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
 import { KycUpload } from '../components/Booking/KycUpload'
 import { useAuth } from '../hooks/useAuth'
+import {
+  guestCountValid,
+  validateEmail,
+  validateName,
+  validatePhMobile,
+  validateStayDates,
+} from '../lib/validation'
+import { LIMITS, checkRateLimit } from '../lib/rateLimit'
+import { LEGAL_VERSION } from '../lib/legal'
 
 type FormState = {
   check_in: string
@@ -56,6 +64,7 @@ export function BookingPage() {
   // G2: availability is checked by the system before the Guest commits, not
   // only in the Admin's head at approval time (ticket #12).
   const [availability, setAvailability] = useState<{ available: boolean; heldBy: number } | null>(null)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   useEffect(() => {
     if (status === 'success') window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -129,15 +138,18 @@ export function BookingPage() {
 
   const validate = (): boolean => {
     const e: Errors = {}
-    if (!form.check_in) e.check_in = 'Select a check-in date'
-    if (!form.check_out) e.check_out = 'Select a check-out date'
-    if (form.check_in && form.check_out && nights <= 0) e.check_out = 'Check-out must be after check-in'
-    if (!form.guests || form.guests < 1) e.guests = 'At least 1 guest'
+    const stay = validateStayDates(form.check_in, form.check_out)
+    if (!stay.ok) e[stay.field] = stay.message
+    const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity ?? 12)
+    if (!guests.ok) e.guests = guests.message
     if (!form.accommodation) e.accommodation = 'Select an accommodation'
-    if (!form.name.trim()) e.name = 'Please enter your name'
-    if (!form.phone.trim()) e.phone = 'Please enter a mobile number'
-    if (!form.email.trim()) e.email = 'Please enter an email'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'That doesn\'t look like a valid email'
+    const name = validateName(form.name)
+    if (!name.ok) e.name = name.message
+    const phone = validatePhMobile(form.phone)
+    if (!phone.ok) e.phone = phone.message
+    const email = validateEmail(form.email)
+    if (!email.ok) e.email = email.message
+    if (!acceptedTerms) e.special_requests = `Please read and accept the Terms and Conditions (version ${LEGAL_VERSION})`
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -145,6 +157,12 @@ export function BookingPage() {
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
     if (!validate()) return
+    const limited = checkRateLimit('booking:create', LIMITS.booking)
+    if (!limited.ok) {
+      setStatus('error')
+      setErrorMsg(limited.message)
+      return
+    }
     setStatus('submitting')
     setErrorMsg('')
     try {
@@ -340,6 +358,25 @@ export function BookingPage() {
               </div>
             )}
 
+            <label className="flex items-start gap-2 text-xs text-forest-800">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+              />
+              <span>
+                I have read and accept the{' '}
+                <Link to="/legal" className="underline underline-offset-2">
+                  Terms and Conditions, Privacy Policy, booking, cancellation, payment and smart-lock rules
+                </Link>{' '}
+                (version {LEGAL_VERSION}). This is not accepted for me.
+              </span>
+            </label>
+            {errors.special_requests && !form.special_requests && (
+              <p className="text-xs text-red-600">{errors.special_requests}</p>
+            )}
+
             <div className="pt-2">
               <button
                 type="submit"
@@ -467,52 +504,7 @@ function SuccessScreen({
   guests?: number
   accommodationName?: string
 }) {
-  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'done' | 'error'>('idle')
-  const [shareMsg, setShareMsg] = useState('')
-  const [copied, setCopied] = useState(false)
-
-  const sharePickup = async () => {
-    setShareState('sharing')
-    setShareMsg('')
-    try {
-      const { getOneTapPosition, pickupMapsUrl, calculateDistanceKm, estimateEtaMinutes, guessAreaFromCoords } = await import('../lib/tracking')
-      const pos = await getOneTapPosition()
-      const dist = calculateDistanceKm(pos.lat, pos.lng)
-      const eta = estimateEtaMinutes(dist)
-      const area = guessAreaFromCoords(pos.lat, pos.lng)
-      const now = new Date().toISOString()
-      // This tap is the consent: it is stored in the same write as the first
-      // position, on the booking's tracking session — not on the Booking
-      // (G6). The session carries the Guest's own uid, and the rules refuse
-      // any other.
-      const uid = (await ensureGuestUid()) ?? booking?.uid ?? ''
-      await trackingSessionsDB.create({
-        bookingId,
-        uid,
-        tracking_consent_at: now,
-        latitude: pos.lat,
-        longitude: pos.lng,
-        lastUpdated: now,
-        area,
-        distance_km: dist,
-        eta_minutes: eta,
-        eta_share_url: pickupMapsUrl(pos.lat, pos.lng),
-      })
-      setShareState('done')
-      setShareMsg(`📍 Matagumpay na naibahagi ang lokasyon (${dist} km away, ${area}). Makikita na ito ni Client sa App!`)
-    } catch (err: any) {
-      setShareState('error')
-      setShareMsg(err?.message || 'Could not share location.')
-    }
-  }
-
-  const trackingUrl = typeof window !== 'undefined' ? `${window.location.origin}/track?id=${bookingId}` : `/track?id=${bookingId}`
-
-  const copyTrackingLink = () => {
-    navigator.clipboard.writeText(trackingUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2500)
-  }
+  void bookingId
 
   return (
     <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
@@ -569,7 +561,7 @@ function SuccessScreen({
             <div className="mt-3 text-xs text-forest-600">✓ Real-time synced to Client App via Firebase Cloud</div>
           )}
 
-          {/* Live Sharing Location Box requested by user */}
+          {/* Access — location tracker removed */}
           <div className="mt-8 rounded-3xl bg-forest-900 text-cream-50 p-6 sm:p-7 text-left relative overflow-hidden">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60 flex items-center gap-1.5">
@@ -582,41 +574,12 @@ function SuccessScreen({
             </div>
 
             <h3 className="font-serif text-xl sm:text-2xl text-cream-50 mt-2">
-              Ibahagi ang Iyong Live Location
+              RFID or Mobile Key on stay dates
             </h3>
             <p className="mt-1 text-xs sm:text-sm text-cream-100/75 leading-relaxed">
-              Gusto makita ng may-ari (Client) kung nasaang area ka na o kung malapit ka na sa Luisiana para ma-prepare ang iyong pagdating at ma-unlock ang pinto.
+              After payment is verified, unlock with your credential. Access attempts are logged.
+              We do not collect live GPS location.
             </p>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                onClick={sharePickup}
-                disabled={shareState === 'sharing'}
-                className="btn-primary text-xs flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 border-none text-white disabled:opacity-60"
-              >
-                {shareState === 'sharing' ? 'Kumukuha ng GPS…' : shareState === 'done' ? '✓ Lokasyon Naibahagi na (I-update)' : '📍 I-share ang Aking Lokasyon Ngayon'}
-              </button>
-
-              <Link
-                to={`/track?id=${bookingId}`}
-                className="px-4 py-2.5 rounded-full bg-cream-50 text-forest-900 text-xs font-medium hover:bg-white transition inline-flex items-center gap-1.5"
-              >
-                Buksan ang Live Tracker <ArrowRight size={14} />
-              </Link>
-
-              <button
-                onClick={copyTrackingLink}
-                className="px-4 py-2.5 rounded-full border border-cream-50/20 bg-cream-50/10 text-cream-100 text-xs font-medium hover:bg-cream-50/20 transition inline-flex items-center gap-1.5"
-              >
-                {copied ? '✓ Kopyado na!' : 'Kopyahin ang Sharing Link'}
-              </button>
-            </div>
-
-            {shareMsg && (
-              <div className={`mt-3 p-3 rounded-xl text-xs ${shareState === 'error' ? 'bg-red-900/60 text-red-200 border border-red-500/30' : 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/30'}`}>
-                {shareMsg}
-              </div>
-            )}
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3 justify-center">
