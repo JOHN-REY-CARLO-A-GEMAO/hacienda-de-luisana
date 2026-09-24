@@ -104,7 +104,11 @@ const profilesForRules: Store = storeWith(
     [GUEST_UID]: { uid: GUEST_UID, role: 'guest' },
     'promoted-admin-1': { uid: 'promoted-admin-1', role: 'admin' },
   },
-  { [`conversations/${CONVO_ID}`]: conversationDoc() },
+  {
+    [`conversations/${CONVO_ID}`]: conversationDoc(),
+    // The Booking the Review rules read: the Guest's own, and finished.
+    [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Completed', kyc_status: 'approved' }),
+  },
 )
 
 /** The rule decision for one request, against the repository's rules text. */
@@ -432,7 +436,7 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     })
     expect(selfVerify).toBe(false)
     expect(ownField).toBe(false)
-    note(18, 'Guest-issued verification fields are refused by firestore.rules', 'rule-text', 'payment_status=verified → denied; amount_verified → denied')
+    note(18, 'Guest-issued verification fields are refused by firestore.rules', 'rule-text', 'payment_status=verified → denied (the value, not just the key); amount_verified → denied')
   })
 
   it('step 19 — a payment reference is a catalogue the Admin alone writes', () => {
@@ -640,15 +644,25 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
       auth: anonymousGuest(OTHER_GUEST_UID),
       requestData: messageDoc(OTHER_GUEST_UID),
     })
+    const mislabelled = decide({
+      path: `conversations/${CONVO_ID}/messages/m4`,
+      method: 'create',
+      auth: anonymousGuest(GUEST_UID),
+      requestData: messageDoc(GUEST_UID, 'admin'),
+    })
     expect(own).toBe(true)
     expect(spoofed).toBe(false)
-    // FINDING (recorded, not fixed here): the message rule checks the sender,
-    // not the conversation. A signed-in stranger can post into a conversation
-    // they do not own, as long as they sign the row with their own uid. The
-    // guest view never queries those rows (it reads its own conversation), but
-    // the database accepts them. See docs/VERIFICATION.md § Findings.
-    expect(strangerConvo).toBe(true)
-    note(30, 'Sender identity and conversation ownership', 'rule-text', 'own sender allowed; spoofed sender denied; FINDING: a stranger may post into a conversation they do not own')
+    // The finding from the first verification pass: knowing a conversation id
+    // was enough to post into it. Membership is read from the conversation now.
+    expect(strangerConvo).toBe(false)
+    // …and the label has to match what the writer is.
+    expect(mislabelled).toBe(false)
+    note(
+      30,
+      'Sender identity, conversation membership and the role label',
+      'rule-text',
+      'own sender allowed; spoofed sender denied; a stranger posting into an unowned conversation denied; a Guest labelling a message as the Admin\'s denied',
+    )
   })
 
   it('step 31 — the Admin can read the conversation and reply', () => {
@@ -684,13 +698,38 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     note(33, 'Duplicate Review', 'executed', `refused with "${again.ok === false ? again.message : ''}"`)
   })
 
-  it('step 34 — the rule text only accepts a Review carrying its own uid, 1–5 stars, and fixed keys', () => {
-    const ok = decide({ path: 'reviews/r1', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ uid: GUEST_UID }) })
-    const sixStars = decide({ path: 'reviews/r2', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ uid: GUEST_UID, stars: 6 }) })
-    const impostor = decide({ path: 'reviews/r3', method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: reviewDoc({ uid: GUEST_UID }) })
-    expect([ok, sixStars, impostor]).toEqual([true, false, false])
+  it('step 34 — a Review lives on the Booking it is about: its author’s, finished, once', () => {
+    const ok = decide({ path: `reviews/${BOOKING_ID}`, method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ uid: GUEST_UID }) })
+    const sixStars = decide({ path: `reviews/${BOOKING_ID}`, method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ uid: GUEST_UID, stars: 6 }) })
+    const impostor = decide({ path: `reviews/${BOOKING_ID}`, method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: reviewDoc({ uid: OTHER_GUEST_UID }) })
+    // Somebody else's finished Booking, and this Guest's unfinished one.
+    const strangerStay = decide({
+      path: 'reviews/booking-2',
+      method: 'create',
+      auth: anonymousGuest(GUEST_UID),
+      requestData: reviewDoc({ booking_id: 'booking-2', uid: GUEST_UID }),
+    })
+    const earlyStay = decide(
+      { path: 'reviews/booking-open', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ booking_id: 'booking-open', uid: GUEST_UID }) },
+      storeWith({}, { 'bookings/booking-open': bookingDoc({ status: 'Staying', kyc_status: 'approved' }) }),
+    )
+    // A second Review for the same stay is the same document: an update, and
+    // updates are closed.
+    const secondReview = decide({
+      path: `reviews/${BOOKING_ID}`,
+      method: 'update',
+      auth: anonymousGuest(GUEST_UID),
+      resourceData: reviewDoc({ uid: GUEST_UID }),
+      requestData: reviewDoc({ uid: GUEST_UID, stars: 4 }),
+    })
+    expect([ok, sixStars, impostor, strangerStay, earlyStay, secondReview]).toEqual([true, false, false, false, false, false])
     expect(validateStarRating(6).ok).toBe(false)
-    note(34, 'Review shape', 'rule-text', 'own uid + 5 stars allowed; 6 stars denied; another uid denied')
+    note(
+      34,
+      'Review eligibility, ownership, shape and one-per-stay',
+      'rule-text',
+      'own finished Booking + 5 stars allowed; 6 stars, another author, another Guest’s stay, an unfinished stay and a second Review all denied',
+    )
   })
 
   // -------------------------------------------------------------------------

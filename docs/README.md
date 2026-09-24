@@ -33,7 +33,7 @@ test/*_test.dart        # flutter test — lifecycle rules, published rates, boo
 
 # Shared
 CONTEXT.md              # Domain glossary (the vocabulary both apps use)
-docs/adr/               # Architecture decision records (0001–0007)
+docs/adr/               # Architecture decision records (0001–0010)
 docs/                   # Setup, flows, plans (this folder)
 ```
 
@@ -144,7 +144,7 @@ Android: see [ANDROID.md](./ANDROID.md). Without a configured Firebase app the s
 ## Documents
 
 - [CONTEXT.md](../CONTEXT.md) — glossary
-- [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md)
+- [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md)
 - [HDL_FLOW_CORRECTED.md](./HDL_FLOW_CORRECTED.md) — the system flow (thesis chart), per module
 - [FLUTTER_FLOW.md](./FLUTTER_FLOW.md) — the Admin app's flow and screen contracts
 - [FLUTTER_UI_UX.md](./FLUTTER_UI_UX.md) — the Admin app's design system

@@ -79,6 +79,14 @@ describe('authentication and roles', () => {
     await assertFails(addDoc(collection(anon.firestore(), 'bookings'), bookingDoc({ uid: '' })))
   })
 
+  it('refuses a Booking created already claiming a payment or a review decision', async () => {
+    const guest = anonymousGuest()
+    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'verified' })))
+    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'pending' })))
+    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ kyc_status: 'approved' })))
+    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'unpaid', kyc_status: 'required' })))
+  })
+
   it('resolves the Admin from the allowlisted address in the token', async () => {
     await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc()))
     await assertSucceeds(getDoc(doc(admin().firestore(), 'bookings', BOOKING_ID)))
@@ -137,28 +145,101 @@ describe('bookings', () => {
   })
 
   /**
-   * The finding from the offline suite, stated as a question for the emulator:
-   * can a Guest write `payment_status: 'verified'` on their own Booking? The
-   * rule checks the keys a Guest touched, not the values they wrote, so the
-   * expected answer is that it is allowed — and that is a defect worth seeing
-   * in the emulator's own words.
+   * The first verification pass found this allowed: a Guest could write
+   * `payment_status: 'verified'` because the rule checked the keys the Guest
+   * touched, never the values. The rule constrains the value now, and the
+   * emulator is where that is settled.
    */
-  it('states whether a Guest can forge payment_status: verified', async () => {
-    let allowed = true
-    try {
-      await updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), { payment_status: 'verified' })
-    } catch {
-      allowed = false
-    }
-    console.info(`[rules probe] guest writes payment_status=verified: ${allowed ? 'ALLOWED' : 'DENIED'}`)
-    expect(typeof allowed).toBe('boolean')
+  it('refuses a Guest forging payment_status: verified, from any starting point', async () => {
+    const guest = emailGuest()
+    await assertFails(updateDoc(doc(guest.firestore(), 'bookings', BOOKING_ID), { payment_status: 'verified' }))
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Payment Pending', payment_status: 'pending' })))
+    await assertFails(updateDoc(doc(guest.firestore(), 'bookings', BOOKING_ID), { payment_status: 'verified' }))
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Payment Pending', payment_status: 'rejected', payment_reject_reason: 'unreadable' })))
+    await assertFails(updateDoc(doc(guest.firestore(), 'bookings', BOOKING_ID), { payment_status: 'verified' }))
+    await assertFails(updateDoc(doc(guest.firestore(), 'bookings', BOOKING_ID), { payment_verified_by: GUEST_UID }))
+    await assertFails(updateDoc(doc(guest.firestore(), 'bookings', BOOKING_ID), { payment_verified_at: new Date() }))
+  })
+
+  it('refuses a Guest un-verifying money the Admin verified', async () => {
+    await seed(async (db) =>
+      setDoc(
+        doc(db.firestore(), 'bookings', BOOKING_ID),
+        bookingDoc({
+          status: 'Reserved',
+          payment_status: 'verified',
+          amount_verified: 8500,
+          payment_verified_at: new Date(),
+          payment_verified_by: 'admin-uid-1',
+        }),
+      ),
+    )
+    await assertFails(updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), { payment_status: 'pending' }))
+    await assertSucceeds(updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), { status: 'Cancelled', cancellation_reason: 'changed plans' }))
+  })
+
+  it('bounds the refund a Guest may record when they withdraw a paid Booking', async () => {
+    const paid = bookingDoc({
+      status: 'Reserved',
+      kyc_status: 'approved',
+      payment_status: 'verified',
+      amount_verified: 6500,
+      payment_verified_at: new Date(),
+      payment_verified_by: 'admin-uid-1',
+    })
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), paid))
+    const settlement = { stayTotal: 9000, stayRefund: 3250, depositHeld: 2000, damageDeduction: 0, depositRefund: 2000, refundTotal: 5250 }
+    await assertSucceeds(
+      updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), {
+        status: 'Cancelled',
+        cancellation_reason: 'changed plans',
+        refund_status: 'initiated',
+        refund_total: 5250,
+        refund_breakdown: settlement,
+      }),
+    )
+    await assertFails(updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), { refund_total: 999999 }))
+    await assertFails(updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), { refund_status: 'refunded' }))
   })
 
   it('lets the Admin verify a payment and refuses a Booking that skips a gate', async () => {
     await seed(async (db) =>
-      setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'KYC Submitted', payment_status: 'pending' })),
+      setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'KYC Submitted', payment_status: 'pending', kyc_status: 'submitted' })),
     )
     await assertSucceeds(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Approved' }))
+    await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Reserved' }))
+  })
+
+  it('records the verification the Admin makes, and refuses one nobody signed', async () => {
+    const proof = { status: 'Payment Pending', payment_status: 'pending', payment_proof_url: 'payments/x/y/proof.jpg', amount_due: 8500 }
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc(proof)))
+    // Verified money without the marker is a claim nobody signed.
+    await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Reserved', payment_status: 'verified' }))
+    await assertFails(
+      updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), {
+        status: 'Reserved',
+        payment_status: 'verified',
+        amount_verified: 8500,
+        payment_verified_at: new Date(),
+        payment_verified_by: 'somebody-else',
+      }),
+    )
+    await assertSucceeds(
+      updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), {
+        status: 'Reserved',
+        payment_status: 'verified',
+        amount_verified: 8500,
+        payment_verified_at: new Date(),
+        payment_verified_by: 'admin-uid-1',
+      }),
+    )
+    const stored = await getDoc(doc(admin().firestore(), 'bookings', BOOKING_ID))
+    expect(stored.data()?.payment_status).toBe('verified')
+    expect(stored.data()?.payment_verified_by).toBe('admin-uid-1')
+  })
+
+  it('refuses Reserved while the money is unverified', async () => {
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Payment Pending', payment_status: 'pending' })))
     await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Reserved' }))
   })
 })
@@ -166,7 +247,7 @@ describe('bookings', () => {
 describe('activity log', () => {
   const entry = (actor: string, actorId = GUEST_UID) => ({
     booking_id: BOOKING_ID,
-    action: 'submit',
+    action: 'Submit',
     from_status: null,
     to_status: 'Pending',
     actor,
@@ -186,21 +267,23 @@ describe('activity log', () => {
   })
 
   /**
-   * THE question the offline evaluator reports both ways. `role()` reads
-   * `request.auth.token.email`, which an anonymous Guest's token does not carry.
-   * If the emulator denies this write, the website's guest Activity log never
-   * fills up in production and `firestore.rules` needs the fix recorded in
-   * docs/VERIFICATION.md.
+   * This used to be the question the offline evaluator had to report both ways:
+   * the rule read `role()` (and so `request.auth.token.email`) for a Guest, which
+   * an anonymous token does not carry. The Guest branch compares `actor_id` with
+   * `request.auth.uid` now, so the answer no longer depends on how a missing
+   * claim behaves — and the emulator settles it here.
    */
-  it('states whether an anonymous Guest may record themselves as the actor', async () => {
-    let allowed = true
-    try {
-      await addDoc(collection(anonymousGuest().firestore(), 'bookings', BOOKING_ID, 'activity'), entry('guest'))
-    } catch {
-      allowed = false
-    }
-    console.info(`[rules probe] anonymous guest writes an activity entry: ${allowed ? 'ALLOWED' : 'DENIED'}`)
-    expect(typeof allowed).toBe('boolean')
+  it('lets an anonymous Guest record their own submission, in their own uid', async () => {
+    await assertSucceeds(addDoc(collection(anonymousGuest().firestore(), 'bookings', BOOKING_ID, 'activity'), entry('guest')))
+    await assertFails(addDoc(collection(anonymousGuest().firestore(), 'bookings', BOOKING_ID, 'activity'), entry('guest', OTHER_GUEST_UID)))
+    await assertFails(addDoc(collection(anonymousGuest(OTHER_GUEST_UID).firestore(), 'bookings', BOOKING_ID, 'activity'), entry('guest', GUEST_UID)))
+  })
+
+  it('refuses an entry an Admin files in somebody else\'s name, and keeps the system entry to the Admin', async () => {
+    const stamp = { booking_id: BOOKING_ID, action: 'Expire', from_status: 'Pending', to_status: 'Expired', at: new Date() }
+    await assertFails(addDoc(collection(admin().firestore(), 'bookings', BOOKING_ID, 'activity'), { ...stamp, actor: 'guest', actor_id: GUEST_UID }))
+    await assertFails(addDoc(collection(admin().firestore(), 'bookings', BOOKING_ID, 'activity'), { ...stamp, actor: 'admin', actor_id: GUEST_UID }))
+    await assertSucceeds(addDoc(collection(admin().firestore(), 'bookings', BOOKING_ID, 'activity'), { ...stamp, actor: 'system', actor_id: 'system' }))
   })
 })
 
@@ -211,6 +294,13 @@ describe('payments and references', () => {
     await assertFails(getDoc(doc(emailGuest().firestore(), 'payment_references', 'GCASH-123456')))
     await assertFails(setDoc(doc(emailGuest().firestore(), 'payment_references', 'GCASH-999999'), { reference: 'GCASH-999999', amount: 1, status: 'available' }))
     await assertFails(setDoc(doc(admin().firestore(), 'payment_references', 'GCASH-999998'), { reference: 'x', amount: 1, status: 'maybe' }))
+  })
+
+  it('refuses to rewrite or delete a reference that has been used', async () => {
+    await seed(async (db) => setDoc(doc(db.firestore(), 'payment_references', 'GCASH-777777'), { reference: 'GCASH-777777', amount: 8500, status: 'used', usedBy: BOOKING_ID }))
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'payment_references', 'GCASH-777777'), { status: 'void' }))
+    await assertFails(updateDoc(doc(admin().firestore(), 'payment_references', 'GCASH-777777'), { reference: 'GCASH-000000', amount: 1 }))
+    await assertFails(deleteDoc(doc(admin().firestore(), 'payment_references', 'GCASH-777777')))
   })
 })
 
@@ -252,48 +342,90 @@ describe('chat', () => {
     await assertFails(deleteDoc(doc(admin().firestore(), 'conversations', CONVO_ID, 'messages', sent.id)))
   })
 
-  it('states whether a stranger may post into a conversation that is not theirs', async () => {
-    let allowed = true
-    try {
-      await addDoc(collection(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', CONVO_ID, 'messages'), {
-        sender_uid: OTHER_GUEST_UID,
-        sender_role: 'guest',
-        text: 'not mine',
-        created_at: new Date(),
-      })
-    } catch {
-      allowed = false
-    }
-    console.info(`[rules probe] stranger posts into another conversation: ${allowed ? 'ALLOWED' : 'DENIED'}`)
-    expect(typeof allowed).toBe('boolean')
+  /**
+   * The first verification pass found this allowed: knowing the conversation id
+   * was enough to post into it. Membership is read from the conversation now.
+   */
+  it('refuses a stranger posting into a conversation that is not theirs', async () => {
+    await assertFails(addDoc(collection(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', CONVO_ID, 'messages'), {
+      sender_uid: OTHER_GUEST_UID,
+      sender_role: 'guest',
+      text: 'not mine',
+      created_at: new Date(),
+    }))
+    await assertFails(addDoc(collection(emailGuest(OTHER_GUEST_UID).firestore(), 'conversations', CONVO_ID, 'messages'), {
+      sender_uid: OTHER_GUEST_UID,
+      sender_role: 'guest',
+      text: 'not mine either',
+      created_at: new Date(),
+    }))
+    await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', CONVO_ID, 'messages', 'anything')))
+  })
+
+  it('refuses a message labelled as the other side', async () => {
+    await assertFails(addDoc(collection(anonymousGuest().firestore(), 'conversations', CONVO_ID, 'messages'), {
+      sender_uid: GUEST_UID,
+      sender_role: 'admin',
+      text: 'pretending',
+      created_at: new Date(),
+    }))
+    await assertSucceeds(addDoc(collection(admin().firestore(), 'conversations', CONVO_ID, 'messages'), {
+      sender_uid: 'admin-uid-1',
+      sender_role: 'admin',
+      text: 'Admin here.',
+      created_at: new Date(),
+    }))
+  })
+
+  it('refuses a message into a conversation that does not exist', async () => {
+    await assertFails(addDoc(collection(anonymousGuest().firestore(), 'conversations', 'no-such-conversation', 'messages'), {
+      sender_uid: GUEST_UID,
+      sender_role: 'guest',
+      text: 'hello?',
+      created_at: new Date(),
+    }))
   })
 })
 
 describe('reviews', () => {
-  it('accepts a signed Guest review with a 1..5 rating and refuses the rest', async () => {
-    const guest = emailGuest()
-    await assertSucceeds(addDoc(collection(guest.firestore(), 'reviews'), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 5, text: 'Lovely', created_at: new Date() }))
-    await assertFails(addDoc(collection(guest.firestore(), 'reviews'), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 6, created_at: new Date() }))
-    await assertFails(addDoc(collection(guest.firestore(), 'reviews'), { booking_id: BOOKING_ID, uid: OTHER_GUEST_UID, stars: 5, created_at: new Date() }))
+  /**
+   * The document id is the Booking id, and the rule reads that Booking: the
+   * Review is the author's, and the stay is over. Everything below is that
+   * contract, settled by the emulator.
+   */
+  beforeAll(async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Completed', kyc_status: 'approved' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-2'), bookingDoc({ uid: OTHER_GUEST_UID, status: 'Completed', kyc_status: 'approved' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-open'), bookingDoc({ status: 'Staying', kyc_status: 'approved' }))
+    })
   })
 
-  it('states whether a second review for the same stay can be written', async () => {
+  it('accepts a Guest review of their own finished stay, and refuses the rest', async () => {
     const guest = emailGuest()
-    let secondAllowed = true
-    try {
-      await addDoc(collection(guest.firestore(), 'reviews'), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 4, text: 'Again', created_at: new Date() })
-    } catch {
-      secondAllowed = false
-    }
-    console.info(`[rules probe] second review for the same booking: ${secondAllowed ? 'ALLOWED' : 'DENIED'}`)
-    expect(typeof secondAllowed).toBe('boolean')
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 5, text: 'Lovely', created_at: new Date() }))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-2'), { booking_id: 'booking-2', uid: GUEST_UID, stars: 5, created_at: new Date() }))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), { booking_id: 'booking-open', uid: GUEST_UID, stars: 5, created_at: new Date() }))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-nope'), { booking_id: 'booking-nope', uid: GUEST_UID, stars: 5, created_at: new Date() }))
+  })
+
+  it('refuses a star rating outside 1..5 and a review signed in somebody else\'s name', async () => {
+    const guest = emailGuest()
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 6, created_at: new Date() }))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { booking_id: BOOKING_ID, uid: OTHER_GUEST_UID, stars: 5, created_at: new Date() }))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-2'), { booking_id: 'booking-2', uid: OTHER_GUEST_UID, stars: 5, created_at: new Date() }))
+  })
+
+  it('refuses a second review for the same stay', async () => {
+    const guest = emailGuest()
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 4, text: 'Again', created_at: new Date() }))
+    await assertFails(updateDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { stars: 1 }))
   })
 
   it('keeps reviews private between Guests', async () => {
-    await seed(async (db) => setDoc(doc(db.firestore(), 'reviews', 'r-1'), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 5, created_at: new Date() }))
-    await assertSucceeds(getDoc(doc(emailGuest().firestore(), 'reviews', 'r-1')))
-    await assertFails(getDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', 'r-1')))
-    await assertSucceeds(getDoc(doc(admin().firestore(), 'reviews', 'r-1')))
+    await assertSucceeds(getDoc(doc(emailGuest().firestore(), 'reviews', BOOKING_ID)))
+    await assertFails(getDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', BOOKING_ID)))
+    await assertSucceeds(getDoc(doc(admin().firestore(), 'reviews', BOOKING_ID)))
   })
 })
 

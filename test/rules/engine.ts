@@ -1,7 +1,14 @@
 /**
- * A local evaluator for Firebase Security Rules — the fallback used to *execute*
- * `firestore.rules` and `storage.rules` in an environment that cannot download
- * Google's Java emulator (see docs/VERIFICATION.md § Why not the emulator).
+ * A local evaluator for Firebase Security Rules.
+ *
+ * VERIFICATION LEVEL: SUPPLEMENTAL.
+ *   This evaluator is *supplemental verification* — a fast, offline check that
+ *   runs in CI on every change. The *canonical* verification of these rules is
+ *   the Firebase Emulator Suite (`test/emulator/rules.emulator.test.ts`,
+ *   `npm run test:emulator`): it is Google's own implementation, and it is the
+ *   only thing that can settle a question about the rules' real semantics. A
+ *   verdict from this file is never reported as emulator-verified; the two are
+ *   labelled separately everywhere they appear.
  *
  * WHAT THIS IS
  *   The rules files are parsed with Firebase's own ANTLR grammar, shipped by
@@ -20,6 +27,20 @@
  * change that this evaluator does not model fails the suite instead of quietly
  * passing it. `engine.test.ts` pins the semantics of every operator and method
  * the rules files use.
+ *
+ * KNOWN DIFFERENCES FROM THE EMULATOR (also in docs/VERIFICATION.md § 2):
+ *   - Truthiness follows the documented rules language rather than the
+ *     emulator's Ruby/CEL implementation at the edges (e.g. `0`/`''` are falsy).
+ *   - A missing map key is an error by default (`Semantics.missingKeys`), which
+ *     is the strict reading of the reference; the emulator is where the reading
+ *     that actually applies is confirmed.
+ *   - Effects are modelled, not executed: `get()`/`exists()` read the `store`
+ *     the caller passes, and a `list` request is modelled as an empty result set
+ *     (which is what a query has to be safe against).
+ *   - Resource limits, lexical path matching edge cases and anything requiring a
+ *     running Auth/Storage emulator are out of scope.
+ *   It is never modified to make a failing case pass: a case this file gets
+ *   wrong is a case to take to the emulator, not a case to loosen.
  */
 import { parseForESLint } from '@firebase/eslint-plugin-security-rules/parser'
 

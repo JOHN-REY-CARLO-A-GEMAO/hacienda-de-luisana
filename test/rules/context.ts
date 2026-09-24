@@ -46,6 +46,8 @@ export const bookingDoc = (overrides: DocData = {}): DocData => ({
   accommodation: 'Main House',
   special_requests: '',
   status: 'Pending',
+  kyc_status: 'required',
+  payment_status: 'unpaid',
   created_at: '2026-09-24T02:00:00.000Z',
   hold_expires_at: '2026-09-25T02:00:00.000Z',
   uid: GUEST_UID,
@@ -53,6 +55,20 @@ export const bookingDoc = (overrides: DocData = {}): DocData => ({
   source: 'web',
   ...overrides,
 })
+
+/** A Booking whose money the Admin has already verified: Reserved and marked. */
+export const paidBookingDoc = (overrides: DocData = {}): DocData =>
+  bookingDoc({
+    status: 'Reserved',
+    kyc_status: 'approved',
+    payment_status: 'verified',
+    amount_verified: 8500,
+    payment_verified_at: '2026-09-24T03:00:00.000Z',
+    payment_verified_by: ADMIN_UID,
+    payment_proof_url: `payments/${GUEST_UID}/${BOOKING_ID}/proof.jpg`,
+    payment_reference: 'GCASH-123456',
+    ...overrides,
+  })
 
 /** The self-serve patch of `cloudBookingsDB.transition` for a Guest upload. */
 export const guestPaymentPatch = (overrides: DocData = {}): DocData => ({
@@ -67,12 +83,19 @@ export const guestPaymentPatch = (overrides: DocData = {}): DocData => ({
   ...overrides,
 })
 
-/** The Admin patch of `booking_lifecycle.dart` for `verifyPayment`. */
+/**
+ * The Admin patch of `applyAdminAction(verifyPayment)` — the web's
+ * `src/lib/booking/actions.ts` and the app's `booking_lifecycle.dart`, which
+ * write the same four fields: the status money buys, the amount, the instant,
+ * and the verifier. The rule layer refuses a `verified` document without them.
+ */
 export const adminVerifyPatch = (overrides: DocData = {}): DocData => ({
   ...guestPaymentPatch(),
   status: 'Reserved',
   payment_status: 'verified',
   amount_verified: 8500,
+  payment_verified_at: '2026-09-24T03:00:00.000Z',
+  payment_verified_by: ADMIN_UID,
   ...overrides,
 })
 

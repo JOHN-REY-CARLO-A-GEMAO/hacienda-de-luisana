@@ -6,12 +6,14 @@ results were; this one is the standing list of things the system does **not** do
 ## Emulator / real Firebase
 
 Rules are verified by **executing their text** with the in-repo evaluator
-(`test/rules/engine.ts`) — 135 assertions. The Firebase Emulator Suite did **not**
-run in this environment: no Java runtime, and the emulator JAR host
+(`test/rules/engine.ts`) — 151 assertions, **supplemental** verification. The
+Firebase Emulator Suite, which is the **canonical** verification, did **not** run
+in this environment: no Java runtime, and the emulator JAR host
 (`storage.googleapis.com`) is unreachable. `test/emulator/rules.emulator.test.ts`
-(`npm run test:emulator`) is the canonical check on a machine that has both. No
-Firestore or Storage **write** has ever been executed against the real services;
-the end-to-end scenario ran the website's real modules on their offline adapters.
+(`npm run test:emulator`, 40 cases) is the canonical suite on a machine that has
+both. A supplemental verdict is never reported as emulator-verified. No Firestore
+or Storage **write** has ever been executed against the real services; the
+end-to-end scenario ran the website's real modules on their offline adapters.
 
 ## OCR
 
@@ -44,9 +46,39 @@ Guest bookings, chat and the `Pager` paginate **in memory after the data is load
 
 If `VITE_FIREBASE_*` is unset, chat and reviews persist in **this browser only**. Rules exist for cloud; the UI writes to Firestore when configured.
 
-## Firestore rules findings
+## Firestore rules findings — resolved, with the limits of that word
 
-Six recorded gaps (Guest-forged `payment_status`; `Reserved` from `Payment Pending` with money unverified; unverified `actor_id`; posting into a conversation one does not own; Reviews with no rule-level eligibility; a Guest labelling a message as an Admin's) plus one semantics question about anonymous Guests writing Activity entries. Each is an executable `FINDING:` test in `test/rules/firestore-rules.test.ts` and is listed in `docs/VERIFICATION.md` §3.3.
+The six gaps recorded by the first verification pass (Guest-forged
+`payment_status`; `Reserved` from `Payment Pending` with money unverified; an
+unverified `actor_id`; posting into a conversation one does not own; Reviews with
+no rule-level eligibility; a Guest labelling a message as an Admin's) were fixed
+on 2026-09-24 (ADR-0010), plus two the audit turned up: an unreachable refund
+settlement for Guests (now bounded and allowed) and `create` accepting a claimed
+`verified` / `approved` state. Each finding's `FINDING:` test is now an asserted
+refusal, with the application half covered in
+`test/web/authorization-regressions.test.ts` and the canonical cases in the
+emulator suite.
+
+"Resolved" here means **the rule text refuses it and the module refuses it** —
+verified by the supplemental evaluator, not by the emulator. It does not mean the
+behaviour has been observed against a running Firebase project.
+
+The invariants themselves are deliberate, and so is their limit: they are about
+money and identity (who may set what value, whose name a record carries), not a
+copy of the booking state machine. The state machine still lives once, in
+`src/lib/booking/` and `lib/services/booking_lifecycle.dart`.
+
+Things that remain **outside** the rules' reach, unchanged by the pass:
+
+- OCR (`runReceiptOcr`, regex over text) is a convenience; it never sets a
+  payment state, and the rules do not care whether a human or a regex filled the
+  form in.
+- The `payment_references` catalogue is Admin-only and now void-only once used,
+  but no screen consumes it (see above), so duplicate detection is still a
+  contract function rather than a workflow.
+- Nothing server-side can count requests, throttle a client, or reverse a bad
+  write; the rules can only decide per write.
+
 
 ## Flutter
 

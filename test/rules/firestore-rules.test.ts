@@ -27,6 +27,7 @@ import {
   emailGuest,
   guestPaymentPatch,
   messageDoc,
+  paidBookingDoc,
   promotedAdmin,
   request,
   reviewDoc,
@@ -44,7 +45,12 @@ const profiles: Store = storeWith(
     [GUEST_UID]: { uid: GUEST_UID, role: 'guest' },
     'promoted-admin-1': { uid: 'promoted-admin-1', role: 'admin' },
   },
-  { [`conversations/${CONVO_ID}`]: conversationDoc() },
+  {
+    [`conversations/${CONVO_ID}`]: conversationDoc(),
+    // The Booking the Review rules read through `get()`: the Guest's own, and
+    // finished, which is what a Review is allowed to be about.
+    [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Completed', kyc_status: 'approved' }),
+  },
 )
 
 const allow = (partial: Parameters<typeof request>[0], store: Store = profiles) =>
@@ -161,21 +167,127 @@ describe('bookings: what a Guest may change', () => {
   })
 
   /**
-   * FINDING (high): the self-serve key list includes `payment_status`, and the
-   * rule checks *which* keys a Guest touched, never *what values* they wrote
-   * into them — so a Guest may set `payment_status: 'verified'` on their own
-   * Booking from a browser console. They cannot reach the `Reserved` status
-   * (that needs the Admin), but the flag the Admin's money gate reads is
-   * forgeable. `docs/VERIFICATION.md` records this as an open defect.
+   * Was FINDING (high) in the first verification pass: the self-serve key list
+   * included `payment_status` and the rule checked *which* keys a Guest touched,
+   * never the values — so a Guest could set `payment_status: 'verified'` from a
+   * browser console. The rule now constrains the value itself: a Guest may write
+   * `unpaid` or `pending`, nothing else.
    */
-  it('FINDING: lets a Guest set their own payment_status to verified', () => {
-    expect(allow({ ...own, requestData: guestPaymentPatch({ payment_status: 'verified' }) })).toBe(true)
+  it('refuses a Guest who sets their own payment_status to verified', () => {
+    expect(deny({ ...own, requestData: guestPaymentPatch({ payment_status: 'verified' }) })).toBe(true)
   })
 
   it('refuses a Guest who writes the Admin\'s verification fields', () => {
     expect(deny({ ...own, requestData: guestPaymentPatch({ amount_verified: 8500 }) })).toBe(true)
     expect(deny({ ...own, requestData: guestPaymentPatch({ payment_verified_at: '2026-10-01T00:00:00Z' }) })).toBe(true)
     expect(deny({ ...own, requestData: guestPaymentPatch({ payment_verified_by: ADMIN_UID }) })).toBe(true)
+  })
+
+  it('refuses a Guest who forges a KYC decision', () => {
+    expect(deny({ ...own, requestData: guestPaymentPatch({ kyc_status: 'approved' }) })).toBe(true)
+    expect(deny({ ...own, requestData: guestPaymentPatch({ kyc_status: 'rejected' }) })).toBe(true)
+  })
+
+  it('refuses a Guest who un-verifies money the Admin already verified', () => {
+    const paid = paidBookingDoc()
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: paid,
+        requestData: { ...paid, payment_status: 'pending', payment_proof_url: 'payments/x/y/proof.jpg' },
+      }),
+    ).toBe(true)
+  })
+
+  it('bounds the refund a Guest may record when they withdraw a paid Booking', () => {
+    const paid = paidBookingDoc()
+    const settlement = { stayTotal: 9000, stayRefund: 3250, depositHeld: 2000, damageDeduction: 0, depositRefund: 2000, refundTotal: 5250 }
+    const withdrawn = { ...paid, status: 'Cancelled', cancellation_reason: 'changed plans', refund_status: 'initiated', refund_total: 5250, refund_breakdown: settlement }
+    expect(
+      allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: paid, requestData: withdrawn }),
+    ).toBe(true)
+    // More than the Admin verified came in: refused.
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: paid,
+        requestData: { ...withdrawn, refund_total: 999999, refund_breakdown: { ...settlement, refundTotal: 999999 } },
+      }),
+    ).toBe(true)
+    // A breakdown that disagrees with the total: refused.
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: paid,
+        requestData: { ...withdrawn, refund_total: 100, refund_breakdown: settlement },
+      }),
+    ).toBe(true)
+    // `refunded` says the money is back with the Guest — that is the Admin's.
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: { ...withdrawn },
+        requestData: { ...withdrawn, refund_status: 'refunded' },
+      }),
+    ).toBe(true)
+    // The Admin records the fact, when it becomes true.
+    expect(
+      allow({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: withdrawn,
+        requestData: { ...withdrawn, refund_status: 'refunded' },
+      }),
+    ).toBe(true)
+  })
+
+  it('lets the Guest of a verified Booking still withdraw it', () => {
+    const paid = paidBookingDoc()
+    expect(
+      allow({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: paid,
+        requestData: { ...paid, status: 'Cancelled', cancellation_reason: 'changed plans' },
+      }),
+    ).toBe(true)
+  })
+
+  it('refuses a Guest who clears the Admin\'s rejection note without attaching a new proof', () => {
+    const rejected = bookingDoc({ status: 'Payment Pending', payment_status: 'rejected', payment_reject_reason: 'unreadable' })
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: rejected,
+        requestData: { ...rejected, payment_reject_reason: null },
+      }),
+    ).toBe(true)
+    expect(
+      allow({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: rejected,
+        requestData: {
+          ...rejected,
+          payment_status: 'pending',
+          payment_reject_reason: null,
+          payment_proof_url: 'payments/x/y/proof2.jpg',
+        },
+      }),
+    ).toBe(true)
   })
 
   it('refuses a Guest who moves their own Booking to Reserved', () => {
@@ -219,26 +331,111 @@ describe('bookings: what the Admin may change', () => {
   })
 
   /**
-   * FINDING (medium): the rule is described as "Reserved needs verified money",
-   * but what it enforces is the *previous status* — a Booking sitting in
-   * Payment Pending may be taken to Reserved with `payment_status` still
-   * 'pending'. The app's lifecycle refuses that move; the rules would not.
+   * Was FINDING (medium) in the first verification pass: the rule was described
+   * as "Reserved needs verified money", but what it enforced was the *previous
+   * status*, so a Booking in Payment Pending could be taken to Reserved with the
+   * money still `pending`. `reservedIsPaidFor()` is now the first clause of the
+   * update rule and binds every writer.
    */
-  it('FINDING: allows Reserved from Payment Pending with payment_status still pending', () => {
+  it('refuses Reserved while the money is still unverified, whoever asks', () => {
+    const pending = bookingDoc({ status: 'Payment Pending', payment_status: 'pending' })
+    const reserved = bookingDoc({ status: 'Reserved', payment_status: 'pending' })
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: pending, requestData: reserved })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: pending, requestData: reserved })).toBe(true)
+    // And it cannot be reached from a Booking that never got as far as payment.
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: bookingDoc({ status: 'Approved' }),
+        requestData: bookingDoc({ status: 'Reserved' }),
+      }),
+    ).toBe(true)
+    // Pending + unverified money is refused; the same from-status with the
+    // verification in the same write is the legitimate move.
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: bookingDoc({ status: 'Pending' }),
+        requestData: adminVerifyPatch(),
+      }),
+    ).toBe(true)
+  })
+
+  it('accepts Reserved from Payment Pending once the money is verified — with the marker', () => {
+    const submitted = guestPaymentPatch()
     expect(
       allow({
         path: `bookings/${BOOKING_ID}`,
         method: 'update',
         auth: allowlistedAdmin(),
-        resourceData: bookingDoc({ status: 'Payment Pending', payment_status: 'pending' }),
-        requestData: bookingDoc({ status: 'Reserved', payment_status: 'pending' }),
+        resourceData: submitted,
+        requestData: adminVerifyPatch(),
+      }),
+    ).toBe(true)
+    // The same move on a document that already carries the marker, touching
+    // something else, stays possible.
+    const paid = paidBookingDoc({ status: 'Payment Pending' })
+    expect(
+      allow({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: paid,
+        requestData: { ...paid, status: 'Reserved' },
       }),
     ).toBe(true)
   })
 
-  it('still refuses a Booking that has not reached Payment Pending', () => {
-    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: bookingDoc({ status: 'Approved' }), requestData: bookingDoc({ status: 'Reserved' }) })).toBe(true)
-    expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: bookingDoc({ status: 'Payment Pending', payment_status: 'verified' }), requestData: bookingDoc({ status: 'Reserved', payment_status: 'verified' }) })).toBe(true)
+  it('refuses a verification nobody signed: `verified` without the marker', () => {
+    const submitted = guestPaymentPatch()
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: submitted,
+        requestData: { ...submitted, status: 'Reserved', payment_status: 'verified' },
+      }),
+    ).toBe(true)
+    // An amount alone is not a verification either: the instant and the
+    // verifier have to travel with it.
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: submitted,
+        requestData: { ...adminVerifyPatch(), payment_verified_at: '', payment_verified_by: '' },
+      }),
+    ).toBe(true)
+  })
+
+  it('refuses a verification signed in another Admin\'s name', () => {
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: guestPaymentPatch(),
+        requestData: adminVerifyPatch({ payment_verified_by: 'someone-else' }),
+      }),
+    ).toBe(true)
+  })
+
+  it('refuses a Guest the Admin\'s verification patch', () => {
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: guestPaymentPatch(),
+        requestData: adminVerifyPatch(),
+      }),
+    ).toBe(true)
   })
 
   it('refuses a status leaving a terminal one', () => {
@@ -251,7 +448,7 @@ describe('bookings: what the Admin may change', () => {
 describe('bookings/{id}/activity: the append-only record', () => {
   const entry = (actor: string, actorId: string): DocData => ({
     booking_id: BOOKING_ID,
-    action: 'submit',
+    action: 'Submit',
     from_status: null,
     to_status: 'Pending',
     actor,
@@ -272,13 +469,26 @@ describe('bookings/{id}/activity: the append-only record', () => {
   })
 
   /**
-   * FINDING (medium): the rule forces `actor` to be the writer's own role, but
-   * never compares `actor_id` with the writer's uid — so an entry can carry
-   * somebody else's id while claiming a truthful role. The Audit trail is
-   * attributable at role level, not at person level.
+   * Was FINDING (medium) in the first verification pass: the rule forced `actor`
+   * to be the writer's own role but never compared `actor_id` with the writer's
+   * uid, so an entry could carry somebody else's id. Both roles and both
+   * identities are checked now.
    */
-  it('FINDING: lets a Guest name another Guest id as the actor_id', () => {
-    expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-2`, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: entry('guest', GUEST_UID) })).toBe(true)
+  it('refuses an entry a Guest files in another Guest\'s name', () => {
+    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-2`, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: entry('guest', GUEST_UID) })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-2b`, method: 'create', auth: emailGuest(), requestData: entry('guest', OTHER_GUEST_UID) })).toBe(true)
+    expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-2c`, method: 'create', auth: emailGuest(), requestData: entry('guest', GUEST_UID) })).toBe(true)
+  })
+
+  it('refuses an entry an Admin files in somebody else\'s name', () => {
+    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-2d`, method: 'create', auth: allowlistedAdmin(), requestData: entry('admin', GUEST_UID) })).toBe(true)
+    expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-2e`, method: 'create', auth: allowlistedAdmin(), requestData: entry('admin', ADMIN_UID) })).toBe(true)
+  })
+
+  it('lets the Admin record the system\'s own act, and nobody else', () => {
+    expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-2f`, method: 'create', auth: allowlistedAdmin(), requestData: entry('system', 'system') })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-2g`, method: 'create', auth: emailGuest(), requestData: entry('system', 'system') })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-2h`, method: 'create', auth: allowlistedAdmin(), requestData: entry('system', ADMIN_UID) })).toBe(true)
   })
 
   it('refuses an entry an Admin signs as if a Guest wrote it', () => {
@@ -296,27 +506,27 @@ describe('bookings/{id}/activity: the append-only record', () => {
   })
 
   /**
-   * SEMANTICS — the one case in this file whose answer turns on a question the
-   * public reference does not settle: whether reading a token claim the token
-   * does not carry (`request.auth.token.email` on an anonymous Guest) raises a
-   * rules error or yields `null`.
+   * Was SEMANTICS: the create rule read `role()` for a Guest, and `role()` reads
+   * the token's `email` claim, which an anonymous Guest does not carry — so the
+   * answer turned on whether a missing claim raises or reads as null, and on the
+   * strict reading a Guest's own submission entry would have been refused.
    *
-   * `role()` reads exactly that claim, so on the strict reading its call raises,
-   * and the `actor == role()` clause cannot be satisfied by an anonymous Guest —
-   * the third clause of the create rule only covers a *signed-out* writer. The
-   * website signs a Guest in anonymously before writing their Booking, so this
-   * decides whether the guest Activity log fills up in production. The emulator
-   * suite carries the same case; run it before changing anything here.
+   * The rule no longer reads a role for a Guest: the Guest branch compares
+   * `actor_id` with `request.auth.uid`, which every signed-in identity has. The
+   * case is now definite, and asserted under both readings.
    */
-  it('SEMANTICS: an anonymous Guest is refused the actor clause under the strict reading', () => {
+  it('lets an anonymous Guest file their own entry — under either reading of a missing claim', () => {
     const write = { path: `bookings/${BOOKING_ID}/activity/entry-5`, method: 'create' as const, auth: anonymousGuest(), requestData: entry('guest', GUEST_UID) }
-    expect(evaluate(request(write), rules, { store: profiles }).allow).toBe(false)
-    // Under the other reading of that claim, the very same write is allowed.
+    expect(evaluate(request(write), rules, { store: profiles }).allow).toBe(true)
     expect(evaluate(request(write), rules, { store: profiles, semantics: { missingKeys: 'null' } }).allow).toBe(true)
   })
 
   it('lets a signed-out visitor write exactly the submission entry', () => {
     expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-6`, method: 'create', auth: null, requestData: entry('guest', GUEST_UID) })).toBe(true)
+    // …and nothing else: the unauthenticated path exists for a Booking made
+    // before anybody signed in, so it may file the submission entry only.
+    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-7`, method: 'create', auth: null, requestData: { ...entry('guest', GUEST_UID), action: 'Approve' } })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-8`, method: 'create', auth: null, requestData: { ...entry('admin', ADMIN_UID), action: 'Approve' } })).toBe(true)
   })
 })
 
@@ -331,13 +541,77 @@ describe('payments: proof and verification', () => {
     expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: awaiting, requestData: guestPaymentPatch() })).toBe(true)
   })
 
-  /**
-   * The same FINDING as above, stated where it matters most: the Guest's own
-   * write path is the one that carries payment proof, and `payment_status` is
-   * on its key list. The Admin's view cannot treat that flag as authoritative.
-   */
-  it('FINDING: a Guest can set payment_status to verified on their own Booking', () => {
-    expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: awaiting, requestData: guestPaymentPatch({ payment_status: 'verified' }) })).toBe(true)
+  it('refuses a Guest who marks the payment verified — from pending, from rejected, from unpaid', () => {
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: awaiting, requestData: guestPaymentPatch({ payment_status: 'verified' }) })).toBe(true)
+    const rejected = bookingDoc({ status: 'Payment Pending', payment_status: 'rejected', payment_reject_reason: 'unreadable' })
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: rejected,
+        requestData: guestPaymentPatch({ payment_status: 'verified' }),
+      }),
+    ).toBe(true)
+    const unpaid = bookingDoc({ status: 'Payment Pending', payment_status: 'unpaid' })
+    expect(
+      deny({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: unpaid,
+        requestData: guestPaymentPatch({ payment_status: 'verified' }),
+      }),
+    ).toBe(true)
+  })
+
+  it('refuses a Guest who files a verification, in any of its spellings', () => {
+    for (const field of ['amount_verified', 'payment_verified_at', 'payment_verified_by', 'verification_status', 'verified_by', 'verified_at', 'admin_decision']) {
+      expect(
+        deny({
+          path: `bookings/${BOOKING_ID}`,
+          method: 'update',
+          auth: emailGuest(),
+          resourceData: awaiting,
+          requestData: guestPaymentPatch({ [field]: 'x' }),
+        }),
+      ).toBe(true)
+    }
+  })
+
+  it('refuses a Booking created already claiming a payment state it cannot have', () => {
+    expect(
+      deny({
+        path: 'bookings/new-booking',
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: bookingDoc({ payment_status: 'verified' }),
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: 'bookings/new-booking',
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: bookingDoc({ payment_status: 'pending' }),
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: 'bookings/new-booking',
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: bookingDoc({ kyc_status: 'approved' }),
+      }),
+    ).toBe(true)
+    expect(
+      allow({
+        path: 'bookings/new-booking',
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: bookingDoc(),
+      }),
+    ).toBe(true)
   })
 
   it('refuses a Guest touching any verification field', () => {
@@ -352,9 +626,7 @@ describe('payments: proof and verification', () => {
     expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: submitted, requestData: { ...submitted, payment_status: 'rejected', payment_reject_reason: 'reference not on the list' } })).toBe(true)
   })
 
-  it('refuses a Guest the Admin\'s amount_verified field, even next to a forged status', () => {
-    // The forged status gets through (the FINDING above); the verified *amount*
-    // does not, because the key is not on the self-serve list.
+  it('refuses the whole forged verification, status and amount together', () => {
     expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: awaiting, requestData: { ...guestPaymentPatch(), payment_status: 'verified', amount_verified: 8500 } })).toBe(true)
   })
 })
@@ -376,6 +648,14 @@ describe('payment_references: the Admin catalogue', () => {
   it('refuses a Guest reading whether a reference is used', () => {
     expect(deny({ path: 'payment_references/GCASH-123456', method: 'list', auth: emailGuest() })).toBe(true)
   })
+
+  it('refuses to rewrite or delete a reference that has been used', () => {
+    const used = { ...reference, status: 'used' }
+    expect(allow({ path: 'payment_references/GCASH-123456', method: 'update', auth: allowlistedAdmin(), resourceData: used, requestData: { ...used, status: 'void' } })).toBe(true)
+    expect(deny({ path: 'payment_references/GCASH-123456', method: 'update', auth: allowlistedAdmin(), resourceData: used, requestData: { ...used, reference: 'GCASH-999999', amount: 100 } })).toBe(true)
+    expect(deny({ path: 'payment_references/GCASH-123456', method: 'delete', auth: allowlistedAdmin(), resourceData: used })).toBe(true)
+    expect(allow({ path: 'payment_references/GCASH-123457', method: 'delete', auth: allowlistedAdmin(), resourceData: reference })).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -383,56 +663,78 @@ describe('payment_references: the Admin catalogue', () => {
 // ---------------------------------------------------------------------------
 
 describe('reviews', () => {
-  const completed = bookingDoc({ status: 'Completed' })
+  // The document id is the Booking id, and the store holds that Booking as the
+  // Guest's own and finished — which is what the rule reads.
+  const path = `reviews/${BOOKING_ID}`
 
-  it('lets a Guest who stayed write a review', () => {
-    expect(allow({ path: 'reviews/r1', method: 'create', auth: emailGuest(), requestData: reviewDoc() })).toBe(true)
+  it('lets a Guest who stayed write a review of their own stay', () => {
+    expect(allow({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc() })).toBe(true)
+    expect(allow({ path, method: 'create', auth: anonymousGuest(), requestData: reviewDoc() })).toBe(true)
   })
 
   it('lets the Guest read their own review and the Admin read any', () => {
-    expect(allow({ path: 'reviews/r1', method: 'get', auth: emailGuest(), resourceData: reviewDoc() })).toBe(true)
-    expect(allow({ path: 'reviews/r1', method: 'get', auth: allowlistedAdmin(), resourceData: reviewDoc() })).toBe(true)
-    expect(deny({ path: 'reviews/r1', method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: reviewDoc() })).toBe(true)
+    expect(allow({ path, method: 'get', auth: emailGuest(), resourceData: reviewDoc() })).toBe(true)
+    expect(allow({ path, method: 'get', auth: allowlistedAdmin(), resourceData: reviewDoc() })).toBe(true)
+    expect(deny({ path, method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: reviewDoc() })).toBe(true)
   })
 
   it('refuses a signed-out visitor a review', () => {
-    expect(deny({ path: 'reviews/r2', method: 'create', auth: null, requestData: reviewDoc() })).toBe(true)
+    expect(deny({ path, method: 'create', auth: null, requestData: reviewDoc() })).toBe(true)
   })
 
   it('refuses a review signed in somebody else\'s name', () => {
-    expect(deny({ path: 'reviews/r3', method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: reviewDoc() })).toBe(true)
+    expect(deny({ path, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: reviewDoc({ uid: OTHER_GUEST_UID }) })).toBe(true)
   })
 
   it('refuses a star rating outside 1..5 and a non-integer', () => {
-    expect(deny({ path: 'reviews/r4', method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: 0 }) })).toBe(true)
-    expect(deny({ path: 'reviews/r5', method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: 6 }) })).toBe(true)
-    expect(deny({ path: 'reviews/r6', method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: '5' }) })).toBe(true)
+    expect(deny({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: 0 }) })).toBe(true)
+    expect(deny({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: 6 }) })).toBe(true)
+    expect(deny({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: '5' }) })).toBe(true)
   })
 
   it('refuses a Guest editing or deleting a review', () => {
-    expect(deny({ path: 'reviews/r1', method: 'update', auth: emailGuest(), resourceData: reviewDoc(), requestData: reviewDoc({ stars: 1 }) })).toBe(true)
-    expect(deny({ path: 'reviews/r1', method: 'delete', auth: emailGuest(), resourceData: reviewDoc() })).toBe(true)
-    expect(allow({ path: 'reviews/r1', method: 'delete', auth: allowlistedAdmin(), resourceData: reviewDoc() })).toBe(true)
+    expect(deny({ path, method: 'update', auth: emailGuest(), resourceData: reviewDoc(), requestData: reviewDoc({ stars: 1 }) })).toBe(true)
+    expect(deny({ path, method: 'delete', auth: emailGuest(), resourceData: reviewDoc() })).toBe(true)
+    expect(allow({ path, method: 'delete', auth: allowlistedAdmin(), resourceData: reviewDoc() })).toBe(true)
+    // The Admin removes a review; the Admin does not rewrite it either.
+    expect(deny({ path, method: 'update', auth: allowlistedAdmin(), resourceData: reviewDoc(), requestData: reviewDoc({ stars: 1 }) })).toBe(true)
   })
 
-  // FINDINGS: the rules check who *wrote* a review, not whether that person
-  // stayed. These three cases record what the file actually does; the app does
-  // the eligibility check, which a console can skip. See docs/VERIFICATION.md.
-  it('FINDING: does not check that the Booking being reviewed is the review author\'s', () => {
-    expect(allow({ path: 'reviews/r7', method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: reviewDoc({ uid: OTHER_GUEST_UID }) })).toBe(true)
+  /**
+   * Was FINDING (medium) in the first verification pass: the create rule checked
+   * who *wrote* the review, not whether that person had stayed. The rule now
+   * reads the Booking the review is about, so all three checks the app made are
+   * made by the database as well.
+   */
+  it('refuses a review of a Booking that is not the writer\'s', () => {
+    // The store's Booking belongs to GUEST_UID; this request comes from another Guest.
+    expect(
+      deny({
+        path,
+        method: 'create',
+        auth: emailGuest(OTHER_GUEST_UID),
+        requestData: reviewDoc({ uid: OTHER_GUEST_UID }),
+      }),
+    ).toBe(true)
   })
 
-  it('FINDING: does not check that the reviewed stay is complete', () => {
-    const pending = bookingDoc({ status: 'Pending' })
-    expect(pending.status).toBe('Pending')
-    expect(allow({ path: 'reviews/r8', method: 'create', auth: emailGuest(), requestData: reviewDoc() })).toBe(true)
+  it('refuses a review while the stay is not over', () => {
+    const early = storeWith({}, { [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Staying' }) })
+    expect(allow({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc() }, early)).toBe(false)
+    const checkedOut = storeWith({}, { [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Checked-Out' }) })
+    expect(allow({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc() }, checkedOut)).toBe(true)
   })
 
-  it('FINDING: a second review for the same Booking is a new document, not a reused one', () => {
-    // Two different document ids both satisfy the rule; only an app-level check
-    // stops a Guest from writing both. See the emulator suite for the same case.
-    expect(allow({ path: 'reviews/r9-a', method: 'create', auth: emailGuest(), requestData: reviewDoc() })).toBe(true)
-    expect(allow({ path: 'reviews/r9-b', method: 'create', auth: emailGuest(), requestData: reviewDoc() })).toBe(true)
+  it('refuses a review of a Booking that does not exist', () => {
+    expect(allow({ path: 'reviews/booking-does-not-exist', method: 'create', auth: emailGuest(), requestData: reviewDoc({ booking_id: 'booking-does-not-exist' }) })).toBe(false)
+  })
+
+  it('refuses a second review for the same stay: the id is the Booking, so it is already taken', () => {
+    // The document already exists, so this write is an *update* — and updates are
+    // refused to everybody but a delete.
+    expect(deny({ path, method: 'update', auth: emailGuest(), resourceData: reviewDoc(), requestData: reviewDoc({ stars: 4 }) })).toBe(true)
+    // Writing it under another id is refused because the id has to be the Booking.
+    expect(deny({ path: 'reviews/some-other-id', method: 'create', auth: emailGuest(), requestData: reviewDoc() })).toBe(true)
   })
 })
 
@@ -464,6 +766,8 @@ describe('conversations and messages', () => {
     expect(allow({ path: `conversations/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: convo, requestData: { ...convo, last_message: 'hi', updated_at: '2026-09-24T03:00:00.000Z' } })).toBe(true)
     expect(deny({ path: `conversations/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: convo, requestData: { ...convo, guest_uid: OTHER_GUEST_UID } })).toBe(true)
     expect(deny({ path: `conversations/${CONVO_ID}`, method: 'update', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: convo, requestData: { ...convo, unread_admin: 1 } })).toBe(true)
+    // Even the Admin cannot hand one Guest's history to another.
+    expect(deny({ path: `conversations/${CONVO_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: convo, requestData: { ...convo, guest_uid: OTHER_GUEST_UID } })).toBe(true)
   })
 
   it('lets the Admin delete a conversation, and no Guest', () => {
@@ -473,6 +777,11 @@ describe('conversations and messages', () => {
 
   it('lets a Guest send a message in their own conversation', () => {
     expect(allow({ path: `conversations/${CONVO_ID}/messages/m1`, method: 'create', auth: anonymousGuest(), requestData: messageDoc() })).toBe(true)
+    expect(allow({ path: `conversations/${CONVO_ID}/messages/m1b`, method: 'create', auth: emailGuest(), requestData: messageDoc() })).toBe(true)
+  })
+
+  it('lets the Admin reply in any conversation, labelled as the Admin', () => {
+    expect(allow({ path: `conversations/${CONVO_ID}/messages/m-admin`, method: 'create', auth: allowlistedAdmin(), requestData: messageDoc(ADMIN_UID, 'admin') })).toBe(true)
   })
 
   it('refuses a message whose sender is somebody else', () => {
@@ -480,17 +789,33 @@ describe('conversations and messages', () => {
   })
 
   /**
-   * FINDING (low): the create rule for a message checks that the message is
-   * *signed* by its sender, but not that the sender belongs to the conversation
-   * it is written into. A stranger who learns a conversation id can post into
-   * it; they cannot read it back, and the inbox will show it.
+   * Was FINDING (low) in the first verification pass: knowing a conversation id
+   * was enough to post into it, because the rule checked the sender and not the
+   * membership. The rule reads the conversation's own `guest_uid` now.
    */
-  it('FINDING: lets a Guest post into a conversation that is not theirs', () => {
-    expect(allow({
+  it('refuses a stranger posting into a conversation they are not part of', () => {
+    expect(deny({
       path: `conversations/${CONVO_ID}/messages/m3`,
       method: 'create',
       auth: anonymousGuest(OTHER_GUEST_UID),
       requestData: messageDoc(OTHER_GUEST_UID, 'guest'),
+    })).toBe(true)
+    expect(deny({
+      path: `conversations/${CONVO_ID}/messages/m3b`,
+      method: 'create',
+      auth: emailGuest(OTHER_GUEST_UID),
+      requestData: messageDoc(OTHER_GUEST_UID, 'guest'),
+    })).toBe(true)
+    // …and they cannot read it back either, before or after trying.
+    expect(deny({ path: `conversations/${CONVO_ID}/messages/m3`, method: 'get', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: messageDoc() })).toBe(true)
+  })
+
+  it('refuses a message into a conversation that does not exist', () => {
+    expect(deny({
+      path: 'conversations/no-such-conversation/messages/m1',
+      method: 'create',
+      auth: anonymousGuest(),
+      requestData: messageDoc(),
     })).toBe(true)
   })
 
@@ -505,11 +830,17 @@ describe('conversations and messages', () => {
     expect(allow({ path: `conversations/${CONVO_ID}/messages/m1`, method: 'get', auth: allowlistedAdmin(), resourceData: messageDoc() })).toBe(true)
   })
 
-  // SEMANTICS: `sender_role` is not checked against the writer's real role, so a
-  // Guest can label a message 'admin'. The message is still attributable, which
-  // is what the rule is written to guarantee.
-  it('FINDING: lets a Guest label their own message as an Admin\'s', () => {
-    expect(allow({ path: `conversations/${CONVO_ID}/messages/m6`, method: 'create', auth: anonymousGuest(), requestData: messageDoc(GUEST_UID, 'admin') })).toBe(true)
+  /**
+   * Was FINDING (low): `sender_role` was free text, so a Guest could label their
+   * own message as the Admin's — a display spoof, since `sender_uid` stayed
+   * honest. The label now has to match what the writer is, which is decided in
+   * the same rule by membership and the Admin role.
+   */
+  it('refuses a Guest labelling their message as the Admin\'s', () => {
+    expect(deny({ path: `conversations/${CONVO_ID}/messages/m6`, method: 'create', auth: anonymousGuest(), requestData: messageDoc(GUEST_UID, 'admin') })).toBe(true)
+    expect(deny({ path: `conversations/${CONVO_ID}/messages/m7`, method: 'create', auth: emailGuest(), requestData: messageDoc(GUEST_UID, 'admin') })).toBe(true)
+    // Nor may the Admin pass as a Guest.
+    expect(deny({ path: `conversations/${CONVO_ID}/messages/m8`, method: 'create', auth: allowlistedAdmin(), requestData: messageDoc(ADMIN_UID, 'guest') })).toBe(true)
   })
 
   it('never lets anybody edit or delete a message', () => {
