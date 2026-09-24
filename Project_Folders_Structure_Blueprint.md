@@ -34,10 +34,10 @@ Dual-app single repo, **not a formal workspace monorepo**:
 
 ## 1. Structural Overview
 
-- **Organizing principle: by role first, then by feature + layer.** `src/` holds everything the Guest can do (browse, book, KYC, pay, track, cancel) and nothing the Admin does; `lib/` holds everything the Admin does (approve, verify, refund, stays, rates, rooms, lock, radar, CRM, analytics) and no Guest booking flow. Inside each: web `pages/` → `sections/` + `components/<Feature>/` → `lib/<domain>/`; Flutter `views/<feature>/` → `services/` → `models/` + `providers/` + `widgets/` + `core/`.
+- **Organizing principle: by role first, then by feature + layer.** `src/` holds everything the Guest can do (browse, book, KYC, pay, chat, review, cancel) and nothing the Admin does; `lib/` holds everything the Admin does (approve, verify, refund, stays, rates, rooms, lock, chat inbox, CRM, analytics) and no Guest booking flow. Inside each: web `pages/` → `sections/` + `components/<Feature>/` → `lib/<domain>/`; Flutter `views/<feature>/` → `services/` → `models/` + `providers/` + `widgets/` + `core/`.
 - **Repeating pattern:** `<feature>/contract.ts → index.ts → upload.ts / actions.ts` on web (`lib/kyc/`, `lib/payments/`, `lib/booking/`); `<feature>_model.dart + <feature>_service.dart + <feature>_screen.dart` in Flutter.
 - **Rationale:** Firestore is the source of truth; both clients are thin shells over one Booking lifecycle (`Pending → … → Completed`, `CONTEXT.md` § Stay). The Guest's transitions live in `src/lib/booking/actions.ts`, the Admin's and the system's in `lib/services/booking_lifecycle.dart`; `firestore.rules` enforces the two-role split regardless of UI.
-- **Relations:** `src/` and `lib/` never import each other. Shared contract = Firestore collections (`bookings` + `activity`, `profiles`, `site_config/rates`, `tracking_sessions/{bookingId}`, `access_logs`), Storage paths (`kyc/{bookingId}/…`), and vocabulary in `CONTEXT.md` + `docs/adr/0001–0007`.
+- **Relations:** `src/` and `lib/` never import each other. Shared contract = Firestore collections (`bookings` + `activity`, `profiles`, `site_config/rates`, `conversations` + `messages`, `reviews`, `access_logs`), Storage paths (`kyc/{bookingId}/…`), and vocabulary in `CONTEXT.md` + `docs/adr/0001–0007`.
 
 ## 2. Directory Visualization (ASCII, depth 3, generated folders excluded)
 
@@ -47,26 +47,26 @@ Excluded: `node_modules/`, `dist/`, `build/`, `.dart_tool/`, `android/.gradle/`,
 hacienda-de-luisana/          # two roles, two apps (Vite web = Guest · Flutter = Admin) + Firebase
 ├── src/ (70 files)           # GUEST WEBSITE — React + Vite + TS
 │   ├── App.tsx / main.tsx    # routes: / /book /track /share-location /login /guest/auth /account
-│   ├── pages/                # Home, BookingPage, AuthPage, AccountPage, LiveTrackingPage
+│   ├── pages/                # Home, BookingPage, AuthPage, AccountPage, MessagesPage, LegalPage
 │   ├── sections/             # landing blocks: Hero, Accommodations, Gallery, Location, FAQ…
 │   ├── components/           # Nav, Footer, Logo, SmartImage, MobileStickyCTA
 │   │   ├── Auth/             # LoginForm, ProtectedRoute (guest session only)
 │   │   └── Booking/          # BookingHistory, HoldCountdown, KycUpload, PaymentStep
-│   ├── lib/                  # domain: auth/, booking/, kyc/, payments/, firebase, tracking…
+│   ├── lib/                  # domain: auth/, booking/, kyc/, payments/, chat, reviews, firebase…
 │   ├── context/ hooks/ config/
 │   └── styles.css / vite-env.d.ts
 ├── lib/ (43 files)           # ADMIN APP — Flutter (main.dart → AuthGate → MainShellScreen)
 │   ├── main.dart / firebase_options.dart
 │   ├── core/                 # constants/, theme/, utils/ (date_formatter, geo_utils)
-│   ├── models/               # booking_model, room_model, guest_crm_model, guest_location_model, smart_lock_event_model
+│   ├── models/               # booking_model, room_model, guest_crm_model, smart_lock_event_model
 │   ├── services/             # auth_store, booking_lifecycle, firestore_service, mock_data_service, notification_service
 │   ├── providers/            # app_providers (riverpod streams + provider bridge)
 │   ├── views/                # main_shell_screen + feature folders
 │   │   ├── auth/             # admin_login_screen
 │   │   ├── bookings/         # bookings_screen, booking_detail_screen (all Admin actions)
 │   │   ├── rates/            # rates_screen (publishes site_config/rates)
-│   │   └── dashboard/ stays/ tracking/ smartlock/ rooms/ crm/ analytics/
-│   ├── widgets/              # hacienda_card, status_pill, empty_state, pulse_dot, simulation_bar…
+│   │   └── dashboard/ stays/ inbox/ payments/ smartlock/ rooms/ crm/ analytics/ rates/
+│   ├── widgets/              # hacienda_card, status_pill, empty_state, pulse_dot, animated_badge…
 │   └── utils/                # validators
 ├── test/ (22 files)
 │   ├── web/                  # vitest (19): booking-*, auth-*, kyc/payment-contract, rates, date-hold…
@@ -91,23 +91,23 @@ Content statistics (non-generated): `src 70 | lib 43 | test 22 (web 19 + dart 3)
 
 ### Guest website (`src/`) — React + Vite
 
-- **`src/pages/`**: one route entry per URL (`Home`, `BookingPage`, `AuthPage`, `AccountPage`, `LiveTrackingPage`). `App.tsx` also mounts `/track` and the `AdminMoved` signpost for `/admin/*` and `/app/*` (there are no admin pages — the signpost says to use the mobile app). Thin; composes `sections/` + `components/` + `lib/`.
+- **`src/pages/`**: one route entry per URL (`Home`, `BookingPage`, `AuthPage`, `AccountPage`, `MessagesPage`, `LegalPage`). `App.tsx` also mounts `/track` and the `AdminMoved` signpost for `/admin/*` and `/app/*` (there are no admin pages — the signpost says to use the mobile app). Thin; composes `sections/` + `components/` + `lib/`.
 - **`src/sections/`**: landing-page blocks (`Hero`, `Accommodations`, `Experience`, `Gallery`, `Location`, `Reviews`, `FAQ`, `Nearby`, `Stats`, `Amenities`, `Contact`, `Intro`). Presentational, Tailwind only.
 - **`src/components/`**: shared chrome (`Nav`, `Footer`, `Logo`, `SmartImage`, `MobileStickyCTA`) + `Auth/` (`LoginForm`, `ProtectedRoute` — guest session gate) + `Booking/` (`BookingHistory`, `HoldCountdown`, `KycUpload`, `PaymentStep`). No `Admin/` group any more.
-- **`src/lib/`**: domain core. `auth/` (`roles` — `guest | admin`, guest permissions; `profile`; `session`; `credentials`; `pages`), `booking/` (`actions` — guest actions, `activity`, `availability`, `holds`, `money`, `rates`, `statuses`, `internal`), `kyc/` (`contract`, `upload`, `purge`), `payments/` (`contract`, `upload`), plus `firebase.ts`, `firestoreBookings.ts`, `guestAuth.ts` (anonymous identity), `tracking.ts` / `trackingSessions.ts`, `storage.ts`, `ratesDB.ts` (reads `site_config/rates`), `authFirebase.ts` / `authLocal.ts` / `authSession.ts`. Pure functions preferred (`booking-module-purity.test.ts`).
+- **`src/lib/`**: domain core. `auth/` (`roles` — `guest | admin`, guest permissions; `profile`; `session`; `credentials`; `pages`), `booking/` (`actions` — guest actions, `activity`, `availability`, `holds`, `money`, `rates`, `statuses`, `internal`), `kyc/` (`contract`, `upload`, `purge`), `payments/` (`contract`, `upload`), plus `firebase.ts`, `firestoreBookings.ts`, `guestAuth.ts` (anonymous identity), `chatCloud.ts`, `reviewsCloud.ts`, `storage.ts`, `ratesDB.ts` (reads `site_config/rates`), `authFirebase.ts` / `authLocal.ts` / `authSession.ts`. Pure functions preferred (`booking-module-purity.test.ts`).
 - **`src/context/ + hooks/ + config/`**: `AuthContext.tsx`, `useAuth.ts`, `config/site.ts` (content source of truth).
 
 ### Admin app (`lib/`) — Flutter
 
-- **`lib/views/`**: `main_shell_screen.dart` (5 tabs + "More" sheet + Sign out) and one folder per feature: `auth/admin_login_screen`, `bookings/{bookings_screen, booking_detail_screen}` (every Admin action: Approve, Reject, Reject ID, Verify payment, Reject proof, Cancel, Mark refunded, Check-in, Begin stay, Check-out, Complete, Purge KYC, Revoke key + Activity log), `rates/rates_screen` (publish nightly rates, deposits, down-payment %, refund tiers), `dashboard/`, `stays/`, `tracking/` (Radar), `smartlock/`, `rooms/`, `crm/`, `analytics/`.
+- **`lib/views/`**: `main_shell_screen.dart` (5 tabs + "More" sheet + Sign out) and one folder per feature: `auth/admin_login_screen`, `bookings/{bookings_screen, booking_detail_screen}` (every Admin action: Approve, Reject, Reject ID, Verify payment, Reject proof, Cancel, Mark refunded, Check-in, Begin stay, Check-out, Complete, Purge KYC, Revoke key + Activity log), `rates/rates_screen` (publish nightly rates, deposits, down-payment %, refund tiers), `payments/` (payment references + verification), `inbox/` (guest chat), `dashboard/`, `stays/`, `smartlock/`, `rooms/`, `crm/`, `analytics/`.
 - **`lib/services/`**: `auth_store.dart` (Firebase Auth session + `isAdmin` gate — allowlist or `profiles.role == 'admin'`), `booking_lifecycle.dart` (status table, transitions, hold expiry, `findDateConflicts`, `settleRefund`, `validatePublishedRates`, `applyAdminAction`), `firestore_service.dart` (streams + writes incl. `activity` entries and `site_config/rates`), `mock_data_service.dart` (demo data when Firebase is absent), `notification_service.dart`.
-- **`lib/models/`**: `booking_model.dart` (accepts snake_case web docs and camelCase mocks; coarse `BookingStatus` + canonical raw status), `room_model`, `guest_crm_model`, `guest_location_model`, `smart_lock_event_model`.
+- **`lib/models/`**: `booking_model.dart` (accepts snake_case web docs and camelCase mocks; coarse `BookingStatus` + canonical raw status), `room_model`, `guest_crm_model`, `smart_lock_event_model`.
 - **`lib/providers/`**: `app_providers.dart` — riverpod stream providers (bookings, sessions, lock logs, rooms, profiles, rates, per-booking activity) + `provider` bridge for `AuthStore`.
-- **`lib/widgets/ + core/`**: design-system atoms (`hacienda_card`, `status_pill`, `section_header`, `empty_state`, `pulse_dot`, `staggered_entrance`, `pressable_card`, `luxe_progress`, `animated_tab_page`, `animated_badge`, `metric_stat_card`, `radar_alert_banner`, `simulation_bar`), theme (`core/theme/app_theme.dart`), palette (`core/constants/app_constants.dart`), utils.
+- **`lib/widgets/ + core/`**: design-system atoms (`hacienda_card`, `status_pill`, `section_header`, `empty_state`, `pulse_dot`, `staggered_entrance`, `pressable_card`, `luxe_progress`, `animated_tab_page`, `animated_badge`, `metric_stat_card`), theme (`core/theme/app_theme.dart`), palette (`core/constants/app_constants.dart`), utils.
 
 ### Shared backend
 
-- **`firestore.rules`**: two roles only — `role()` from `profiles/{uid}` or the `adminEmails()` bootstrap allowlist; `isAdmin()` / guest ownership (`uid == request.auth.uid`). `bookings/{id}/activity` append-only. `site_config/rates` public read, Admin write. `tracking_sessions` owner-created, Admin read.
+- **`firestore.rules`**: two roles only — `role()` from `profiles/{uid}` or the `adminEmails()` bootstrap allowlist; `isAdmin()` / guest ownership (`uid == request.auth.uid`). `bookings/{id}/activity` append-only. `site_config/rates` public read, Admin write. `tracking_sessions` closed to every caller (ADR-0009); `access_logs` signed-in create, Admin read.
 - **`storage.rules`**: `kyc/{bookingId}/…` — guest upload for own booking, Admin read/delete (`isAdminEmail()` mirrors the allowlist).
 - **`firestore.indexes.json`**: `bookings (uid, created_at)` for the Guest's "My bookings".
 
@@ -150,7 +150,7 @@ Content statistics (non-generated): `src 70 | lib 43 | test 22 (web 19 + dart 3)
 - **React + Vite + TS:** ESM only; components by feature; state via Context + hooks; Firestore client in `src/lib/*` (no REST gateway); Tailwind + `lib/reveal.ts`; assets `public/`.
 - **Flutter / Dart:** `flutter_riverpod` + `provider` bridge; `MaterialApp` theme in `core/theme/app_theme.dart` (palette `forest900 #0F1C11`, `olive #8A9A5B`, `cream`, `goldAccent #C5A059`); `intl`, `google_fonts`, `google_sign_in`, `fl_chart`, `flutter_local_notifications`, `firebase_messaging`. Lint via `flutter_lints`.
 - **Node.js:** `vitest.config.ts` + `jsdom`; utility scripts in `scripts/*.sh`.
-- **Firebase:** Auth (Email / Google / Anonymous for guests), Firestore (`profiles/{uid}.role ∈ {guest, admin}`, `bookings` + `activity`, `site_config/rates`, `tracking_sessions/{bookingId}` with 30-day read-time expiry, `access_logs`), Storage (`kyc/`). Rules are authorization; UI hiding is courtesy.
+- **Firebase:** Auth (Email / Google / Anonymous for guests), Firestore (`profiles/{uid}.role ∈ {guest, admin}`, `bookings` + `activity`, `site_config/rates`, `access_logs`), Storage (`kyc/`). Rules are authorization; UI hiding is courtesy.
 
 ## 9. Extension and Evolution
 

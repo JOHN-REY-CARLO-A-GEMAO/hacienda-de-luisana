@@ -81,7 +81,7 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
     lifecycle actions (UploadKyc, ChoosePaymentPlan, UploadPaymentProof, Cancel)
   - Real-time listener via `onSnapshot`
 - `lib/services/firestore_service.dart` (Admin app):
-  - Streams of every Booking, `tracking_sessions`, `access_logs`, `rooms`, `guest_profiles`,
+  - Streams of every Booking, `access_logs`, `rooms`, `guest_profiles`,
     `site_config/rates`, and a Booking's `activity`
   - `applyBookingAction`, `deleteBooking`, `publishRates`; in-memory demo data when Firebase is absent
 
@@ -97,7 +97,7 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
   (`system` entries are written by the Admin app)
 - `access_logs`: created by any signed-in client, read and corrected by the Admin
 - `site_config`: public read (the website quotes rates from it), Admin write
-- `tracking_sessions`: created and deleted by the Guest's own device, read by the Admin
+- `tracking_sessions`: **closed** — no create, read or update by anybody (ADR-0009)
 - `rooms`, `guest_profiles`, `gallery` writes: Admin
 - Everything else is denied by a final catch-all
 - `test/web/auth-firestore-rules.test.ts` asserts all of the above, and that the rules and

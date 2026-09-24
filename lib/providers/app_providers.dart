@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/booking_model.dart';
-import '../models/guest_location_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
@@ -23,11 +22,6 @@ final firestoreServiceProvider = Provider<FirestoreService>((ref) {
 final bookingsStreamProvider = StreamProvider<List<BookingModel>>((ref) {
   final service = ref.watch(firestoreServiceProvider);
   return service.streamBookings();
-});
-
-final trackingSessionsStreamProvider = StreamProvider<List<GuestLocationModel>>((ref) {
-  final service = ref.watch(firestoreServiceProvider);
-  return service.streamTrackingSessions();
 });
 
 final smartLockLogsStreamProvider = StreamProvider<List<SmartLockEventModel>>((ref) {
@@ -92,9 +86,6 @@ final filteredBookingsProvider = Provider<List<BookingModel>>((ref) {
     error: (_, __) => [],
   );
 });
-
-// Urgent Approaching Guest Provider (< 5km)
-final approachingGuestProvider = Provider<GuestLocationModel?>((ref) => null);
 
 // Dashboard Summary Stats Provider
 class DashboardStats {

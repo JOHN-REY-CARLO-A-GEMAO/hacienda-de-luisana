@@ -115,7 +115,7 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     kyc_id_url: data.kyc_id_url,
     kyc_receipt_url: data.kyc_receipt_url,
     kyc_reject_reason: data.kyc_reject_reason,
-    // Live location keys on old documents are ignored. Tracking is retired.
+    // Legacy live-location keys on old documents are ignored (ADR-0009).
   }
 }
 

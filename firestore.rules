@@ -181,9 +181,10 @@ service cloud.firestore {
         // choose a payment plan, and stamp the cancellation policy their plan
         // was quoted under. They may never approve or verify anything
         // themselves (ADR-0001: money moves only after the Admin), and never
-        // touch the identity the Booking was created with. Live location no
-        // longer rides on the Booking: it is a tracking_sessions document
-        // owned by the same uid (G6).
+        // touch the identity the Booking was created with. No location key is
+        // legitimate on a Booking either: live tracking was removed entirely
+        // (ADR-0009), so a position written here is refused like any other
+        // unknown key.
         || (isSignedIn()
           && resource.data.get('uid', '') == request.auth.uid
           // Forward or out, never backwards: a Guest may take their own Booking
@@ -269,21 +270,15 @@ service cloud.firestore {
     // Guest live-location sessions — one document per Booking (doc id = the
     // booking id), written by the traveller's own device: the web /track share
     // button and the Flutter one-tap pickup.
-    // Shape: {bookingId, uid, tracking_consent_at, latitude, longitude,
-    //   currentArea, distanceRemainingKm, estimatedMinutesRemaining,
-    //   isNearResort, hasArrived, lastUpdated}.
-    // G6: the Share click is the consent. It lands in the same write as the
-    // first ping, so a session without a consent cannot exist, and neither the
-    // consent nor the identity may be rewritten afterwards.
-    // - CREATE: the traveller only, with the shape.
-    // - READ: the Admin for the radar, and the traveller's own session.
-    // - UPDATE: the Admin, or the traveller on their own session, touching
-    //   nothing but position and the derived fields.
-    // - DELETE: the Admin, or the traveller — deleting one's own session IS
-    //   stopping the share.
-    // Readers treat a session whose lastUpdated is older than 30 days as
-    // nonexistent; there is no backend worker to purge, so the Admin's delete is
-    // the physical erasure (G6).
+    // REMOVED (ADR-0009): the live-location module was withdrawn — no client
+    // records, reads or displays a Guest position any more. The collection stays
+    // closed rather than dropped so a document left over from the retired
+    // feature can be cleared, and so a stale build cannot write here by
+    // accident:
+    // - READ / CREATE / UPDATE: refused to every caller, the Admin included.
+    // - DELETE: the Admin only, so an orphaned session can be erased — which is
+    //   the physical erasure the module's retention rule used to describe.
+    // Door events are logged in access_logs; a position never belongs there.
     match /tracking_sessions/{sessionId} {
       allow read, create, update: if false;
       allow delete: if isAdmin();

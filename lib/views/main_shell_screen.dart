@@ -36,7 +36,6 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final approachingGuest = ref.watch(approachingGuestProvider);
     final stats = ref.watch(dashboardStatsProvider);
 
     final List<Widget> screens = [
@@ -109,35 +108,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
               activeIcon: const Icon(Icons.confirmation_number),
               label: 'Bookings',
             ),
-            BottomNavigationBarItem(
-              icon: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  const Icon(Icons.chat_bubble_outline),
-                  Positioned(
-                    top: -3,
-                    right: -4,
-                    child: AnimatedScale(
-                      scale: approachingGuest != null ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOutBack,
-                      child: AnimatedOpacity(
-                        opacity: approachingGuest != null ? 1.0 : 0.0,
-                        duration: const Duration(milliseconds: 180),
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: AppColors.statusSuccess,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              activeIcon: const Icon(Icons.radar),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.chat_bubble_outline),
+              activeIcon: Icon(Icons.chat_bubble),
               label: 'Chat',
             ),
             const BottomNavigationBarItem(

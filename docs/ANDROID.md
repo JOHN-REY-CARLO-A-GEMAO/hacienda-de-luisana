@@ -87,6 +87,6 @@ flutter build appbundle --release    # for Play Console
 
 ## 6. What this is / isn't
 
-- **Is:** the Admin's operations app — bookings, KYC, payments, refunds, rates, stays, radar, smart-lock logs, rooms, CRM, analytics.
+- **Is:** the Admin's operations app — bookings, KYC, payments, refunds, rates, stays, chat, smart-lock logs, rooms, CRM, analytics.
 - **Isn't:** a Guest app. There is no Guest sign-in, booking form or Mobile Key screen here; those belong to the website (`src/`).
 - iOS is not set up.

@@ -1,5 +1,5 @@
 name: hacienda_de_luisana
-description: "Hacienda de LuisAna - Admin app (bookings, payments, rates, stays, tracking, smart locks)"
+description: "Hacienda de LuisAna - Admin app (bookings, payments, rates, stays, chat, smart locks)"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -16,9 +16,6 @@ dependencies:
   firebase_auth: ^4.19.0
   cloud_firestore: ^4.17.0
   firebase_messaging: ^14.8.0
-  # Maps & Location
-  google_maps_flutter: ^2.6.0
-  geolocator: ^11.0.0
   # Charts & Visuals
   fl_chart: ^0.67.0
   # UI, Icons, Helpers & Utilities

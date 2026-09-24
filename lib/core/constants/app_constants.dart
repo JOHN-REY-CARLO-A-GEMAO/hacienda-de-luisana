@@ -6,17 +6,8 @@ class AppConstants {
   static const String appTagline = 'Admin — Resort Operations';
   static const String resortAddress = 'Luisiana, Laguna, Philippines';
   
-  // Resort Fixed Coordinates (Luisiana, Laguna)
-  static const double resortLatitude = 14.1754304;
-  static const double resortLongitude = 121.519389;
-
-  // Proximity Thresholds
-  static const double nearbyThresholdKm = 5.0; // <= 5 km is "MALAPIT NA"
-  static const double arrivedThresholdKm = 0.15; // <= 150m is "ARRIVED"
-
   // Firestore Collection Names
   static const String colBookings = 'bookings';
-  static const String colTrackingSessions = 'tracking_sessions';
   /// Same collection the website writes when a Credential touches a lock
   /// (firestore.rules `access_logs`).
   static const String colSmartLockLogs = 'access_logs';

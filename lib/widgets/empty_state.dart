@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../core/constants/app_constants.dart';
 
 /// Centered icon + title + subtitle used by every list screen when the
-/// stream is empty (Bookings, Stays, Radar, Smart Lock, Rooms, CRM).
+/// stream is empty (Bookings, Stays, Chat, Smart Lock, Rooms, CRM).
 class EmptyState extends StatelessWidget {
   final IconData? icon;
   final String title;

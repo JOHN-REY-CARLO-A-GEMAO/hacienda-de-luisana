@@ -20,8 +20,8 @@ Single-context repo:
 ├── docs/adr/
 │   ├── 0001-....md
 │   └── 0002-....md
-├── src/          ← Guest website (React/TS): landing, /book, /account, /track
-└── lib/          ← Admin mobile app (Dart): booking lifecycle, KYC/payment review, rates, radar, locks
+├── src/          ← Guest website (React/TS): landing, /book, /account, /messages
+└── lib/          ← Admin mobile app (Dart): booking lifecycle, KYC/payment review, rates, chat, locks
 ```
 
 ## Use the glossary's vocabulary

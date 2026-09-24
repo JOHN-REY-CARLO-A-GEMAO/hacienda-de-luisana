@@ -561,15 +561,15 @@ function SuccessScreen({
             <div className="mt-3 text-xs text-forest-600">✓ Real-time synced to Client App via Firebase Cloud</div>
           )}
 
-          {/* Access — location tracker removed */}
+          {/* Access — the credential, never the Guest's position */}
           <div className="mt-8 rounded-3xl bg-forest-900 text-cream-50 p-6 sm:p-7 text-left relative overflow-hidden">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Live Location Sharing for Client
+                RFID / Mobile Key Access
               </div>
               <span className="text-[11px] text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                Gusto makita ni Client kung malapit ka na
+                Nakatala ang bawat pag-unlock (granted / denied)
               </span>
             </div>
 

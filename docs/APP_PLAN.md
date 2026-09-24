@@ -18,26 +18,26 @@
 |---|---|---|
 | **App** | Website — `src/` (React 18, Vite, TypeScript, Tailwind) | Flutter mobile app — `lib/` (Android) |
 | **Sino** | Sinumang bisita; optional na account para sa "My bookings" | Ang may-ari / operator ng hacienda — **isang role lang** |
-| **Pwedeng gawin** | Tingnan ang rooms, rates, availability · mag-book · mag-upload ng ID at resibo (KYC) · pumili ng payment plan at mag-upload ng proof · i-withdraw ang sariling booking · i-share ang live location habang naka-stay | **Lahat** ng dating Admin + Staff + Host: approve / reject, verify payment, refund, check-in → completed, rates & cancellation policy, rooms, smart lock, radar, CRM, analytics |
+| **Pwedeng gawin** | Tingnan ang rooms, rates, availability · mag-book · mag-upload ng ID at resibo (KYC) · pumili ng payment plan at mag-upload ng proof · i-withdraw ang sariling booking · makipag-chat sa Admin · mag-iwan ng review pagkatapos ng stay | **Lahat** ng dating Admin + Staff + Host: approve / reject, verify payment, refund, check-in → completed, rates & cancellation policy, rooms, smart lock, chat inbox, CRM, analytics |
 | **Hindi pwede** | Walang management screen; hindi mababasa ang booking ng iba | Walang guest booking flow sa app (booking = website lang) |
 | **Auth** | Firebase Auth (email / Google) + anonymous guest identity sa booking | Firebase Auth; papasok lang kung nasa admin allowlist **o** `profiles/{uid}.role == 'admin'` |
 
 **Bakit hindi Staff / Host roles:** iisang tao (o iisang team na may iisang access) ang nagpapatakbo ng hacienda. Ang RBAC sa pagitan ng Admin / Staff / Host ay dagdag na code, dagdag na rules, dagdag na bug surface — nang walang tunay na pangangailangan. Kung kailanganin ng pangalawang operator, bigyan lang ng Admin role ang account niya (allowlist o Profile), hindi bagong role.
 
-**Bakit Flutter para sa Admin, hindi web `/admin`:** ang Admin ay kailangang nasa bulsa — notifications ng papasok na guest, radar, smart lock, approve habang nasa labas. Ang website ay para sa guest na nagsi-search at nagbu-book mula sa browser (SEO, desktop, Messenger link).
+**Bakit Flutter para sa Admin, hindi web `/admin`:** ang Admin ay kailangang nasa bulsa — notifications ng papasok na guest, smart lock, chat, approve habang nasa labas. Ang website ay para sa guest na nagsi-search at nagbu-book mula sa browser (SEO, desktop, Messenger link).
 
 ```
 ┌──────────────────────────────┐      ┌──────────────────────────────┐
 │  GUEST WEBSITE  (src/)       │      │  ADMIN APP  (lib/, Flutter)  │
 │  /  /book  /track            │      │  Dashboard · Bookings        │
-│  /share-location             │      │  Radar · Stays · More →      │
+│  /messages                   │      │  Chat · Stays · More →       │
 │  /login  /guest/auth         │      │  Rates · Smart Lock ·        │
 │  /account  (My bookings)     │      │  Analytics · Rooms · CRM     │
 └───────────────┬──────────────┘      └───────────────┬──────────────┘
                 │   role: guest                        │   role: admin
                 ▼                                      ▼
         Firebase Auth · Firestore (bookings, profiles, site_config/rates,
-        tracking_sessions, access_logs) · Storage (kyc/)
+        access_logs) · Storage (kyc/)
         firestore.rules / storage.rules = dalawang role lang
 ```
 
@@ -52,7 +52,6 @@ Routes (`src/App.tsx`):
 | `/` | Marketing landing | Hero, Stay, Amenities, Gallery, Nearby, Location, FAQ, Contact |
 | `/book` | Booking form → Firestore `bookings` | 24h date hold (`hold_expires_at`), anonymous guest uid, `ref_id` |
 | `/track` | Track a booking by reference | Read-only status para sa guest |
-| `/share-location` | Live location sharing habang naka-stay | Consent = ang click mismo (`tracking_sessions/{bookingId}`) |
 | `/login`, `/guest/auth` | Guest sign-in / sign-up | Email / Google; Admin account → sinasabihang gamitin ang app |
 | `/account` | My bookings | Status, hold countdown, KYC upload, payment plan + proof, cancel, activity log |
 | `/admin/*`, `/app/*` | `AdminMoved` | Signpost lang: "Admin uses the mobile app" |
@@ -69,7 +68,7 @@ Guest actions (`src/lib/booking/actions.ts`): `UploadKyc`, `ChoosePaymentPlan`, 
 |---|---|
 | **Dashboard** | Metrics, approaching guests, pending review count, quick actions |
 | **Bookings** → **Booking detail** | Lahat ng bookings; Approve / Reject / Reject ID / Verify payment / Reject proof / Cancel / Mark refunded / Check-in / Begin stay / Check-out / Complete / Purge KYC / Revoke key; activity log |
-| **Radar** | Live tracking sessions (distance, ETA) |
+| **Chat** | Guest conversations (`conversations`, `messages`) |
 | **Stays** | Kasalukuyang naka-stay, check-out progress |
 | **Rates** | Publish `site_config/rates`: nightly rate, security deposit, down-payment %, refund tiers — dito kinukuha ng website ang quote |
 | **Smart Lock** | Access log + simulation (ESP32 not yet wired) |
@@ -99,7 +98,6 @@ bookings/{id}/activity/{n}   # append-only: action, from_status, to_status, acto
 
 profiles/{uid}   role: 'guest' | 'admin'   (walang ibang value)
 site_config/rates
-tracking_sessions/{bookingId}
 access_logs/{n}
 ```
 

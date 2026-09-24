@@ -6,8 +6,8 @@ The system has exactly two roles and exactly two applications, and each applicat
 
 | Role | Application | What it does |
 | --- | --- | --- |
-| **Guest** (the client) | **Website** (`src/`, React + Vite) | Reads availability and rates, submits a Booking, uploads the documents the lifecycle asks of them (government ID for KYC, Payment proof), chooses a Payment plan, follows the status of their own Bookings, withdraws one, and optionally shares their live location on the way. |
-| **Admin** | **Flutter mobile app** (`lib/`) | Everything else: reviews KYC and approves or rejects, verifies or rejects Payment proof, cancels and settles Refunds, records check-in / stay / check-out / completion, purges IDs after a stay, revokes a Credential, publishes the Published rates and cancellation policy, and reads the arrival radar, Access log, rooms, CRM and analytics. |
+| **Guest** (the client) | **Website** (`src/`, React + Vite) | Reads availability and rates, submits a Booking, uploads the documents the lifecycle asks of them (government ID for KYC, Payment proof), chooses a Payment plan, follows the status of their own Bookings, withdraws one, chats with the Admin, and leaves a Review after the stay. (The optional live-location share this ADR originally listed was removed by ADR-0009.) |
+| **Admin** | **Flutter mobile app** (`lib/`) | Everything else: reviews KYC and approves or rejects, verifies or rejects Payment proof, cancels and settles Refunds, records check-in / stay / check-out / completion, purges IDs after a stay, revokes a Credential, publishes the Published rates and cancellation policy, and reads the chat inbox, Access log, rooms, CRM and analytics. (The arrival radar listed here was removed by ADR-0009.) |
 
 There is no **Staff** role and no **Host** role. The person formerly called the Host *is* the Admin; the work formerly imagined for Staff (marking a cleaned stay complete, reading records) is done by the Admin in the same app. No role-based access control exists *among* operators because there is only one operator role.
 
@@ -21,9 +21,9 @@ There is no **Staff** role and no **Host** role. The person formerly called the 
 
 - **Roles**: `guest` | `admin` (`src/lib/auth/roles.ts`; `role()` in `firestore.rules`). Signing up on the website makes a Guest and cannot make anything else. The Admin is recognised by the bootstrap email allowlist — which lives in `firestore.rules` (`adminEmails()`), `storage.rules` (`isAdminEmail()`), `src/lib/auth/profile.ts` (`BOOTSTRAP_ROLES`) and `lib/services/auth_store.dart` (`AuthStore.kAdminEmails`) — or by `profiles/{uid}.role == 'admin'`.
 - **Actors on the Activity log**: `guest`, `admin`, `system`. Old entries written by `host` or `staff` are read as `admin`.
-- **Website routes**: `/`, `/book`, `/track`, `/login`, `/guest/auth`, `/account`. `/admin/*` and `/app/*` answer with a notice that the Admin dashboard moved to the mobile app; an Admin who signs in on the website is turned away from `/account` (it is a Guest page) and pointed to the app.
+- **Website routes**: `/`, `/book`, `/messages`, `/login`, `/guest/auth`, `/account`. `/admin/*` and `/app/*` answer with a notice that the Admin dashboard moved to the mobile app; an Admin who signs in on the website is turned away from `/account` (it is a Guest page) and pointed to the app.
 - **Mobile app**: only the Admin may pass the sign-in gate; any other account is signed straight back out. The app has no Guest screens.
-- **Firestore rules**: `isAdmin()` replaces `isHost()` / `isStaff()` / `isAnak()`; a Guest may only create a Booking, read and update their own, and append Guest-signed Activity entries. Only the Admin writes `site_config/rates`, reads every Booking, every `access_logs` entry and every `tracking_sessions` document, and deletes a Booking.
+- **Firestore rules**: `isAdmin()` replaces `isHost()` / `isStaff()` / `isAnak()`; a Guest may only create a Booking, read and update their own, and append Guest-signed Activity entries. Only the Admin writes `site_config/rates`, reads every Booking and every `access_logs` entry, and deletes a Booking. (`tracking_sessions` is readable by nobody — ADR-0009.)
 
 ## Consequences
 

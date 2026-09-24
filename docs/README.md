@@ -51,7 +51,7 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 | Verify / reject Payment proof, cancel, settle and mark Refunds | — | ✅ app |
 | Check-in → Staying → Check-out → Complete, purge ID after the stay, revoke a Credential | — | ✅ app |
 | Publish rates & cancellation policy (`site_config/rates`) | — | ✅ app |
-| Read every Booking, Access log, Guest live location, CRM, analytics | — | ✅ app |
+| Read every Booking, Access log, CRM, analytics | — | ✅ app |
 
 A role is **stored**, not chosen: signing up on the website makes a Guest and cannot make anything else. The Admin is recognised by the bootstrap email allowlist (`firestore.rules` `adminEmails()`, mirrored in `storage.rules`, `src/lib/auth/profile.ts` and `lib/services/auth_store.dart`) or by `profiles/{uid}.role == 'admin'`. Enforcement is `firestore.rules`; hiding a page or a button is only the courtesy half. See [ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md) (storage of a role) and [ADR-0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md) (the two roles).
 
@@ -64,7 +64,6 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 - Responsive landing (Hero, Accommodations, Experience, Gallery, Location, Reviews, FAQ)
 - `/book` — availability check against stored Bookings (24-hour Date hold), Booking submission → Firestore (localStorage fallback in demo mode)
 - `/account` — the Guest's own Bookings: status timeline, Date hold countdown, government ID + receipt upload (KYC), Payment plan choice from the published rates, Payment proof upload, withdraw, Activity log
-- `/track` and `/share-location` — consent-gated live location sharing during a stay
 - `/login`, `/guest/auth` — Guest sign-in / sign-up, email + password and Google, password reset, session kept across reloads
 - `/admin/*`, `/app/*` — a notice: the Admin dashboard moved to the Admin mobile app
 
@@ -74,7 +73,6 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 | --- | --- | --- |
 | `/` | Landing | everyone |
 | `/book` | Booking form + availability | everyone (an anonymous Guest identity is attached at submit — ADR-0004) |
-| `/track`, `/share-location` | Live location sharing | the Guest of the stay |
 | `/login`, `/guest/auth` | Sign in / sign up | Guests |
 | `/account` | My Bookings | signed-in Guest (`booking:read:own`) |
 | `/admin/*`, `/app/*` | "Moved to the Admin app" | — |
@@ -120,7 +118,6 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 | Dashboard | `dashboard/dashboard_screen.dart` | Today's check-ins, active stays, pending requests, revenue, recent lock events, approaching-Guest banner |
 | Bookings | `bookings/bookings_screen.dart` | Every Booking, filters (Needs action / Pending / Reserved / Active / Completed / Cancelled), one-tap Approve / Check in / Begin stay / Check out / Complete |
 | Booking detail | `bookings/booking_detail_screen.dart` | KYC documents, money, refund breakdown, **every** lifecycle action (approve, reject, refuse ID, verify / reject payment proof, cancel with refund settlement, mark refunded, purge ID, revoke Credential, record expiry, stay progression), Activity log, delete |
-| Radar | `tracking/tracking_radar_screen.dart` | Live Guest locations (`tracking_sessions`), distance / ETA, arrival alerts |
 | Stays | `stays/stay_duration_screen.dart` | Stay durations and progress |
 | Analytics | `analytics/analytics_screen.dart` | Revenue, conversion, length of stay, top Accommodation |
 | Smart lock | `smartlock/smart_lock_screen.dart` | `access_logs` audit trail + simulator |
