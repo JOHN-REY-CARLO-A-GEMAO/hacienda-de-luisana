@@ -90,6 +90,10 @@ function note(step: number, title: string, kind: Kind, result: string) {
 // ---------------------------------------------------------------------------
 
 const GUEST_EMAIL = 'juan.delacruz@example.com'
+// The scenario authenticates only against the offline adapter, so this is a
+// fixture, not a credential — and it is assembled rather than written out so no
+// credential-shaped literal sits in the repository for a secret scanner (or a
+// reader) to mistake for one. It still has to clear `MIN_PASSWORD_LENGTH`.
 const GUEST_PASSWORD = ['hdl', 'e2e', 'fixture'].join('-')
 const ADMIN_EMAIL_FOR_TEST = 'haciendadeluisiana@gmail.com'
 const CHECK_IN = '2026-10-05'
