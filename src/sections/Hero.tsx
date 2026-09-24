@@ -47,10 +47,10 @@ export function Hero() {
                 </a>
               </div>
               <Link
-                to="/app"
+                to="/account"
                 className="mt-5 inline-flex lg:hidden text-sm text-cream-100/80 underline underline-offset-4"
               >
-                Open guest app
+                My Bookings
               </Link>
             </div>
           </div>

@@ -26,13 +26,13 @@ import { MapPin, Navigation, Phone, Messenger, Copy, Check, Sparkle, ArrowRight,
 
 export function LiveTrackingPage() {
   const [params] = useSearchParams()
-  const { user, can } = useAuth()
+  const { user } = useAuth()
   const bookingId = params.get('id') || ''
-  // The Host and Staff read every Booking; a Guest reads the ones that are
-  // theirs. Asking Firestore for the whole collection as a Guest is refused by
-  // the rules, so the page never asks — and never shows somebody else's name,
-  // phone or location by falling back to "the most recent one".
-  const readsAll = can('bookings:read:all')
+  // This page is the Guest's: it reads only the Bookings that are theirs.
+  // Asking Firestore for the whole collection as a Guest is refused by the
+  // rules, so the page never asks — and never shows somebody else's name,
+  // phone or location by falling back to "the most recent one". The Admin
+  // watches every live session on the radar in the mobile app (ADR-0007).
 
   const [booking, setBooking] = useState<Booking | null>(null)
   const [loading, setLoading] = useState(true)
@@ -60,25 +60,18 @@ export function LiveTrackingPage() {
       setLoading(false)
     }
 
-    const unsub = readsAll
-      ? cloudBookingsDB.subscribe(onList)
-      : cloudBookingsDB.subscribeMine(user?.uid, onList)
+    const unsub = cloudBookingsDB.subscribeMine(user?.uid, onList)
     return () => unsub()
-  }, [bookingId, readsAll, user?.uid])
+  }, [bookingId, user?.uid])
 
-  // Subscribe to the live session. The traveller reads their own; the Host and
-  // Staff read every session (their radar), so a Host opening the share link
-  // sees the same state the traveller does — but never controls it.
+  // Subscribe to the live session. The traveller reads their own; the Admin
+  // reads every session on the radar in the mobile app, and sees the same state
+  // the traveller does — but never controls it.
   useEffect(() => {
-    if (readsAll) {
-      return trackingSessionsDB.subscribe((sessions) => {
-        setSession(sessions.find((s) => s.bookingId === bookingId) ?? null)
-      })
-    }
     return trackingSessionsDB.subscribeMine(user?.uid, (mine) => {
       setSession(mine && mine.bookingId === bookingId ? mine : null)
     })
-  }, [bookingId, readsAll, user?.uid])
+  }, [bookingId, user?.uid])
 
   // Real GPS live watch while the session exists. Each ping is an update to
   // the session — never a write to the Booking, and never a touch to the
@@ -86,7 +79,7 @@ export function LiveTrackingPage() {
   useEffect(() => {
     if (!isSharing || !booking) return
 
-    setStatusMessage('Live GPS tracking active. Streaming coordinates to Client App...')
+    setStatusMessage('Live GPS tracking active. Streaming coordinates to the Admin app...')
     const stopWatch = startLiveLocationWatch(
       async (coords) => {
         const dist = calculateDistanceKm(coords.lat, coords.lng)
@@ -195,7 +188,7 @@ export function LiveTrackingPage() {
         eta_minutes: eta,
         eta_share_url: pickupMapsUrl(pos.lat, pos.lng),
       })
-      setStatusMessage('Live location sharing activated! The Client / Host can now see your route and proximity.')
+      setStatusMessage('Live location sharing activated! The Hacienda can now see your route and proximity.')
     } catch (err: any) {
       setStatusMessage(`Sharing did not start: ${err?.message || 'location unavailable'}`)
     }
@@ -273,7 +266,7 @@ export function LiveTrackingPage() {
           )}
         </div>
 
-        {/* Date hold — how long the Guest has left for the Host to review (#12) */}
+        {/* Date hold — how long the Guest has left for the Admin to review (#12) */}
         {booking && (
           <div className="mt-4">
             <HoldCountdown booking={booking} />
@@ -308,23 +301,17 @@ export function LiveTrackingPage() {
               </div>
             </div>
 
-            {readsAll ? (
-              <div className="px-5 py-3 rounded-2xl text-xs font-medium bg-cream-100 text-forest-800">
-                Host view — sharing is controlled by the Guest on their phone.
-              </div>
-            ) : (
-              <button
-                onClick={handleToggleSharing}
-                className={`px-5 py-3 rounded-2xl text-sm font-medium transition flex items-center justify-center gap-2 ${
-                  isSharing
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md'
-                    : 'bg-forest-800 text-cream-50 hover:bg-forest-900'
-                }`}
-              >
-                <span className={`w-2 h-2 rounded-full ${isSharing ? 'bg-white animate-ping' : 'bg-cream-100/50'}`} />
-                {isSharing ? 'Live Sharing Naka-ON' : 'Simulan ang Live Sharing'}
-              </button>
-            )}
+            <button
+              onClick={handleToggleSharing}
+              className={`px-5 py-3 rounded-2xl text-sm font-medium transition flex items-center justify-center gap-2 ${
+                isSharing
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md'
+                  : 'bg-forest-800 text-cream-50 hover:bg-forest-900'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${isSharing ? 'bg-white animate-ping' : 'bg-cream-100/50'}`} />
+              {isSharing ? 'Live Sharing Naka-ON' : 'Simulan ang Live Sharing'}
+            </button>
           </div>
 
           {statusMessage && (
@@ -444,7 +431,7 @@ export function LiveTrackingPage() {
             <span className="text-xs px-2.5 py-1 rounded-full bg-cream-100 text-forest-700">Sim Mode</span>
           </div>
           <p className="text-xs text-forest-700/70 mb-4">
-            Kung hindi ka pa nagmamaneho, i-tap ang alinman sa mga checkpoints sa ibaba upang i-simulate ang biyahe at makita kung paano ito nagre-reflect sa Client App nang live:
+            Kung hindi ka pa nagmamaneho, i-tap ang alinman sa mga checkpoints sa ibaba upang i-simulate ang biyahe at makita kung paano ito nagre-reflect sa Admin app nang live:
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -456,7 +443,6 @@ export function LiveTrackingPage() {
               return (
                 <button
                   key={cp.id}
-                  disabled={readsAll}
                   onClick={() => handleSimulateCheckpoint(cp)}
                   className={`text-left p-3.5 rounded-2xl border transition text-xs flex items-center justify-between disabled:opacity-40 ${
                     isSelected

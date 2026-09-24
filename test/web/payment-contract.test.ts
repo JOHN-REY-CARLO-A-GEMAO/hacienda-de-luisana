@@ -1,7 +1,7 @@
 // Ticket #14: the Guest uploads payment proof from the website. The contract
 // lives under /payments — never in the KYC slot, so an ID review and a money
 // review can never read each other's documents — under the same limits
-// storage.rules enforces (5MB, image/*, own-uid write, Host read).
+// storage.rules enforces (5MB, image/*, own-uid write, Admin read).
 import { proofContentType, proofObjectPath, validateProofFile, PROOF_MAX_BYTES } from '../../src/lib/payments'
 
 describe('proofObjectPath', () => {

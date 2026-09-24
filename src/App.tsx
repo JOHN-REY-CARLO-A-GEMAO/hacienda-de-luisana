@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
-import { ROLE_LABELS, homeForRole } from './lib/auth'
+import { Link, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { homeForRole } from './lib/auth'
 import { useAuth } from './hooks/useAuth'
 import { Nav } from './components/Nav'
 import { Footer } from './components/Footer'
@@ -8,18 +8,11 @@ import { MobileStickyCTA } from './components/MobileStickyCTA'
 import { Home } from './pages/Home'
 import { BookingPage } from './pages/BookingPage'
 import { LiveTrackingPage } from './pages/LiveTrackingPage'
-import { AdminPage } from './pages/AdminPage'
 import { AccountPage } from './pages/AccountPage'
-import { GuestAuthPage, AdminAuthPage } from './pages/AuthPage'
+import { GuestAuthPage } from './pages/AuthPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { LoginForm } from './components/Auth/LoginForm'
 import { useReveal } from './lib/reveal'
-import { isNativeApp } from './lib/native'
-import { AdminApp } from './app/AdminApp'
-import { AdminBookingsScreen } from './app/pages/AdminBookingsScreen'
-import { AdminTrackingScreen } from './app/pages/AdminTrackingScreen'
-import { ClientAnalyticsScreen } from './app/pages/ClientAnalyticsScreen'
-import { AdminRecordsScreen } from './app/pages/AdminRecordsScreen'
 
 function ScrollHandler() {
   const location = useLocation()
@@ -51,49 +44,27 @@ function WebsiteLayout() {
   )
 }
 
-function NativeHomeRedirect() {
-  const location = useLocation()
-  if (isNativeApp && location.pathname === '/') {
-    return <Navigate to="/app" replace />
-  }
-  return null
-}
-
+/**
+ * The Guest website (ADR-0007). Every route here is the Guest's: the public
+ * pages, booking, live location sharing, the Guest's own account. The Admin's
+ * work — reviewing Bookings, KYC, payments, stays, the smart lock, analytics —
+ * lives in the Flutter mobile app under `lib/`, so the old `/admin` and `/app`
+ * addresses answer with a pointer to it rather than a dashboard.
+ */
 export default function App() {
   useReveal()
   return (
     <>
-      <NativeHomeRedirect />
       <Routes>
-        {/* App for Client (Host + Staff). The gate reads the path it stands on,
-            so /app/tracking answers from its own rule, not /app's. */}
-        <Route
-          path="/app"
-          element={
-            <ProtectedRoute>
-              <AdminApp />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<AdminBookingsScreen />} />
-          <Route path="tracking" element={<AdminTrackingScreen />} />
-          <Route path="analytics" element={<ClientAnalyticsScreen />} />
-          <Route path="records" element={<AdminRecordsScreen />} />
-          <Route path="*" element={<Navigate to="/app" replace />} />
-        </Route>
-
-        {/* Website for Bookers and Public Website */}
         <Route element={<WebsiteLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/book" element={<BookingPage />} />
           <Route path="/track" element={<LiveTrackingPage />} />
           <Route path="/share-location" element={<LiveTrackingPage />} />
           <Route path="/login" element={<SignInPage />} />
-          {/* Scoped sign-in pages: Guests enter through /guest/auth, the Host
-              through /admin/auth. Both use the one form, so email and Google
-              arrive through the same session either way. */}
+          {/* The Guest's sign-in page. Email and Google arrive through the
+              same session either way. */}
           <Route path="/guest/auth" element={<GuestAuthPage />} />
-          <Route path="/admin/auth" element={<AdminAuthPage />} />
 
           {/* The Guest's own page: their Bookings, their ID, their Date hold */}
           <Route
@@ -104,17 +75,11 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          
-          {/* Website for Admin — the Host alone: this is where a Booking is
-              approved, an ID is read and a payment is verified. */}
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute>
-                <AdminPage />
-              </ProtectedRoute>
-            }
-          />
+
+          {/* The management dashboards used to be here. They are the Admin
+              mobile app now; anybody with an old bookmark is told so. */}
+          <Route path="/admin/*" element={<AdminMoved />} />
+          <Route path="/app/*" element={<AdminMoved />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
@@ -132,16 +97,47 @@ function SignInPage() {
           <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-8 text-center">
             <div className="eyebrow">Signed in</div>
             <h1 className="font-serif text-3xl mt-2 text-forest-900">
-              You are the {role ? ROLE_LABELS[role] : 'Guest'}
+              {role === 'admin' ? 'Admin account' : 'Welcome back, Guest'}
             </h1>
             <p className="mt-2 text-sm text-forest-700/70">{user.email ?? user.displayName}</p>
+            {role === 'admin' && (
+              <p className="mt-3 text-xs text-forest-700/70 leading-relaxed">
+                Management lives in the Hacienda de LuisAna Admin mobile app. This website only shows a Guest's
+                own bookings.
+              </p>
+            )}
             <Link to={homeForRole(role)} className="btn-primary mt-6 inline-flex text-xs">
-              Go to my page
+              {role === 'admin' ? 'Back to the Hacienda' : 'Go to my bookings'}
             </Link>
           </div>
         ) : (
           <LoginForm />
         )}
+      </div>
+    </div>
+  )
+}
+
+/** The address of the retired web dashboards: a signpost to the Admin app. */
+function AdminMoved() {
+  return (
+    <div className="pt-32 pb-24 min-h-screen bg-cream-50 flex items-center">
+      <div className="mx-auto max-w-lg text-center px-5">
+        <div className="eyebrow">Admin</div>
+        <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">The Admin dashboard moved</h1>
+        <p className="mt-4 text-forest-800/80 text-sm leading-relaxed">
+          Bookings, KYC review, payment verification, stays, the smart lock, guest tracking and analytics are all in
+          the <strong>Hacienda de LuisAna Admin</strong> mobile app. This website is for Guests: browsing, booking,
+          and following their own stay.
+        </p>
+        <div className="mt-8 flex flex-wrap gap-3 justify-center">
+          <Link to="/" className="btn-primary text-xs">
+            Back to the Hacienda
+          </Link>
+          <Link to="/account" className="btn-ghost text-xs">
+            My Bookings
+          </Link>
+        </div>
       </div>
     </div>
   )

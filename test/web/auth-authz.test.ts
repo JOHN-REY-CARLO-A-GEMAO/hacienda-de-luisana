@@ -1,18 +1,18 @@
-// API authorization — what each of the three roles may actually do to a Booking.
+// API authorization — what each of the two roles may actually do to a Booking.
 //
-// The store is the seam every surface calls: the Host dashboard, the client app,
-// the Guest's own account page and the mobile app all go through
-// `cloudBookingsDB.transition`, which asks the lifecycle whether *this actor* may
-// take *this action* on *this Booking*. A session's role becomes that actor, so
-// a person who edits the frontend to say they are the Host still sends the actor
-// the session resolved — and the refusal below is what they get, before
-// firestore.rules refuses it again for anybody who skips the app entirely.
+// The store is the seam every web surface calls: the Guest's booking form and
+// account page go through `cloudBookingsDB.transition`, which asks the lifecycle
+// whether *this actor* may take *this action* on *this Booking*. The Admin's
+// mobile app applies the same table (lib/services/booking_lifecycle.dart). A
+// session's role becomes that actor, so a person who edits the frontend to say
+// they are the Admin still sends the actor the session resolved — and the
+// refusal below is what they get, before firestore.rules refuses it again for
+// anybody who skips the app entirely.
 import { activityLogDB, cloudBookingsDB } from '../../src/lib/firestoreBookings'
 import type { ActionAccepted, Actor } from '../../src/lib/booking'
 
 const guest: Actor = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos', now: '2026-09-20T01:00:00.000Z' }
-const host: Actor = { actor: 'host', actor_id: 'host-1', actor_name: 'Ana Luisana', now: '2026-09-20T01:00:00.000Z' }
-const staff: Actor = { actor: 'staff', actor_id: 'staff-1', actor_name: 'Ben Cariño', now: '2026-09-20T01:00:00.000Z' }
+const admin: Actor = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana', now: '2026-09-20T01:00:00.000Z' }
 
 const request = {
   guest_name: 'Maria Santos',
@@ -45,19 +45,19 @@ async function atStage(stage: 'Pending' | 'KYC Submitted' | 'Approved' | 'Paymen
   await expectAccepted(booking.id, { type: 'UploadKyc', kyc_id_url: 'gs://kyc/guest-1/id.jpg' }, guest)
   if (stage === 'KYC Submitted') return booking.id
 
-  await expectAccepted(booking.id, { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } }, host)
+  await expectAccepted(booking.id, { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } }, admin)
   if (stage === 'Approved') return booking.id
 
   await expectAccepted(booking.id, { type: 'ChoosePaymentPlan', plan: 'full', rateCard }, guest)
   if (stage === 'Payment Pending') return booking.id
 
   await expectAccepted(booking.id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/1.jpg', amount_claimed: 30500 }, guest)
-  await expectAccepted(booking.id, { type: 'VerifyPayment', amount_verified: 30500 }, host)
+  await expectAccepted(booking.id, { type: 'VerifyPayment', amount_verified: 30500 }, admin)
   if (stage === 'Reserved') return booking.id
 
-  await expectAccepted(booking.id, { type: 'CheckIn' }, host)
-  await expectAccepted(booking.id, { type: 'BeginStay' }, host)
-  await expectAccepted(booking.id, { type: 'CheckOut' }, host)
+  await expectAccepted(booking.id, { type: 'CheckIn' }, admin)
+  await expectAccepted(booking.id, { type: 'BeginStay' }, admin)
+  await expectAccepted(booking.id, { type: 'CheckOut' }, admin)
   return booking.id
 }
 
@@ -68,7 +68,7 @@ async function expectAccepted(id: string, action: Parameters<typeof cloudBooking
 }
 
 describe('what a Guest may do through the API', () => {
-  it('submits a Booking, sends an ID, and withdraws before the Host decides', async () => {
+  it('submits a Booking, sends an ID, and withdraws before the Admin decides', async () => {
     const id = await atStage('KYC Submitted')
 
     const withdrawn = await cloudBookingsDB.transition(
@@ -117,70 +117,30 @@ describe('what a Guest may do through the API', () => {
   })
 })
 
-describe('what Staff may do through the API', () => {
-  it('completes a stay that has been cleaned and inspected', async () => {
+describe('the retired Staff and Host actors', () => {
+  it('are refused everything: there is no such role any more', async () => {
+    // Anything still sending the old actor kinds — a stale client, a hand-made
+    // request — gets nothing, not even the one move Staff used to have.
     const id = await atStage('Checked-Out')
-
-    const completed = await cloudBookingsDB.transition(id, { type: 'Complete' }, staff)
-
-    expect(completed.ok).toBe(true)
-    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Completed' })
-  })
-
-  it('cannot approve a Booking, refuse one, or cancel one', async () => {
-    const id = await atStage('KYC Submitted')
-
-    const approve = await cloudBookingsDB.transition(
-      id,
-      { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
-      staff,
-    )
-    const refuse = await cloudBookingsDB.transition(id, { type: 'Reject', reason: 'Not for us to say.' }, staff)
-    const cancel = await cloudBookingsDB.transition(id, { type: 'Cancel', reason: 'Tidying up.' }, staff)
-
-    expect(approve.ok).toBe(false)
-    expect(refuse.ok).toBe(false)
-    expect(cancel.ok).toBe(false)
-    if (!approve.ok) expect(approve.reason).toMatch(/staff cannot Approve/i)
-    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'KYC Submitted' })
-  })
-
-  it('cannot verify a payment or return a refund', async () => {
-    const id = await atStage('Payment Pending')
-    await expectAccepted(id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/3.jpg' }, guest)
-
-    const verify = await cloudBookingsDB.transition(id, { type: 'VerifyPayment', amount_verified: 30500 }, staff)
-    expect(verify.ok).toBe(false)
-    if (!verify.ok) expect(verify.reason).toMatch(/staff cannot VerifyPayment/i)
-
-    const cancelled = await atStage('Reserved')
-    await expectAccepted(cancelled, { type: 'Cancel', reason: 'Guest cancelled.' }, host)
-    const refund = await cloudBookingsDB.transition(cancelled, { type: 'MarkRefunded' }, staff)
-    expect(refund.ok).toBe(false)
-
-    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Payment Pending' })
-  })
-
-  it('cannot complete a stay that has not been checked out yet', async () => {
-    const id = await atStage('Reserved')
-
-    const tooEarly = await cloudBookingsDB.transition(id, { type: 'Complete' }, staff)
-
-    // The one move Staff has is still bound by the lifecycle: cleaning a room
-    // somebody is still sleeping in does not finish their stay.
-    expect(tooEarly.ok).toBe(false)
-    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Reserved' })
+    for (const actor of ['staff', 'host'] as const) {
+      const complete = await cloudBookingsDB.transition(id, { type: 'Complete' }, {
+        actor,
+        actor_id: `${actor}-1`,
+      } as unknown as Actor)
+      expect(complete.ok, `${actor} should be refused`).toBe(false)
+    }
+    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Checked-Out' })
   })
 })
 
-describe('what the Host may do through the API', () => {
+describe('what the Admin may do through the API', () => {
   it('approves a Booking whose ID has been sent, and the dates hold', async () => {
     const id = await atStage('KYC Submitted')
 
     const approved = await expectAccepted(
       id,
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
-      host,
+      admin,
     )
 
     expect(approved.patch.status).toBe('Approved')
@@ -191,7 +151,7 @@ describe('what the Host may do through the API', () => {
     const id = await atStage('Payment Pending')
     await expectAccepted(id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/4.jpg', amount_claimed: 30500 }, guest)
 
-    await expectAccepted(id, { type: 'VerifyPayment', amount_verified: 30500 }, host)
+    await expectAccepted(id, { type: 'VerifyPayment', amount_verified: 30500 }, admin)
 
     expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Reserved', payment_status: 'verified' })
   })
@@ -199,30 +159,49 @@ describe('what the Host may do through the API', () => {
   it('cancels a Booking any Guest may not cancel alone, and the refund is settled', async () => {
     const id = await atStage('Reserved')
 
-    await expectAccepted(id, { type: 'Cancel', reason: 'The Main House needs repairs.', refund: { rateCard } }, host)
+    await expectAccepted(id, { type: 'Cancel', reason: 'The Main House needs repairs.', refund: { rateCard } }, admin)
 
     expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Cancelled', refund_status: 'initiated' })
+  })
+
+  it('completes a stay that has been checked out — there is no Staff to hand it to', async () => {
+    const id = await atStage('Checked-Out')
+
+    await expectAccepted(id, { type: 'Complete' }, admin)
+
+    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Completed' })
+  })
+
+  it('cannot complete a stay that has not been checked out yet', async () => {
+    const id = await atStage('Reserved')
+
+    const tooEarly = await cloudBookingsDB.transition(id, { type: 'Complete' }, admin)
+
+    // Every move is still bound by the lifecycle: cleaning a room somebody is
+    // still sleeping in does not finish their stay.
+    expect(tooEarly.ok).toBe(false)
+    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Reserved' })
   })
 })
 
 describe('who the Activity log says did it', () => {
-  it('names the Staff member who completed a stay, not the Host', async () => {
+  it('names the Admin who completed a stay', async () => {
     const id = await atStage('Checked-Out')
 
-    await expectAccepted(id, { type: 'Complete' }, staff)
+    await expectAccepted(id, { type: 'Complete' }, admin)
 
     const history = await activityLogDB.list(id)
     expect(history.at(-1)).toMatchObject({
       action: 'Complete',
       from_status: 'Checked-Out',
       to_status: 'Completed',
-      actor: 'staff',
-      actor_id: 'staff-1',
-      actor_name: 'Ben Cariño',
+      actor: 'admin',
+      actor_id: 'admin-1',
+      actor_name: 'Ana Luisana',
     })
   })
 
-  it('names the Guest who withdrew, and the Host who approved', async () => {
+  it('names the Guest who withdrew', async () => {
     const id = await atStage('KYC Submitted')
 
     await expectAccepted(id, { type: 'Cancel', reason: 'Cannot make it.' }, guest)
@@ -250,11 +229,11 @@ describe('who the Activity log says did it', () => {
   })
 })
 
-describe('an actor that is not one of the three roles', () => {
+describe('an actor that is not one of the two roles', () => {
   it('gets nothing at all, whatever it claims to be', async () => {
     const id = await atStage('KYC Submitted')
 
-    for (const actor of ['system', 'owner', 'admin', 'superuser', ''] as const) {
+    for (const actor of ['system', 'owner', 'host', 'staff', 'superuser', ''] as const) {
       const result = await cloudBookingsDB.transition(
         id,
         { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },

@@ -70,12 +70,12 @@ const DATE_HOLDING_STATUSES: readonly BookingStatus[] = [
 ]
 
 /**
- * The statuses the Host has already committed dates to.
+ * The statuses the Admin has already committed dates to.
  *
  * A Booking still waiting for review holds its dates against *other Guests*
  * (they are the reason a search says "taken"), but it does not block another
  * Booking's approval: two Guests may queue for the same one-unit Accommodation
- * and the Host approves whichever they choose. Counting the queue at approval
+ * and the Admin approves whichever they choose. Counting the queue at approval
  * would make a one-unit Accommodation unapprovable forever.
  */
 const COMMITTED_STATUSES: readonly BookingStatus[] = [
@@ -90,7 +90,7 @@ const COMMITTED_STATUSES: readonly BookingStatus[] = [
 
 /**
  * The statuses whose Date hold still runs down: everything waiting for the
- * Host's review. Once a Booking is Approved the dates are firmly held, so no
+ * Admin's review. Once a Booking is Approved the dates are firmly held, so no
  * hold expiry can release them (CONTEXT.md § Date hold, flow §2 step 6b).
  */
 const EXPIRABLE_STATUSES: readonly BookingStatus[] = ['Pending', 'KYC Submitted']
@@ -143,7 +143,7 @@ export function holdMsRemaining(booking: DateHoldFields, now: string | number | 
  * The status a Booking reads as, as at `now`.
  *
  * This is ADR-0002's read-time rule in one place: every surface that answers
- * "what state is this Booking in?" — the Guest's view, the Host's list, the
+ * "what state is this Booking in?" — the Guest's view, the Admin's list, the
  * approval-time re-check — calls this instead of reading the stored field, so
  * no two surfaces can disagree about an expired hold. The stored document is
  * not rewritten by reading it.
@@ -177,14 +177,14 @@ export type AvailabilityOptions = {
   /**
    * How many units of the Accommodation can be held at once. Omitted means
    * availability is unknown, so nothing is reported as a conflict: the
-   * Accommodation rate card is the Host's to publish, and this module invents
+   * Accommodation rate card is the Admin's to publish, and this module invents
    * no numbers.
    */
   unitsAvailable?: number
   /** Booking to leave out — the approval-time re-check must not conflict with itself. */
   excludeId?: string
   /**
-   * Count only the Bookings the Host has already committed the dates to, rather
+   * Count only the Bookings the Admin has already committed the dates to, rather
    * than everything still holding them. This is what the approval-time re-check
    * uses (G2); a Guest-facing availability check leaves it off and sees the
    * queue as well.
@@ -220,7 +220,7 @@ export function findDateConflicts<T extends HoldBearingBooking>(
   })
 
   // One Booking takes one unit of its Accommodation: which of the two camping
-  // units a Guest gets is the Host's to allocate, and is not modelled here.
+  // units a Guest gets is the Admin's to allocate, and is not modelled here.
   if (overlapping.length < unitsAvailable) return []
 
   return [...overlapping].sort((a, b) => (a.check_in < b.check_in ? -1 : a.check_in > b.check_in ? 1 : 0))
@@ -290,7 +290,7 @@ export function suggestAlternativeDates<T extends HoldBearingBooking>(
   const requested = parseDate(request.check_in)
   if (requested === null || nights < 1 || limit < 1) return []
 
-  // Free already: suggesting elsewhere would only invite the Host to move a
+  // Free already: suggesting elsewhere would only invite the Admin to move a
   // Guest who does not need moving.
   if (findDateConflicts(request, bookings, options).length === 0) return []
 

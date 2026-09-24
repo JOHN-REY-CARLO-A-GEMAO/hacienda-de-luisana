@@ -204,7 +204,7 @@ export const activityLogStorage = {
  * Put entries in the order they happened.
  *
  * The clock is not enough: two changes can land in the same millisecond, and a
- * Host reading the log the wrong way round draws the wrong conclusion.
+ * Admin reading the log the wrong way round draws the wrong conclusion.
  */
 function inOrder(entries: readonly ActivityLogEntry[]): ActivityLogEntry[] {
   return [...entries].sort((a, b) => {
@@ -244,7 +244,7 @@ function writeActivity(entries: ActivityLogEntry[]) {
  *
  * Documents written before the vocabulary change still say `Confirmed`; every
  * read turns that into `Reserved` instead of rewriting what is stored (spec #9).
- * Both adapters apply this, so a Guest view and the Host view can never
+ * Both adapters apply this, so a Guest view and the Admin view can never
  * disagree about the same Booking.
  */
 function migrateOnRead(booking: Booking): Booking {

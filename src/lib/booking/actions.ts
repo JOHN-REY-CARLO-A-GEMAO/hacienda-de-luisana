@@ -41,16 +41,16 @@ export type BookingState = {
   status: BookingStatus | string
   kyc_status?: KycStatus | string
   kyc_id_url?: string | null
-  /** The receipt the Guest sends alongside the ID; /admin reviews both. */
+  /** The receipt the Guest sends alongside the ID; the Admin app reviews both. */
   kyc_receipt_url?: string | null
   kyc_reject_reason?: string | null
-  /** Why the Host refused this Booking at review. */
+  /** Why the Admin refused this Booking at review. */
   rejection_reason?: string | null
   payment_plan?: PaymentPlan
   payment_status?: PaymentStatus | string
   payment_proof_url?: string | null
   payment_reject_reason?: string | null
-  /** What the Guest says they sent, before the Host verifies it. */
+  /** What the Guest says they sent, before the Admin verifies it. */
   amount_claimed?: number
   stay_total?: number
   amount_due?: number
@@ -65,7 +65,7 @@ export type BookingState = {
    * The published policy version in force when the Guest chose their payment
    * plan, stamped so a later republish changes the terms of future choices
    * only — never the refund terms of a stay already promised. Null when the
-   * Host had published nothing: that refunds nothing, which is what an
+   * Admin had published nothing: that refunds nothing, which is what an
    * unpublished policy amounts to.
    */
   policy_version?: string | null
@@ -78,7 +78,7 @@ export type BookingState = {
 /** The fields an accepted action changes. Absent means untouched. */
 export type BookingPatch = Partial<Omit<BookingState, 'id' | 'ref_id' | 'created_at'>>
 
-export type ActorKind = 'guest' | 'host' | 'staff' | 'system'
+export type ActorKind = 'guest' | 'admin' | 'system'
 
 /** Who is acting. The Activity log is worthless without this. */
 export type Actor = {
@@ -104,7 +104,7 @@ export type BookingAction =
   | {
       type: 'ChoosePaymentPlan'
       plan: PaymentPlan
-      /** The Host's published figures; the stay is quoted from them when no total is recorded. */
+      /** The Admin's published figures; the stay is quoted from them when no total is recorded. */
       rateCard?: RateCard
       /** The quoted stay total, when the quote is a recorded number rather than a card quote. */
       stayTotal?: number
@@ -139,7 +139,7 @@ export type BookingAction =
  * is written by the state change, not by the UI that triggered it).
  *
  * `SetStatus` is not an action anybody can take: it is what the store records
- * when a caller writes a status straight past the lifecycle, which the Host
+ * when a caller writes a status straight past the lifecycle, which the Admin
  * dashboard still does today. It exists so that no status change is unlogged;
  * ticket #13 moves those writes onto the actions above and retires it.
  */
@@ -159,8 +159,8 @@ export type ActivityLogEntry = {
   /**
    * Position in this Booking's log, assigned as the entry is appended.
    *
-   * Two state changes can share an instant — a Guest's upload and the Host's
-   * approval inside the same millisecond — and the Host still has to read them
+   * Two state changes can share an instant — a Guest's upload and the Admin's
+   * approval inside the same millisecond — and the Admin still has to read them
    * in the order they happened, so the order cannot rest on the timestamp alone.
    */
   seq?: number
@@ -175,9 +175,9 @@ export type ActionAccepted = {
 
 export type ActionRefused = {
   ok: false
-  /** Plain-language reason, safe to show the Guest or the Host. */
+  /** Plain-language reason, safe to show the Guest or the Admin. */
   reason: string
-  /** Set when the refusal is a date clash, so the Host can suggest alternatives. */
+  /** Set when the refusal is a date clash, so the Admin can suggest alternatives. */
   conflicts?: HoldBearingBooking[]
 }
 
@@ -193,41 +193,42 @@ const ACTION_RULES: Record<
   { actors: readonly ActorKind[]; from: readonly BookingStatus[]; to: BookingStatus | 'stays' }
 > = {
   UploadKyc: { actors: ['guest'], from: ['Pending', 'KYC Submitted'], to: 'KYC Submitted' },
-  Approve: { actors: ['host'], from: ['KYC Submitted'], to: 'Approved' },
-  Reject: { actors: ['host'], from: ['Pending', 'KYC Submitted', 'Approved'], to: 'Rejected' },
+  Approve: { actors: ['admin'], from: ['KYC Submitted'], to: 'Approved' },
+  Reject: { actors: ['admin'], from: ['Pending', 'KYC Submitted', 'Approved'], to: 'Rejected' },
   // Refusing an ID asks the Guest for another one inside the remaining hold, so
   // it records a decision rather than moving the Booking (flow §2 step 6b).
   // Refusing the Booking outright is `Reject`, which releases the dates.
-  RejectKyc: { actors: ['host'], from: ['KYC Submitted'], to: 'stays' },
+  RejectKyc: { actors: ['admin'], from: ['KYC Submitted'], to: 'stays' },
   ChoosePaymentPlan: { actors: ['guest'], from: ['Approved'], to: 'Payment Pending' },
   UploadPaymentProof: { actors: ['guest'], from: ['Payment Pending'], to: 'stays' },
-  VerifyPayment: { actors: ['host'], from: ['Payment Pending'], to: 'Reserved' },
-  RejectPaymentProof: { actors: ['host'], from: ['Payment Pending'], to: 'stays' },
+  VerifyPayment: { actors: ['admin'], from: ['Payment Pending'], to: 'Reserved' },
+  RejectPaymentProof: { actors: ['admin'], from: ['Payment Pending'], to: 'stays' },
   Cancel: {
-    actors: ['guest', 'host'],
+    actors: ['guest', 'admin'],
     from: ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending', 'Reserved'],
     to: 'Cancelled',
   },
   // Flow §2 step 11: the Refund pipeline ends when the money is back with the
   // Guest. The Booking stays Cancelled; the Refund is what moves.
-  MarkRefunded: { actors: ['host'], from: ['Cancelled'], to: 'stays' },
+  MarkRefunded: { actors: ['admin'], from: ['Cancelled'], to: 'stays' },
   // The ID's purpose ended at approval, so purging erases the documents from
   // Storage and clears the URLs, within 30 days of check-out (RA 10173). It
   // stays available while the Guest is still staying: erasure is the data
   // subject's right and does not wait for the door to close.
-  PurgeKyc: { actors: ['host'], from: ['Staying', 'Checked-Out', 'Completed'], to: 'stays' },
-  // An access decision, not a lifecycle move: the Host pulls the Credential
+  PurgeKyc: { actors: ['admin'], from: ['Staying', 'Checked-Out', 'Completed'], to: 'stays' },
+  // An access decision, not a lifecycle move: the Admin pulls the Credential
   // from a stay that is live. The Booking does not move; the lock's allowlist
   // entry is removed on the next physical touch (first hardware generation),
   // and the log records who decided and when.
-  RevokeKey: { actors: ['host'], from: ['Reserved', 'Checked-In', 'Staying'], to: 'stays' },
+  RevokeKey: { actors: ['admin'], from: ['Reserved', 'Checked-In', 'Staying'], to: 'stays' },
   Expire: { actors: ['system'], from: ['Pending', 'KYC Submitted'], to: 'Expired' },
   // The first successful Credential use on the check-in day (flow §3 step 6).
-  CheckIn: { actors: ['system', 'host'], from: ['Reserved'], to: 'Checked-In' },
-  BeginStay: { actors: ['system', 'host'], from: ['Checked-In'], to: 'Staying' },
-  CheckOut: { actors: ['system', 'host'], from: ['Staying'], to: 'Checked-Out' },
-  // Only once cleaning and inspection have passed (flow §5 step 10).
-  Complete: { actors: ['host', 'staff', 'system'], from: ['Checked-Out'], to: 'Completed' },
+  CheckIn: { actors: ['system', 'admin'], from: ['Reserved'], to: 'Checked-In' },
+  BeginStay: { actors: ['system', 'admin'], from: ['Checked-In'], to: 'Staying' },
+  CheckOut: { actors: ['system', 'admin'], from: ['Staying'], to: 'Checked-Out' },
+  // Only once cleaning and inspection have passed (flow §5 step 10). The Admin
+  // records it — there is no separate Staff role (ADR-0007).
+  Complete: { actors: ['admin', 'system'], from: ['Checked-Out'], to: 'Completed' },
 }
 
 /**
@@ -235,7 +236,7 @@ const ACTION_RULES: Record<
  *
  * Mostly one step along the lifecycle, with one exception: verifying a Payment
  * proof records Payment Verified and lands the Booking on Reserved in the same
- * action, because Payment Verified is a fact the Host recorded rather than a
+ * action, because Payment Verified is a fact the Admin recorded rather than a
  * place a Booking rests (CONTEXT.md § Booking status).
  */
 function isLegalMove(from: BookingStatus, to: BookingStatus): boolean {
@@ -280,7 +281,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
   // A Booking whose Date hold ran out reads as Expired before anything else is
   // checked, so no surface can act on dates that are already back in the pool.
   // Only a recorded expiry counts here: a Booking stored before holds existed has
-  // no countdown to run out, and refusing the Host's review of it would strand it
+  // no countdown to run out, and refusing the Admin's review of it would strand it
   // forever. Availability still treats that Booking as holding nothing.
   if (action.type !== 'Expire' && booking.hold_expires_at && effectiveStatus(booking, at) === 'Expired') {
     return refuse(
@@ -308,16 +309,16 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       // Only touched when the Guest actually sent one, so resending the ID alone
       // does not wipe a receipt that is already on file.
       if (action.kyc_receipt_url !== undefined) patch.kyc_receipt_url = action.kyc_receipt_url
-      // A resubmission clears the Host's rejection: the Guest fixed what was wrong.
+      // A resubmission clears the Admin's rejection: the Guest fixed what was wrong.
       if (booking.kyc_reject_reason) patch.kyc_reject_reason = null
       break
     }
 
     case 'Approve': {
       if (normalizeKyc(booking.kyc_status) !== 'submitted') {
-        return refuse('The Guest has to submit a government ID (KYC) before the Host can approve.')
+        return refuse('The Guest has to submit a government ID (KYC) before the Admin can approve.')
       }
-      // G2: the system re-checks availability at approval, not the Host's eyeball.
+      // G2: the system re-checks availability at approval, not the Admin's eyeball.
       const conflicts = findDateConflicts(booking, action.availability.bookings, {
         unitsAvailable: action.availability.unitsAvailable,
         now: at,
@@ -360,7 +361,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
 
     case 'ChoosePaymentPlan': {
       // The money the Guest commits to must come from a quote: from the
-      // published card when the Host has one, from the recorded total when the
+      // published card when the Admin has one, from the recorded total when the
       // quote is a number the Booking carries (the card for this property is
       // not yet a machine-readable document). Neither is published — there is
       // no price to commit the Guest to, so the choice is refused.
@@ -373,7 +374,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
         option = paymentOptions(booking, action.rateCard).find((o) => o.plan === action.plan)
       }
       if (!option) {
-        return refuse('The Host has not published that payment option for this Accommodation.')
+        return refuse('The Admin has not published that payment option for this Accommodation.')
       }
       patch.payment_plan = option.plan
       patch.payment_status = 'pending'
@@ -475,10 +476,10 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
     }
 
     case 'RevokeKey': {
-      // Nothing moves on the Booking: the Host is pulling the Credential off a
+      // Nothing moves on the Booking: the Admin is pulling the Credential off a
       // stay that is live. The lock's allowlist entry leaves on the next
       // physical touch; what is stored is the decision, and who made it.
-      reason = 'Credential revoked by the Host.'
+      reason = 'Credential revoked by the Admin.'
       break
     }
 
@@ -490,7 +491,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
             : 'This Booking has no Date hold recorded, so there is no expiry to write.',
         )
       }
-      reason = 'Date hold ran out before the Host reviewed the Booking.'
+      reason = 'Date hold ran out before the Admin reviewed the Booking.'
       break
     }
 
@@ -527,7 +528,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
  * Is the read-time expiry rule actually due on this Booking?
  *
  * `Expire` only materialises what every surface already reads (ADR-0002): it is
- * refused while the Date hold still has time left, and refused once the Host has
+ * refused while the Date hold still has time left, and refused once the Admin has
  * acted, because an approved Booking's dates are firmly held.
  */
 function isExpireDue(booking: BookingState, at: string): boolean {

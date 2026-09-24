@@ -3,7 +3,7 @@
 // Hacienda de LuisAna
 // ----------------------------------------------------------------------------
 // A thin React seam over `src/lib/authSession`: it holds the session's state, and
-// hands pages the two questions they actually ask — "which of the three roles am
+// hands pages the two questions they actually ask — "which of the two roles am
 // I" and "may I do this" — plus the actions the sign-in form needs.
 //
 // The answers come from the session, never from a component's own state, so a
@@ -29,7 +29,7 @@ export type AuthContextType = {
   user: SessionUser | null
   /** The stored Profile the role was read from, when there is one. */
   profile: Profile | null
-  /** One of the three roles, or null while loading and while signed out. */
+  /** Guest or Admin, or null while loading and while signed out. */
   role: Role | null
   /** True while a session is being restored or a Profile is being read. */
   loading: boolean
@@ -49,15 +49,6 @@ export type AuthContextType = {
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
-  /** Demo mode only: step into a role there is no Host to grant. */
-  signInAsRole: (role: Role) => Promise<void>
-  /** Host only: decide which of the three roles somebody has. */
-  assignRole: (
-    target: { uid: string; email?: string | null; displayName?: string | null },
-    role: Role,
-  ) => Promise<Profile>
-  /** Host only: everybody who has a Profile. */
-  team: () => Promise<Profile[]>
   /** Re-read the signed-in person's Profile. */
   refresh: () => Promise<void>
 }
@@ -82,9 +73,6 @@ export const AuthContext = createContext<AuthContextType>({
   loginWithGoogle: notAvailable,
   logout: notAvailable,
   resetPassword: notAvailable,
-  signInAsRole: notAvailable,
-  assignRole: notAvailable,
-  team: notAvailable,
   refresh: notAvailable,
 })
 
@@ -121,11 +109,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetPassword: async (email) => {
         await session.resetPassword(email)
       },
-      signInAsRole: async (role) => {
-        await session.signInAsRole(role)
-      },
-      assignRole: (target, role) => session.assignRole(target, role),
-      team: () => session.team(),
       refresh: () => session.refresh(),
     }),
     [session, state],

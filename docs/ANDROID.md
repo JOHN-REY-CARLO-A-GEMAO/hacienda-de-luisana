@@ -1,113 +1,92 @@
-# Android app — Android Studio
+# Admin mobile app — Android build
 
-The guest app (`/app`) is wrapped with **Capacitor**. Open the `android/` folder in Android Studio, then run it on an emulator or a USB-connected phone.
+The Admin app is a **Flutter** project (`lib/` + `android/`). It is the Admin's only application: every management function of the system lives here (ADR-0007). Guests never install it — they use the website.
 
-This sandbox cannot run Android Studio. Do these steps **on your computer**.
+This sandbox cannot run Android Studio or the Flutter SDK. Do these steps **on your computer**.
 
 ---
 
 ## 1. One-time setup
 
-1. Install [Android Studio](https://developer.android.com/studio) (Ladybug / 2024.2+ recommended).
-2. First launch → **More Actions → SDK Manager** and install:
-   - Android SDK Platform **36** (or the version Studio prompts)
-   - Android SDK Build-Tools
+1. Install [Flutter](https://docs.flutter.dev/get-started/install) (stable, Dart ≥ 3.2) and [Android Studio](https://developer.android.com/studio).
+2. In Android Studio → **SDK Manager** install:
+   - Android SDK Platform **36**
+   - Android SDK Build-Tools, NDK `30.0.14904198` (or let Gradle fetch it)
    - Android Emulator
-3. Clone this repo and install JS deps:
+3. `flutter doctor` until Android is green.
+4. Clone and fetch packages:
 
 ```bash
 git clone https://github.com/JOHN-REY-CARLO-A-GEMAO/hacienda-de-luisana.git
 cd hacienda-de-luisana
-git checkout arena/01a0430d-hacienda-de-luisana
-npm install
+flutter pub get
 ```
 
-Optional Firebase: copy `.env.example` → `.env.local` and fill keys. Without it, bookings still work in local/demo mode.
+### Firebase (required to sign in)
+
+The app signs in with Firebase Auth only, so a Firebase Android app is needed to get past the gate:
+
+1. Firebase console → project settings → **Add app → Android**, package name `com.haciendadeluisana.client2` (the `applicationId` in `android/app/build.gradle`).
+2. Add the debug **SHA-1** (`cd android && ./gradlew signingReport`) so Google sign-in works. Email + password works without it.
+3. Download `google-services.json` to `android/app/` (gitignored), or run `flutterfire configure` to regenerate `lib/firebase_options.dart`.
+4. Enable **Email/Password** and **Google** sign-in providers.
+5. Make sure the Admin's address is in `firestore.rules` → `adminEmails()` (mirrored in `storage.rules`, `src/lib/auth/profile.ts`, `lib/services/auth_store.dart`), *or* create `profiles/{uid}` with `role: 'admin'` for that account.
+
+Without Firebase the app still starts and shows in-memory demo data behind the gate, but no account can pass the gate.
 
 ---
 
-## 2. Build the web app into the Android project
+## 2. Run
 
 ```bash
-npm run android:sync
+flutter devices
+flutter run                    # picks the connected device / running emulator
+flutter run -d emulator-5554   # or a specific one
 ```
 
-This runs `vite build` and copies `dist/` into `android/`. **Re-run this whenever you change React/TS/CSS.**
+Or open the **`android/`** folder in Android Studio (not the repo root) and press Run. The app installs as **Hacienda Admin**.
 
-Then open Android Studio:
-
-```bash
-npm run android:open
-```
-
-Or in Android Studio: **File → Open** and select the **`android`** folder (not the repo root).
+Hot reload: press `r` in the `flutter run` terminal after editing Dart.
 
 ---
 
-## 3. Run / install
+## 3. Tests
 
-1. Wait for **Gradle Sync** (first time downloads a lot).
-2. Pick a device:
-   - **Emulator:** Device Manager → Create Device → Pixel 6 → system image (e.g. UpsideDownCake / API 34) → Finish → Play.
-   - **Physical phone:** enable Developer options + USB debugging, plug in, allow the RSA prompt.
-3. Click the green **Run** button (Shift+F10).
-4. The app installs as **Hacienda de LuisAna** and opens the guest tabs (Home / Stay / Explore / Book / Account).
+```bash
+flutter test                                # all Dart tests
+flutter test test/booking_lifecycle_test.dart
+```
 
-Package id: `com.haciendadeluisana.app`
+`test/booking_lifecycle_test.dart` covers the Admin's side of the Booking lifecycle (approve / reject / verify / cancel + refund / stay progression / hold expiry), `test/published_rates_test.dart` the rates document validation, and `test/booking_model_test.dart` the Firestore document mapping.
 
 ---
 
-## 4. After you change the website/app code
+## 4. Release build
 
 ```bash
-npm run android:sync
+flutter build apk --release          # android/app/build/outputs/apk/release/
+flutter build appbundle --release    # for Play Console
 ```
 
-Then Run again in Android Studio (or **Build → Rebuild Project**).
-
-If the emulator still shows an old UI: **Run → Edit Configurations** is fine; usually a fresh Run is enough. You can also uninstall the app from the emulator and Run again.
+`android/app/build.gradle` currently signs release with the debug key; generate a keystore and a `key.properties` before a real release.
 
 ---
 
-## 5. Live reload (optional, while coding)
-
-So the phone/emulator loads your Vite dev server instead of the bundled `dist`:
-
-1. Find your computer’s LAN IP (`ipconfig` on Windows, `ifconfig` / `ip a` on Mac/Linux), e.g. `192.168.1.23`.
-2. Phone and computer must be on the **same Wi‑Fi**.
-3. Start Vite, then sync with that URL:
-
-```bash
-npm run dev
-CAP_SERVER_URL=http://192.168.1.23:5173 npx cap sync android
-```
-
-Then Run in Android Studio. Cleartext HTTP is allowed only when `CAP_SERVER_URL` is set.
-
-To go back to the bundled app:
-
-```bash
-npm run android:sync
-```
-
----
-
-## 6. Troubleshooting
+## 5. Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| Studio opened the repo root | Close it. **File → Open → `android/`** |
-| SDK location not found | Android Studio → Settings → Languages & Frameworks → Android SDK. This writes `android/local.properties` (gitignored). |
-| Gradle / Java errors | Capacitor 8 wants **JDK 21**. Studio usually bundles it: Settings → Build → Gradle → Gradle JDK → `jbr-21`. |
-| White screen | Chrome on desktop: `chrome://inspect` → inspect the WebView. Re-run `npm run android:sync`. |
-| `tel:` / Maps / Messenger don’t open | Use a real device (emulator has no phone/Messenger). Maps should still open. |
-| Booking stays in demo mode | Add `.env.local` with `VITE_FIREBASE_*`, then `npm run android:sync` again. |
-| Google sign-in (owner admin) | Not used in the guest app. Popups are unreliable inside a WebView. |
+| `flutter.sdk not set in local.properties` | Run `flutter pub get` once from the repo root, or open `android/` in Android Studio (it writes `android/local.properties`). |
+| Gradle / Java errors | Use the JDK Android Studio bundles (Settings → Build → Gradle → Gradle JDK → `jbr-17` or newer). |
+| Google sign-in dies after the account picker | Missing SHA-1 in the Firebase console, or the web OAuth client id in `AuthStore.kServerClientId` does not match the project. Use email + password meanwhile. |
+| "Not authorized" after signing in | The account is not the Admin: add it to `adminEmails()` in `firestore.rules` and redeploy, or set `profiles/{uid}.role = 'admin'`. |
+| Every list shows the same demo data | Firebase is not initialised (no `google-services.json` / `firebase_options.dart`), or the rules deny the read — check the Firestore rules deploy and that the signed-in account is the Admin. |
+| `tel:` / SMS don't open | Use a real device (the emulator has no dialer). |
 
 ---
 
-## 7. What this is / isn’t
+## 6. What this is / isn't
 
-- **Is:** an installable Android app of the guest experience at `/app`.
-- **Isn’t:** a Play Store release yet (no signing key / store listing). For that: **Build → Generate Signed Bundle / APK**.
-- iOS (Xcode) is not set up yet.
+- **Is:** the Admin's operations app — bookings, KYC, payments, refunds, rates, stays, radar, smart-lock logs, rooms, CRM, analytics.
+- **Isn't:** a Guest app. There is no Guest sign-in, booking form or Mobile Key screen here; those belong to the website (`src/`).
+- iOS is not set up.

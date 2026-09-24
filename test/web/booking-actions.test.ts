@@ -19,7 +19,7 @@ const pendingBooking = (): BookingState => ({
 })
 
 const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' } as const
-const host = { actor: 'host', actor_id: 'host-1', actor_name: 'Ana Luisana' } as const
+const admin = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana' } as const
 const system = { actor: 'system', actor_id: 'system', actor_name: 'System' } as const
 
 // The Main House is free for these dates, as far as the stored Bookings know.
@@ -46,7 +46,7 @@ describe('applyAction — the journey from submission to a completed stay', () =
     booking = { ...booking, ...kyc.patch }
 
     const approval = expectOk(
-      applyAction(booking, { type: 'Approve', availability: noConflicts }, { ...host, now: NOW }),
+      applyAction(booking, { type: 'Approve', availability: noConflicts }, { ...admin, now: NOW }),
     )
     expect(approval.patch.status).toBe('Approved')
     booking = { ...booking, ...approval.patch }
@@ -74,7 +74,7 @@ describe('applyAction — the journey from submission to a completed stay', () =
       applyAction(
         booking,
         { type: 'VerifyPayment', amount_verified: booking.amount_due! + booking.security_deposit! },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
     expect(verification.patch.status).toBe('Reserved')
@@ -88,11 +88,11 @@ describe('applyAction — the journey from submission to a completed stay', () =
     expect(staying.patch.status).toBe('Staying')
     booking = { ...booking, ...staying.patch }
 
-    const checkOut = expectOk(applyAction(booking, { type: 'CheckOut' }, { ...host, now: NOW }))
+    const checkOut = expectOk(applyAction(booking, { type: 'CheckOut' }, { ...admin, now: NOW }))
     expect(checkOut.patch.status).toBe('Checked-Out')
     booking = { ...booking, ...checkOut.patch }
 
-    const completed = expectOk(applyAction(booking, { type: 'Complete' }, { ...host, now: NOW }))
+    const completed = expectOk(applyAction(booking, { type: 'Complete' }, { ...admin, now: NOW }))
     expect(completed.patch.status).toBe('Completed')
   })
 
@@ -119,14 +119,14 @@ describe('applyAction — the journey from submission to a completed stay', () =
       applyAction(
         { ...booking, ...kyc.patch },
         { type: 'Approve', availability: noConflicts },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
     expect(approved.entries[0]).toMatchObject({
       action: 'Approve',
       from_status: 'KYC Submitted',
       to_status: 'Approved',
-      actor: 'host',
+      actor: 'admin',
       actor_name: 'Ana Luisana',
       at: NOW,
     })
@@ -139,7 +139,7 @@ describe('applyAction — the journey from submission to a completed stay', () =
       applyAction(
         booking,
         { type: 'Reject', reason: 'Government ID is expired — please upload a current one' },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
 
@@ -156,16 +156,16 @@ describe('applyAction — the journey from submission to a completed stay', () =
     const booking = pendingBooking()
     const before = JSON.stringify(booking)
 
-    applyAction(booking, { type: 'Approve', availability: noConflicts }, { ...host, now: NOW })
+    applyAction(booking, { type: 'Approve', availability: noConflicts }, { ...admin, now: NOW })
 
     expect(JSON.stringify(booking)).toBe(before)
   })
 })
 
-describe('applyAction — the rules that protect the Guest and the Host', () => {
+describe('applyAction — the rules that protect the Guest and the Admin', () => {
   it('refuses to approve a Booking whose Guest has not submitted an ID', () => {
     const refused = expectRefused(
-      applyAction(pendingBooking(), { type: 'Approve', availability: noConflicts }, { ...host, now: NOW }),
+      applyAction(pendingBooking(), { type: 'Approve', availability: noConflicts }, { ...admin, now: NOW }),
     )
 
     expect(refused.reason).toMatch(/KYC/)
@@ -192,11 +192,11 @@ describe('applyAction — the rules that protect the Guest and the Host', () => 
             ],
           },
         },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
 
-    // The Host needs to know exactly which Booking is standing in the way.
+    // The Admin needs to know exactly which Booking is standing in the way.
     expect(refused.conflicts?.map((c) => c.id)).toEqual(['book-2'])
     expect(refused.reason).toMatch(/already held/)
   })
@@ -215,15 +215,15 @@ describe('applyAction — the rules that protect the Guest and the Host', () => 
 
     expect(resubmitted.patch.status).toBe('KYC Submitted')
     expect(resubmitted.patch.kyc_status).toBe('submitted')
-    // The Host's rejection is cleared: the Guest has answered it.
+    // The Admin's rejection is cleared: the Guest has answered it.
     expect(resubmitted.patch.kyc_reject_reason).toBeNull()
     // The dates are still held by the same booking: no new hold is placed.
     expect(resubmitted.patch.hold_expires_at).toBeUndefined()
   })
 
-  it('refuses to verify money for a Booking the Host has not approved', () => {
+  it('refuses to verify money for a Booking the Admin has not approved', () => {
     const refused = expectRefused(
-      applyAction(pendingBooking(), { type: 'VerifyPayment', amount_verified: 10500 }, { ...host, now: NOW }),
+      applyAction(pendingBooking(), { type: 'VerifyPayment', amount_verified: 10500 }, { ...admin, now: NOW }),
     )
 
     expect(refused.reason).toMatch(/Payment Pending/)
@@ -233,7 +233,7 @@ describe('applyAction — the rules that protect the Guest and the Host', () => 
     const cancelled: BookingState = { ...pendingBooking(), status: 'Cancelled' }
 
     expectRefused(applyAction(cancelled, { type: 'UploadKyc', kyc_id_url: 'x' }, { ...guest, now: NOW }))
-    expectRefused(applyAction(cancelled, { type: 'Approve', availability: noConflicts }, { ...host, now: NOW }))
+    expectRefused(applyAction(cancelled, { type: 'Approve', availability: noConflicts }, { ...admin, now: NOW }))
     expectRefused(applyAction(cancelled, { type: 'Cancel' }, { ...guest, now: NOW }))
     expectRefused(applyAction(cancelled, { type: 'Expire' }, { ...system, now: NOW }))
   })
@@ -241,15 +241,15 @@ describe('applyAction — the rules that protect the Guest and the Host', () => 
   it('refuses an action from somebody who cannot take it', () => {
     const booking: BookingState = { ...pendingBooking(), status: 'KYC Submitted', kyc_status: 'submitted' }
 
-    // A Guest cannot approve their own Booking; the Host's review is the point.
+    // A Guest cannot approve their own Booking; the Admin's review is the point.
     const refused = expectRefused(
       applyAction(booking, { type: 'Approve', availability: noConflicts }, { ...guest, now: NOW }),
     )
     expect(refused.reason).toMatch(/cannot/i)
 
-    // And the Host cannot upload the Guest's ID for them.
+    // And the Admin cannot upload the Guest's ID for them.
     expectRefused(
-      applyAction(pendingBooking(), { type: 'UploadKyc', kyc_id_url: 'x' }, { ...host, now: NOW }),
+      applyAction(pendingBooking(), { type: 'UploadKyc', kyc_id_url: 'x' }, { ...admin, now: NOW }),
     )
   })
 
@@ -262,18 +262,18 @@ describe('applyAction — the rules that protect the Guest and the Host', () => 
     expect(expired.entries[0]).toMatchObject({ actor: 'system', to_status: 'Expired' })
   })
 
-  it('refuses to expire a Booking the Host has already approved', () => {
+  it('refuses to expire a Booking the Admin has already approved', () => {
     const booking: BookingState = { ...pendingBooking(), status: 'Approved', kyc_status: 'approved' }
 
     expectRefused(applyAction(booking, { type: 'Expire' }, { ...system, now: '2026-09-25T00:00:00.000Z' }))
   })
 })
 
-// Flow §2 steps 7–11 and ADR-0001: the Host approves first, money moves last,
+// Flow §2 steps 7–11 and ADR-0001: the Admin approves first, money moves last,
 // and verified money only ever leaves through the Refund pipeline.
 const RATE_CARD = { nightlyRate: 10000, securityDeposit: 500, downPaymentPercent: 50 }
 
-/** A Booking the Host has approved, with three nights quoted off the rate card. */
+/** A Booking the Admin has approved, with three nights quoted off the rate card. */
 function approvedBooking(): BookingState {
   return {
     ...pendingBooking(),
@@ -295,10 +295,10 @@ function reserve(booking: BookingState): BookingState {
     ),
   )
   const afterPlan = { ...booking, ...plan.patch, ...proof.patch }
-  // The Host verifies the whole of what the Guest was asked for.
+  // The Admin verifies the whole of what the Guest was asked for.
   const paidInFull = afterPlan.amount_due! + afterPlan.security_deposit!
   const verified = expectOk(
-    applyAction(afterPlan, { type: 'VerifyPayment', amount_verified: paidInFull }, { ...host, now: NOW }),
+    applyAction(afterPlan, { type: 'VerifyPayment', amount_verified: paidInFull }, { ...admin, now: NOW }),
   )
   return { ...booking, ...plan.patch, ...proof.patch, ...verified.patch }
 }
@@ -324,7 +324,7 @@ describe('applyAction — money', () => {
     })
   })
 
-  it('quotes from the recorded total when the Host has published no card for the stay', () => {
+  it('quotes from the recorded total when the Admin has published no card for the stay', () => {
     const chosen = expectOk(
       applyAction(
         approvedBooking(),
@@ -349,7 +349,7 @@ describe('applyAction — money', () => {
     })
   })
 
-  it('refuses a choice the Host has published nothing to quote', () => {
+  it('refuses a choice the Admin has published nothing to quote', () => {
     const refused = expectRefused(
       applyAction(approvedBooking(), { type: 'ChoosePaymentPlan', plan: 'full' }, { ...guest, now: NOW }),
     )
@@ -387,7 +387,7 @@ describe('applyAction — money', () => {
     })
   })
 
-  it('stamps nulls when the Host had published no policy, so the stay refunds nothing', () => {
+  it('stamps nulls when the Admin had published no policy, so the stay refunds nothing', () => {
     const chosen = expectOk(
       applyAction(
         approvedBooking(),
@@ -399,7 +399,7 @@ describe('applyAction — money', () => {
     expect(chosen.patch).toMatchObject({ policy_version: null, policy_effective_date: null })
   })
 
-  it('refuses a payment plan the Host has not published', () => {
+  it('refuses a payment plan the Admin has not published', () => {
     const refused = expectRefused(
       applyAction(
         approvedBooking(),
@@ -422,7 +422,7 @@ describe('applyAction — money', () => {
     }
 
     const refused = expectRefused(
-      applyAction(booking, { type: 'VerifyPayment', amount_verified: 10500 }, { ...host, now: NOW }),
+      applyAction(booking, { type: 'VerifyPayment', amount_verified: 10500 }, { ...admin, now: NOW }),
     )
 
     expect(refused.reason).toMatch(/30500 is due/)
@@ -431,17 +431,17 @@ describe('applyAction — money', () => {
   it('refuses to verify a Payment proof nobody uploaded, or a zero amount', () => {
     const booking: BookingState = { ...approvedBooking(), status: 'Payment Pending', payment_plan: 'full' }
 
-    expectRefused(applyAction(booking, { type: 'VerifyPayment', amount_verified: 10500 }, { ...host, now: NOW }))
+    expectRefused(applyAction(booking, { type: 'VerifyPayment', amount_verified: 10500 }, { ...admin, now: NOW }))
     expectRefused(
       applyAction(
         { ...booking, payment_proof_url: 'gs://proofs/transfer.jpg' },
         { type: 'VerifyPayment', amount_verified: 0 },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
   })
 
-  it('lets the Host reject a blurry proof and the Guest send another inside the same stage', () => {
+  it('lets the Admin reject a blurry proof and the Guest send another inside the same stage', () => {
     const booking: BookingState = {
       ...approvedBooking(),
       status: 'Payment Pending',
@@ -453,7 +453,7 @@ describe('applyAction — money', () => {
       applyAction(
         booking,
         { type: 'RejectPaymentProof', reason: 'Screenshot is cut off — resend the full confirmation', guestResubmits: true },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
 
@@ -489,7 +489,7 @@ describe('applyAction — money', () => {
       applyAction(
         booking,
         { type: 'RejectPaymentProof', reason: 'No matching transfer found', guestResubmits: false },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
 
@@ -552,14 +552,14 @@ describe('applyAction — cancellation and the Refund pipeline', () => {
           type: 'Cancel',
           refund: { rateCard: RATE_CARD, policy: { refundPercent: 100 }, damageDeduction: 200 },
         },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
 
     expect(cancelled.patch.refund_total).toBe(30300)
   })
 
-  it('refunds nothing beyond the money the Host verified', () => {
+  it('refunds nothing beyond the money the Admin verified', () => {
     const booking = reserve(approvedBooking())
 
     const cancelled = expectOk(
@@ -590,7 +590,7 @@ describe('applyAction — cancellation and the Refund pipeline', () => {
     )
 
     const refunded = expectOk(
-      applyAction({ ...booking, ...cancelled.patch }, { type: 'MarkRefunded' }, { ...host, now: NOW }),
+      applyAction({ ...booking, ...cancelled.patch }, { type: 'MarkRefunded' }, { ...admin, now: NOW }),
     )
 
     expect(refunded.patch.status).toBe('Cancelled')
@@ -599,14 +599,14 @@ describe('applyAction — cancellation and the Refund pipeline', () => {
       action: 'MarkRefunded',
       from_status: 'Cancelled',
       to_status: 'Cancelled',
-      actor: 'host',
+      actor: 'admin',
     })
   })
 
   it('refuses to mark a Refund returned when none was ever initiated', () => {
     const booking: BookingState = { ...approvedBooking(), status: 'Cancelled', refund_status: 'none' }
 
-    expectRefused(applyAction(booking, { type: 'MarkRefunded' }, { ...host, now: NOW }))
+    expectRefused(applyAction(booking, { type: 'MarkRefunded' }, { ...admin, now: NOW }))
   })
 })
 
@@ -621,11 +621,11 @@ describe('applyAction — nothing happens after the hold runs out', () => {
     expect(refused.reason).toMatch(/Date hold ran out/)
   })
 
-  it('refuses the Host approval on a Booking whose hold expired mid-review', () => {
+  it('refuses the Admin approval on a Booking whose hold expired mid-review', () => {
     const booking: BookingState = { ...pendingBooking(), status: 'KYC Submitted', kyc_status: 'submitted' }
 
     expectRefused(
-      applyAction(booking, { type: 'Approve', availability: noConflicts }, { ...host, now: '2026-09-22T00:00:00.000Z' }),
+      applyAction(booking, { type: 'Approve', availability: noConflicts }, { ...admin, now: '2026-09-22T00:00:00.000Z' }),
     )
   })
 
@@ -636,7 +636,7 @@ describe('applyAction — nothing happens after the hold runs out', () => {
     expect(expired.patch.status).toBe('Expired')
   })
 
-  it('still lets the Host review a Booking with no hold recorded, so a legacy Booking is not stranded', () => {
+  it('still lets the Admin review a Booking with no hold recorded, so a legacy Booking is not stranded', () => {
     const legacy: BookingState = {
       ...pendingBooking(),
       hold_expires_at: null,
@@ -646,7 +646,7 @@ describe('applyAction — nothing happens after the hold runs out', () => {
 
     // The read-time rule stops actions only where a hold actually ran out.
     const approved = expectOk(
-      applyAction(legacy, { type: 'Approve', availability: noConflicts }, { ...host, now: '2027-01-01T00:00:00.000Z' }),
+      applyAction(legacy, { type: 'Approve', availability: noConflicts }, { ...admin, now: '2027-01-01T00:00:00.000Z' }),
     )
     expect(approved.patch.status).toBe('Approved')
   })
@@ -665,7 +665,7 @@ describe('applyAction — the KYC decision', () => {
 
   it('refuses an ID without ending the Booking, so the Guest can send another', () => {
     const refusedId = expectOk(
-      applyAction(submitted(), { type: 'RejectKyc', reason: 'The photo is cut off at the edges' }, { ...host, now: NOW }),
+      applyAction(submitted(), { type: 'RejectKyc', reason: 'The photo is cut off at the edges' }, { ...admin, now: NOW }),
     )
 
     expect(refusedId.patch.status).toBe('KYC Submitted')
@@ -683,7 +683,7 @@ describe('applyAction — the KYC decision', () => {
 
   it('lets the Guest resubmit inside the same hold, clearing the rejection', () => {
     const refusedId = expectOk(
-      applyAction(submitted(), { type: 'RejectKyc', reason: 'Expired ID' }, { ...host, now: NOW }),
+      applyAction(submitted(), { type: 'RejectKyc', reason: 'Expired ID' }, { ...admin, now: NOW }),
     )
     const resubmitted = expectOk(
       applyAction(
@@ -700,22 +700,22 @@ describe('applyAction — the KYC decision', () => {
   })
 
   it('needs a reason, because a Guest who is not told why cannot fix it', () => {
-    expectRefused(applyAction(submitted(), { type: 'RejectKyc', reason: '   ' }, { ...host, now: NOW }))
+    expectRefused(applyAction(submitted(), { type: 'RejectKyc', reason: '   ' }, { ...admin, now: NOW }))
   })
 
-  it('is the Host’s decision, not the Guest’s', () => {
+  it('is the Admin’s decision, not the Guest’s', () => {
     expectRefused(
       applyAction(submitted(), { type: 'RejectKyc', reason: 'nope' }, { ...guest, now: NOW }),
     )
   })
 
   it('cannot be taken before an ID has been submitted', () => {
-    expectRefused(applyAction(pendingBooking(), { type: 'RejectKyc', reason: 'nope' }, { ...host, now: NOW }))
+    expectRefused(applyAction(pendingBooking(), { type: 'RejectKyc', reason: 'nope' }, { ...admin, now: NOW }))
   })
 
   it('still refuses a Booking outright, releasing its dates', () => {
     const rejected = expectOk(
-      applyAction(submitted(), { type: 'Reject', reason: 'Dates can no longer be offered' }, { ...host, now: NOW }),
+      applyAction(submitted(), { type: 'Reject', reason: 'Dates can no longer be offered' }, { ...admin, now: NOW }),
     )
 
     expect(rejected.patch.status).toBe('Rejected')
@@ -724,8 +724,8 @@ describe('applyAction — the KYC decision', () => {
   })
 })
 
-describe('applyAction — the Host refusing dates that are already taken', () => {
-  it('names the Booking in the way, so the Host can offer alternatives', () => {
+describe('applyAction — the Admin refusing dates that are already taken', () => {
+  it('names the Booking in the way, so the Admin can offer alternatives', () => {
     const booking: BookingState = { ...pendingBooking(), status: 'KYC Submitted', kyc_status: 'submitted' }
 
     const refused = expectRefused(
@@ -746,13 +746,13 @@ describe('applyAction — the Host refusing dates that are already taken', () =>
             ],
           },
         },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       ),
     )
 
     expect(refused.conflicts).toHaveLength(1)
     expect(refused.conflicts?.[0]).toMatchObject({ check_in: '2026-10-02', check_out: '2026-10-07' })
-    // The Booking is untouched, so the Guest keeps their hold while the Host
+    // The Booking is untouched, so the Guest keeps their hold while the Admin
     // offers them other dates.
     expect(refused.ok).toBe(false)
   })
@@ -760,7 +760,7 @@ describe('applyAction — the Host refusing dates that are already taken', () =>
 
 // The Dart app submits the ID and its receipt in one step
 // (lib/models/booking.dart `applyKycSubmitted({idUrl, receiptUrl})`), and
-// /admin reviews both. The web cannot send only half of what the Host expects.
+// the Admin app reviews both. The web cannot send only half of what the Admin expects.
 describe('applyAction — UploadKyc with a receipt', () => {
   it('records the ID and the receipt together', () => {
     const uploaded = expectOk(
@@ -780,7 +780,7 @@ describe('applyAction — UploadKyc with a receipt', () => {
     expect(uploaded.patch.kyc_receipt_url).toBe('https://storage/kyc/u1/HDL-4821/receipt.png')
   })
 
-  it('refuses a receipt on its own, because the ID is what the Host has to see', () => {
+  it('refuses a receipt on its own, because the ID is what the Admin has to see', () => {
     const refused = expectRefused(
       applyAction(
         pendingBooking(),
@@ -833,7 +833,7 @@ function bookingAt(status: string, overrides: Partial<BookingState> = {}): Booki
 
 describe('applyAction — PurgeKyc: the ID leaves after the stay', () => {
   it('clears the ID and receipt URLs without moving the Booking, and logs the purge', () => {
-    const result = expectOk(applyAction(bookingAt('Staying'), { type: 'PurgeKyc' }, { ...host, now: NOW }))
+    const result = expectOk(applyAction(bookingAt('Staying'), { type: 'PurgeKyc' }, { ...admin, now: NOW }))
 
     expect(result.patch.kyc_id_url).toBeNull()
     expect(result.patch.kyc_receipt_url).toBeNull()
@@ -843,52 +843,52 @@ describe('applyAction — PurgeKyc: the ID leaves after the stay', () => {
       action: 'PurgeKyc',
       from_status: 'Staying',
       to_status: 'Staying',
-      actor: 'host',
-      actor_id: 'host-1',
+      actor: 'admin',
+      actor_id: 'admin-1',
     })
     expect(result.entries[0].reason).toMatch(/purged/i)
   })
 
   it('is available from Staying, Checked-Out and Completed — erasure does not wait for the door to close', () => {
     for (const status of ['Staying', 'Checked-Out', 'Completed']) {
-      expect(applyAction(bookingAt(status), { type: 'PurgeKyc' }, { ...host, now: NOW }).ok).toBe(true)
+      expect(applyAction(bookingAt(status), { type: 'PurgeKyc' }, { ...admin, now: NOW }).ok).toBe(true)
     }
   })
 
   it('refuses while the ID is still working: before the stay, or once it has ended as a stay', () => {
-    // Not yet Reserved — the Host still needs the ID to trust the person at the door.
-    expectRefused(applyAction(bookingAt('Reserved'), { type: 'PurgeKyc' }, { ...host, now: NOW }))
-    expectRefused(applyAction(pendingBooking(), { type: 'PurgeKyc' }, { ...host, now: NOW }))
+    // Not yet Reserved — the Admin still needs the ID to trust the person at the door.
+    expectRefused(applyAction(bookingAt('Reserved'), { type: 'PurgeKyc' }, { ...admin, now: NOW }))
+    expectRefused(applyAction(pendingBooking(), { type: 'PurgeKyc' }, { ...admin, now: NOW }))
   })
 
-  it('is the Host’s call, not the Guest’s and not the system’s', () => {
+  it('is the Admin’s call, not the Guest’s and not the system’s', () => {
     expectRefused(applyAction(bookingAt('Staying'), { type: 'PurgeKyc' }, { ...guest, now: NOW }))
     expectRefused(applyAction(bookingAt('Staying'), { type: 'PurgeKyc' }, { ...system, now: NOW }))
   })
 
   it('refuses when there is nothing left to erase, so the log never claims a false purge', () => {
     const alreadyGone = bookingAt('Staying', { kyc_id_url: null, kyc_receipt_url: null })
-    expectRefused(applyAction(alreadyGone, { type: 'PurgeKyc' }, { ...host, now: NOW }))
+    expectRefused(applyAction(alreadyGone, { type: 'PurgeKyc' }, { ...admin, now: NOW }))
   })
 })
 
 describe('applyAction — RevokeKey: the Credential leaves a live stay', () => {
   it('moves the Booking nowhere — an access decision is logged, not a lifecycle step', () => {
     for (const status of ['Reserved', 'Checked-In', 'Staying']) {
-      const result = expectOk(applyAction(bookingAt(status), { type: 'RevokeKey' }, { ...host, now: NOW }))
+      const result = expectOk(applyAction(bookingAt(status), { type: 'RevokeKey' }, { ...admin, now: NOW }))
       expect(result.patch.status).toBe(status)
-      expect(result.entries[0]).toMatchObject({ action: 'RevokeKey', from_status: status, to_status: status, actor: 'host' })
+      expect(result.entries[0]).toMatchObject({ action: 'RevokeKey', from_status: status, to_status: status, actor: 'admin' })
     }
   })
 
-  it('is the Host’s: a Guest cannot revoke their own way in', () => {
+  it('is the Admin’s: a Guest cannot revoke their own way in', () => {
     expectRefused(applyAction(bookingAt('Staying'), { type: 'RevokeKey' }, { ...guest, now: NOW }))
   })
 
   it('refuses before a Credential exists and after the stay is over', () => {
     // No credential is issued before Reserved, and a Completed stay has none to pull.
-    expectRefused(applyAction(pendingBooking(), { type: 'RevokeKey' }, { ...host, now: NOW }))
-    expectRefused(applyAction(bookingAt('Completed'), { type: 'RevokeKey' }, { ...host, now: NOW }))
-    expectRefused(applyAction(bookingAt('Checked-Out'), { type: 'RevokeKey' }, { ...host, now: NOW }))
+    expectRefused(applyAction(pendingBooking(), { type: 'RevokeKey' }, { ...admin, now: NOW }))
+    expectRefused(applyAction(bookingAt('Completed'), { type: 'RevokeKey' }, { ...admin, now: NOW }))
+    expectRefused(applyAction(bookingAt('Checked-Out'), { type: 'RevokeKey' }, { ...admin, now: NOW }))
   })
 })

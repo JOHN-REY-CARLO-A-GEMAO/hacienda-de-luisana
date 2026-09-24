@@ -3,7 +3,7 @@
 // Hacienda de LuisAna
 // ----------------------------------------------------------------------------
 // The Activity log is stored as facts (action, both statuses, actor, instant).
-// What the Host reads is a sentence, and the wording is behaviour: it has to use
+// What the Admin reads is a sentence, and the wording is behaviour: it has to use
 // the glossary's words, not synonyms it avoids (CONTEXT.md, docs/agents/domain.md).
 //
 // This is an internal file of the `src/lib/booking` module: callers and tests
@@ -25,21 +25,30 @@ const HEADLINES: Record<ActionType, string> = {
   RejectPaymentProof: 'Payment proof rejected',
   MarkRefunded: 'Refund returned to the Guest',
   PurgeKyc: 'Government ID and receipt purged after the stay',
-  RevokeKey: 'Credential revoked by the Host',
+  RevokeKey: 'Credential revoked by the Admin',
   Cancel: 'Booking cancelled',
   Expire: 'Date hold ran out',
   CheckIn: 'First Credential use — Guest checked in',
   BeginStay: 'Stay in progress',
   CheckOut: 'Guest checked out',
   Complete: 'Stay completed',
-  SetStatus: 'Status changed on the Host dashboard',
+  SetStatus: 'Status set directly by the Admin',
 }
 
 const ROLE_LABELS: Record<ActorKind, string> = {
   guest: 'Guest',
-  host: 'Host',
-  staff: 'Staff',
+  admin: 'Admin',
   system: 'System',
+}
+
+/**
+ * Actors written before the two-role architecture (ADR-0007). They are read
+ * back as the Admin, which is what both of those people now are; nothing is
+ * rewritten in the stored log.
+ */
+const LEGACY_ACTOR_LABELS: Record<string, string> = {
+  host: 'Admin',
+  staff: 'Admin',
 }
 
 export type ActivityLine = {
@@ -57,9 +66,9 @@ export type ActivityLine = {
   reason?: string
 }
 
-/** Read one Activity log entry as the Host sees it. */
+/** Read one Activity log entry as the Admin sees it. */
 export function describeActivity(entry: ActivityLogEntry): ActivityLine {
-  const role = ROLE_LABELS[entry.actor] ?? entry.actor
+  const role = ROLE_LABELS[entry.actor] ?? LEGACY_ACTOR_LABELS[entry.actor] ?? entry.actor
   return {
     headline: HEADLINES[entry.action] ?? entry.action,
     change: `${entry.from_status} → ${entry.to_status}`,

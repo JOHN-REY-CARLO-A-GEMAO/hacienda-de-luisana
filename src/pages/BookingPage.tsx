@@ -54,7 +54,7 @@ export function BookingPage() {
   const [submittedId, setSubmittedId] = useState<string>('')
   const [submittedBooking, setSubmittedBooking] = useState<Booking | null>(null)
   // G2: availability is checked by the system before the Guest commits, not
-  // only in the Host's head at approval time (ticket #12).
+  // only in the Admin's head at approval time (ticket #12).
   const [availability, setAvailability] = useState<{ available: boolean; heldBy: number } | null>(null)
 
   useEffect(() => {
@@ -113,7 +113,7 @@ export function BookingPage() {
         if (alive) setAvailability({ available: result.available, heldBy: result.conflicts.length })
       })
       .catch(() => {
-        // An availability read that fails must not strand the Guest: the Host's
+        // An availability read that fails must not strand the Guest: the Admin's
         // approval re-check is still the last line of defence (ADR-0002).
         if (alive) setAvailability(null)
       })
@@ -217,13 +217,13 @@ export function BookingPage() {
           </p>
           {!isFirebaseConfigured && (
             <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
-              <strong>Demo mode:</strong> Firebase not configured — your request will be stored locally in this browser.
-              The Host can see it at <Link to="/admin" className="underline">/admin</Link> on this device.
+              <strong>Demo mode:</strong> Firebase not configured — your request will be stored locally in this browser
+              and will not reach the Admin app. Configure Firebase for real requests.
             </div>
           )}
           {cloudBookingsDB.isCloud && (
             <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs text-emerald-800">
-              ✓ Secured by Firebase — your request will be saved to the cloud and the owner will be notified.
+              ✓ Secured by Firebase — your request will be saved to the cloud and the Admin will see it in the Hacienda app.
             </div>
           )}
         </div>
@@ -335,7 +335,7 @@ export function BookingPage() {
                 {availability.heldBy === 1
                   ? 'Another Booking is holding them'
                   : `${availability.heldBy} Bookings are holding them`}{' '}
-                — a hold lasts 24 hours while the host reviews, so pick different dates and your request
+                — a hold lasts 24 hours while the Hacienda reviews, so pick different dates and your request
                 will go straight through.
               </div>
             )}
@@ -350,7 +350,7 @@ export function BookingPage() {
                 {status !== 'submitting' && <ArrowRight size={16} />}
               </button>
               <p className="text-xs text-forest-700/60 mt-4 max-w-md">
-                By sending a request you agree to be contacted by the host to confirm availability
+                By sending a request you agree to be contacted by the Hacienda to confirm availability
                 and finalize your stay. No payment is taken at this step.
               </p>
             </div>
@@ -386,7 +386,7 @@ export function BookingPage() {
                           <div className="text-[11px] text-forest-700/60">{nights} night{nights > 1 ? 's' : ''} · placeholder rate</div>
                         </>
                       ) : (
-                        <div className="text-sm text-forest-800/70">Quoted by the host</div>
+                        <div className="text-sm text-forest-800/70">Quoted by the Hacienda</div>
                       )}
                     </div>
                   </div>
@@ -394,7 +394,7 @@ export function BookingPage() {
 
                 <div className="mt-4 rounded-2xl bg-cream-100/70 p-4 text-xs text-forest-700 leading-relaxed">
                   <Sparkle size={14} className="inline mr-1 -mt-1 text-forest-600" />
-                  Prices shown are editable placeholders. The host will confirm the final rate before
+                  Prices shown are editable placeholders. The Hacienda will confirm the final rate before
                   your reservation is finalized.
                 </div>
               </div>

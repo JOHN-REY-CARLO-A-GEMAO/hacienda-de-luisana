@@ -74,12 +74,12 @@ export function normalizeStatus(stored: string | undefined | null): BookingStatu
  * The legal transitions out of each Booking status.
  *
  * Deliberately a whitelist: anything not listed here is refused, so a surface
- * cannot invent a shortcut past the Host's review (ADR-0001) or past payment
+ * cannot invent a shortcut past the Admin's review (ADR-0001) or past payment
  * verification.
  *
  * `Expired` is reachable only from the statuses that are still waiting for
  * review — the Date hold is the claim a Booking places on its dates *while it
- * waits*, and it lasts 24 hours (CONTEXT.md § Date hold). Once the Host has
+ * waits*, and it lasts 24 hours (CONTEXT.md § Date hold). Once the Admin has
  * approved, the dates are firmly held and no hold expiry can release them.
  */
 const TRANSITIONS: Record<BookingStatus, readonly BookingStatus[]> = {

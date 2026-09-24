@@ -1,15 +1,16 @@
 // ----------------------------------------------------------------------------
 // Roles and permissions — Hacienda de LuisAna
 // ----------------------------------------------------------------------------
-// The three roles are the three kinds of person CONTEXT.md § People defines:
-// the Guest who books and stays, the Host who operates the hacienda, and the
-// Staff who clean and inspect and decide nothing about money or identity.
+// The two roles are the two kinds of person CONTEXT.md § People defines: the
+// Guest who books and stays, and the Admin who operates the hacienda. Two apps
+// match them one-to-one (ADR-0007): the Guest uses this website, the Admin uses
+// the Flutter mobile app. There is no Staff role and no Host role — everything
+// that was ever theirs is the Admin's.
 //
-// They are not a new vocabulary: `src/lib/booking` already refuses an action
-// taken by the wrong `ActorKind`, and firestore.rules already splits the owner
-// allowlist from the locks-readonly one. What was missing is the single list of
-// *permissions* those two surfaces and the pages between them can all ask about,
-// so a button, a lifecycle action and a Firestore rule cannot drift apart.
+// The catalogue of *permissions* is kept so that a page, a lifecycle action and a
+// Firestore rule all ask the same named question. The website only ever asks the
+// Guest's questions; the Admin's are listed because `firestore.rules` and the
+// Flutter app answer them, and one list is easier to keep honest than three.
 //
 // This is an internal file of the `src/lib/auth` module: callers and tests go
 // through `src/lib/auth`, never through here directly.
@@ -18,12 +19,12 @@
 import type { ActorKind } from '../booking'
 
 /**
- * The three roles a person can have.
+ * The two roles a person can have.
  *
  * `system` is an actor in the Booking lifecycle but never a role: it is the Date
  * hold running out, and no person signs in as it.
  */
-export const ROLES = ['guest', 'host', 'staff'] as const
+export const ROLES = ['guest', 'admin'] as const
 
 export type Role = (typeof ROLES)[number]
 
@@ -38,20 +39,22 @@ export type RoleAsActorKind<R extends ActorKind = Role> = R
 /** How each role is written down for a person to read (CONTEXT.md § People). */
 export const ROLE_LABELS: Record<Role, string> = {
   guest: 'Guest',
-  host: 'Host',
-  staff: 'Staff',
+  admin: 'Admin',
 }
 
-/** Is this value one of the three roles? */
+/** Is this value one of the two roles? */
 export function isRole(value: unknown): value is Role {
   return typeof value === 'string' && (ROLES as readonly string[]).includes(value)
 }
 
 /**
- * Read a stored role as one of the three, or null.
+ * Read a stored role as one of the two, or null.
  *
  * Unknown means null rather than a default: a role nobody defined must never
- * quietly become a role that grants something. Callers that need a default for a
+ * quietly become a role that grants something. In particular the retired
+ * `host` and `staff` values read as no role at all — a Profile still carrying
+ * one resolves to Guest, and the Admin is recognised by the allowlist or by a
+ * Profile that says `admin` (ADR-0007). Callers that need a default for a
  * signed-in user go through `resolveRole`, which lands on Guest.
  */
 export function normalizeRole(stored: string | undefined | null): Role | null {
@@ -67,18 +70,18 @@ export function normalizeRole(stored: string | undefined | null): Role | null {
 /**
  * Everything the system decides by role, named for the domain act it allows.
  *
- * Each one is enforced in at least two places on purpose: the page or button
- * that would otherwise offer it, and `firestore.rules` — which is the one that
- * matters, because a person can call Firestore directly and change nothing about
- * the frontend.
+ * Each one is enforced in at least two places on purpose: the surface that would
+ * otherwise offer it, and `firestore.rules` — which is the one that matters,
+ * because a person can call Firestore directly and change nothing about the
+ * frontend.
  */
 export const PERMISSIONS = [
-  // A Guest's own Booking.
+  // A Guest's own Booking — the website.
   'booking:create',
   'booking:read:own',
   'booking:update:own',
   'kyc:upload',
-  // Operating the hacienda.
+  // Operating the hacienda — the Admin app.
   'bookings:read:all',
   'bookings:review',
   'bookings:cancel:any',
@@ -87,34 +90,31 @@ export const PERMISSIONS = [
   'refunds:mark',
   'stays:progress',
   'stays:complete',
-  // Records and people.
   'kyc:read',
   'access-logs:read',
   'access-logs:correct',
   'guest-location:read',
   'analytics:read',
-  'team:manage',
   'site:manage',
-  // The Host's published figures the Guest's payment choice is quoted from
-  // (ticket #14). Publishing is the Host's alone; reading is public.
   'rates:publish',
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]
 
+/** The permissions that belong to a Guest's own Booking. */
+const GUEST_PERMISSIONS: readonly Permission[] = ['booking:create', 'booking:read:own', 'booking:update:own', 'kyc:upload']
+
 /**
  * What each role may do.
  *
- * Host holds everything: they operate the place. Staff hold the reads they need
- * to clean and inspect, plus the one transition that is theirs to make. Guest
- * holds their own Booking and nothing of anybody else's.
+ * The Admin holds everything that operates the place. The Guest holds their own
+ * Booking and nothing of anybody else's. The Admin does not hold the Guest's
+ * own-Booking permissions: an Admin does not book through the website, and the
+ * one page here that needs a permission (`/account`) is a Guest's page.
  */
 const GRANTS: Record<Role, readonly Permission[]> = {
-  guest: ['booking:create', 'booking:read:own', 'booking:update:own', 'kyc:upload'],
-  host: PERMISSIONS,
-  // CONTEXT.md: Staff "cannot approve bookings or verify payments", and
-  // storage.rules keeps government IDs away from them for the same reason.
-  staff: ['bookings:read:all', 'access-logs:read', 'analytics:read', 'stays:complete'],
+  guest: GUEST_PERMISSIONS,
+  admin: PERMISSIONS.filter((permission) => !GUEST_PERMISSIONS.includes(permission)),
 }
 
 /** The permissions a role holds, in catalogue order. */

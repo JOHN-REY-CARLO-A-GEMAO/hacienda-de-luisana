@@ -4,7 +4,7 @@
 // Firebase Storage is the only place an ID goes. This module deliberately does
 // not fall back to a data URL, localStorage or IndexedDB when there is no
 // Firebase project: a government ID is PII under RA 10173, and quietly parking
-// it in a browser the Host can never read would both strand the Booking and put
+// it in a browser the Admin can never read would both strand the Booking and put
 // the document somewhere nobody is looking after it. With no Firebase the Guest
 // is told the truth and given the two routes that do work.
 // ----------------------------------------------------------------------------
@@ -53,7 +53,7 @@ async function uploadWithTimeout(target: ReturnType<typeof ref>, file: File, con
 /**
  * Uploads one document and returns the Storage download URL to record on the
  * Booking — the same value `kyc_id_url`/`kyc_receipt_url` already carry from the
- * mobile app, so /admin reviews both alike.
+ * mobile app, so the Admin app reviews both alike.
  *
  * Writes under the Guest's own anonymous uid: storage.rules allows a write only
  * where `request.auth.uid == userId`, which is why `ensureGuestUid()` runs first.

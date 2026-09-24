@@ -1,17 +1,20 @@
-// The scoped sign-in pages: `/guest/auth` for Guests, `/admin/auth` for the Host.
+// The Guest's sign-in page, `/guest/auth` — and the absence of any Admin
+// sign-in page on the website (ADR-0007).
 //
 // Rendered, not reasoned about — like the gates in auth-routes.test.tsx: the
-// session behind each page is a hand-written context, which is what a signed-in
-// Host, Staff member or Guest looks like from a component's point of view.
-// `isConfigured` stays true here because the project has Firebase keys, which
-// is exactly when the Google button must be on the page.
+// session behind the page is a hand-written context, which is what a signed-in
+// Guest or Admin looks like from a component's point of view. `isConfigured`
+// stays true here because the project has Firebase keys, which is exactly when
+// the Google button must be on the page.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AuthContext, type AuthContextType } from '../../src/context/AuthContext'
-import { GuestAuthPage, AdminAuthPage } from '../../src/pages/AuthPage'
-import { AuthError, canOpenPage, type Permission, type Role } from '../../src/lib/auth'
+import * as AuthPages from '../../src/pages/AuthPage'
+import { canOpenPage, permissionsOf, type Permission, type Role } from '../../src/lib/auth'
 import { describeAuthError } from '../../src/lib/auth'
+
+const { GuestAuthPage } = AuthPages
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -28,7 +31,7 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
     status: role ? 'signed-in' : 'signed-out',
     isConfigured: true,
     isCloud: true,
-    can: (permission: Permission) => Boolean(role && CAN[role].includes(permission)),
+    can: (permission: Permission) => Boolean(role && permissionsOf(role).includes(permission)),
     canOpen: (path: string) => canOpenPage(role, path),
     actor: role ? { actor: role, actor_id: `uid-${role}`, actor_name: `${role}@hacienda.test` } : null,
     login: async () => {},
@@ -36,47 +39,12 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
     loginWithGoogle: async () => {},
     logout: async () => {},
     resetPassword: async () => {},
-    signInAsRole: async () => {},
-    assignRole: async () => {
-      throw new AuthError('hdl/forbidden')
-    },
-    team: async () => [],
     refresh: async () => {},
     ...overrides,
   }
 }
 
-/** What each role holds, straight from the catalogue the app uses. */
-const CAN: Record<Role, Permission[]> = {
-  guest: ['booking:create', 'booking:read:own', 'booking:update:own', 'kyc:upload'],
-  host: [
-    'booking:create',
-    'booking:read:own',
-    'booking:update:own',
-    'kyc:upload',
-    'bookings:read:all',
-    'bookings:review',
-    'bookings:cancel:any',
-    'bookings:delete',
-    'payments:verify',
-    'refunds:mark',
-    'stays:progress',
-    'stays:complete',
-    'kyc:read',
-    'access-logs:read',
-    'access-logs:correct',
-    'guest-location:read',
-    'analytics:read',
-    'team:manage',
-    'site:manage',
-    'rates:publish',
-  ],
-  staff: ['bookings:read:all', 'access-logs:read', 'analytics:read', 'stays:complete'],
-}
-
-// Where a redirect lands, so a test can tell "sent on" from "stayed".
 const BOOK_MARKER = 'SCOPED-BOOK-LANDED'
-const ADMIN_MARKER = 'SCOPED-ADMIN-LANDED'
 
 const mounted: Root[] = []
 
@@ -91,9 +59,7 @@ function renderAt(path: string, value: AuthContextType): { text: () => string; h
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/guest/auth" element={<GuestAuthPage />} />
-            <Route path="/admin/auth" element={<AdminAuthPage />} />
             <Route path="/book" element={<div>{BOOK_MARKER}</div>} />
-            <Route path="/admin" element={<div>{ADMIN_MARKER}</div>} />
           </Routes>
         </MemoryRouter>
       </AuthContext.Provider>,
@@ -132,61 +98,30 @@ describe('/guest/auth', () => {
     expect(page.text()).not.toContain('Sign in as Guest')
   })
 
-  it('turns away a role the Guest page is not for', () => {
-    const staff = renderAt('/guest/auth', session({ role: 'staff' }))
+  it('turns an Admin away and points them at the mobile app', () => {
+    const admin = renderAt('/guest/auth', session({ role: 'admin' }))
 
-    expect(staff.text()).toContain("This page isn't yours")
-    expect(staff.text()).toContain('403')
-    expect(staff.text()).toContain('/guest/auth')
-    expect(staff.html()).toContain('href="/app"')
-
-    const host = renderAt('/guest/auth', session({ role: 'host' }))
-
-    expect(host.text()).toContain("This page isn't yours")
-    expect(host.text()).toContain('403')
+    expect(admin.text()).toContain('This website is for Guests')
+    expect(admin.text()).toContain('/guest/auth')
+    expect(admin.text()).toContain('Admin mobile app')
+    expect(admin.html()).not.toContain('href="/admin"')
+    expect(admin.html()).not.toContain('href="/app"')
   })
 
-  it('points the Host at the Host page', () => {
+  it('tells the Admin where to sign in, without linking to a page that no longer exists', () => {
     const page = renderAt('/guest/auth', session())
 
-    expect(page.html()).toContain('href="/admin/auth"')
+    expect(page.text()).toContain('Admin signs in on the Hacienda de LuisAna Admin mobile app')
+    expect(page.html()).not.toContain('href="/admin/auth"')
+    expect(page.text()).not.toMatch(/\bHost\b|\bStaff\b/)
   })
 })
 
-describe('/admin/auth', () => {
-  it('opens without a session and says it is the Host page', () => {
-    const page = renderAt('/admin/auth', session())
-
-    expect(page.text()).toContain('Sign in as Host')
-    expect(page.text()).toContain('Sign in')
-    expect(page.text()).not.toContain("This page isn't yours")
-  })
-
-  it('offers Google sign-in where there is a Firebase project to offer it from', () => {
-    const page = renderAt('/admin/auth', session())
-
-    expect(page.text()).toContain('Continue with Google')
-  })
-
-  it('sends a signed-in Host to the dashboard', () => {
-    const page = renderAt('/admin/auth', session({ role: 'host' }))
-
-    expect(page.text()).toContain(ADMIN_MARKER)
-    expect(page.text()).not.toContain('Sign in as Host')
-  })
-
-  it('turns away a role the dashboard is not for', () => {
-    const staff = renderAt('/admin/auth', session({ role: 'staff' }))
-
-    expect(staff.text()).toContain("This page isn't yours")
-    expect(staff.text()).toContain('403')
-    expect(staff.text()).toContain('/admin/auth')
-    expect(staff.html()).toContain('href="/app"')
-
-    const guest = renderAt('/admin/auth', session({ role: 'guest' }))
-
-    expect(guest.text()).toContain("This page isn't yours")
-    expect(guest.text()).toContain('403')
+describe('the Admin sign-in page', () => {
+  it('does not exist on the website', () => {
+    // The Admin's application is the Flutter app; the website exports only
+    // the Guest's page.
+    expect('AdminAuthPage' in AuthPages).toBe(false)
   })
 })
 

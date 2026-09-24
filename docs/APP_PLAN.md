@@ -1,290 +1,172 @@
-# Hacienda de LuisAna — Guest App Plan
+# Hacienda de LuisAna — App Plan (v2: two roles, two apps)
 
-**Status:** Guest web app (`/app`) + Capacitor Android project are in the repo. Open `android/` in Android Studio to install. See `ANDROID.md`.  
-**Audience:** Guests / customers muna  
-**Owner dashboard:** mananatili sa web (`/admin`) — hindi featured sa app
+**Status:** Implemented. Dalawang application, dalawang role — wala nang iba.  
+**Guest / Client:** Website (`src/`, React + Vite) — booking, KYC, payment proof, tracking ng sariling booking.  
+**Admin:** Flutter mobile app (`lib/`, Android) — buong management ng hacienda.  
+**Decision record:** [ADR-0007](adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md).
+
+> Ang lumang bersyon ng file na ito (Aug 2026) ay plano para sa isang **Capacitor guest app** na
+> naka-wrap sa `/app/*` routes ng website, habang nasa web `/admin` ang owner. **Hindi na iyon ang
+> architecture.** Tinanggal na ang Capacitor, ang `/app/*` at `/admin/*` routes, at ang Staff / Host
+> roles. Nasa §9 ang decision log kung bakit.
 
 ---
 
-## 1. Recommendation (bakit ito)
+## 1. Ang final na hugis (bakit ito)
 
-**Huwag mag-React Native rewrite.**  
-Gamitin ang existing **React + Vite + TypeScript + Tailwind + Firebase**, tapos:
-
-| Layer | Choice | Bakit |
+| | Guest / Client | Admin |
 |---|---|---|
-| Codebase | Same repo, bagong guest-app shell | Reuse `site.ts`, booking form, Firestore, images |
-| Mobile UX | Bottom-tab guest app | Hindi lang “website sa WebView” |
-| Install | **Capacitor** (Android APK muna) | Totoong app icon, splash, Play Store-ready |
-| Bonus | PWA (Add to Home Screen) | Libre, same build, walang store review |
-| Backend | Existing Firebase | Bookings, later Auth + FCM |
+| **App** | Website — `src/` (React 18, Vite, TypeScript, Tailwind) | Flutter mobile app — `lib/` (Android) |
+| **Sino** | Sinumang bisita; optional na account para sa "My bookings" | Ang may-ari / operator ng hacienda — **isang role lang** |
+| **Pwedeng gawin** | Tingnan ang rooms, rates, availability · mag-book · mag-upload ng ID at resibo (KYC) · pumili ng payment plan at mag-upload ng proof · i-withdraw ang sariling booking · i-share ang live location habang naka-stay | **Lahat** ng dating Admin + Staff + Host: approve / reject, verify payment, refund, check-in → completed, rates & cancellation policy, rooms, smart lock, radar, CRM, analytics |
+| **Hindi pwede** | Walang management screen; hindi mababasa ang booking ng iba | Walang guest booking flow sa app (booking = website lang) |
+| **Auth** | Firebase Auth (email / Google) + anonymous guest identity sa booking | Firebase Auth; papasok lang kung nasa admin allowlist **o** `profiles/{uid}.role == 'admin'` |
 
-**Hindi PWA-only** kasi gusto mo ng bagong features (push, offline, native call/maps).  
-Mas reliable ang Capacitor + FCM kaysa browser push, lalo na sa iOS later.
+**Bakit hindi Staff / Host roles:** iisang tao (o iisang team na may iisang access) ang nagpapatakbo ng hacienda. Ang RBAC sa pagitan ng Admin / Staff / Host ay dagdag na code, dagdag na rules, dagdag na bug surface — nang walang tunay na pangangailangan. Kung kailanganin ng pangalawang operator, bigyan lang ng Admin role ang account niya (allowlist o Profile), hindi bagong role.
 
-**Hindi Expo/RN** kasi 2–3× ang work para sa same booking flow, at duplicate UI.
-
-**Android muna.** iOS (TestFlight / App Store) phase 3 — kailangan Apple Developer account (~$99/yr).
+**Bakit Flutter para sa Admin, hindi web `/admin`:** ang Admin ay kailangang nasa bulsa — notifications ng papasok na guest, radar, smart lock, approve habang nasa labas. Ang website ay para sa guest na nagsi-search at nagbu-book mula sa browser (SEO, desktop, Messenger link).
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  GUEST APP (phone)          WEBSITE (desktop / SEO)     │
-│  Capacitor / PWA            existing landing page       │
-│  start URL: /app            /  /book  /admin            │
-└──────────────────┬──────────────────┬───────────────────┘
-                   │                  │
-                   ▼                  ▼
-            Firebase Auth · Firestore · Storage · (later FCM + Functions)
+┌──────────────────────────────┐      ┌──────────────────────────────┐
+│  GUEST WEBSITE  (src/)       │      │  ADMIN APP  (lib/, Flutter)  │
+│  /  /book  /track            │      │  Dashboard · Bookings        │
+│  /share-location             │      │  Radar · Stays · More →      │
+│  /login  /guest/auth         │      │  Rates · Smart Lock ·        │
+│  /account  (My bookings)     │      │  Analytics · Rooms · CRM     │
+└───────────────┬──────────────┘      └───────────────┬──────────────┘
+                │   role: guest                        │   role: admin
+                ▼                                      ▼
+        Firebase Auth · Firestore (bookings, profiles, site_config/rates,
+        tracking_sessions, access_logs) · Storage (kyc/)
+        firestore.rules / storage.rules = dalawang role lang
 ```
 
 ---
 
-## 2. Ano ang meron na (reuse, huwag i-rewrite)
+## 2. Guest website — ano ang meron
 
-Website ngayon:
+Routes (`src/App.tsx`):
 
-- Marketing landing (Hero, Stay, Amenities, Experience, Nearby, Gallery, Location, FAQ, Contact)
-- Booking **inquiry** form → Firestore (`cloudBookingsDB`)
-- Owner admin `/admin` (auth, real-time list, calendar, status)
-- Content source of truth: `src/config/site.ts`
-- Contact shortcuts: phone, Messenger, Google Maps
-
-**App = bagong shell + extra guest features, same data.**
-
----
-
-## 3. Guest app — information architecture
-
-Bottom tabs (5). Owner/admin **hindi** lalabas.
-
-```
-┌──────────┬──────────┬──────────┬──────────┬──────────┐
-│   Home   │   Stay   │  Explore │   Book   │  Account │
-└──────────┴──────────┴──────────┴──────────┴──────────┘
-```
-
-| Tab | Screens | Notes |
+| Route | Screen | Notes |
 |---|---|---|
-| **Home** | Welcome, stats, featured photos, CTAs | “Book” + Call + Directions |
-| **Stay** | Main House, Camping units, amenities, rates | → Book with preselected accommodation |
-| **Explore** | Gallery, Nearby (Hulugan, Aliw, etc.), Map | Offline-friendly gallery later |
-| **Book** | Inquiry form + estimate + success | Same Firestore write as website |
-| **Account** | My bookings, contact host, FAQs, policies | Guest login optional in v1.1 |
+| `/` | Marketing landing | Hero, Stay, Amenities, Gallery, Nearby, Location, FAQ, Contact |
+| `/book` | Booking form → Firestore `bookings` | 24h date hold (`hold_expires_at`), anonymous guest uid, `ref_id` |
+| `/track` | Track a booking by reference | Read-only status para sa guest |
+| `/share-location` | Live location sharing habang naka-stay | Consent = ang click mismo (`tracking_sessions/{bookingId}`) |
+| `/login`, `/guest/auth` | Guest sign-in / sign-up | Email / Google; Admin account → sinasabihang gamitin ang app |
+| `/account` | My bookings | Status, hold countdown, KYC upload, payment plan + proof, cancel, activity log |
+| `/admin/*`, `/app/*` | `AdminMoved` | Signpost lang: "Admin uses the mobile app" |
 
-**Native shortcuts (always reachable):**
-
-- Call `(0925) 850 7707`
-- Facebook Messenger
-- Open in Google Maps / Directions
-- Share the Hacienda
-
-**Hindi kasama sa guest app:** `/admin`, login ng owner, seed demo, Firebase status panel.
+Guest actions (`src/lib/booking/actions.ts`): `UploadKyc`, `ChoosePaymentPlan`, `UploadPaymentProof`, `Cancel`. Lahat ng approval / verification ay **wala** sa website.
 
 ---
 
-## 4. Phased delivery
+## 3. Admin app — ano ang meron
 
-### Phase 0 — Foundation (walang store pa)
+`lib/main.dart` → `AuthGate` → `AdminLoginScreen` → `MainShellScreen` (5 tabs + More sheet).
 
-- App routes under `/app/*`
-- Mobile app chrome: bottom tabs, safe-area, status bar color (forest)
-- Capacitor config + Android project
-- App icon + splash (HDL mark, cream/forest)
-- Hide website header/footer/sticky CTA **inside the app shell**
-- Website sa browser **hindi nagbabago** (SEO + desktop)
+| Screen | Ginagawa |
+|---|---|
+| **Dashboard** | Metrics, approaching guests, pending review count, quick actions |
+| **Bookings** → **Booking detail** | Lahat ng bookings; Approve / Reject / Reject ID / Verify payment / Reject proof / Cancel / Mark refunded / Check-in / Begin stay / Check-out / Complete / Purge KYC / Revoke key; activity log |
+| **Radar** | Live tracking sessions (distance, ETA) |
+| **Stays** | Kasalukuyang naka-stay, check-out progress |
+| **Rates** | Publish `site_config/rates`: nightly rate, security deposit, down-payment %, refund tiers — dito kinukuha ng website ang quote |
+| **Smart Lock** | Access log + simulation (ESP32 not yet wired) |
+| **Rooms** | Availability at status ng units |
+| **Guest CRM** | Profiles at history ng guests |
+| **Analytics** | Occupancy, revenue, funnel |
 
-**Exit:** `npx cap run android` → app opens Hacienda guest UI.
-
-### Phase 1 — MVP guest app (shippable APK)
-
-Dapat magawa ng guest **nang hindi binubuksan ang Chrome:**
-
-1. Tumingin ng rooms + photos + amenities  
-2. Mag-booking inquiry (dates, guests, contact)  
-3. Tumawag / Messenger / Maps sa 1 tap  
-4. Basahin FAQ + location  
-5. Makita ang success + reference number  
-
-**New vs website**
-
-- Bottom navigation (app feel)
-- Full-screen gallery lightbox, swipe
-- Sticky “Call host” / “Message” on Stay & Book
-- Deep link: `hdl://book?accommodation=main-house`
-- Android back button = in-app back (hindi exit)
-
-**Exit:** signed debug/release APK na pwede i-install sa phone ng guests (sideload or internal testing).
-
-### Phase 2 — “Plus features” (ito ang pinili mong scope)
-
-| Feature | Paano | Dependency |
-|---|---|---|
-| **Guest accounts** | Firebase Email + Google (meron na sa project). `users/{uid}` with `role: 'guest'`. Booking saves `uid`. | Auth rules update |
-| **My Bookings** | Guest reads **own** inquiries only (status: Pending / Confirmed / …) | Firestore rules by `uid` |
-| **Push notifications** | FCM: “Request received”, “Confirmed”, “Check-in tomorrow” | Cloud Functions (Blaze) + `booking_status` trigger |
-| **Offline gallery** | Cache `/images/gmaps` + nearby via service worker **or** Capacitor Preferences + filesystem | Phase 0 PWA/SW or `@capacitor/filesystem` |
-| **Call / Maps / Share** | `@capacitor/browser` + native `tel:` / geo / Share API | Capacitor plugins |
-| **Check-in reminder** | Local notification 1 day before confirmed stay | `@capacitor/local-notifications` (works even without Functions) |
-
-**Guest vs owner Auth (importante)**
-
-Ngayon, kahit sino naka-login ay pasok sa `/admin` (kung configured). Kailangan:
-
-```
-users/{uid}: { role: 'admin' | 'guest', email, displayName }
-```
-
-- `/admin` → `role === 'admin'` only (email whitelist as backup)
-- Guest app Account tab → `role === 'guest'`
-- Bookings: guest `create` + `read` own; admin `read/update/delete` all
-
-### Phase 3 — Store + iOS (optional)
-
-- Play Store listing (privacy policy, screenshots, content rating)
-- iOS via Capacitor (`npx cap add ios`) kapag may Apple account
-- App Store review notes: booking is **inquiry**, not instant pay
+Lifecycle logic: `lib/services/booking_lifecycle.dart` (`applyAdminAction`, `findDateConflicts`, `settleRefund`, `validatePublishedRates`) — parehong status table ng web `src/lib/booking`.
 
 ---
 
-## 5. Feature split — website vs app
-
-| Feature | Website | Guest app |
-|---|---|---|
-| Marketing landing, SEO | ✅ | Home tab (condensed) |
-| Accommodations | ✅ | Stay tab |
-| Gallery / Nearby / Map | ✅ | Explore tab |
-| Booking inquiry | `/book` | Book tab |
-| Owner dashboard | `/admin` | ❌ hidden |
-| Guest “My bookings” | later, optional | ✅ Phase 2 |
-| Push / local notifs | ❌ | ✅ Phase 2 |
-| Offline photos | ❌ | ✅ Phase 2 |
-| Native call / maps / share | links | ✅ native |
-
-Isang Firebase project. Dalawang front door.
-
----
-
-## 6. Tech checklist
-
-**Keep**
-
-- React 18, Vite, TypeScript, Tailwind, React Router
-- `src/config/site.ts` as content source of truth
-- `src/lib/firestoreBookings.ts` (extend with `uid`, `userId`)
-- Firebase Auth / Firestore / Storage
-
-**Add (Phase 0–1)**
-
-```
-@capacitor/core
-@capacitor/cli
-@capacitor/android
-@capacitor/status-bar
-@capacitor/splash-screen
-@capacitor/app          # back button, app URL
-@capacitor/browser
-```
-
-**Add (Phase 2)**
-
-```
-@capacitor/push-notifications     # FCM
-@capacitor/local-notifications
-@capacitor/share
-firebase-functions                # status → push (Blaze plan)
-vite-plugin-pwa                   # optional, web install + image cache
-```
-
-**Do not add unless kailangan**
-
-- React Native / Expo
-- Separate Node API (Firebase is enough)
-- Payments (inquiry muna — “no payment at this step” sa existing form)
-
----
-
-## 7. Data / security changes (Phase 2)
-
-Current: anyone can **create** a booking; only signed-in users can read/update.
-
-Proposed:
+## 4. Data at security (as built)
 
 ```
 bookings/{id}
-  guest_name, phone, email
-  check_in, check_out, guests, accommodation, special_requests
-  status: Pending | Confirmed | Cancelled | Completed
-  uid?: string          # set if logged-in guest
-  created_at, updated_at
-  fcmToken?: string     # optional, or store on users/{uid}
+  guest_name, phone, email, check_in, check_out, guests, accommodation
+  status: Pending | KYC Submitted | Approved | Payment Pending | Payment Verified |
+          Reserved | Checked-In | Staying | Checked-Out | Completed |
+          Rejected | Cancelled | Expired
+  uid, ref_id, source, created_at, hold_expires_at
+  kyc_status, kyc_id_url, kyc_receipt_url, kyc_reject_reason
+  payment_plan, payment_status, payment_proof_url, amount_claimed, amount_verified,
+  stay_total, amount_due, security_deposit, balance_due
+  refund_status, refund_total, refund_breakdown
+  rejection_reason, cancellation_reason, policy_version, policy_effective_date
+bookings/{id}/activity/{n}   # append-only: action, from_status, to_status, actor, at, reason
 
-users/{uid}
-  role: 'guest' | 'admin'
-  email, displayName
-  fcmTokens: string[]
+profiles/{uid}   role: 'guest' | 'admin'   (walang ibang value)
+site_config/rates
+tracking_sessions/{bookingId}
+access_logs/{n}
 ```
 
-Rules sketch:
+Rules (`firestore.rules`, `storage.rules`):
 
-- `create` booking: public **or** signed-in guest
-- `read` booking: admin **or** (`uid == request.auth.uid`)
-- `update/delete`: admin only (guest cannot self-confirm)
+- **Guest:** `create` booking; `read` / limited `update` ng sariling booking (`uid == request.auth.uid`); upload sa `kyc/{bookingId}/…`
+- **Admin** (`adminEmails()` allowlist o `profiles.role == 'admin'`): lahat ng iba — approve, verify, refund, rates, purge
+- Walang `staff`, walang `host`, walang `owner` sa rules
 
----
-
-## 8. UX notes (para hindi “website in a box”)
-
-- Cream / forest / serif look **manatili** (brand)
-- Bottom tab bar: cream-50, forest icons, 1 accent (olive) on Book
-- Safe areas (notch, Android nav bar)
-- Book tab = primary (filled icon / badge)
-- Success screen: reference # + “Message host” + “View my request”
-- Empty Account: “Book without an account” + “Save this stay — sign in”
-- No horizontal tables (admin table is web-only)
-- Images: existing `/public/images/gmaps` + `/nearby` — compress later if APK size > ~30MB
+Bootstrap admins: nasa `firestore.rules adminEmails()`, `storage.rules isAdminEmail()`, `src/lib/auth/profile.ts`, at Flutter `AuthStore.kAdminEmails` — **i-mirror kapag nagbago**.
 
 ---
 
-## 9. Out of scope (v1)
+## 5. Paano i-run
 
-- Instant booking / payments / GCash
-- Multi-property / channel manager (Airbnb sync)
-- Chat inside the app (Messenger muna)
-- Owner app (pwedeng Phase 4: separate `/app/owner` or PWA)
-- Changing prices in-app (owner still edits `site.ts` or future CMS)
+```bash
+# Guest website
+npm install && npm run dev        # http://localhost:5173
+npm run lint && npx vitest run && npm run build
+
+# Admin app (Flutter 3.27+)
+flutter pub get
+flutter run                        # naka-connect na Android device / emulator
+flutter test
+flutter build apk --release
+```
+
+Firebase setup: [FIREBASE_SETUP.md](FIREBASE_SETUP.md). Android specifics: [ANDROID.md](ANDROID.md).
 
 ---
 
-## 10. Risks
+## 6. Susunod na pwedeng gawin (hindi pa built)
+
+| Feature | Saan | Notes |
+|---|---|---|
+| Push notifications sa guest (approved / verified / check-in bukas) | Cloud Functions (Blaze) + FCM sa website | Local notifications sa Admin app meron na (`notification_service.dart`) |
+| Tunay na ESP32 / RFID / BLE mobile key | Admin app Smart Lock | Ngayon simulation + `access_logs` read lang |
+| Transactional Approve sa app | `booking_lifecycle.dart` | Web protocol nasa ADR-0006; app gumagamit ng latest snapshot check |
+| Damage report + cleaning records bilang documents | Admin app Stays | Ngayon deposit settlement lang ang nirerecord |
+| iOS build ng Admin app | `flutter create --platforms=ios .` | Kailangan Apple Developer account |
+| Play Store internal testing | `flutter build appbundle` | Privacy policy + screenshots |
+
+---
+
+## 7. Hindi kasama (by design)
+
+- Staff role, Host role, Super Admin, RBAC sa pagitan ng operators — **hindi babalik**
+- Admin screens sa website
+- Guest booking flow sa Flutter app
+- Capacitor / WebView wrapper ng website
+- Instant payment / GCash integration (proof upload + manual verify pa rin)
+
+---
+
+## 8. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Guest login nakakalusot sa `/admin` | Role check + email whitelist sa rules |
-| Push kailangan Blaze (Cloud Functions) | Phase 1 without push; Phase 2 local notifs first |
-| Malaking images = malaking APK | Remote images (Hosting/Storage) + cache; huwag i-bundle lahat |
-| iOS later | Capacitor supports it; huwag mag-RN “just in case” |
-| Inquiry ≠ confirmed reservation | Copy manatili: host confirms; no payment in-app |
+| Admin account nag-login sa website | Website nag-re-redirect sa signpost; walang admin screen na maaabot |
+| Guest account sumubok sa Admin app | `AuthStore.isAdmin` gate → sign out + "Guests book on the website" |
+| Allowlist hindi na-mirror sa apat na lugar | Nakalista sa §4; `profiles.role` ang long-term source of truth |
+| Dart hindi na-compile sa CI ng repo | Run `flutter analyze && flutter test` bago mag-release |
 
 ---
 
-## 11. Suggested build order (kapag mag-code na)
+## 9. Decision log
 
-1. `/app` route + tab layout (web preview muna — walang Android pa)  
-2. Port Home / Stay / Explore / Book into tab screens (reuse sections)  
-3. Capacitor Android + icon/splash + `tel:` / maps / share  
-4. Guest Auth + My Bookings + rules  
-5. Local check-in notification  
-6. FCM + Cloud Function on status change  
-7. Offline gallery cache  
-8. Play Store (optional)
-
-**Unang concrete milestone:** buksan sa phone preview ang `/app` with 5 tabs, working booking, call/maps — still a website, but *app-shaped*. Then wrap with Capacitor.
-
----
-
-## 12. Decision log
-
-- 2026-08-27 — App type: **recommend Capacitor + mobile guest shell** (user chose “irekomenda mo”)
-- 2026-08-27 — Audience: **guests**
-- 2026-08-27 — Scope: **app + new features** (push, offline gallery, native shortcuts, maybe guest login)
-- Owner dashboard: **web only** for now
+- 2026-08-27 — Unang plano: Capacitor guest app sa `/app/*`, owner dashboard sa web `/admin`.
+- 2026-09 — Flutter app na-prototype bilang guest app; web `/app` at `/admin` parehong buhay; Staff / Host / Owner roles lumitaw sa docs at rules.
+- **2026-09-24 — Superseded (ADR-0007):** dalawang role lang (Guest, Admin), dalawang app lang (Website = Guest, Flutter = Admin). Tinanggal ang Capacitor, `/app/*`, `/admin/*` web dashboard, Staff / Host roles at lahat ng RBAC sa pagitan nila. Admin app ang sumipsip ng lahat ng management functionality.

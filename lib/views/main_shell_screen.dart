@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart' as legacy;
 import '../core/constants/app_constants.dart';
+import '../services/auth_store.dart';
 import '../providers/app_providers.dart';
 import '../widgets/animated_badge.dart';
 import '../widgets/animated_tab_page.dart';
@@ -15,6 +17,7 @@ import 'smartlock/smart_lock_screen.dart';
 import 'analytics/analytics_screen.dart';
 import 'rooms/rooms_screen.dart';
 import 'crm/guest_crm_screen.dart';
+import 'rates/rates_screen.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});
@@ -47,6 +50,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       AnimatedTabPage(isActive: _currentIndex == 5, child: const SmartLockScreen()),
       AnimatedTabPage(isActive: _currentIndex == 6, child: const RoomsScreen()),
       AnimatedTabPage(isActive: _currentIndex == 7, child: const GuestCrmScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 8, child: const RatesScreen()),
     ];
 
     return Scaffold(
@@ -67,7 +71,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           ],
         ),
         child: BottomNavigationBar(
-          currentIndex: _currentIndex >= 5 ? 0 : _currentIndex,
+          currentIndex: _currentIndex >= 4 ? 4 : _currentIndex,
           backgroundColor: AppColors.primaryDark,
           selectedItemColor: AppColors.accentGoldLight,
           unselectedItemColor: Colors.white.withOpacity(0.5),
@@ -157,8 +161,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
+        final auth = legacy.Provider.of<AuthStore>(context, listen: false);
         return SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -180,6 +185,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                   padding: EdgeInsets.symmetric(horizontal: 8),
                 ),
                 const SizedBox(height: 4),
+                PressableCard(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _navigateToTab(8); // Rates
+                  },
+                  child: const ListTile(
+                    leading: Icon(Icons.payments_outlined),
+                    title: Text('Rates & Cancellation Policy'),
+                    subtitle: Text('Publish the prices and refund terms the website quotes'),
+                  ),
+                ),
                 PressableCard(
                   onTap: () {
                     Navigator.pop(ctx);
@@ -223,6 +239,16 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                     title: Text('Guest CRM & History'),
                     subtitle: Text('Past guest lookups, VIP badges & preferences'),
                   ),
+                ),
+                const Divider(height: 20),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: AppColors.statusAlert),
+                  title: const Text('Sign out'),
+                  subtitle: Text(auth.sessionEmail ?? 'Admin session'),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await auth.signOut();
+                  },
                 ),
               ],
             ),

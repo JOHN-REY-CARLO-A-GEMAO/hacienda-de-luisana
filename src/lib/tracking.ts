@@ -2,7 +2,7 @@
 // Live Tracking & Booker Proximity Service
 // Hacienda de LuisAna — Real-time location sharing & ETA tracking
 // ----------------------------------------------------------------------------
-// Enables bookers to share their live GPS coordinates and allows the client/host
+// Enables bookers to share their live GPS coordinates and allows the Admin
 // to monitor whether the guest is nearby ("Malapit na") or in what area they are.
 // Verified hotel pin: Hacienda De LuisAna @ 14.1754304, 121.519389 (Luisiana, Laguna).
 // ----------------------------------------------------------------------------
@@ -179,7 +179,7 @@ export const SIMULATION_CHECKPOINTS = [
   },
 ]
 
-/** How long ago a session was last pinged, in words the Host can read. */
+/** How long ago a session was last pinged, in words the Admin can read. */
 export function sessionAge(lastUpdated: string | undefined): string {
   if (!lastUpdated) return 'unknown time'
   const t = new Date(lastUpdated).getTime()

@@ -1,7 +1,7 @@
 // ----------------------------------------------------------------------------
 // Credentials: what a person types, and what goes wrong when they type it
 // ----------------------------------------------------------------------------
-// Every authentication failure the three roles can meet, in one place and in
+// Every authentication failure a sign-in can meet, in one place and in
 // words a Guest can act on. Two things live here that used to live in the sign-in
 // form alone: the mapping from a provider's error code to a sentence, and the
 // validation and sanitising of what was typed before it is sent anywhere.
@@ -44,7 +44,7 @@ const MESSAGES: Record<AuthErrorCode, string> = {
   'auth/email-already-in-use': 'An account with this email already exists. Try logging in.',
   'auth/weak-password': 'Password must be at least 6 characters',
   'auth/too-many-requests': 'Too many attempts. Please try again later.',
-  'auth/user-disabled': 'That account has been disabled. Ask the Host to re-enable it.',
+  'auth/user-disabled': 'That account has been disabled. Ask the Admin to re-enable it.',
   'auth/user-token-expired': 'Your session has expired. Please sign in again.',
   'auth/network-request-failed': 'Cannot reach the server. Check your connection and try again.',
   'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
@@ -85,7 +85,7 @@ const KNOWN = new Set(Object.keys(MESSAGES))
 /**
  * Whatever was thrown, as an AuthError with a message for a person.
  *
- * Unknown codes keep their own message when they have one — a Host setting the
+ * Unknown codes keep their own message when they have one — an Admin setting the
  * project up needs to read what Firebase actually said — but never their stack.
  */
 export function describeAuthError(error: unknown): AuthError {
@@ -174,7 +174,8 @@ export function validateCredentials(raw: { email?: unknown; password?: unknown }
  * A sign-up, checked and sanitised.
  *
  * There is deliberately no role to validate: a sign-up is always a Guest, and
- * only a Host can make anybody anything else (ADR-0005).
+ * the Admin is recognised from the allowlist or a Profile written outside this
+ * app, never from a sign-up form (ADR-0005, ADR-0007).
  */
 export function validateRegistration(raw: {
   email?: unknown

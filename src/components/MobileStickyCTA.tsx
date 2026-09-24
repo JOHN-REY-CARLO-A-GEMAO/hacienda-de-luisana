@@ -4,12 +4,8 @@ import { Phone } from '../lib/icons'
 
 export function MobileStickyCTA() {
   const location = useLocation()
-  // Don't show over the booking or admin pages
-  if (
-    location.pathname.startsWith('/book') ||
-    location.pathname.startsWith('/admin') ||
-    location.pathname.startsWith('/app')
-  ) return null
+  // Don't show over the booking flow
+  if (location.pathname.startsWith('/book')) return null
 
   return (
     <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 pb-safe pointer-events-none">
@@ -17,7 +13,7 @@ export function MobileStickyCTA() {
         <div className="rounded-2xl bg-forest-900/95 backdrop-blur border border-cream-100/10 shadow-soft flex items-center gap-2 p-2">
           <a
             href={`tel:${BUSINESS.contact.phone.replace(/\s+/g, '')}`}
-            aria-label="Call the host"
+            aria-label="Call the Hacienda"
             className="w-11 h-11 rounded-xl bg-cream-100/10 text-cream-100 flex items-center justify-center shrink-0"
           >
             <Phone size={18} />

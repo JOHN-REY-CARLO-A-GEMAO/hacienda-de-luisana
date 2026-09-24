@@ -1,15 +1,15 @@
 // ----------------------------------------------------------------------------
-// The Profile: which of the three roles a signed-in person has
+// The Profile: which of the two roles a signed-in person has
 // ----------------------------------------------------------------------------
 // A person's role is stored, not chosen in the browser: `profiles/{uid}` in
-// Firestore holds exactly one of the three roles, and firestore.rules reads that
+// Firestore holds exactly one of the two roles, and firestore.rules reads that
 // document when it decides anything. The client resolves the same way the rules
 // do, so a page never offers a button Firestore is about to refuse.
 //
-// Two addresses are recognised without a Profile — the bootstrap allowlist the
-// rules have always had. They come first, on both sides, because a deployment
-// whose owner could be locked out by a missing document is a deployment nobody
-// can fix. See ADR-0005.
+// The Admin addresses are recognised without a Profile — the bootstrap allowlist
+// the rules have always had. They come first, on both sides, because a
+// deployment whose Admin could be locked out by a missing document is a
+// deployment nobody can fix. See ADR-0005 and ADR-0007.
 //
 // This is an internal file of the `src/lib/auth` module.
 // ----------------------------------------------------------------------------
@@ -22,8 +22,9 @@ export const DEFAULT_ROLE: Role = 'guest'
 /**
  * What is stored at `profiles/{uid}`.
  *
- * `role` is the only field the rules read. The rest is what a Host sees in the
- * team list, and is snake_cased like every other document in this project.
+ * `role` is the only field the rules read. The rest is what the Admin sees when
+ * looking a person up, and is snake_cased like every other document in this
+ * project.
  */
 export type Profile = {
   uid: string
@@ -35,18 +36,18 @@ export type Profile = {
 }
 
 /**
- * The bootstrap allowlist: addresses that carry a role with no Profile written.
+ * The bootstrap allowlist: the Admin addresses, which carry the role with no
+ * Profile written.
  *
- * Kept in step with `ownerEmails()` / `anakEmails()` in firestore.rules,
- * `isOwnerEmail()` in storage.rules and `AuthStore.kOwnerEmail` /
- * `kAnakEmail` in the Flutter app. Changing one without the others splits the
- * two apps' idea of who the Host is.
+ * Kept in step with `adminEmails()` in firestore.rules, `isAdminEmail()` in
+ * storage.rules and `AuthStore.kAdminEmails` in the Flutter app
+ * (`lib/services/auth_store.dart`). Changing one without the others splits the
+ * two apps' idea of who the Admin is. `test/web/auth-firestore-rules.test.ts`
+ * compares this list with the rules file.
  */
 export const BOOTSTRAP_ROLES: ReadonlyArray<{ email: string; role: Role }> = [
-  { email: 'haciendadeluisiana@gmail.com', role: 'host' },
-  // The locks-readonly address the rules already call `anak`: reads Bookings and
-  // the Access log, decides nothing — which is what Staff means.
-  { email: 'gemaojohnreycarloarguilles@gmail.com', role: 'staff' },
+  { email: 'haciendadeluisiana@gmail.com', role: 'admin' },
+  { email: 'gemaojohnreycarloarguilles@gmail.com', role: 'admin' },
 ]
 
 /**
@@ -77,7 +78,7 @@ export type RoleBearer = {
  * null, never Guest, so a signed-out person is not mistaken for a Guest who can
  * read their own Bookings.
  *
- * A Profile whose stored role is not one of the three resolves to Guest: a
+ * A Profile whose stored role is not one of the two resolves to Guest: a
  * document nobody can explain must not grant anything.
  */
 export function resolveRole(user: RoleBearer, profile: Profile | null): Role | null {
@@ -91,7 +92,7 @@ export function resolveRole(user: RoleBearer, profile: Profile | null): Role | n
  * Read a stored Profile document, refusing one that is not a Profile.
  *
  * The shape comes off Firestore, so it is treated as untrusted: a document with
- * no uid, or a role outside the three, is no Profile at all and its owner stays
+ * no uid, or a role outside the two, is no Profile at all and its owner stays
  * a Guest.
  */
 export function normalizeProfile(raw: unknown): Profile | null {

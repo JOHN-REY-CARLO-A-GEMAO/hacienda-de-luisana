@@ -55,7 +55,7 @@ describe('the booking lifecycle module', () => {
 
   it('answers from its arguments alone, never from the clock or the environment', () => {
     // Every date rule takes the instant it reasons about, so a test — and the
-    // Host's approval re-check — can pin `now` instead of racing the wall clock
+    // Admin's approval re-check — can pin `now` instead of racing the wall clock
     // (ADR-0002). Proved by behaviour rather than by scanning source: the same
     // question asked twice at a pinned instant gives the same answer.
     const hold = { status: 'Pending' as const, hold_expires_at: '2026-09-21T00:00:00.000Z' }

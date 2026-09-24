@@ -4,9 +4,9 @@
 // ----------------------------------------------------------------------------
 // Rates, payment options, and Security deposit / Refund arithmetic.
 //
-// The Host still owes the system a real rate card, a Security deposit amount and
+// The Admin still owes the system a real rate card, a Security deposit amount and
 // cancellation percentages (spec #9, Further Notes). Nothing here invents them:
-// every figure is an argument, and a policy the Host has not published refunds
+// every figure is an argument, and a policy the Admin has not published refunds
 // nothing rather than guessing in either party's favour.
 // This is an internal file of the `src/lib/booking` module: callers and tests
 // go through `src/lib/booking`, never through here directly.
@@ -15,7 +15,7 @@
 import { DAY_MS, parseDate, parseInstant, roundMoney } from './internal'
 import { nightsBetween } from './availability'
 
-/** The Host's published figures for one Accommodation. */
+/** The Admin's published figures for one Accommodation. */
 export type RateCard = {
   /** Philippine pesos per night. */
   nightlyRate: number
@@ -31,13 +31,13 @@ export type RefundTier = {
   refundPercent: number
 }
 
-/** The Host's published cancellation policy. */
+/** The Admin's published cancellation policy. */
 export type RefundPolicy = {
   /** Flat percentage of the stay refunded on cancellation. */
   refundPercent?: number
   /** Tiered percentages, applied instead of `refundPercent` when published. */
   tiers?: RefundTier[]
-  /** Percentage of the Security deposit returned; 100 unless the Host says otherwise. */
+  /** Percentage of the Security deposit returned; 100 unless the Admin says otherwise. */
   depositRefundPercent?: number
 }
 
@@ -60,7 +60,7 @@ export type PaymentOption = {
 }
 
 /**
- * The payment choices for a stay total, under the Host's published figures.
+ * The payment choices for a stay total, under the Admin's published figures.
  *
  * Flow §2 step 7: 50% down payment plus a refundable Security deposit, or full
  * payment plus the same deposit. The down payment is rounded down to whole
@@ -99,7 +99,7 @@ function optionsFromTotal(
 }
 
 /**
- * The payment choices a Guest is offered once the Host has approved, quoted
+ * The payment choices a Guest is offered once the Admin has approved, quoted
  * from the rate card.
  */
 export function paymentOptions(
@@ -112,8 +112,8 @@ export function paymentOptions(
 /**
  * The payment choices for a stay whose total is already quoted and recorded.
  *
- * The Host's rate card for this property is not yet a machine-readable
- * document — a quote can be a phone call the Host made and the amount the
+ * The Admin's rate card for this property is not yet a machine-readable
+ * document — a quote can be a phone call the Admin made and the amount the
  * Booking carries. Quoting from the recorded total keeps the Guest's money
  * tied to the number they were actually offered, while the arithmetic stays
  * identical to quoting from a card: same flooring, same deposit, same balance.
@@ -126,7 +126,7 @@ export function paymentOptionsForTotal(
 }
 
 /**
- * The stay total for a Booking: quoted from the rate card when the Host has
+ * The stay total for a Booking: quoted from the rate card when the Admin has
  * published one, otherwise the amount recorded on the Booking when the Guest
  * chose their payment plan.
  */
@@ -158,7 +158,7 @@ export type RefundInput = {
   stay_total?: number
   /** Security deposit recorded on the Booking. */
   security_deposit?: number
-  /** Money the Host verified for this Booking; caps the Refund. */
+  /** Money the Admin verified for this Booking; caps the Refund. */
   verifiedAmount?: number
   /** A verified damage claim, settled against the Security deposit. */
   damageDeduction?: number
@@ -170,7 +170,7 @@ function refundPercentFor(policy: RefundPolicy, daysBeforeCheckIn: number): numb
   const applicable = [...tiers]
     .sort((a, b) => b.minDaysBeforeCheckIn - a.minDaysBeforeCheckIn)
     .find((tier) => daysBeforeCheckIn >= tier.minDaysBeforeCheckIn)
-  // No tier reached: the Host published no refund for cancelling this late.
+  // No tier reached: the Admin published no refund for cancelling this late.
   return applicable ? applicable.refundPercent : 0
 }
 
@@ -179,7 +179,7 @@ function refundPercentFor(policy: RefundPolicy, daysBeforeCheckIn: number): numb
  *
  * The Security deposit is settled first — the damage claim is deducted from it
  * and the remainder is returned — then the stay is refunded by the policy tier
- * the cancellation date falls in. The total is capped at the money the Host
+ * the cancellation date falls in. The total is capped at the money the Admin
  * actually verified, and a deduction can never exceed the deposit held, so the
  * Guest is never billed beyond what they handed over.
  *

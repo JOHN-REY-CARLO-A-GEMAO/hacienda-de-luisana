@@ -8,7 +8,7 @@
 //
 // The password rules are not relaxed for demo mode: nothing plaintext is ever
 // written down, and a wrong password is a wrong password.
-import { AuthError, createSession } from '../../src/lib/auth'
+import { createSession } from '../../src/lib/auth'
 import { createLocalPorts, LOCAL_ACCOUNTS_KEY, LOCAL_PROFILES_KEY, LOCAL_SESSION_KEY } from '../../src/lib/authLocal'
 
 // Credentials invented for this file and used nowhere else: the one every
@@ -165,48 +165,34 @@ describe('local Profiles', () => {
     ])
   })
 
-  it('let the Host make somebody Staff, and the change outlives a reload', async () => {
-    const { session } = startLocalSession()
+  it('make every sign-up a Guest, and offer no way to become anything else', async () => {
+    const { session, ports } = startLocalSession()
     await session.register({ email: 'ben@example.com', password: REGISTERED_WITH, displayName: 'Ben Cariño' })
-    const ben = session.getState().user!
     expect(session.getState().role).toBe('guest')
 
-    // Demo mode has no Host account to sign in with, so the adapter makes one.
-    await session.signInAsRole('host')
-    const assigned = await session.assignRole(
-      { uid: ben.uid, email: ben.email, displayName: ben.displayName },
-      'staff',
-    )
+    // The website is the Guest's application (ADR-0007): nothing on the
+    // session or the ports promotes anybody, in demo mode or otherwise.
+    expect('signInAsRole' in session).toBe(false)
+    expect('assignRole' in session).toBe(false)
+    expect('assign' in ports.profiles).toBe(false)
+    expect('list' in ports.profiles).toBe(false)
 
-    expect(assigned.role).toBe('staff')
-    expect(profilesIn().find((profile) => profile.uid === ben.uid)?.role).toBe('staff')
-
-    const reloaded = startLocalSession()
-    await reloaded.session.login('ben@example.com', 'bahay-kubo-9')
-    expect(reloaded.session.getState().role).toBe('staff')
-    expect(reloaded.session.can('stays:complete')).toBe(true)
-    expect(reloaded.session.can('bookings:review')).toBe(false)
-  })
-
-  it('refuse a role change asked for by somebody who is not the Host', async () => {
-    const { session } = startLocalSession()
-    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
-
-    await expect(session.assignRole({ uid: 'whoever' }, 'host')).rejects.toBeInstanceOf(AuthError)
+    // Even a Profile created by hand with a stronger role is stored as a Guest.
+    const stored = await ports.profiles.create({ uid: 'someone', role: 'admin' })
+    expect(stored.role).toBe('guest')
     expect(profilesIn().every((profile) => profile.role === 'guest')).toBe(true)
   })
 
-  it('step into each of the three roles, because demo mode has no Host to ask', async () => {
+  it('recognise the allowlisted Admin address, like the rules do', async () => {
     const { session } = startLocalSession()
 
-    for (const role of ['host', 'staff', 'guest'] as const) {
-      await session.signInAsRole(role)
-      expect(session.getState().role).toBe(role)
-      expect(sessionIn()?.uid).toBe(session.getState().user?.uid)
-    }
-    // One account per role, each with its Profile already written.
-    expect(accountsIn()).toHaveLength(3)
-    expect(profilesIn().map((profile) => profile.role).sort()).toEqual(['guest', 'host', 'staff'])
+    await session.register({ email: 'haciendadeluisiana@gmail.com', password: REGISTERED_WITH })
+
+    // The Profile a sign-up writes is a Guest's, but the allowlist wins on
+    // resolution — and an Admin holds none of a Guest's own-Booking permissions.
+    expect(session.getState().role).toBe('admin')
+    expect(session.can('booking:read:own')).toBe(false)
+    expect(session.can('bookings:review')).toBe(true)
   })
 })
 

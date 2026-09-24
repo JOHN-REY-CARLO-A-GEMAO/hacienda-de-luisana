@@ -1,5 +1,5 @@
-// Ticket #11: every state change to a Booking is recorded, and the Host can read
-// the record. The log is append-only, and the Host's view is ordered.
+// Ticket #11: every state change to a Booking is recorded, and the Admin can read
+// the record. The log is append-only, and the Admin's view is ordered.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activityLogDB, cloudBookingsDB } from '../../src/lib/firestoreBookings'
@@ -7,7 +7,7 @@ import { describeActivity } from '../../src/lib/booking'
 import type { ActivityLogEntry } from '../../src/lib/booking'
 
 const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' } as const
-const host = { actor: 'host', actor_id: 'host-1', actor_name: 'Ana Luisana' } as const
+const admin = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana' } as const
 const NOW = '2026-09-20T01:00:00.000Z'
 
 const request = {
@@ -38,7 +38,7 @@ describe('the Activity log records every state change', () => {
     const rejected = await cloudBookingsDB.transition(
       booking.id,
       { type: 'Reject', reason: 'Government ID expired last month' },
-      { ...host, now: NOW },
+      { ...admin, now: NOW },
     )
     expect(rejected.ok).toBe(true)
 
@@ -47,8 +47,8 @@ describe('the Activity log records every state change', () => {
       action: 'Reject',
       from_status: 'KYC Submitted',
       to_status: 'Rejected',
-      actor: 'host',
-      actor_id: 'host-1',
+      actor: 'admin',
+      actor_id: 'admin-1',
       at: NOW,
       reason: 'Government ID expired last month',
     })
@@ -57,14 +57,14 @@ describe('the Activity log records every state change', () => {
   it('reads back in the order things happened, even when they happened in the same instant', async () => {
     const booking = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
-    // A Guest uploading an ID and the Host approving it inside the same
+    // A Guest uploading an ID and the Admin approving it inside the same
     // millisecond is unusual but legal: the order must not depend on the clock
     // having moved on.
     for (const action of [
       { type: 'UploadKyc', kyc_id_url: 'gs://ids/1.jpg' },
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
     ] as const) {
-      const actor = action.type === 'UploadKyc' ? guest : host
+      const actor = action.type === 'UploadKyc' ? guest : admin
       const result = await cloudBookingsDB.transition(booking.id, action, { ...actor, now: NOW })
       expect(result.ok).toBe(true)
     }
@@ -88,7 +88,7 @@ describe('the Activity log records every state change', () => {
     expect((await activityLogDB.list(second.id)).map((e) => e.action)).toEqual(['Submit'])
   })
 
-  it('is reachable from the bookings interface the Host already uses', async () => {
+  it('is reachable from the bookings interface the Admin already uses', async () => {
     const booking = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
     expect((await cloudBookingsDB.history(booking.id)).map((e) => e.action)).toEqual(['Submit'])
@@ -108,12 +108,13 @@ describe('the Activity log is append-only', () => {
     expect(block).toMatch(/allow create:/)
     expect(block).toMatch(/allow read:/)
     expect(block).toMatch(/allow update, delete: if false/)
-    // The owner's usual override must not appear here.
-    expect(block).not.toMatch(/isAdmin\(\)\s*;\s*$/m)
+    // The Admin's usual write override must not appear here: nobody edits or
+    // deletes an audit record.
+    expect(block).not.toMatch(/allow (update|delete|write)[^;]*isAdmin\(\)/)
   })
 })
 
-// The Host reads the log as sentences, so the wording is behaviour worth testing
+// The Admin reads the log as sentences, so the wording is behaviour worth testing
 // rather than string-munging buried in a component.
 describe('describeActivity', () => {
   const entry = (over: Partial<ActivityLogEntry> = {}): ActivityLogEntry => ({
@@ -121,8 +122,8 @@ describe('describeActivity', () => {
     action: 'Approve',
     from_status: 'KYC Submitted',
     to_status: 'Approved',
-    actor: 'host',
-    actor_id: 'host-1',
+    actor: 'admin',
+    actor_id: 'admin-1',
     actor_name: 'Ana Luisana',
     at: '2026-09-20T01:00:00.000Z',
     seq: 2,
@@ -134,12 +135,12 @@ describe('describeActivity', () => {
 
     expect(line.headline).toBe('Booking approved')
     expect(line.change).toBe('KYC Submitted → Approved')
-    expect(line.actor).toBe('Ana Luisana (Host)')
+    expect(line.actor).toBe('Ana Luisana (Admin)')
     expect(line.at).toBe('2026-09-20T01:00:00.000Z')
     expect(line.reason).toBeUndefined()
   })
 
-  it('carries a display-ready instant, so the Host view does its own formatting nowhere', () => {
+  it('carries a display-ready instant, so the Admin view does its own formatting nowhere', () => {
     const line = describeActivity(entry())
 
     expect(line.atLabel).not.toBe('')
@@ -179,7 +180,7 @@ describe('describeActivity', () => {
 
 // Spec #9: "The Activity log is append-only and written by the state change
 // itself, not by the UI that triggered it, so a transition cannot happen
-// unlogged." The Host dashboard still sets a status directly today (moving it
+// unlogged." The Admin dashboard still sets a status directly today (moving it
 // onto the lifecycle's own actions is ticket #13), so that write is logged too —
 // a status change with no entry behind it is the hole the spec closes.
 describe('a status written straight to the store is still logged', () => {
@@ -193,7 +194,7 @@ describe('a status written straight to the store is still logged', () => {
     expect(history.at(-1)).toMatchObject({
       from_status: 'Pending',
       to_status: 'Reserved',
-      actor: 'host',
+      actor: 'admin',
     })
   })
 

@@ -95,12 +95,12 @@ describe('canTransition', () => {
     }
   })
 
-  it('refuses to skip the Host review or the payment verification', () => {
+  it('refuses to skip the Admin review or the payment verification', () => {
     // ADR-0001: approval happens before any money moves.
     expect(canTransition('Pending', 'Approved')).toBe(false)
     expect(canTransition('Pending', 'Payment Pending')).toBe(false)
     expect(canTransition('KYC Submitted', 'Payment Pending')).toBe(false)
-    // Money is only ever trusted once the Host has verified the proof.
+    // Money is only ever trusted once the Admin has verified the proof.
     expect(canTransition('Approved', 'Reserved')).toBe(false)
     expect(canTransition('Payment Pending', 'Reserved')).toBe(false)
     // No self-service arrival: Checked-In comes out of Reserved only.
@@ -118,7 +118,7 @@ describe('canTransition', () => {
     expect(canTransition('Reserved', 'Cancelled')).toBe(true)
   })
 
-  it('never leaves a terminal status, and never expires a Booking the Host has acted on', () => {
+  it('never leaves a terminal status, and never expires a Booking the Admin has acted on', () => {
     for (const terminal of ['Completed', 'Rejected', 'Cancelled', 'Expired'] as BookingStatus[]) {
       for (const next of BOOKING_STATUSES) {
         expect(canTransition(terminal, next)).toBe(false)
@@ -137,7 +137,7 @@ describe('canTransition', () => {
 })
 
 // Spec #9 / G2: availability is enforced by the system, not the eyeball. The
-// same overlap rule is what the guest's date check, the Host's list and the
+// same overlap rule is what the guest's date check, the Admin's list and the
 // approval-time re-check all apply.
 describe('datesOverlap', () => {
   it('is true when two stays share a night', () => {
@@ -162,7 +162,7 @@ describe('datesOverlap', () => {
 
 // ADR-0002: nothing in the backend ever releases a hold. Expiry is applied when
 // availability is read, by every surface that reads it, so a Guest view and the
-// Host view can never disagree about a hold.
+// Admin view can never disagree about a hold.
 const HOLD = '2026-10-01T00:00:00.000Z'
 const HOUR = 60 * 60 * 1000
 
@@ -206,7 +206,7 @@ describe('hold expiry at read time', () => {
     expect(isHoldExpired({ status: 'KYC Submitted' }, HOLD)).toBe(true)
   })
 
-  it('never expires a Booking the Host has already acted on', () => {
+  it('never expires a Booking the Admin has already acted on', () => {
     const longPast = '2030-01-01T00:00:00.000Z'
     for (const status of [
       'Approved',
@@ -359,7 +359,7 @@ describe('findDateConflicts', () => {
       findDateConflicts(request, bookings, { unitsAvailable: 1, now: HOLD }).map((c) => c.id).sort(),
     ).toEqual(['committed', 'waiting'])
 
-    // Approving one of them is only blocked by the dates the Host has already
+    // Approving one of them is only blocked by the dates the Admin has already
     // committed, so two Guests can queue for the same one-unit Accommodation.
     expect(
       findDateConflicts(request, bookings, {
@@ -391,7 +391,7 @@ describe('findDateConflicts', () => {
 })
 
 // Ticket #10 / spec #9: the rate card, the Security deposit amount and the
-// cancellation percentages are the Host's to publish, and this module invents
+// cancellation percentages are the Admin's to publish, and this module invents
 // none of them. Every number below is a test literal, and every function takes
 // the policy as an argument.
 describe('nightsBetween', () => {
@@ -419,7 +419,7 @@ describe('quoteStay', () => {
 describe('paymentOptions', () => {
   // Flow §2 step 7: [50% Down Payment + Refundable Security Deposit] or
   // [Full Payment + Refundable Security Deposit].
-  it('offers the Host a down payment and a full payment, both plus the deposit', () => {
+  it('offers the Admin a down payment and a full payment, both plus the deposit', () => {
     const options = paymentOptions(
       { check_in: '2026-10-01', check_out: '2026-10-04' },
       { nightlyRate: 10000, securityDeposit: 500, downPaymentPercent: 50 },
@@ -448,7 +448,7 @@ describe('paymentOptions', () => {
     expect(options[0].dueNow + options[0].balance).toBe(options[0].stayTotal)
   })
 
-  it('offers full payment only when the Host has published no down payment percentage', () => {
+  it('offers full payment only when the Admin has published no down payment percentage', () => {
     const options = paymentOptions(
       { check_in: '2026-10-01', check_out: '2026-10-02' },
       { nightlyRate: 10000, securityDeposit: 500 },
@@ -514,7 +514,7 @@ describe('settleRefund', () => {
     })
   })
 
-  it('applies the policy percentage the Host published, including zero', () => {
+  it('applies the policy percentage the Admin published, including zero', () => {
     expect(settleRefund(stay, { refundPercent: 50 }, { cancelledAt: cancelled, rateCard }).stayRefund).toBe(15000)
     expect(settleRefund(stay, { refundPercent: 50 }, { cancelledAt: cancelled, rateCard }).refundTotal).toBe(15500)
     const none = settleRefund(stay, { refundPercent: 0 }, { cancelledAt: cancelled, rateCard })
@@ -574,7 +574,7 @@ describe('settleRefund', () => {
     expect(settled.refundTotal).toBe(30000)
   })
 
-  it('keeps the deposit when the Host has published it as non-refundable', () => {
+  it('keeps the deposit when the Admin has published it as non-refundable', () => {
     const settled = settleRefund(stay, { refundPercent: 100, depositRefundPercent: 0 }, {
       cancelledAt: cancelled,
       rateCard,
@@ -595,7 +595,7 @@ describe('settleRefund', () => {
     })
   })
 
-  it('never refunds more than the money the Host actually verified', () => {
+  it('never refunds more than the money the Admin actually verified', () => {
     // The Guest paid the deposit but only part of the stay before cancelling.
     const settled = settleRefund(stay, { refundPercent: 100 }, {
       cancelledAt: cancelled,
@@ -610,7 +610,7 @@ describe('settleRefund', () => {
 })
 
 // Ticket #13: a clash refuses the approval and offers alternative dates instead,
-// so the Host keeps the Guest rather than losing them.
+// so the Admin keeps the Guest rather than losing them.
 describe('suggestAlternativeDates', () => {
   const stored = (
     id: string,

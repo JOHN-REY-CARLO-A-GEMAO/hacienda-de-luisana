@@ -1,6 +1,6 @@
 # Firebase Integration — Hacienda de LuisAna
 
-This document explains how Firebase was integrated into the Hacienda de LuisAna website.
+This document explains how Firebase backs the Hacienda de LuisAna system: the Guest website (`src/`) and the Admin mobile app (`lib/`).
 
 ## 🔧 What Was Implemented
 
@@ -29,75 +29,82 @@ VITE_FIREBASE_APP_ID
 VITE_FIREBASE_MEASUREMENT_ID (optional)
 ```
 
-### 3. Authentication & RBAC (Email + Google for people, Anonymous for guests)
+### 3. Authentication & roles (Email + Google for people, Anonymous for web Guests)
 
-Three roles, from `CONTEXT.md` § People: **Guest**, **Host**, **Staff**. A role is stored at
-`profiles/{uid}` and enforced by `firestore.rules` — see
-[ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md).
+Two roles, from `CONTEXT.md` § People: **Guest** and **Admin** — no Staff, no Host
+([ADR-0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md)). A role is
+stored at `profiles/{uid}` and bootstrapped by an email allowlist
+([ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md));
+`firestore.rules` enforces it. The website signs Guests in; the Admin signs in on the Flutter app.
 
-**`src/lib/auth/` — the authorization core (pure: no Firebase, no browser APIs)**
-- `roles.ts`: the three roles, the permission catalogue, `can(role, permission)`
-- `pages.ts`: which page each permission opens (`/admin`, `/app`, `/app/tracking`, `/account`)
-- `profile.ts`: `resolveRole()` — bootstrap allowlist, then Profile, then Guest
+**`src/lib/auth/` — the website's authorization core (pure: no Firebase, no browser APIs)**
+- `roles.ts`: the two roles, the permission catalogue, `can(role, permission)`
+- `pages.ts`: which page a permission opens (`/account`) and where each role lands (`homeForRole`)
+- `profile.ts`: `resolveRole()` — bootstrap allowlist (`BOOTSTRAP_ROLES`), then Profile, then Guest
 - `credentials.ts`: input validation/sanitising and every failure in words (`describeAuthError`)
-- `session.ts`: `createSession(authPort, profilePort)` — sign-up, sign-in, sign-out, restore,
-  role changes, and the actor a Booking action is attributed to
+- `session.ts`: `createSession(authPort, profilePort)` — sign-up, sign-in, Google, sign-out, reset,
+  restore, and the actor a Booking action is attributed to
 
 **Adapters — two implementations of the same two ports**
-- `src/lib/authFirebase.ts`: Firebase Auth (`browserLocalPersistence`, so a reload keeps the
-  session) + Firestore `profiles`
-- `src/lib/authLocal.ts`: demo mode with no Firebase — accounts, PBKDF2-SHA256 (210k rounds,
-  per-account salt) password hashes, Profiles and the session in this browser's localStorage
+- `src/lib/authFirebase.ts`: Firebase Auth (`browserLocalPersistence`) + Firestore `profiles`
+- `src/lib/authLocal.ts`: demo mode with no Firebase — Guest accounts, PBKDF2-SHA256 (210k rounds,
+  per-account salt) password hashes and the session in this browser's localStorage; every account it
+  creates is a Guest
 - `src/lib/authSession.ts`: picks one, once
 
 **React seam**
 - `src/context/AuthContext.tsx`: `user`, `role`, `can()`, `canOpen()`, `actor`, and the actions
 - `src/hooks/useAuth.ts`: the hook every page uses
-- `src/components/Auth/LoginForm.tsx`: one form for all three roles; sign-up makes a Guest
-- `src/components/Auth/ProtectedRoute.tsx`: spinner → sign-in → **403 for the wrong role**,
-  reading the path it stands on, so a nested page answers from its own rule
-- `src/components/Auth/TeamPanel.tsx`: the Host's `/admin?tab=team` list — who has which role
+- `src/components/Auth/LoginForm.tsx`: Guest sign-in / sign-up (email + Google); sign-up makes a Guest
+- `src/components/Auth/ProtectedRoute.tsx`: spinner → sign-in → **turned away for the wrong role**
+  (an Admin on `/account` is told this website is for Guests and pointed to the Admin app)
 - `src/lib/guestAuth.ts`: `ensureGuestUid()` is called when `/book` creates a Booking, so the
-  document carries the uid that `firestore.rules` and `storage.rules` key guest access to; in
+  document carries the uid that `firestore.rules` and `storage.rules` key Guest access to; in
   demo mode it returns the signed-in local account's uid instead
 
 **Integration points:**
 - `src/main.tsx` wrapped with `<AuthProvider>`
-- `src/App.tsx` protects `/admin` (Host), `/app` and its tabs (Host + Staff), `/account` (Guest)
-- `src/components/Nav.tsx` shows only the links this role may open, plus Sign in / Sign out
-- `src/components/Booking/BookingReview.tsx` reads its own actor's role: a Staff session sees the
-  Booking without the approve/refuse controls and without the government ID
+- `src/App.tsx` protects `/account` (Guest); `/admin/*` and `/app/*` render a "moved to the Admin app" notice
+- `src/components/Nav.tsx` shows Book / My Bookings / Sign in / Sign out
+
+**The Admin app (`lib/services/auth_store.dart`)**
+- Google or email + password through Firebase Auth; `isAdmin` = allowlist (`AuthStore.kAdminEmails`)
+  **or** `profiles/{uid}.role == 'admin'`; any other account is signed straight back out
+- The Admin's writes go through `lib/services/booking_lifecycle.dart` (the same lifecycle table as
+  `src/lib/booking`) and `FirestoreService.applyBookingAction`, which stores the patch and the Activity
+  entry in one batch
 
 ### 4. Firestore Database
-- `src/lib/firestoreBookings.ts`:
+- `src/lib/firestoreBookings.ts` (website):
   - Cloud-aware service: uses Firestore when configured, falls back to `localStorage` otherwise
-  - Methods: `list()`, `subscribe()`, `add()`, `update()`, `remove()`
+  - Guest scope: `listMine()`, `subscribeMine()`, `add()`, and `takeAction()` for the Guest's own
+    lifecycle actions (UploadKyc, ChoosePaymentPlan, UploadPaymentProof, Cancel)
   - Real-time listener via `onSnapshot`
-- `src/pages/BookingPage.tsx`:
-  - Now writes to Firestore (or local fallback)
-  - Shows cloud/local status badge
-- `src/pages/AdminPage.tsx`:
-  - Real-time subscription
-  - Update status, delete, view details
-  - Stats, calendar, Firebase status panel
-  - Preserves all original UI
+- `lib/services/firestore_service.dart` (Admin app):
+  - Streams of every Booking, `tracking_sessions`, `access_logs`, `rooms`, `guest_profiles`,
+    `site_config/rates`, and a Booking's `activity`
+  - `applyBookingAction`, `deleteBooking`, `publishRates`; in-memory demo data when Firebase is absent
 
 **Firestore Rules** (`firestore.rules`) — the enforcement:
-- `role()` resolves a request: the bootstrap email allowlist, then `profiles/{uid}`, then `guest`
-- Anyone can `create` a Pending booking (the public inquiry form)
-- Bookings: read by their own Guest, the Host and Staff; updated by the Host freely, by **Staff
-  only** to move `Checked-Out → Completed`, and by a Guest only on their own document, only
-  forward or out, and only within a fixed key list; deleted by the Host
-- `profiles`: you may write your own, only as a Guest; the Host may write anybody's; nobody may
-  write a role that is not one of the three; a person may edit their own name but never their own role
+- `role()` resolves a request: the bootstrap email allowlist (`adminEmails()`), then `profiles/{uid}`, then `guest`
+- Anyone can `create` a Pending booking that carries a `uid` (the public booking form)
+- `bookings`: read by their own Guest and the Admin; updated by the Admin (never out of a terminal
+  status; `Approved` only from `KYC Submitted`; `Reserved` only from `Payment Pending`), and by a Guest
+  only on their own document, only forward or out, and only within a fixed key list; deleted by the Admin
+- `profiles`: you may write your own, only as a Guest; the Admin may write anybody's; nobody may
+  write a role that is not `guest` or `admin`; a person may edit their own name but never their own role
 - `bookings/{id}/activity`: append-only, and an entry must be written in the writer's own role
-- `access_logs`: created by any signed-in client, read by Host + Staff, corrected by the Host
+  (`system` entries are written by the Admin app)
+- `access_logs`: created by any signed-in client, read and corrected by the Admin
+- `site_config`: public read (the website quotes rates from it), Admin write
+- `tracking_sessions`: created and deleted by the Guest's own device, read by the Admin
+- `rooms`, `guest_profiles`, `gallery` writes: Admin
 - Everything else is denied by a final catch-all
 - `test/web/auth-firestore-rules.test.ts` asserts all of the above, and that the rules and
-  `src/lib/auth` keep the same two bootstrap addresses
+  `src/lib/auth` keep the same bootstrap addresses
 
 **Indexes** (`firestore.indexes.json`):
-- `status + created_at` and `check_in + check_out`
+- `status + created_at`, `check_in + check_out`, `uid + created_at`
 
 ### 5. Firebase Hosting
 - `firebase.json`:
@@ -132,15 +139,16 @@ cp .env.example .env.local
 npm run dev
 ```
 
-### 3b. Google sign-in (powers `/guest/auth` and `/admin/auth`)
+### 3b. Google sign-in (powers `/guest/auth` on the web and the Admin app's gate)
 1. Console → Authentication → Sign-in method → enable **Google** (Email/Password stays on).
 2. Console → Authentication → Settings → Authorized domains → add every host that
    serves the site: `localhost`, your Vercel preview domain, `haciendadeluisana.com`.
    An unlisted domain fails with `auth/unauthorized-domain`, which the sign-in form
    says in words.
-3. Open `/guest/auth` (or `/admin/auth`) with keys configured: the
-   **Continue with Google** button is there; without keys the same pages run in demo
-   mode and offer the three demo roles instead.
+3. Open `/guest/auth` with keys configured: the **Continue with Google** button is
+   there; without keys the same page runs in demo mode (local Guest accounts).
+4. For the Admin app, register the Android app (package `com.haciendadeluisana.client2`)
+   with its SHA-1 — see [ANDROID.md](./ANDROID.md). Email + password works without it.
 
 ### 4. Deploy Firestore Rules & Indexes
 ```bash
@@ -160,20 +168,20 @@ firebase deploy --only hosting
 
 ### 6. Publish the rate card & cancellation policy (`site_config/rates`)
 
-The lifecycle module moves no money on guesses: when the Host approves a
+The lifecycle module moves no money on guesses: when the Admin approves a
 Booking, `ChoosePaymentPlan` quotes the stay from the published figures, and a
 cancellation refunds by the published policy. Until the document below exists,
-the choice is refused ("The Host has not published that payment option for
+the choice is refused ("The Admin has not published that payment option for
 this Accommodation.") and a cancellation refunds nothing — the safe defaults,
 not an error.
 
-**Where:** one document, `site_config/rates`, in the Firestore console
-(Database → Firestore → `site_config` → Add document, id `rates`, type
-Document). The rules grant it public read and Host-only write; the rules do
-not shape-check it, so run the checklist below before you write it. The same
-check lives in code — `validatePublishedRates` in `src/lib/booking/rates.ts` —
-and a publishing surface runs that function before it writes, so console and
-code can never drift.
+**Where:** one document, `site_config/rates`. The normal way to write it is the
+Admin app's **Rates & Cancellation Policy** screen (`lib/views/rates/rates_screen.dart`),
+which runs `validatePublishedRates` before it writes. The Firestore console
+works too (Database → Firestore → `site_config` → Add document, id `rates`);
+the rules grant public read and Admin-only write but do not shape-check it, so
+run the checklist below before writing by hand. The same check lives in both
+code bases — `src/lib/booking/rates.ts` and `lib/services/booking_lifecycle.dart`.
 
 **Shape** (the `PublishedRates` type in `src/lib/booking/rates.ts`):
 
@@ -213,7 +221,7 @@ code can never drift.
       `refund` entirely to publish rates without a refund policy — then a
       cancellation refunds nothing.
 
-**Semantics the Host should know:**
+**Semantics the Admin should know:**
 
 - `ChoosePaymentPlan` stamps `policy_version` and `policy_effective_date` on
   the Booking at the moment the Guest commits to a plan. **Republishing later
@@ -222,9 +230,8 @@ code can never drift.
   refund by the policy it was stamped under.
 - A Booking chosen while nothing was published carries nulls in both fields
   and refunds nothing — the same as an unpublished policy.
-- The document is read by the lifecycle's money module, not yet by the web
-  UI: `src/config/site.ts` prices remain display placeholders until the
-  publishing surface lands with the booking-flow work.
+- The website reads the document (`src/lib/ratesDB.ts`, read-only) to offer
+  payment plans on `/account`; `src/config/site.ts` prices are display copy only.
 
 ## 🔐 Security Notes
 
@@ -234,13 +241,14 @@ code can never drift.
   them with PBKDF2-SHA256 (210,000 rounds, a 16-byte salt per account) and stores only the derived key.
 - Public booking creation stays public, but only as a `Pending` Booking with the required fields; every
   read and write past that needs a role the rules can see.
-- Owner-only access is the `hostEmails()` allowlist plus `profiles/{uid}` — edit `hostEmails()` in
-  `firestore.rules`, `storage.rules`, `BOOTSTRAP_ROLES` in `src/lib/auth/profile.ts` and
-  `AuthStore.kOwnerEmail` in the Flutter app, then `firebase deploy --only firestore:rules,storage`.
+- Admin access is the `adminEmails()` allowlist plus `profiles/{uid}` — edit `adminEmails()` in
+  `firestore.rules`, `isAdminEmail()` in `storage.rules`, `BOOTSTRAP_ROLES` in `src/lib/auth/profile.ts`
+  and `AuthStore.kAdminEmails` in the Flutter app, then `firebase deploy --only firestore:rules,storage`.
 - A role is never read from the body of a request: the rules take it from the signed-in identity's own
   Profile, and the test suite asserts that `request.resource.data.role` appears nowhere else.
-- Storage Rules limit uploads to 10MB site images, 2MB avatars and 5MB KYC documents; `/kyc` is readable
-  only by the Guest it belongs to and the Host — Staff are deliberately absent.
+- Storage Rules limit uploads to 10MB site images, 2MB avatars and 5MB KYC / payment documents; `/kyc`
+  and `/payments` are readable only by the Guest they belong to and the Admin, who may also delete them
+  (the purge after a stay).
 
 ## 📁 Files Added/Modified
 
@@ -261,9 +269,10 @@ code can never drift.
 
 **Modified:**
 - `src/main.tsx` (AuthProvider wrapper)
-- `src/App.tsx` (ProtectedRoute for /admin)
+- `src/App.tsx` (ProtectedRoute for /account; `/admin`, `/app` signpost to the Admin app)
 - `src/pages/BookingPage.tsx` (Firestore integration)
-- `src/pages/AdminPage.tsx` (real-time + auth + cloud-aware)
+- `src/pages/AccountPage.tsx` (the Guest's own Bookings, real-time)
+- `lib/services/auth_store.dart`, `lib/services/firestore_service.dart` (Admin app)
 - `src/components/Nav.tsx` (auth state)
 - `src/vite-env.d.ts` (env types)
 - `package.json` (firebase dependency)
@@ -287,12 +296,10 @@ npm run build
 ## 📚 Next Steps (Optional)
 
 - Add Cloud Functions for email notifications on new booking
-- Add Firebase Storage upload for gallery management in admin
+- Add Firebase Storage upload for gallery management in the Admin app
 - Move roles from `profiles/{uid}` to custom claims (one `role()` implementation changes; no caller does) —
   worth it only once rule-evaluation reads on `profiles` show up in the bill
-- Let the Host create a Staff account directly (needs the Admin SDK, i.e. a Cloud Function)
-- Mirror the three roles in the Flutter app: it already refuses what the rules refuse, but its screens
-  still read `AuthStore.isOwner` / `isAnak` rather than a stored Role
+- Run the Admin app's Approve inside a Firestore transaction (ADR-0006 describes the web protocol)
 - Add Analytics events for booking funnel
 - Add offline persistence: `enableIndexedDbPersistence(db)`
 

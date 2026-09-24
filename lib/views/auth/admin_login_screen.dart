@@ -3,28 +3,27 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/auth_store.dart';
-import '../../services/booking_store.dart';
-import '../../services/cloud_bookings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../utils/validators.dart';
 import '../../widgets/staggered_entrance.dart';
 
-/// Owner APK gate (Android only). First launch: 1-tap Google sign-in with the
-/// anak email hint pre-filled. Stays signed-in via Firebase persistence.
-/// Unauthorized emails see "Not authorized" + Sign out.
-class OwnerLoginScreen extends StatefulWidget {
-  const OwnerLoginScreen({super.key});
+/// Admin sign-in gate. One-tap Google sign-in with the Admin email
+/// pre-filled, or email + password. Stays signed in via Firebase persistence.
+/// Any account that is not the Admin (allowlist or `profiles/{uid}.role`)
+/// is signed straight back out with "Not authorized".
+class AdminLoginScreen extends StatefulWidget {
+  const AdminLoginScreen({super.key});
 
   @override
-  State<OwnerLoginScreen> createState() => _OwnerLoginScreenState();
+  State<AdminLoginScreen> createState() => _AdminLoginScreenState();
 }
 
-class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
+class _AdminLoginScreenState extends State<AdminLoginScreen> {
   bool _busy = false;
   String? _error;
   bool _obscure = true;
   late final TextEditingController _email =
-      TextEditingController(text: AuthStore.kAnakEmail);
+      TextEditingController(text: AuthStore.kDefaultAdminEmail);
   final TextEditingController _password = TextEditingController();
 
   @override
@@ -34,22 +33,9 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
     super.dispose();
   }
 
-  Future<void> _checkAllowlistAndEnter() async {
-    final auth = context.read<AuthStore>();
-    // Only the allowlisted owner/anak emails may use this APK. Anyone
-    // else is signed straight back out with a "Not authorized" message.
-    if (!auth.isAuthorizedRole) {
-      final email = auth.sessionEmail ?? 'unknown email';
-      await auth.signOutGoogle();
-      throw AuthException(
-          'Not authorized ($email). This app is for the hacienda owner only.');
-    }
-    // Session now carries the email token — re-attach owner stream so
-    // watchAllBookings() passes isAdmin()/isAnak() instead of denied.
-    await context
-        .read<BookingStore>()
-        .attachOwnerCloud(context.read<CloudBookings>());
-  }
+  /// Only the Admin may use this app. Anyone else is signed straight back
+  /// out with a "Not authorized" message; the AuthGate then shows the shell.
+  Future<void> _requireAdmin() => context.read<AuthStore>().requireAdmin();
 
   Future<void> _signIn() async {
     setState(() {
@@ -58,9 +44,9 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
     });
     try {
       final auth = context.read<AuthStore>();
-      await auth.signInAnak();
+      await auth.signInWithGoogle();
       if (!mounted) return;
-      await _checkAllowlistAndEnter();
+      await _requireAdmin();
     } on AuthException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
@@ -83,10 +69,10 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
     });
     try {
       final auth = context.read<AuthStore>();
-      await auth.signInOwnerEmail(
+      await auth.signInWithEmail(
           email: _email.text.trim(), password: _password.text);
       if (!mounted) return;
-      await _checkAllowlistAndEnter();
+      await _requireAdmin();
     } on AuthException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
@@ -127,7 +113,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                     const SizedBox(height: 20),
                     StaggeredEntrance(
                       index: 1,
-                      child: Text('Hacienda Owner',
+                      child: Text('Hacienda Admin',
                           style: GoogleFonts.cormorantGaramond(
                               fontSize: 34,
                               fontWeight: FontWeight.w700,
@@ -136,7 +122,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                     const SizedBox(height: 6),
                     StaggeredEntrance(
                       index: 2,
-                      child: Text('Sign in to view bookings, tracking and lock records.',
+                      child: Text('Sign in to manage bookings, payments, rates, stays and lock records.',
                           style: GoogleFonts.inter(
                               fontSize: 13,
                               color: AppTheme.forest800.withOpacity(0.7))),
@@ -172,7 +158,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                                               fontSize: 11,
                                               color: AppTheme.forest800
                                                   .withOpacity(0.6))),
-                                      Text(AuthStore.kAnakEmail,
+                                      Text(AuthStore.kDefaultAdminEmail,
                                           style: GoogleFonts.inter(
                                               fontSize: 13,
                                               fontWeight: FontWeight.w700,
@@ -233,7 +219,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                           const Expanded(child: Divider()),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: Text('or use owner password',
+                            child: Text('or use the Admin password',
                                 style: GoogleFonts.inter(
                                     fontSize: 11,
                                     color: AppTheme.forest800.withOpacity(0.55))),
@@ -250,7 +236,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                         keyboardType: TextInputType.emailAddress,
                         enabled: !_busy,
                         decoration: const InputDecoration(
-                          labelText: 'Owner email',
+                          labelText: 'Admin email',
                           prefixIcon: Icon(Icons.mail_outlined),
                           border: OutlineInputBorder(),
                         ),
@@ -298,10 +284,10 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                     StaggeredEntrance(
                       index: 10,
                       child: Text(
-                      'Google button needs the new app ID registered in the '
-                      'Firebase console — email works right away. Stays signed-in '
-                      'on this device. View-only for anak; full confirm rights '
-                      'for the owner email.',
+                      'This app is for the Hacienda Admin only — Guests book '
+                      'on the website. Google sign-in needs the app ID '
+                      'registered in the Firebase console; email works right '
+                      'away. Stays signed in on this device.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.inter(
                           fontSize: 11,

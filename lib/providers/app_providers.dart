@@ -45,6 +45,36 @@ final guestProfilesStreamProvider = StreamProvider<List<GuestCrmModel>>((ref) {
   return service.streamGuestProfiles();
 });
 
+/// The published rates + cancellation policy (`site_config/rates`); null
+/// until the Admin publishes one from the Rates screen.
+final publishedRatesProvider = StreamProvider<Map<String, dynamic>?>((ref) {
+  final service = ref.watch(firestoreServiceProvider);
+  return service.streamPublishedRates();
+});
+
+/// The Activity log of one Booking, oldest first.
+final bookingActivityProvider =
+    StreamProvider.family<List<Map<String, dynamic>>, String>((ref, id) {
+  final service = ref.watch(firestoreServiceProvider);
+  return service.streamBookingActivity(id);
+});
+
+/// One Booking by id, live — what the detail screen watches so an action's
+/// result shows without navigating away.
+final bookingByIdProvider = Provider.family<BookingModel?, String>((ref, id) {
+  final bookingsAsync = ref.watch(bookingsStreamProvider);
+  return bookingsAsync.when(
+    data: (list) {
+      for (final b in list) {
+        if (b.id == id) return b;
+      }
+      return null;
+    },
+    loading: () => null,
+    error: (_, __) => null,
+  );
+});
+
 // Selected Booking Tab filter provider
 final bookingStatusFilterProvider = StateProvider<BookingStatus?>((ref) => null);
 
