@@ -32,7 +32,7 @@ class RoomsScreen extends ConsumerWidget {
             return const EmptyState(
               icon: Icons.hotel_outlined,
               title: 'No rooms published',
-              subtitle: 'Accommodations appear here once the host publishes rates.',
+              subtitle: 'Accommodations appear here once you publish rates.',
             );
           }
           return ListView.separated(

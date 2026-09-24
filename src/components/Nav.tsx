@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Logo } from './Logo'
 import { Menu, Close } from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
-import { ROLE_LABELS, canOpenPage, homeForRole } from '../lib/auth'
+import { canOpenPage, homeForRole } from '../lib/auth'
 
 const LINKS = [
   { href: '/', label: 'Home' },
@@ -61,35 +61,7 @@ export function Nav() {
         </nav>
 
         <div className="hidden lg:flex items-center gap-2.5">
-          {/* Shortcuts to the parts of the site this role may actually open */}
-          {canOpenPage(role, '/app') && (
-            <Link
-              to="/app"
-              className={`text-xs px-3 py-1.5 rounded-full border transition ${
-                transparent
-                  ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
-                  : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
-              }`}
-              title="App for Client (Incoming bookings, confirmation, analytics, length of stay)"
-            >
-              Client App
-            </Link>
-          )}
-
-          {canOpenPage(role, '/admin') && (
-            <Link
-              to="/admin"
-              className={`text-xs px-3 py-1.5 rounded-full border transition ${
-                transparent
-                  ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
-                  : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
-              }`}
-              title="Website for Admin (Smart lock records: lock/unlock counts and timestamps)"
-            >
-              Admin Website
-            </Link>
-          )}
-
+          {/* The Guest's own page; the Admin has no page on this website */}
           {user ? (
             <>
               <Link
@@ -101,7 +73,7 @@ export function Nav() {
                 }`}
                 title={user.email ?? undefined}
               >
-                {role ? ROLE_LABELS[role] : 'My page'}
+                {role === 'admin' ? 'Admin account' : 'My Bookings'}
               </Link>
               <button
                 onClick={() => void logout()}
@@ -166,18 +138,8 @@ export function Nav() {
 
           <div className="mt-4 pt-2 space-y-2">
             <Link to="/book" className="btn-primary w-full text-xs">
-              Website for Bookers (/book)
+              Book a Stay (/book)
             </Link>
-            {canOpenPage(role, '/app') && (
-              <Link to="/app" className="btn-ghost w-full text-xs">
-                App for Client (/app)
-              </Link>
-            )}
-            {canOpenPage(role, '/admin') && (
-              <Link to="/admin" className="btn-ghost w-full text-xs">
-                Website for Admin (/admin)
-              </Link>
-            )}
             {canOpenPage(role, '/account') && (
               <Link to="/account" className="btn-ghost w-full text-xs">
                 My Bookings (/account)

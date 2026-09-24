@@ -17,8 +17,8 @@
 //     after the create — even the traveller cannot move them, which is what
 //     keeps "sharing" from quietly becoming "always watching".
 //   - DELETE is stopping the share: the traveller may delete their own
-//     session, and the Host may delete any. The read surfaces treat a session
-//     older than 30 days as nonexistent; the Host's delete is the physical
+//     session, and the Admin may delete any. The read surfaces treat a session
+//     older than 30 days as nonexistent; the Admin's delete is the physical
 //     erasure, because there is no backend worker to do it.
 //
 // Like cloudBookingsDB, this adapter falls back to localStorage when Firebase
@@ -165,7 +165,7 @@ export const trackingSessionsDB = {
     return isCloud
   },
 
-  /** All active sessions. Host and Staff surfaces only — the rules refuse this to a Guest. */
+  /** All active sessions. Admin app only — the rules refuse this to a Guest. */
   async list(): Promise<TrackingSession[]> {
     if (!isCloud || !db) return readAll()
     try {
@@ -203,7 +203,7 @@ export const trackingSessionsDB = {
     }
   },
 
-  /** Every session, as they change. For the Host's radar — refused by the rules for a Guest. */
+  /** Every session, as they change. For the Admin's radar in the mobile app — refused by the rules for a Guest. */
   subscribe(callback: (sessions: TrackingSession[]) => void, onError?: (e: any) => void): () => void {
     if (!isCloud || !db) {
       const handler = () => callback(readAll())
@@ -309,7 +309,7 @@ export const trackingSessionsDB = {
     }
   },
 
-  /** Stopping the share. The traveller deletes their own; the Host may delete any. */
+  /** Stopping the share. The traveller deletes their own; the Admin may delete any. */
   async remove(bookingId: string): Promise<void> {
     if (!isCloud || !db) {
       writeAll(readAll().filter((s) => s.bookingId !== bookingId))
@@ -327,7 +327,7 @@ export const trackingSessionsDB = {
 /**
  * A session the read surfaces should treat as nonexistent: its last ping is
  * more than 30 days old. There is no backend worker to purge it, so freshness
- * is checked where the session is read, and the Host's delete remains the
+ * is checked where the session is read, and the Admin's delete remains the
  * physical erasure (G6).
  */
 export function sessionIsStale(session: TrackingSession, now: string | number | Date = Date.now()): boolean {

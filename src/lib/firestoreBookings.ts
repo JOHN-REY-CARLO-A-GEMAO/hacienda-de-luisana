@@ -10,7 +10,6 @@ import {
   collection,
   addDoc,
   updateDoc,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -100,7 +99,7 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     refund_breakdown: data.refund_breakdown ?? null,
     cancellation_reason: data.cancellation_reason ?? null,
     // The policy in force at choice time (additive — absent on Bookings stored
-    // before it): nulls on read mean the Host had published nothing.
+    // before it): nulls on read mean the Admin had published nothing.
     policy_version: data.policy_version ?? null,
     policy_effective_date: data.policy_effective_date ?? null,
     // P3 KYC (additive — absent on web-only bookings)
@@ -237,11 +236,11 @@ async function logStatusChange(
       action: 'SetStatus',
       from_status: from,
       to_status: to,
-      actor: by?.actor ?? 'host',
-      actor_id: by?.actor_id ?? 'host-dashboard',
+      actor: by?.actor ?? 'admin',
+      actor_id: by?.actor_id ?? 'admin',
       ...(by?.actor_name ? { actor_name: by.actor_name } : {}),
       at: instantOf(by ?? {}),
-      reason: 'Set directly from the Host dashboard.',
+      reason: 'Status set directly.',
     },
   ])
 }
@@ -408,7 +407,7 @@ export const cloudBookingsDB = {
    *
    * The read-time rule from ADR-0002, applied by every surface instead of each
    * one guessing: a Booking whose Date hold ran out reads as Expired whether the
-   * Guest is looking or the Host is, and nothing has to be written for that to be
+   * Guest is looking or the Admin is, and nothing has to be written for that to be
    * true.
    */
   readStatus(booking: Booking, now: string | number | Date = Date.now()): BookingStatus {
@@ -428,9 +427,9 @@ export const cloudBookingsDB = {
   /**
    * Are these dates free for a Guest to ask for?
    *
-   * The same rule the Host's approval re-check applies (G2), with the unit count
+   * The same rule the Admin's approval re-check applies (G2), with the unit count
    * taken from the published Accommodations, so a Guest is never offered dates
-   * that are already held and the Host is never asked to refuse them by hand.
+   * that are already held and the Admin is never asked to refuse them by hand.
    */
   async checkAvailability(
     request: DateRange,
@@ -464,7 +463,7 @@ export const cloudBookingsDB = {
    * This Booking's Activity log, in the order it happened.
    *
    * On the bookings interface because reading a Booking and reading its history
-   * is one job: the Host opens a Booking to answer "who changed this and when".
+   * is one job: the Admin opens a Booking to answer "who changed this and when".
    */
   async history(id: string): Promise<ActivityLogEntry[]> {
     return activityLogDB.list(id)
@@ -537,7 +536,7 @@ export const cloudBookingsDB = {
       const bookings = snapshot.docs.map((d) => mapDocToBooking(d.id, d.data()))
 
       // 2a. The Booking being approved, transactionally: a Booking cancelled
-      //     or expired between the Host's click and now is refused here, not
+      //     or expired between the Admin's click and now is refused here, not
       //     approved on a stale read.
       const target = await tx.get(doc(db!, COLLECTION, id))
       if (!target.exists()) return { ok: false as const, reason: 'No Booking with that id.' }
@@ -549,8 +548,8 @@ export const cloudBookingsDB = {
       }
 
       // 3. The decision on the fresh state, then the write — one atomic step.
-      //    The action's payload carries the unit count the Host published;
-      //    the booking list is this fresh read, not the Host's screen copy.
+      //    The action's payload carries the unit count the Admin published;
+      //    the booking list is this fresh read, not the Admin's screen copy.
       const decision = applyAction(
         booking,
         { ...action, availability: { ...action.availability, bookings } },
@@ -581,18 +580,5 @@ export const cloudBookingsDB = {
     const before = await this.get(id)
     await writePatch(id, patch)
     await logStatusChange(id, before, patch, by)
-  },
-
-  async remove(id: string): Promise<void> {
-    if (!this.isCloud || !db) {
-      bookingsDB.remove(id)
-      return
-    }
-    try {
-      await deleteDoc(doc(db, COLLECTION, id))
-    } catch (e) {
-      console.warn('[Firestore] remove() failed, falling back to local', e)
-      bookingsDB.remove(id)
-    }
   },
 }

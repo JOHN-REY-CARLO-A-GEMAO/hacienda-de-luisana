@@ -14,7 +14,7 @@ export function Contact() {
     {
       icon: Messenger,
       label: 'Messenger',
-      value: 'Chat with the host',
+      value: 'Chat with the Hacienda',
       href: BUSINESS.contact.messenger,
     },
     {
@@ -45,7 +45,7 @@ export function Contact() {
             <div className="eyebrow text-cream-100/60">Contact</div>
             <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-cream-50">
               Talk to Your <br />
-              <span className="italic font-light">Host</span>
+              <span className="italic font-light">Admin</span>
             </h2>
             <p className="mt-6 text-cream-100/75 leading-relaxed max-w-md">
               Have a question, planning a special gathering, or want to check dates? Send us a

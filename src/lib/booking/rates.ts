@@ -2,7 +2,7 @@
 // Booking lifecycle — the published rate card & cancellation policy
 // Hacienda de LuisAna
 // ----------------------------------------------------------------------------
-// The one document the Host publishes so that money can move: per-
+// The one document the Admin publishes so that money can move: per-
 // Accommodation rates, the Security deposit, the down-payment percent and the
 // cancellation policy, under a version that takes effect on a date.
 //
@@ -20,7 +20,7 @@
 import { roundMoney } from './internal'
 import type { RefundPolicy, RefundTier, RateCard } from './money'
 
-/** The Host's published figures for one Accommodation. */
+/** The Admin's published figures for one Accommodation. */
 export type AccommodationRates = {
   /** Philippine pesos per night. */
   nightly_rate: number
@@ -51,7 +51,7 @@ export type PublishedRefundPolicy = {
 }
 
 /**
- * The document the Host publishes (the `rates` document in `site_config`).
+ * The document the Admin publishes (the `rates` document in `site_config`).
  *
  * Snake-case on purpose: this shape crosses into Firestore, and the rest of
  * the stored vocabulary is snake-case.
@@ -83,7 +83,7 @@ function toRefundPolicy(published: PublishedRefundPolicy): RefundPolicy {
 export type RatesProblem = {
   /** Where the problem is, dot-path from the document root. */
   path: string
-  /** Why it is a problem, in words a Host can act on. */
+  /** Why it is a problem, in words a Admin can act on. */
   message: string
 }
 

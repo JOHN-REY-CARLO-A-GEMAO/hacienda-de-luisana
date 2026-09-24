@@ -64,16 +64,14 @@ describe('how the rules decide who is asking', () => {
   it('reads the bootstrap allowlist before the Profile, and lands on Guest', () => {
     const role = block(rules, 'function role()')
     const signedOut = role.indexOf("!isSignedIn() ? 'none'")
-    const hostList = role.indexOf('hostEmails()')
-    const staffList = role.indexOf('staffEmails()')
+    const adminList = role.indexOf('adminEmails()')
     const stored = role.indexOf('storedRole()')
 
-    // The order is the point: an allowlisted address is the Host whatever any
+    // The order is the point: an allowlisted address is the Admin whatever any
     // Profile says, so the owner can never be locked out by a document.
     expect(signedOut).toBeGreaterThanOrEqual(0)
-    expect(hostList).toBeGreaterThan(signedOut)
-    expect(staffList).toBeGreaterThan(hostList)
-    expect(stored).toBeGreaterThan(staffList)
+    expect(adminList).toBeGreaterThan(signedOut)
+    expect(stored).toBeGreaterThan(adminList)
   })
 
   it('treats a missing or invented Profile role as Guest', () => {
@@ -82,16 +80,25 @@ describe('how the rules decide who is asking', () => {
 
     expect(stored).toContain("data.get('role', 'guest')")
     expect(stored).toContain(": 'guest'")
-    expect(known).toBe("function knownRole(value) { return value in ['guest', 'host', 'staff'] ? value : 'guest'; }")
+    expect(known).toBe("function knownRole(value) { return value in ['guest', 'admin'] ? value : 'guest'; }")
   })
 
-  it('keeps the same two addresses the app resolves roles from', () => {
-    // Two sources, one truth: if either list moves without the other, the pages
-    // offer what the database refuses.
-    const expected = (role: string) => BOOTSTRAP_ROLES.filter((entry) => entry.role === role).map((entry) => entry.email)
+  it('keeps the same Admin addresses the website and the app resolve roles from', () => {
+    // Three sources, one truth: if any list moves without the others, a screen
+    // offers what the database refuses. The Flutter app's copy is checked by
+    // its own test (test/auth_store_test.dart).
+    const expected = BOOTSTRAP_ROLES.filter((entry) => entry.role === 'admin').map((entry) => entry.email)
 
-    expect(emailsIn(block(rules, 'function hostEmails()'))).toEqual(expected('host'))
-    expect(emailsIn(block(rules, 'function staffEmails()'))).toEqual(expected('staff'))
+    expect(emailsIn(block(rules, 'function adminEmails()'))).toEqual(expected)
+    expect(emailsIn(block(storageRules, 'function isAdminEmail()'))).toEqual(expected)
+    expect(BOOTSTRAP_ROLES.every((entry) => entry.role === 'admin')).toBe(true)
+  })
+
+  it('knows no Host or Staff role', () => {
+    const code = rules.replace(/\/\/[^\n]*/g, '')
+    expect(code).not.toMatch(/isHost|isStaff|hostEmails|staffEmails|'host'|'staff'/)
+    const storageCode = storageRules.replace(/\/\/[^\n]*/g, '')
+    expect(storageCode).not.toMatch(/isHostEmail|isAnak|staff/i)
   })
 
   it('never reads a role out of the body of a request', () => {
@@ -110,12 +117,12 @@ describe('the Profiles collection', () => {
     expect(create).toContain("request.auth.uid == userId && request.resource.data.role == 'guest'")
   })
 
-  it('lets the Host write anybody’s, with one of the three roles and nothing else', () => {
+  it('lets the Admin write anybody’s, with one of the two roles and nothing else', () => {
     const create = allow(profiles, 'create:')
     const shape = squash(block(profiles, 'function isProfileShape()'))
 
-    expect(create).toContain('|| isHost()')
-    expect(shape).toContain("request.resource.data.role in ['guest', 'host', 'staff']")
+    expect(create).toContain('|| isAdmin()')
+    expect(shape).toContain("request.resource.data.role in ['guest', 'admin']")
     expect(shape).toContain(
       "hasOnly(['uid', 'role', 'email', 'display_name', 'created_at', 'updated_at'])",
     )
@@ -123,25 +130,25 @@ describe('the Profiles collection', () => {
 
   it('lets a person change their own name but never their own role', () => {
     const update = allow(profiles, 'update:')
-    expect(update).toContain('isHost()')
+    expect(update).toContain('isAdmin()')
     expect(update).toContain("hasOnly(['display_name', 'email', 'updated_at'])")
   })
 
-  it('lets only the Host remove a Profile, and never their own', () => {
-    expect(allow(profiles, 'delete:')).toBe('allow delete: if isHost() && request.auth.uid != userId;')
+  it('lets only the Admin remove a Profile, and never their own', () => {
+    expect(allow(profiles, 'delete:')).toBe('allow delete: if isAdmin() && request.auth.uid != userId;')
   })
 
-  it('is readable by its owner and by the Host, and by nobody else', () => {
+  it('is readable by its owner and by the Admin, and by nobody else', () => {
     expect(allow(profiles, 'read:')).toBe(
-      'allow read: if isSignedIn() && (request.auth.uid == userId || isHost());',
+      'allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());',
     )
   })
 })
 
 describe('Bookings', () => {
-  it('are readable by their own Guest, the Host and Staff — not by the world', () => {
+  it('are readable by their own Guest and the Admin — not by the world', () => {
     const read = allow(bookings, 'read:')
-    expect(read).toBe('allow read: if isOwnDoc() || isHost() || isStaff();')
+    expect(read).toBe('allow read: if isOwnDoc() || isAdmin();')
   })
 
   it('still let anybody submit a Pending inquiry, but never without a Guest identity', () => {
@@ -154,10 +161,10 @@ describe('Bookings', () => {
     expect(create).toContain("request.resource.data.get('uid', '') != ''")
   })
 
-  it('keeps the Host from un-rejecting, and from skipping the two money gates', () => {
-    // Three guard lines on the Host branch: terminals never leave, Approved
+  it('keeps the Admin from un-rejecting, and from skipping the two money gates', () => {
+    // Three guard lines on the Admin branch: terminals never leave, Approved
     // only from a reviewed ID, Reserved only from verified money. The full
-    // table stays in src/lib/booking until SetStatus retires (ticket #13).
+    // table lives in the two lifecycle modules (web and app).
     const update = allow(bookings, 'update:')
     expect(update).toContain(
       "!(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired'] && request.resource.data.status != resource.data.status)",
@@ -170,17 +177,17 @@ describe('Bookings', () => {
     )
   })
 
-  it('give Staff exactly one move: a checked-out stay becomes Completed', () => {
+  it('have no Staff branch: completing a stay is the Admin’s, like every other move', () => {
     const update = allow(bookings, 'update:')
-    expect(update).toContain("isStaff() && resource.data.status == 'Checked-Out' && request.resource.data.status == 'Completed'")
-    expect(update).toContain("hasOnly(['status'])")
+    expect(update).not.toContain('isStaff()')
+    expect(update).not.toContain("hasOnly(['status'])")
   })
 
-  it('let the Host move a Booking through the lifecycle, inside the guard lines, and delete', () => {
-    // The Host branch is parenthesised: the three guard lines (terminals,
-    // Approved, Reserved) are checked before anything else the Host may write.
-    expect(allow(bookings, 'update:')).toContain('if (isHost()')
-    expect(allow(bookings, 'delete:')).toBe('allow delete: if isHost();')
+  it('let the Admin move a Booking through the lifecycle, inside the guard lines, and delete', () => {
+    // The Admin branch is parenthesised: the three guard lines (terminals,
+    // Approved, Reserved) are checked before anything else the Admin may write.
+    expect(allow(bookings, 'update:')).toContain('if (isAdmin()')
+    expect(allow(bookings, 'delete:')).toBe('allow delete: if isAdmin();')
   })
 
   it('let a Guest move their own Booking forward or out, never backwards', () => {
@@ -225,9 +232,9 @@ describe('the Tracking sessions (G6: the Share click is the consent)', () => {
     expect(create).toContain('request.resource.data.uid == request.auth.uid')
   })
 
-  it('are readable by the Host and Staff for the radar, and by the traveller', () => {
+  it('are readable by the Admin for the radar, and by the traveller', () => {
     const read = allow(trackingSessions, 'read:')
-    expect(read).toContain('isHost() || isStaff()')
+    expect(read).toContain('isAdmin()')
     expect(read).toContain("resource.data.get('uid', '') == request.auth.uid")
   })
 
@@ -236,9 +243,9 @@ describe('the Tracking sessions (G6: the Share click is the consent)', () => {
     expect(update).toContain(".hasAny(['uid', 'bookingId', 'tracking_consent_at'])")
   })
 
-  it('are deletable by the Host — and by the traveller, because deleting is stopping', () => {
+  it('are deletable by the Admin — and by the traveller, because deleting is stopping', () => {
     const deleteRule = allow(trackingSessions, 'delete:')
-    expect(deleteRule).toContain('isHost()')
+    expect(deleteRule).toContain('isAdmin()')
     expect(deleteRule).toContain("resource.data.get('uid', '') == request.auth.uid")
   })
 })
@@ -247,31 +254,31 @@ describe('the Activity log', () => {
   it('refuses an entry that is not written in the writer’s own name', () => {
     const create = allow(activity, 'create:')
     expect(create).toContain('request.resource.data.actor == role()')
-    // A Date hold expiring is the system's doing, recorded by a Host or Staff
-    // surface; a public inquiry with no identity at all can only write a Guest's.
-    expect(create).toContain("request.resource.data.actor == 'system' && (isHost() || isStaff())")
+    // A Date hold expiring is the system's doing, recorded by the Admin app;
+    // a public inquiry with no identity at all can only write a Guest's.
+    expect(create).toContain("request.resource.data.actor == 'system' && isAdmin()")
     expect(create).toContain("!isSignedIn() && request.resource.data.actor == 'guest'")
   })
 
-  it('is readable by the Guest it belongs to, the Host and Staff', () => {
-    expect(allow(activity, 'read:')).toBe('allow read: if isOwnDoc() || isHost() || isStaff();')
+  it('is readable by the Guest it belongs to and the Admin', () => {
+    expect(allow(activity, 'read:')).toBe('allow read: if isOwnDoc() || isAdmin();')
   })
 
-  it('is append-only, including for the Host', () => {
+  it('is append-only, including for the Admin', () => {
     expect(allow(activity, 'update, delete:')).toBe('allow update, delete: if false;')
   })
 })
 
 describe('the Access log', () => {
-  it('is read by the Host and by Staff, because locks are Staff work', () => {
-    expect(allow(accessLogs, 'read:')).toBe('allow read: if isHost() || isStaff();')
+  it('is read by the Admin, on the Smart Lock screen of the app', () => {
+    expect(allow(accessLogs, 'read:')).toBe('allow read: if isAdmin();')
   })
 
-  it('is corrected by the Host alone, and written in the writer’s own name', () => {
-    expect(allow(accessLogs, 'update, delete:')).toBe('allow update, delete: if isHost();')
+  it('is corrected by the Admin alone, and written in the writer’s own name', () => {
+    expect(allow(accessLogs, 'update, delete:')).toBe('allow update, delete: if isAdmin();')
     expect(allow(accessLogs, 'create:')).toContain('isSignedIn()')
     expect(allow(accessLogs, 'create:')).toContain("request.resource.data.result in ['granted', 'denied']")
-    // A granted row is the Host's check-in cue, so a row written in somebody
+    // A granted row is the Admin's check-in cue, so a row written in somebody
     // else's uid is a cue about the wrong person.
     expect(allow(accessLogs, 'create:')).toContain('request.resource.data.uid == request.auth.uid')
   })
@@ -286,40 +293,37 @@ describe('everything else', () => {
     expect(rules.lastIndexOf('match /{document=**}')).toBeGreaterThan(rules.lastIndexOf('match /site_config'))
   })
 
-  it('keeps site images and site config to the Host', () => {
-    expect(allow(block(rules, 'match /gallery/{imageId}'), 'write:')).toBe('allow write: if isHost();')
-    expect(allow(block(rules, 'match /site_config/{docId}'), 'write:')).toBe('allow write: if isHost();')
+  it('keeps site images and site config (the published rates) to the Admin', () => {
+    expect(allow(block(rules, 'match /gallery/{imageId}'), 'write:')).toBe('allow write: if isAdmin();')
+    expect(allow(block(rules, 'match /site_config/{docId}'), 'write:')).toBe('allow write: if isAdmin();')
   })
 })
 
 describe('Storage, where the government IDs live', () => {
-  it('shows an ID to the Guest it belongs to and to the Host, and to nobody else', () => {
+  it('shows an ID to the Guest it belongs to and to the Admin, and to nobody else', () => {
     const kyc = block(storageRules, 'match /kyc/{userId}/{allPaths=**}')
-    expect(allow(kyc, 'read:')).toContain('request.auth.uid == userId || isHostEmail()')
+    expect(allow(kyc, 'read:')).toContain('request.auth.uid == userId || isAdminEmail()')
     expect(allow(kyc, 'write:')).toContain('request.auth.uid == userId')
   })
 
-  it('lets the Host delete on PurgeKyc, and delete only — a delete carries no resource', () => {
+  it('lets the Admin delete on PurgeKyc, and delete only — a delete carries no resource', () => {
     // The ID's purpose ended at approval, so within 30 days after the stay the
-    // Host erases it. Storage rules have no delete verb and no way to see a
+    // Admin erases it. Storage rules have no delete verb and no way to see a
     // check-out date; `request.resource == null` is the only tell that a write
-    // is a delete. The Host still cannot upload or overwrite an ID — the
+    // is a delete. The Admin still cannot upload or overwrite an ID — the
     // guest-uid write gate above is the only grant that touches a real object.
     const kyc = block(storageRules, 'match /kyc/{userId}/{allPaths=**}')
-    expect(kyc).toContain('allow write: if isHostEmail() && request.resource == null;')
+    expect(kyc).toContain('allow write: if isAdminEmail() && request.resource == null;')
     // The guest write gate must stay size- and type-checked, so it cannot be
-    // the rule that accidentally lets the Host through with a payload.
+    // the rule that accidentally lets the Admin through with a payload.
     const guestWrite = allow(kyc, 'write:')
     expect(guestWrite).toContain('request.resource.size < 5 * 1024 * 1024')
     expect(guestWrite).toContain("request.resource.contentType.matches('image/.*')")
   })
 
-  it('has no Staff address in it at all — the absence is the decision', () => {
-    expect(storageRules).not.toContain('isAnak')
-    expect(storageRules).not.toMatch(/function\s+staffEmails/)
-    // The one Staff address the Firestore rules know is not granted anything here.
-    const staffAddress = BOOTSTRAP_ROLES.find((entry) => entry.role === 'staff')?.email ?? ''
-    const code = storageRules.replace(/\/\/.*$/gm, '')
-    expect(code).not.toContain(staffAddress)
+  it('shows payment proof to the Guest it belongs to and to the Admin, and to nobody else', () => {
+    const payments = block(storageRules, 'match /payments/{userId}/{allPaths=**}')
+    expect(allow(payments, 'read:')).toContain('request.auth.uid == userId || isAdminEmail()')
+    expect(allow(payments, 'write:')).toContain('request.auth.uid == userId')
   })
 })

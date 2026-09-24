@@ -3,8 +3,9 @@
 // Not a unit of anything: `<App/>` inside the real `<AuthProvider>`, which in a
 // test run has no Firebase and therefore runs on the local demo adapter — the same
 // adapter the website runs on for anybody without `.env.local`. What is exercised
-// is what a person does: arrive at a protected page, be asked to sign in, step
-// into a role, be let in or be turned away, sign out.
+// is what a person does: arrive at a protected page, be asked to sign in, sign
+// up as a Guest, be let in — or, as the Admin, be pointed at the mobile app —
+// and sign out.
 //
 // Waiting is by condition, never by a fixed nap: a demo sign-in stretches a
 // password through 210,000 rounds of PBKDF2 before it writes anything, so how
@@ -28,6 +29,9 @@ const TIMEOUT_MS = 20_000
 
 /** Invented for this file: what the sign-up form is filled with. */
 const TYPED_AT_SIGN_UP = 'bahay-kubo-9'
+
+/** The owner's address — on the bootstrap allowlist, so it arrives as the Admin. */
+const ADMIN_ADDRESS = 'haciendadeluisiana@gmail.com'
 
 const mounted: Root[] = []
 
@@ -128,139 +132,90 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+/** Sign up through the form on the page, the way a person does. */
+async function signUp(page: Page, email: string, name = 'Maria Santos') {
+  click(page, /Create one/)
+  type(page, 'input[autocomplete="name"]', name)
+  type(page, 'input[type="email"]', email)
+  type(page, 'input[type="password"]', TYPED_AT_SIGN_UP)
+  await submit(page)
+}
+
 describe('arriving at a page that is not public', () => {
   it('asks who you are before it shows anything', () => {
-    const admin = openAt('/admin')
-    expect(admin.text()).toContain('Sign in')
-    expect(admin.text()).not.toContain('Admin Control Center')
-
-    const app = openAt('/app')
-    expect(app.text()).toContain('Host or Staff access only')
-    expect(app.text()).not.toContain('Booker Requests')
+    const account = openAt('/account')
+    expect(account.text()).toContain('Sign in')
+    expect(account.text()).not.toContain('No bookings on this account yet')
   })
 
-  it('says the site is in demo mode, and offers the three roles', () => {
-    const page = openAt('/admin')
+  it('says the site is in demo mode, and offers no role to step into', () => {
+    const page = openAt('/account')
 
     expect(page.text()).toContain('Demo mode')
-    expect(page.text()).toContain('Continue as Host')
-    expect(page.text()).toContain('Continue as Staff')
-    expect(page.text()).toContain('Continue as Guest')
+    expect(page.text()).toContain('Signing up here makes you a Guest')
+    expect(page.text()).not.toMatch(/Continue as (Host|Staff|Admin|Guest)/)
+    expect(page.text()).not.toMatch(/\bStaff\b|\bHost\b/)
   })
 })
 
-describe('the Host', () => {
-  it('signs in and reaches the dashboard, team panel included', async () => {
-    const page = openAt('/admin')
-
-    click(page, /Continue as Host/)
-    await page.wait('Admin Control Center')
-
-    expect(page.text()).toContain('Signed in as Host')
-    expect(page.text()).toContain('Team & Roles')
-    expect(page.text()).not.toContain("This page isn't yours")
+describe('the retired web dashboards', () => {
+  it('answer with a signpost to the Admin app, and no sign-in form', () => {
+    for (const path of ['/admin', '/app', '/app/tracking', '/admin/auth']) {
+      const page = openAt(path)
+      expect(page.text(), path).toContain('The Admin dashboard moved')
+      expect(page.text(), path).toContain('Admin')
+      expect(page.text(), path).not.toContain('Admin Control Center')
+      expect(page.text(), path).not.toContain('Booker Requests')
+      expect(page.container.querySelector('form'), path).toBeNull()
+    }
   })
+})
 
-  it('can open the client app as well', async () => {
-    const page = openAt('/app')
+describe('the Admin', () => {
+  it('is recognised by address, turned away from the Guest page, and pointed at the app', async () => {
+    const page = openAt('/account')
 
-    click(page, /Continue as Host/)
-    await page.wait('App for Host')
+    await signUp(page, ADMIN_ADDRESS, 'Ana Luisana')
+    await page.wait('This website is for Guests')
 
-    expect(page.text()).toContain('Tracking')
-    expect(page.text()).toContain('Smart Lock')
-  })
+    expect(page.text()).toContain('Admin')
+    expect(page.text()).toContain(ADMIN_ADDRESS)
+    expect(page.text()).toContain('Admin mobile app')
+    expect(page.text()).not.toContain('No bookings on this account yet')
+    // The Nav offers no dashboard, because there is none on the website.
+    expect(page.html()).not.toContain('href="/admin"')
+    expect(page.html()).not.toContain('href="/app"')
+  }, TIMEOUT_MS)
 
-  it('is signed out again, and the dashboard goes with the session', async () => {
-    const page = openAt('/admin')
-    click(page, /Continue as Host/)
-    await page.wait('Admin Control Center')
+  it('is signed out again, and the notice goes with the session', async () => {
+    const page = openAt('/account')
+    await signUp(page, ADMIN_ADDRESS, 'Ana Luisana')
+    await page.wait('This website is for Guests')
 
     click(page, /^Sign out$/)
     await page.wait('Sign in')
 
-    expect(page.text()).not.toContain('Admin Control Center')
-  })
-
-  it('sees the team panel say who has which role', async () => {
-    const page = openAt('/admin?tab=team')
-    click(page, /Continue as Host/)
-    await page.wait('Admin Control Center')
-
-    click(page, /Team & Roles/)
-    await page.wait('Sino ang may alagang papel')
-
-    expect(page.text()).toContain("that's you")
-    expect(page.text()).toContain('demo-host@hacienda.test')
-  })
-})
-
-describe('Staff', () => {
-  it('reaches the client app, without the tabs that are the Host’s', async () => {
-    const page = openAt('/app')
-
-    click(page, /Continue as Staff/)
-    await page.wait('App for Staff')
-
-    expect(page.text()).toContain('Bookings')
-    expect(page.text()).toContain('Smart Lock')
-    expect(page.text()).not.toContain('Tracking')
-    // A page this role would be turned away from is not offered as a link.
-    expect(page.html()).not.toContain('href="/admin"')
-  })
-
-  it('is turned away from the Host dashboard, and told who they are', async () => {
-    const page = openAt('/admin')
-
-    click(page, /Continue as Staff/)
-    await page.wait("This page isn't yours")
-
-    expect(page.text()).toContain('Staff')
-    expect(page.text()).not.toContain('Admin Control Center')
-  })
-
-  it('is turned away from a Guest’s live location, even inside the app they may open', async () => {
-    const page = openAt('/app/tracking')
-
-    click(page, /Continue as Staff/)
-    await page.wait("This page isn't yours")
-
-    expect(page.text()).toContain('/app/tracking')
-  })
+    expect(page.text()).not.toContain('This website is for Guests')
+  }, TIMEOUT_MS)
 })
 
 describe('a Guest', () => {
   it('signs up from the form and lands on their own bookings', async () => {
     const page = openAt('/account')
-    expect(page.text()).toContain('Guest or Host access only')
+    expect(page.text()).toContain('Sign in')
 
-    click(page, /Create one/)
-    type(page, 'input[autocomplete="name"]', 'Maria Santos')
-    type(page, 'input[type="email"]', 'maria@example.com')
-    type(page, 'input[type="password"]', TYPED_AT_SIGN_UP)
-    await submit(page)
-    await page.wait('My Bookings')
+    await signUp(page, 'maria@example.com')
+    await page.wait('Your stay · Guest')
 
     expect(page.text()).toContain('maria@example.com')
     expect(page.text()).toContain('No bookings on this account yet')
-  })
-
-  it('is turned away from the Host dashboard and from the client app', async () => {
-    const admin = openAt('/admin')
-    click(admin, /Continue as Guest/)
-    await admin.wait("This page isn't yours")
-
-    // The same identity, on another page: no second sign-in, and still turned away.
-    const app = openAt('/app')
-    await app.wait("This page isn't yours")
-    expect(app.text()).toContain('Guest')
-    expect(app.text()).not.toContain('Booker Requests')
-  })
+    expect(page.text()).toContain('Signed in as Guest')
+  }, TIMEOUT_MS)
 
   it('keeps a Booking they made while signed in, and shows it back to them', async () => {
     const page = openAt('/account')
-    click(page, /Continue as Guest/)
-    await page.wait('My Bookings')
+    await signUp(page, 'maria@example.com')
+    await page.wait('Your stay · Guest')
     const uid = JSON.parse(localStorage.getItem('hdl:auth:session') ?? 'null').uid as string
 
     // A Booking made by this identity, the way /book makes it.
@@ -270,9 +225,9 @@ describe('a Guest', () => {
         {
           id: 'book-1',
           ref_id: 'HDL-4821',
-          guest_name: 'Demo Guest',
+          guest_name: 'Maria Santos',
           phone: '0917 000 0000',
-          email: 'guest@hacienda.test',
+          email: 'maria@example.com',
           check_in: '2026-10-01',
           check_out: '2026-10-04',
           guests: 4,
@@ -292,12 +247,12 @@ describe('a Guest', () => {
 
     expect(page.text()).toContain('The Main House')
     expect(page.text()).toContain('Withdraw this request')
-  })
+  }, TIMEOUT_MS)
 
   it('is not shown somebody else’s Booking', async () => {
     const page = openAt('/account')
-    click(page, /Continue as Guest/)
-    await page.wait('My Bookings')
+    await signUp(page, 'maria@example.com')
+    await page.wait('Your stay · Guest')
 
     localStorage.setItem(
       'hdl:bookings',
@@ -324,7 +279,7 @@ describe('a Guest', () => {
     expect(page.text()).not.toContain('Somebody Else')
     expect(page.text()).not.toContain('0917 111 2222')
     expect(page.text()).toContain('No bookings on this account yet')
-  })
+  }, TIMEOUT_MS)
 })
 
 describe('the public website', () => {
@@ -337,15 +292,16 @@ describe('the public website', () => {
     expect(book.text()).toContain('Plan Your Stay')
   })
 
-  it('offers Sign in while signed out, and the role’s own page once signed in', async () => {
+  it('offers Sign in while signed out, and the Guest’s own page once signed in', async () => {
     const page = openAt('/login')
     expect(page.text()).toContain('Sign in')
 
-    click(page, /Continue as Staff/)
-    await page.wait('You are the Staff')
+    await signUp(page, 'maria@example.com')
+    await page.wait('Welcome back, Guest')
 
-    // The Nav points a role at the pages it may open, and at nothing else.
-    expect(page.html()).toContain('href="/app"')
+    // The Nav points a Guest at their own page, and at nothing else.
+    expect(page.html()).toContain('href="/account"')
     expect(page.html()).not.toContain('href="/admin"')
-  })
+    expect(page.html()).not.toContain('href="/app"')
+  }, TIMEOUT_MS)
 })

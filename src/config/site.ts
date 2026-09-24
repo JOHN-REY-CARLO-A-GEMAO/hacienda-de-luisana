@@ -2,10 +2,10 @@
 // Hacienda de LuisAna — Site Configuration
 // -----------------------------------------------------------------------------
 // This file is the single source of truth for editable business content.
-// Owners can update prices, contact info, images, amenities, FAQs, and nearby
+// The Admin can update prices, contact info, images, amenities, FAQs, and nearby
 // attractions here without touching component code.
 //
-// Fields marked with "PLACEHOLDER" should be verified and updated by the owner.
+// Fields marked with "PLACEHOLDER" should be verified and updated by the Admin.
 // -----------------------------------------------------------------------------
 
 export type Amenity = {
@@ -85,10 +85,10 @@ export const BUSINESS = {
     directions:
       'https://www.google.com/maps/dir/?api=1&destination=14.1754304,121.519389',
   },
-  // Editable placeholders — owner should confirm exact policies.
+  // Editable placeholders — the Admin should confirm exact policies.
   policies: {
-    checkIn: '2:00 PM',            // placeholder — owner editable
-    checkOut: '12:00 NN',          // placeholder — owner editable
+    checkIn: '2:00 PM',            // placeholder — Admin editable
+    checkOut: '12:00 NN',          // placeholder — Admin editable
     checkInPlaceholder: true,
     checkOutPlaceholder: true,
     petFriendly: true,
@@ -266,7 +266,7 @@ export const NEARBY: NearbyAttraction[] = [
 export const FAQS: FAQ[] = [
   {
     q: 'How many guests can stay?',
-    a: 'The main house is designed for groups of up to approximately 10 guests. Confirm final capacity with the host before booking.',
+    a: 'The main house is designed for groups of up to approximately 10 guests. Confirm final capacity with the Hacienda before booking.',
   },
   { q: 'Are pets allowed?', a: 'Yes, pets are welcome, subject to the property\'s rules and applicable cleaning charges.' },
   { q: 'Is parking available?', a: 'Yes, free parking is available on-site.' },
@@ -274,16 +274,16 @@ export const FAQS: FAQ[] = [
   { q: 'Can we cook?', a: 'Yes. Cooking facilities are available.' },
   {
     q: 'Can we have a small gathering?',
-    a: 'The property is suitable for small gatherings, but guests should confirm event arrangements with the host beforehand.',
+    a: 'The property is suitable for small gatherings, but guests should confirm event arrangements with the Hacienda beforehand.',
   },
   { q: 'Do you offer camping?', a: 'Yes. House A camping units are available subject to availability.' },
   {
     q: 'What time is check-in?',
-    a: `Standard check-in is ${''}${BUSINESS.policies.checkIn}${BUSINESS.policies.checkInPlaceholder ? ' (please confirm with the host).' : '.'}`,
+    a: `Standard check-in is ${''}${BUSINESS.policies.checkIn}${BUSINESS.policies.checkInPlaceholder ? ' (please confirm with the Hacienda).' : '.'}`,
   },
   {
     q: 'What time is check-out?',
-    a: `Standard check-out is ${''}${BUSINESS.policies.checkOut}${BUSINESS.policies.checkOutPlaceholder ? ' (please confirm with the host).' : '.'}`,
+    a: `Standard check-out is ${''}${BUSINESS.policies.checkOut}${BUSINESS.policies.checkOutPlaceholder ? ' (please confirm with the Hacienda).' : '.'}`,
   },
   { q: 'How do I reserve?', a: 'Submit the booking inquiry form or contact Hacienda de LuisAna directly.' },
 ]
@@ -370,5 +370,5 @@ export const EXPERIENCES = [
 // -----------------------------------------------------------------------------
 // REVIEWS
 // -----------------------------------------------------------------------------
-// Owner: Add verified guest reviews here. Empty array shows the empty state.
+// Admin: add verified guest reviews here. Empty array shows the empty state.
 export const REVIEWS: { name: string; rating: number; body: string; date: string }[] = []

@@ -6,7 +6,7 @@ import { cloudBookingsDB, activityLogDB } from '../../src/lib/firestoreBookings'
 import { DATE_HOLD_MS } from '../../src/lib/booking'
 
 const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' } as const
-const host = { actor: 'host', actor_id: 'host-1', actor_name: 'Ana Luisana' } as const
+const admin = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana' } as const
 const NOW = '2026-09-20T01:00:00.000Z'
 
 const request = {
@@ -77,7 +77,7 @@ describe('the booking store seam', () => {
     const approval = await cloudBookingsDB.transition(
       submitted.id,
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: await cloudBookingsDB.list() } },
-      { ...host, now: NOW },
+      { ...admin, now: NOW },
     )
     expect(approval.ok).toBe(true)
 
@@ -91,17 +91,17 @@ describe('the booking store seam', () => {
       ['UploadKyc', 'Pending', 'KYC Submitted'],
       ['Approve', 'KYC Submitted', 'Approved'],
     ])
-    expect(history.map((entry) => entry.actor)).toEqual(['guest', 'guest', 'host'])
+    expect(history.map((entry) => entry.actor)).toEqual(['guest', 'guest', 'admin'])
   })
 
   it('refuses an illegal transition and changes nothing, leaving no entry behind', async () => {
     const submitted = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
-    // No KYC submitted yet, so the Host cannot approve.
+    // No KYC submitted yet, so the Admin cannot approve.
     const refused = await cloudBookingsDB.transition(
       submitted.id,
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
-      { ...host, now: NOW },
+      { ...admin, now: NOW },
     )
 
     expect(refused.ok).toBe(false)
@@ -137,7 +137,7 @@ describe('the booking store seam', () => {
           type: 'Approve',
           availability: { unitsAvailable: 1, bookings: await cloudBookingsDB.list() },
         },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       )
 
     expect((await approve(first.id)).ok).toBe(true)
@@ -181,7 +181,7 @@ describe('the booking store seam', () => {
           type: 'Approve',
           availability: { unitsAvailable, bookings: await cloudBookingsDB.list() },
         },
-        { ...host, now: NOW },
+        { ...admin, now: NOW },
       )
 
     expect((await approve(first.id)).ok).toBe(true)

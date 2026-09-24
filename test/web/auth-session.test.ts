@@ -22,11 +22,10 @@ import {
 // Every credential in this file is invented here and used nowhere else. They are
 // named for what a case means by them, because "a password" is not one thing in
 // these tests: it is the one an account was registered with, one too short to
-// keep, one the floor just accepts, and one a stub never checks.
+// keep, and one the floor just accepts.
 const REGISTERED_WITH = 'bahay-kubo'
 const TOO_SHORT_TO_KEEP = '123'
 const AT_THE_FLOOR = 'xxxxxx'
-const NEVER_CHECKED = 'not-a-secret'
 
 type FakeAccount = { user: SessionUser; password: string }
 
@@ -45,7 +44,7 @@ function user(uid: string, email: string | null, extra: Partial<SessionUser> = {
   return { uid, email, displayName: null, isAnonymous: false, provider: 'password', ...extra }
 }
 
-function createFakeProvider(options: { isCloud?: boolean; google?: boolean; demo?: boolean } = {}): FakeProvider {
+function createFakeProvider(options: { isCloud?: boolean; google?: boolean } = {}): FakeProvider {
   const isCloud = options.isCloud ?? false
   const accounts = new Map<string, FakeAccount>()
   const listeners = new Set<(user: SessionUser | null) => void>()
@@ -97,19 +96,6 @@ function createFakeProvider(options: { isCloud?: boolean; google?: boolean; demo
     },
   }
 
-  // The local demo adapter is the only one that can hand somebody a role with no
-  // Host to grant it: there is no cloud behind it to promote them.
-  if (!isCloud && options.demo !== false) {
-    port.signInAsRole = async (role: Role) => {
-      const next = user(`demo-${role}`, `${role}@hacienda.test`, {
-        displayName: `Demo ${role}`,
-        provider: 'local',
-      })
-      accounts.set(next.email!, { user: next, password: NEVER_CHECKED })
-      return signIn(next)
-    }
-  }
-
   return {
     port,
     accounts,
@@ -149,23 +135,6 @@ function createFakeProfiles(seed: Profile[] = []): FakeProfiles {
       stored.set(profile.uid, profile)
       return profile
     },
-    async assign(input) {
-      await wait()
-      const before = stored.get(input.uid)
-      const next: Profile = {
-        uid: input.uid,
-        role: input.role,
-        email: input.email ?? before?.email ?? null,
-        display_name: input.display_name ?? before?.display_name ?? null,
-        updated_at: '2026-09-22T00:00:00.000Z',
-      }
-      stored.set(input.uid, next)
-      return next
-    },
-    async list() {
-      await wait()
-      return [...stored.values()]
-    },
   }
 
   return {
@@ -192,9 +161,7 @@ function startSession(provider: FakeProvider = createFakeProvider(), profiles: F
 /** Let every microtask a promise chain is waiting on run. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-const HOST: Profile = { uid: 'uid-host', role: 'host', email: 'ana@hacienda.test' }
-const STAFF: Profile = { uid: 'uid-staff', role: 'staff', email: 'ben@hacienda.test' }
-const GUEST: Profile = { uid: 'uid-guest', role: 'guest', email: 'guest@hacienda.test' }
+const ADMIN: Profile = { uid: 'uid-admin', role: 'admin', email: 'ana@hacienda.test' }
 
 // ----------------------------------------------------------------------------
 
@@ -219,11 +186,12 @@ describe('signing up', () => {
     const { session } = startSession()
 
     // Whatever arrives in the body of a sign-up, the person is a Guest: there is
-    // no role to ask for, and only a Host can give one (ADR-0005).
+    // no role to ask for, and the Admin is recognised, never requested
+    // (ADR-0005, ADR-0007).
     const signed = await session.register({
       email: 'escalator@example.com',
       password: REGISTERED_WITH,
-      role: 'host',
+      role: 'admin',
     } as any)
 
     expect(signed.uid).toBeTruthy()
@@ -283,21 +251,40 @@ describe('signing up', () => {
 describe('signing in', () => {
   it('answers with the role the stored Profile gives', async () => {
     const provider = createFakeProvider()
-    provider.seed({ user: user('uid-staff', 'ben@hacienda.test'), password: REGISTERED_WITH })
-    const { session } = startSession(provider, createFakeProfiles([STAFF]))
+    provider.seed({ user: user('uid-admin', 'ana@hacienda.test'), password: REGISTERED_WITH })
+    const { session } = startSession(provider, createFakeProfiles([ADMIN]))
 
-    await session.login('ben@hacienda.test', 'bahay-kubo')
+    await session.login('ana@hacienda.test', 'bahay-kubo')
 
-    expect(session.getState()).toMatchObject({ status: 'signed-in', role: 'staff' })
+    expect(session.getState()).toMatchObject({ status: 'signed-in', role: 'admin' })
     expect(session.can('bookings:read:all')).toBe(true)
-    expect(session.can('bookings:review')).toBe(false)
+    expect(session.can('bookings:review')).toBe(true)
+    // An Admin's own Bookings are not a thing the website has: the Admin
+    // operates from the mobile app (ADR-0007).
+    expect(session.can('booking:read:own')).toBe(false)
+  })
+
+  it('reads a leftover Host or Staff Profile as a Guest', async () => {
+    // Profiles written before ADR-0007 may still say 'host' or 'staff'. Neither
+    // is a role any more, and neither grants anything.
+    const provider = createFakeProvider()
+    provider.seed({ user: user('uid-old', 'old@hacienda.test'), password: REGISTERED_WITH })
+    const { session } = startSession(
+      provider,
+      createFakeProfiles([{ uid: 'uid-old', role: 'staff' as Role, email: 'old@hacienda.test' }]),
+    )
+
+    await session.login('old@hacienda.test', 'bahay-kubo')
+
+    expect(session.getState().role).toBe('guest')
+    expect(session.can('bookings:read:all')).toBe(false)
   })
 
   it('lets the bootstrap allowlist outrank a Profile, the way the rules do', async () => {
     const provider = createFakeProvider()
     provider.seed({ user: user('uid-owner', 'haciendadeluisiana@gmail.com'), password: REGISTERED_WITH })
     // A Profile written before the allowlist was read says Guest; firestore.rules
-    // would still answer Host, so the session must too.
+    // would still answer Admin, so the session must too.
     const { session } = startSession(
       provider,
       createFakeProfiles([{ uid: 'uid-owner', role: 'guest', email: 'haciendadeluisiana@gmail.com' }]),
@@ -305,7 +292,7 @@ describe('signing in', () => {
 
     await session.login('haciendadeluisiana@gmail.com', 'bahay-kubo')
 
-    expect(session.getState().role).toBe('host')
+    expect(session.getState().role).toBe('admin')
     expect(session.can('bookings:review')).toBe(true)
   })
 
@@ -342,8 +329,8 @@ describe('signing in', () => {
 
   it('gives nobody a role while their Profile is still being read', async () => {
     const provider = createFakeProvider()
-    provider.seed({ user: user('uid-host', 'ana@hacienda.test'), password: REGISTERED_WITH })
-    const profiles = createFakeProfiles([HOST])
+    provider.seed({ user: user('uid-admin', 'ana@hacienda.test'), password: REGISTERED_WITH })
+    const profiles = createFakeProfiles([ADMIN])
     profiles.holdReads()
     const { session } = startSession(provider, profiles)
 
@@ -356,7 +343,7 @@ describe('signing in', () => {
 
     profiles.releaseReads()
     await signingIn
-    expect(session.getState()).toMatchObject({ status: 'signed-in', role: 'host' })
+    expect(session.getState()).toMatchObject({ status: 'signed-in', role: 'admin' })
   })
 
   it('turns whatever a provider throws into a message a person can read', async () => {
@@ -395,8 +382,8 @@ describe('signing in', () => {
 describe('signing out, and a session that ends by itself', () => {
   it('leaves the person with no role and no permissions', async () => {
     const provider = createFakeProvider()
-    provider.seed({ user: user('uid-host', 'ana@hacienda.test'), password: REGISTERED_WITH })
-    const { session } = startSession(provider, createFakeProfiles([HOST]))
+    provider.seed({ user: user('uid-admin', 'ana@hacienda.test'), password: REGISTERED_WITH })
+    const { session } = startSession(provider, createFakeProfiles([ADMIN]))
     await session.login('ana@hacienda.test', 'bahay-kubo')
 
     await session.logout()
@@ -414,10 +401,10 @@ describe('signing out, and a session that ends by itself', () => {
 
   it('follows the provider when a session expires underneath the page', async () => {
     const provider = createFakeProvider()
-    provider.seed({ user: user('uid-host', 'ana@hacienda.test'), password: REGISTERED_WITH })
-    const { session } = startSession(provider, createFakeProfiles([HOST]))
+    provider.seed({ user: user('uid-admin', 'ana@hacienda.test'), password: REGISTERED_WITH })
+    const { session } = startSession(provider, createFakeProfiles([ADMIN]))
     await session.login('ana@hacienda.test', 'bahay-kubo')
-    expect(session.getState().role).toBe('host')
+    expect(session.getState().role).toBe('admin')
 
     provider.expire()
 
@@ -427,16 +414,16 @@ describe('signing out, and a session that ends by itself', () => {
 
   it('is still signed in when the page is reloaded', async () => {
     const provider = createFakeProvider()
-    provider.seed({ user: user('uid-staff', 'ben@hacienda.test'), password: REGISTERED_WITH })
-    const profiles = createFakeProfiles([STAFF])
+    provider.seed({ user: user('uid-admin', 'ana@hacienda.test'), password: REGISTERED_WITH })
+    const profiles = createFakeProfiles([ADMIN])
     const first = createSession(provider.port, profiles.port)
-    await first.login('ben@hacienda.test', 'bahay-kubo')
+    await first.login('ana@hacienda.test', 'bahay-kubo')
 
     // A new session over the same provider is a reload: nobody signs in again.
     const reloaded = createSession(provider.port, profiles.port)
     await reloaded.refresh()
 
-    expect(reloaded.getState()).toMatchObject({ status: 'signed-in', role: 'staff' })
+    expect(reloaded.getState()).toMatchObject({ status: 'signed-in', role: 'admin' })
     first.destroy()
     reloaded.destroy()
   })
@@ -462,13 +449,13 @@ describe('the actor a signed-in person puts on a Booking', () => {
   it('is their role, their uid and the name the Activity log will show', async () => {
     const provider = createFakeProvider()
     provider.seed({
-      user: user('uid-staff', 'ben@hacienda.test', { displayName: 'Ben Cariño' }),
+      user: user('uid-admin', 'ana@hacienda.test', { displayName: 'Ana Luisana' }),
       password: REGISTERED_WITH,
     })
-    const { session } = startSession(provider, createFakeProfiles([STAFF]))
-    await session.login('ben@hacienda.test', 'bahay-kubo')
+    const { session } = startSession(provider, createFakeProfiles([ADMIN]))
+    await session.login('ana@hacienda.test', 'bahay-kubo')
 
-    expect(session.actor()).toEqual({ actor: 'staff', actor_id: 'uid-staff', actor_name: 'Ben Cariño' })
+    expect(session.actor()).toEqual({ actor: 'admin', actor_id: 'uid-admin', actor_name: 'Ana Luisana' })
   })
 
   it('falls back to the address, then to the role, when there is no name', async () => {
@@ -488,64 +475,21 @@ describe('the actor a signed-in person puts on a Booking', () => {
   })
 })
 
-describe('deciding who has which role', () => {
-  async function signedInAs(role: Role) {
+describe('who decides which role a person has', () => {
+  it('is nobody on the website: the session has no way to change a role', async () => {
     const provider = createFakeProvider()
-    const profiles = createFakeProfiles([HOST, STAFF, GUEST])
-    provider.seed({ user: user(`uid-${role}`, `${role}@hacienda.test`), password: REGISTERED_WITH })
-    const session = createSession(provider.port, profiles.port)
-    await session.login(`${role}@hacienda.test`, 'bahay-kubo')
-    return { session, profiles }
-  }
+    provider.seed({ user: user('uid-admin', 'ana@hacienda.test'), password: REGISTERED_WITH })
+    const { session } = startSession(provider, createFakeProfiles([ADMIN]))
+    await session.login('ana@hacienda.test', 'bahay-kubo')
 
-  it('is the Host’s to decide', async () => {
-    const { session, profiles } = await signedInAs('host')
-
-    const assigned = await session.assignRole({ uid: 'uid-guest', email: 'guest@hacienda.test' }, 'staff')
-
-    expect(assigned.role).toBe('staff')
-    expect(profiles.stored.get('uid-guest')?.role).toBe('staff')
+    // Not even the Admin: the website is the Guest's application, and a
+    // Profile's role is written outside it (ADR-0007).
+    expect('assignRole' in session).toBe(false)
+    expect('team' in session).toBe(false)
+    expect('signInAsRole' in session).toBe(false)
   })
 
-  it('is refused to Staff, who can neither change the team nor see it', async () => {
-    const { session, profiles } = await signedInAs('staff')
-
-    await expect(session.assignRole({ uid: 'uid-guest' }, 'host')).rejects.toMatchObject({ code: 'hdl/forbidden' })
-    await expect(session.team()).rejects.toMatchObject({ code: 'hdl/forbidden' })
-    expect(profiles.stored.get('uid-guest')?.role).toBe('guest')
-  })
-
-  it('is refused to a Guest, and to anybody signed out', async () => {
-    const { session } = await signedInAs('guest')
-    await expect(session.assignRole({ uid: 'uid-staff' }, 'guest')).rejects.toMatchObject({ code: 'hdl/forbidden' })
-
-    const signedOut = startSession().session
-    await expect(signedOut.assignRole({ uid: 'uid-staff' }, 'host')).rejects.toMatchObject({ code: 'hdl/forbidden' })
-    await expect(signedOut.team()).rejects.toMatchObject({ code: 'hdl/forbidden' })
-  })
-
-  it('will not let the Host lock themselves out', async () => {
-    const { session } = await signedInAs('host')
-
-    await expect(session.assignRole({ uid: 'uid-host' }, 'guest')).rejects.toMatchObject({ code: 'hdl/forbidden' })
-    expect(session.getState().role).toBe('host')
-  })
-
-  it('refuses a role that is not one of the three', async () => {
-    const { session, profiles } = await signedInAs('host')
-
-    await expect(session.assignRole({ uid: 'uid-guest' }, 'superuser' as Role)).rejects.toBeInstanceOf(AuthError)
-    expect(profiles.stored.get('uid-guest')?.role).toBe('guest')
-  })
-
-  it('lists the team for the Host alone', async () => {
-    const { session } = await signedInAs('host')
-
-    const team = await session.team()
-    expect(team.map((profile) => profile.role).sort()).toEqual(['guest', 'host', 'staff'])
-  })
-
-  it('picks up a role another Host gave you', async () => {
+  it('picks up a role written for you elsewhere, on refresh', async () => {
     const provider = createFakeProvider()
     const profiles = createFakeProfiles([{ uid: 'uid-ben', role: 'guest', email: 'ben@hacienda.test' }])
     provider.seed({ user: user('uid-ben', 'ben@hacienda.test'), password: REGISTERED_WITH })
@@ -553,31 +497,30 @@ describe('deciding who has which role', () => {
     await session.login('ben@hacienda.test', 'bahay-kubo')
     expect(session.getState().role).toBe('guest')
 
-    // Somebody else's session promotes this person; they re-read their Profile.
-    profiles.stored.set('uid-ben', { uid: 'uid-ben', role: 'staff', email: 'ben@hacienda.test' })
+    // The Profile is changed outside this session; the person re-reads it.
+    profiles.stored.set('uid-ben', { uid: 'uid-ben', role: 'admin', email: 'ben@hacienda.test' })
     await session.refresh()
 
-    expect(session.getState().role).toBe('staff')
+    expect(session.getState().role).toBe('admin')
     expect(session.can('stays:complete')).toBe(true)
-    expect(session.can('bookings:review')).toBe(false)
+    expect(session.can('booking:read:own')).toBe(false)
   })
 })
 
 describe('a session with no Firebase behind it', () => {
-  it('can still step into a role, because there is no Host to grant one', async () => {
-    const { session } = startSession(createFakeProvider(), createFakeProfiles([{ uid: 'demo-staff', role: 'staff' }]))
+  it('still makes a sign-up a Guest, with no role switcher to step past it', async () => {
+    const { session } = startSession(createFakeProvider(), createFakeProfiles())
 
-    await session.signInAsRole('staff')
+    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
 
-    expect(session.getState().role).toBe('staff')
-    expect(session.can('bookings:read:all')).toBe(true)
+    expect(session.getState().role).toBe('guest')
+    expect(session.can('bookings:read:all')).toBe(false)
   })
 
-  it('refuses Google sign-in and demo sign-in where they do not exist', async () => {
+  it('refuses Google sign-in where it does not exist', async () => {
     const cloud = startSession(createFakeProvider({ isCloud: true, google: false }))
 
     await expect(cloud.session.loginWithGoogle()).rejects.toMatchObject({ code: 'hdl/unavailable' })
-    await expect(cloud.session.signInAsRole('host')).rejects.toMatchObject({ code: 'hdl/unavailable' })
   })
 
   it('signs in with Google where the project supports it', async () => {

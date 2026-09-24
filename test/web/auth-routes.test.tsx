@@ -1,19 +1,19 @@
-// Protected routes — what the frontend shows each of the three roles.
+// Protected routes — what the Guest website shows each of the two roles.
 //
 // Rendered, not reasoned about: a gate is a promise about what a person sees, so
 // the promise is checked by rendering the gate. The session behind it is the real
-// context with a hand-written value, which is what a signed-in Host, Staff member
-// or Guest looks like from a component's point of view.
+// context with a hand-written value, which is what a signed-in Guest or Admin
+// looks like from a component's point of view.
 //
-// Hiding a page is the courtesy half of RBAC; the half that matters is asserted in
-// auth-firestore-rules.test.ts.
+// Hiding a page is the courtesy half of authorization; the half that matters is
+// asserted in auth-firestore-rules.test.ts.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AuthContext, type AuthContextType } from '../../src/context/AuthContext'
 import { ProtectedRoute } from '../../src/components/Auth/ProtectedRoute'
 import { LoginForm } from '../../src/components/Auth/LoginForm'
-import { AuthError, canOpenPage, type Permission, type Role } from '../../src/lib/auth'
+import { AuthError, canOpenPage, permissionsOf, type Permission, type Role } from '../../src/lib/auth'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -30,7 +30,7 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
     status: role ? 'signed-in' : 'signed-out',
     isConfigured: true,
     isCloud: true,
-    can: (permission: Permission) => Boolean(role && CAN[role].includes(permission)),
+    can: (permission: Permission) => Boolean(role && permissionsOf(role).includes(permission)),
     canOpen: (path: string) => canOpenPage(role, path),
     actor: role ? { actor: role, actor_id: `uid-${role}`, actor_name: `${role}@hacienda.test` } : null,
     login: async () => {},
@@ -38,42 +38,9 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
     loginWithGoogle: async () => {},
     logout: async () => {},
     resetPassword: async () => {},
-    signInAsRole: async () => {},
-    assignRole: async () => {
-      throw new AuthError('hdl/forbidden')
-    },
-    team: async () => [],
     refresh: async () => {},
     ...overrides,
   }
-}
-
-/** What each role holds, straight from the catalogue the app uses. */
-const CAN: Record<Role, Permission[]> = {
-  guest: ['booking:create', 'booking:read:own', 'booking:update:own', 'kyc:upload'],
-  host: [
-    'booking:create',
-    'booking:read:own',
-    'booking:update:own',
-    'kyc:upload',
-    'bookings:read:all',
-    'bookings:review',
-    'bookings:cancel:any',
-    'bookings:delete',
-    'payments:verify',
-    'refunds:mark',
-    'stays:progress',
-    'stays:complete',
-    'kyc:read',
-    'access-logs:read',
-    'access-logs:correct',
-    'guest-location:read',
-    'analytics:read',
-    'team:manage',
-    'site:manage',
-    'rates:publish',
-  ],
-  staff: ['bookings:read:all', 'access-logs:read', 'analytics:read', 'stays:complete'],
 }
 
 // Not a credential — the copy a page shows once you are let in, so a test can
@@ -139,22 +106,20 @@ afterEach(() => {
 
 describe('a page nobody has signed in for', () => {
   it('shows the sign-in form and none of the page', () => {
-    const page = renderGate('/admin', session())
+    const page = renderGate('/account', session())
 
     expect(page.text()).toContain('Sign in')
     expect(page.text()).not.toContain(BEHIND_THE_GATE)
   })
 
-  it('says which role the page is for', () => {
-    const admin = renderGate('/admin', session())
-    expect(admin.text()).toContain('Host access only')
-
-    const app = renderGate('/app', session())
-    expect(app.text()).toContain('Host or Staff access only')
+  it('says a sign-up makes a Guest, and never mentions a Staff or Host role', () => {
+    const page = renderGate('/account', session())
+    expect(page.text()).toContain('Signing up here makes you a Guest')
+    expect(page.text()).not.toMatch(/\bStaff\b|\bHost\b/)
   })
 
   it('shows a spinner, and neither the form nor the page, while the session is restored', () => {
-    const page = renderGate('/admin', session({ loading: true, status: 'loading' }))
+    const page = renderGate('/account', session({ loading: true, status: 'loading' }))
 
     expect(page.text()).toContain('Checking authentication')
     expect(page.text()).not.toContain(BEHIND_THE_GATE)
@@ -162,57 +127,49 @@ describe('a page nobody has signed in for', () => {
   })
 })
 
-describe('a page opened by the role it belongs to', () => {
-  const cases: Array<[string, Role]> = [
-    ['/admin', 'host'],
-    ['/app', 'host'],
-    ['/app', 'staff'],
-    ['/app/analytics', 'staff'],
-    ['/app/records', 'staff'],
-    ['/app/tracking', 'host'],
-    ['/account', 'guest'],
-  ]
-
-  it.each(cases)('opens %s for the %s', (path, role) => {
-    const page = renderGate(path, session({ role }))
+describe('the Guest’s own page', () => {
+  it('opens for the Guest', () => {
+    const page = renderGate('/account', session({ role: 'guest' }))
     expect(page.text()).toContain(BEHIND_THE_GATE)
     expect(page.text()).not.toContain("isn't yours")
   })
+
+  it('opens for the Guest under a nested path, trailing slash or query', () => {
+    for (const path of ['/account/', '/account/history']) {
+      const page = renderGate(path, session({ role: 'guest' }))
+      expect(page.text(), path).toContain(BEHIND_THE_GATE)
+    }
+  })
+
+  it('shows the Guest the local-mode banner when there is no Firebase', () => {
+    const page = renderGate('/account', session({ role: 'guest', isConfigured: false, isCloud: false }))
+    expect(page.text()).toContain('Local Mode Active')
+    expect(page.text()).toContain('Signed in as Guest')
+    // The demo role switcher is gone with the roles it switched between.
+    expect(page.text()).not.toContain('Switch Role')
+  })
 })
 
-describe('a page turned away for the role that is signed in', () => {
-  const cases: Array<[string, Role]> = [
-    ['/admin', 'staff'],
-    ['/admin', 'guest'],
-    ['/app', 'guest'],
-    ['/app/tracking', 'staff'],
-    ['/account', 'staff'],
-  ]
-
-  it.each(cases)('turns the %s away from %s', (path, role) => {
-    const page = renderGate(path, session({ role }))
+describe('an Admin on the Guest website', () => {
+  it('is turned away from the Guest’s page and pointed at the mobile app', () => {
+    const page = renderGate('/account', session({ role: 'admin' }))
 
     expect(page.text()).not.toContain(BEHIND_THE_GATE)
-    expect(page.text()).toContain("This page isn't yours")
-    expect(page.text()).toContain('403')
-    expect(page.text()).toContain(path)
+    expect(page.text()).toContain('This website is for Guests')
+    expect(page.text()).toContain('Admin mobile app')
+    expect(page.text()).toContain('/account')
   })
 
-  it('tells the person who they are signed in as, and offers a way out', () => {
-    const page = renderGate('/admin', session({ role: 'staff' }))
+  it('is told who they are signed in as, and offered a way out', () => {
+    const page = renderGate('/account', session({ role: 'admin' }))
 
-    expect(page.text()).toContain('Staff')
-    expect(page.text()).toContain('staff@hacienda.test')
-    expect(page.html()).toContain('href="/app"')
-  })
-
-  it('reads the path it stands on, so a nested page answers from its own rule', () => {
-    // /app is open to Staff; /app/tracking inside it is not.
-    const open = renderGate('/app', session({ role: 'staff' }))
-    expect(open.text()).toContain(BEHIND_THE_GATE)
-
-    const closed = renderGate('/app/tracking', session({ role: 'staff' }))
-    expect(closed.text()).not.toContain(BEHIND_THE_GATE)
+    expect(page.text()).toContain('Admin')
+    expect(page.text()).toContain('admin@hacienda.test')
+    expect(page.text()).toContain('Sign out')
+    expect(page.html()).toContain('href="/"')
+    // No link to a dashboard that no longer exists on the website.
+    expect(page.html()).not.toContain('href="/admin"')
+    expect(page.html()).not.toContain('href="/app"')
   })
 })
 
@@ -224,9 +181,8 @@ describe('the sign-in form itself', () => {
     const local = renderForm(session({ isConfigured: false, isCloud: false }))
     expect(local.text()).not.toContain('Continue with Google')
     expect(local.text()).toContain('Demo mode')
-    expect(local.text()).toContain('Continue as Host')
-    expect(local.text()).toContain('Continue as Staff')
-    expect(local.text()).toContain('Continue as Guest')
+    // No role switcher: demo mode signs up a Guest like any other mode.
+    expect(local.text()).not.toMatch(/Continue as (Host|Staff|Admin|Guest)/)
   })
 
   it('says a sign-up makes a Guest, because that is all a sign-up can make', () => {

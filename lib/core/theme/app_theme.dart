@@ -8,7 +8,7 @@ import '../constants/app_constants.dart';
 /// * the `AppColors`-based ops palette (deep pine + gold) used by the
 ///   Dashboard/Bookings/Radar/Stays/Analytics/SmartLock/Rooms/CRM screens,
 /// * the quiet-luxury forest/cream/gold tokens (`forest900`, `cream50`, …)
-///   used by the owner login and admin surfaces.
+///   used by the Admin login and every Admin surface.
 ///
 /// Admin surfaces live in `lib/views/admin/` and auth in `lib/views/auth/`.
 class AppTheme {

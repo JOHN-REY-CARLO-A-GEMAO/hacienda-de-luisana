@@ -14,7 +14,7 @@ export function FAQ() {
             Good to Know
           </h2>
           <p className="mt-6 text-forest-800/80 leading-relaxed">
-            A few answers to the most common questions. For anything else, message the host —
+            A few answers to the most common questions. For anything else, message the Hacienda —
             we're happy to help.
           </p>
         </div>

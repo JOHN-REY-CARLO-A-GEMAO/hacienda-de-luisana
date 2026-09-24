@@ -1,5 +1,5 @@
 // ----------------------------------------------------------------------------
-// Erasing a Guest's KYC documents from Storage — the Host's half of PurgeKyc.
+// Erasing a Guest's KYC documents from Storage — the Admin's half of PurgeKyc.
 //
 // The lifecycle action (PurgeKyc) decides that the erasure is legal and writes
 // the Activity entry; this file does the physical delete. The order is the
@@ -7,7 +7,7 @@
 // both are gone, so the Activity log never claims an erasure that did not
 // happen (the log is append-only — a false entry stays false forever).
 //
-// storage.rules is what makes this possible at all: the Host's write grant on
+// storage.rules is what makes this possible at all: the Admin's write grant on
 // /kyc admits deletes and nothing else (a delete carries no resource).
 // ----------------------------------------------------------------------------
 import { deleteObject, ref } from 'firebase/storage'
@@ -22,7 +22,7 @@ export type PurgeOutcome =
  *
  * An object that is already gone counts as gone: a Guest who deleted their
  * own copy earlier (storage.rules lets them) has already done half the
- * erasure, and the Host's purge finishes it and logs it. With no Firebase
+ * erasure, and the Admin's purge finishes it and logs it. With no Firebase
  * there are no objects at all (demo mode never receives an upload, ADR-0004),
  * so there is nothing to delete and the purge is a no-op that still gets
  * logged by the caller.

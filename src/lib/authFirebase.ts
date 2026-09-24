@@ -23,14 +23,12 @@ import {
   updateProfile,
   type User,
 } from 'firebase/auth'
-import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db, googleProvider, isFirebaseConfigured } from './firebase'
 import {
   AuthError,
-  isRole,
   normalizeProfile,
   type AuthPort,
-  type Profile,
   type ProfilePort,
   type SessionUser,
 } from './auth'
@@ -69,8 +67,7 @@ export function createFirebasePorts(): { auth: AuthPort; profiles: ProfilePort }
   const firestore = db
 
   // A reload keeps the person signed in. This is Firebase's default for the web
-  // SDK; it is written down because the whole role of a returning Host depends
-  // on it.
+  // SDK; it is written down because a returning Guest's own Bookings depend on it.
   void setPersistence(firebaseAuth, browserLocalPersistence).catch((error) => {
     console.warn('[Auth] could not set session persistence', error)
   })
@@ -134,33 +131,10 @@ export function createFirebasePorts(): { auth: AuthPort; profiles: ProfilePort }
     },
 
     async create(profile) {
-      // `merge` so a Guest signing up on a second device does not lose a role a
-      // Host already gave them, and never overwrites a role with the default.
+      // `merge` so a Guest signing up on a second device does not lose a role
+      // written for them elsewhere, and never overwrites a role with the default.
       await setDoc(profileRef(profile.uid), profile, { merge: true })
       return profile
-    },
-
-    async assign(input) {
-      if (!isRole(input.role)) throw new AuthError('hdl/unknown', 'That is not one of the three roles.')
-      const profile: Profile = {
-        uid: input.uid,
-        role: input.role,
-        email: input.email ?? null,
-        display_name: input.display_name ?? null,
-        updated_at: new Date().toISOString(),
-      }
-      await setDoc(profileRef(input.uid), profile, { merge: true })
-      return profile
-    },
-
-    async list() {
-      const snapshot = await getDocs(collection(firestore, PROFILES_COLLECTION))
-      return snapshot.docs
-        .map((entry) => normalizeProfile({ uid: entry.id, ...entry.data() }))
-        .filter((profile): profile is Profile => profile !== null)
-        // Sorted here rather than in the query: a Profile written before this
-        // field existed would be dropped by an orderBy that needs it.
-        .sort((left, right) => (left.created_at ?? '').localeCompare(right.created_at ?? ''))
     },
   }
 

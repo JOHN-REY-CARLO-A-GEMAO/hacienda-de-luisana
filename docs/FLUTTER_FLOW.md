@@ -1,229 +1,186 @@
-# Hacienda de LuisAna — Flutter App Proper Flow
+# Hacienda de LuisAna — Admin app flow
 
-**Scope:** Guest app end-to-end flow — navigation, booking lifecycle, KYC, digital key, error paths, and backend wiring.
-**Principle:** *The host is the authority. The app mirrors server state — it never grants itself anything.*
+**Scope:** the Flutter mobile app (`lib/`) end to end — sign-in gate, navigation, the Booking lifecycle as the Admin drives it, KYC and payment review, refunds, published rates, and the backend contract it shares with the Guest website.
+**Principle:** *One lifecycle, two sides.* The Guest takes their actions on the website (`src/lib/booking`), the Admin takes theirs here (`lib/services/booking_lifecycle.dart`), and `firestore.rules` is the arbiter both must satisfy. The app never writes a status past the rules. (ADR-0007)
 
-> **✅ Demo flow implemented (Sep 2026)** — run `flutter pub get` first (new deps: `shared_preferences`, `crypto`).
->
-> | Piece | Where | Behavior |
-> |---|---|---|
-> | Guest auth | `lib/services/auth_store.dart`, `lib/screens/auth_screen.dart` | Demo-local register/login (SHA-256, persisted session). Browsing stays open — the **auth wall appears only when submitting a booking** (or from the dashboard). |
-> | Validation | `lib/utils/validators.dart` | Name/email/PH-phone/password + trip sanity (dates, capacity). Deliberately "good enough", not exhaustive. |
-> | Honest pending → confirmed | `lib/services/booking_store.dart` | No more self-confirm or seed booking. Submit = `pending` → KYC `submitted` → **simulated host approval after ~6 s** → `confirmed` (stands in for the real /admin action in P2). |
-> | Persistence | SharedPreferences | Accounts, session, and bookings survive restarts. |
-> | Dashboard states | `lib/screens/dashboard_screen.dart` | Signed-out prompt, no-booking empty state, status timeline (Reserved → Verification → Confirmed → Check-in), cancel-while-pending, past stays, logout. Digital key unlocks only when confirmed. |
->
-> Not in the demo (still future phases): real Firebase Auth/Firestore/Storage sync, live host approvals, real BLE key, date-window key gating.
+> **Status (Sep 2026):** implemented as described below. The former guest-prototype screens (booking form, KYC capture, digital key, simulated ESP32) were removed from `lib/`; Guests use the website.
 
 ---
 
-## 1. Current flow (as built today) — and what's broken
-
-```
-Book tab (2-step form, pre-filled "Maria Santos")
-  → creates Booking in memory (status: pending)
-  → KycScreen (pick ID + receipt — local file names only)
-  → on submit: store.confirm()   ← ❌ APP AUTO-CONFIRMS ITSELF
-  → BookingConfirmationScreen
-  → Dashboard (key works immediately)
-```
-
-| # | Problem | Consequence |
-|---|---|---|
-| 1 | `store.confirm()` on KYC submit | Guest is confirmed without host approval — the whole reservation pipeline is decorative |
-| 2 | `BookingStore` is in-memory only | Booking vanishes on app restart |
-| 3 | Demo seed booking (`HDL-9824`, status confirmed) in constructor | Fresh install shows a fake confirmed reservation; key "works" out of the box |
-| 4 | Nothing is written to Firestore | Owner's `/admin` never sees app bookings — two parallel universes |
-| 5 | KYC images are local paths | Host can never review ID / receipt |
-| 6 | Ref ID `1000 + ms % 8999` | Collides; not traceable |
-| 7 | Key gated only on `status == confirmed` | Works days before check-in, day of checkout, forever |
-| 8 | Statuses `pending/confirmed/checkedIn` | Mismatch with web `Pending/Confirmed/Completed/Cancelled` |
-| 9 | One booking slot, no history | Returning guest can't see past stays |
-| 10 | No availability check | Guest can request dates that are already taken |
-
----
-
-## 2. The Proper Flow — guest journey (happy path)
+## 1. Sign-in gate
 
 ```mermaid
 flowchart TD
-    A[App launch] --> B{Booking on this device?}
-    B -- no --> C[Home — browse mode]
-    B -- yes --> D[Dashboard — upcoming stay]
-
-    C --> E[Stay tab / detail]
-    E --> F[Book tab — dates, guests, contact]
-    F --> G{Dates available?}
-    G -- no --> F
-    G -- yes --> H[Review + estimate → Submit]
-    H --> I[Firestore create\nstatus: pending · kyc_status: required]
-    I --> J[KYC — capture / upload ID + receipt]
-    J --> K[kyc_status: submitted]\nstatus stays pending
-    K --> L[Confirmation screen\nWhat happens next?]
-    L --> M[Dashboard — Awaiting confirmation]
-
-    M --> N{Host reviews in /admin}
-    N -- approve --> O[status: confirmed\npush notification 🎉]
-    N -- reject --> P[status: cancelled\nreason + rebook CTA]
-    O --> Q[Check-in day 14:00\nDigital key activates]
-    Q --> R[Unlock / auto-relock ESP32]
-    R --> S[Check-out day 12:00\nkey expires]
-    S --> T[status: completed\nrate your stay]
+    A[App launch] --> B{Firebase session?}
+    B -- none --> C[AdminLoginScreen]
+    C --> D[Continue with Google] --> F
+    C --> E[Email + password] --> F
+    F{isAdmin?\nallowlist OR profiles/uid.role == admin}
+    F -- no --> G[Sign out + Not authorized\nThis app is for the Hacienda Admin — Guests book on the website]
+    G --> C
+    F -- yes --> H[MainShellScreen]
+    B -- session --> F
 ```
 
-**The one rule that changes everything:** after submit, every status the guest sees comes **from Firestore** (live subscription). The app renders state; it never mutates authority state.
+- `AuthStore` (`lib/services/auth_store.dart`) holds the session. `isAdmin` is the only authorization question the app asks.
+- The allowlist `AuthStore.kAdminEmails` mirrors `adminEmails()` in `firestore.rules`, `isAdminEmail()` in `storage.rules` and `BOOTSTRAP_ROLES` in `src/lib/auth/profile.ts`. A second operator is added by allowlist or by a `profiles/{uid}` document with `role: 'admin'` — never by a new role.
+- Without Firebase configured the gate cannot be passed; the screens behind it run on in-memory demo data for development.
 
 ---
 
-## 3. Navigation map
+## 2. Navigation map
 
 ```mermaid
 flowchart LR
-    subgraph Tabs [Bottom tab shell]
-        T1[Home] --> T2[Stay] --> T3[Explore] --> T4[Book] --> T5[Account / Dashboard]
+    subgraph Tabs [Bottom bar]
+        T1[Dashboard] --- T2[Bookings] --- T3[Radar] --- T4[Stays] --- T5[More]
     end
-    T1 --> D1[Accommodation detail]
-    T2 --> D1
-    D1 -->|Reserve| T4
-    T4 --> K[KYC]
-    K --> C[Confirmation]
-    C -->|Go to dashboard| T5
-    T5 --> V[Digital key sheet]
-    T5 --> H[Call / Messenger / Maps]
+    T5 --> M1[Rates & Cancellation Policy]
+    T5 --> M2[Smart Lock Security Logs]
+    T5 --> M3[Revenue & Stay Analytics]
+    T5 --> M4[Rooms & Accommodations]
+    T5 --> M5[Guest CRM & History]
+    T5 --> M6[Sign out]
+    T1 -->|Review Bookings| T2
+    T1 -->|Open Live Radar| T3
+    T2 -->|tap / Review| D[BookingDetailScreen]
 ```
 
-- Tab 5 becomes **Account**: when no booking → sign-in / browse prompt + past stays; when booking → dashboard (status, key, host contact). No more fake welcome for strangers.
-- Confirmation pushes `AppShell(initialTab: 4)` (already correct — keep).
+`MainShellScreen` keeps every tab in an `IndexedStack`; the Bookings tab badge counts Pending requests and the Radar tab dot lights when a Guest is within 5 km.
 
 ---
 
-## 4. Booking status state machine (unified, web + app)
+## 3. Booking lifecycle (shared vocabulary)
 
-One vocabulary everywhere. Web `/admin` buttons already map 1:1.
+Canonical statuses (CONTEXT.md § Booking status), the same strings on both sides:
+
+```
+Pending → KYC Submitted → Approved → Payment Pending → (Payment Verified) → Reserved
+        → Checked-In → Staying → Checked-Out → Completed
+terminal branches: Rejected · Cancelled · Expired
+```
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: guest submits (app or web)
-    pending --> confirmed: host approves (admin)
-    pending --> cancelled: host rejects / guest cancels
-    confirmed --> checked_in: check-in day (host or auto)
-    confirmed --> cancelled: host cancels
-    checked_in --> completed: check-out day
-    checked_in --> completed: manual (host)
-    completed --> [*]
-    cancelled --> [*]
+    [*] --> Pending: Guest submits on the website (24 h Date hold starts)
+    Pending --> KYC_Submitted: Guest uploads ID (web)
+    Pending --> Expired: hold runs out (read-time rule, recorded by the app as system)
+    KYC_Submitted --> Approved: Admin approves (dates re-checked)
+    KYC_Submitted --> KYC_Submitted: Admin refuses the ID (Guest resends)
+    KYC_Submitted --> Rejected: Admin rejects
+    KYC_Submitted --> Expired: hold runs out
+    Approved --> Payment_Pending: Guest chooses a Payment plan (web)
+    Approved --> Rejected: Admin rejects
+    Payment_Pending --> Reserved: Admin verifies the Payment proof
+    Payment_Pending --> Payment_Pending: Admin rejects proof, Guest resends
+    Payment_Pending --> Cancelled: Admin rejects proof for good (no refund)
+    Reserved --> Checked_In: Admin checks in (or first Credential use)
+    Checked_In --> Staying: Admin
+    Staying --> Checked_Out: Admin
+    Checked_Out --> Completed: Admin
+    Pending --> Cancelled: Guest withdraws / Admin cancels
+    KYC_Submitted --> Cancelled: Guest withdraws / Admin cancels
+    Approved --> Cancelled: Guest withdraws / Admin cancels
+    Reserved --> Cancelled: cancel → Refund settled by the published policy
 ```
 
-**KYC is a separate axis** (a confirmed booking with rejected KYC shouldn't read "cancelled"):
+**Who takes which action**
 
-```
-kyc_status: required → submitted → approved | rejected → (resubmit) → submitted
-```
+| Action | Actor | Where |
+| --- | --- | --- |
+| Submit, UploadKyc, ChoosePaymentPlan, UploadPaymentProof, Cancel (own) | Guest | website |
+| Approve, Reject, RejectKyc, VerifyPayment, RejectPaymentProof, Cancel (any), MarkRefunded, PurgeKyc, RevokeKey | Admin | **this app** |
+| CheckIn, BeginStay, CheckOut, Complete | Admin (or system on the lock's first Credential use) | **this app** |
+| Expire | system — the app records it when it sees a hold has run out | **this app** |
 
-| Field | Type | Set by |
-|---|---|---|
-| `status` | `pending · confirmed · checked_in · completed · cancelled` | host only (guest may set `cancelled` while `pending`) |
-| `kyc_status` | `required · submitted · approved · rejected` | app sets `submitted`; host sets `approved`/`rejected` |
+Every accepted action writes one Activity entry (`bookings/{id}/activity/{seq}`) with `actor`, `actor_id`, `from_status`, `to_status`, `at` and `reason`. `applyBookingAction` writes the patch and the entry in one Firestore batch, so a transition is never unlogged.
+
+**Preconditions the app enforces** (`applyAdminAction` in `booking_lifecycle.dart`):
+
+- Approve needs `kyc_status == submitted`, and re-checks the dates against every other *committed* Booking for the Accommodation (ADR-0003); conflicts are named in the refusal.
+- Reject / RejectKyc / RejectPaymentProof need a reason — the Guest reads it.
+- VerifyPayment needs a Payment proof and an amount that covers `amount_due + security_deposit`; it lands on Reserved in one move.
+- Cancel from Reserved settles the Refund from the Booking's figures and the published policy (tiers by days before check-in, deposit percentage, damage deduction) and records `refund_status: initiated` with the breakdown; MarkRefunded closes it.
+- Any action on a Booking whose recorded Date hold has run out is refused: it reads as Expired.
+- Nothing leaves Completed / Rejected / Cancelled / Expired. PurgeKyc clears the ID and receipt URLs after a stay (RA 10173); RevokeKey logs a Credential revocation without moving the Booking.
 
 ---
 
-## 5. Screen-by-screen contract
+## 4. Screen-by-screen contract
 
-| Screen | Shows | Primary action | Exits | Empty / error state |
-|---|---|---|---|---|
-| **Home** | Hero, stats, featured stays | Book / Call / Directions | detail, tabs | — |
-| **Stay** | Filter chips, cards, rates | Reserve (preselect) | detail → Book | — |
-| **Explore** | Nearby, gallery | Open in Maps | photo viewer | — |
-| **Book (step 1)** | Accommodation, dates, guests | Validate: checkout > checkin, guests ≤ capacity, dates free | step 2 | Conflict → "Dates taken, nearest free: …" |
-| **Book (step 2)** | Name, phone, email, notes, estimate | **Submit → Firestore** | KYC | Offline → queue + banner |
-| **KYC** | ID + receipt upload with preview | Submit → Storage upload + `kyc_status: submitted` | Confirmation | Upload fail → retry per-file |
-| **Confirmation** | Ref ID (copyable), summary, "host confirms within 24h" | Go to dashboard | Account tab | — |
-| **Account/Dashboard** | Live status card, timeline, actions | Refresh (auto via stream) | Key sheet, call, cancel, rebook | No booking → "No upcoming stay" |
-| **Digital key sheet** | Lock state, battery, window countdown | Press-and-hold unlock (1.2 s) | — | Disabled states below |
-
-**Digital key gating — all must be true:**
-
-```
-enabled = status == 'confirmed' or 'checked_in'
-       and kyc_status == 'approved'
-       and now >= check_in + 14:00
-       and now <  check_out + 12:00
-```
-
-Disabled reason is always shown ("Key activates Fri 2:00 PM", "ID verification pending", …). Auto-relock 5 s stays.
+| Screen | Shows | Primary actions | Empty / error state |
+| --- | --- | --- | --- |
+| **AdminLoginScreen** | Google button with the Admin address, email + password | Sign in → `requireAdmin()` | Not authorized → signed out with the reason |
+| **Dashboard** | Today's check-ins, active stays, pending requests, revenue, recent lock events, approaching-Guest banner | Review Bookings, Open Live Radar | Metrics at zero |
+| **Bookings** | Every Booking, newest first; filters All / Needs action / Pending / Reserved / Active Stay / Completed / Cancelled; per card: exact status, next step, Date hold countdown | Review → detail; one-tap Approve / Check in / Begin stay / Check out / Complete; call / SMS | "No bookings found" |
+| **Booking detail** | Guest, dates, notes, submission time, Date hold; KYC status + ID / receipt links + refusal reason; payment plan, totals, proof link, verified amount; refund breakdown; **the actions the current status allows**; Activity log | Every lifecycle action with its dialog (reason, amount, damage deduction, resend-or-cancel) | "Nothing to do — X is a final status"; expired-hold banner with **Record** |
+| **Radar** | Live Guest locations from `tracking_sessions`, distance and ETA to the resort | Call / SMS, map | No active sessions |
+| **Stays** | Stay durations, progress, days remaining | — | No stays |
+| **Analytics** | Confirmed vs projected revenue, conversion, average length of stay, duration buckets, top Accommodation | — | Zeros |
+| **Smart lock** | `access_logs` newest first, per-door filter, simulator | Record an event | No events |
+| **Rooms** | Accommodation status and nightly price | Mark available / occupied, edit price | "Publish rates first" |
+| **CRM** | Guest history, VIP badges, notes | — | No profiles |
+| **Rates** | The live `site_config/rates` version; editors for each Accommodation (nightly rate, Security deposit, down-payment %) and the refund policy (flat %, deposit %, tiers) | **Publish to website** (validated first; problems listed inline) | "Nothing published yet" |
 
 ---
 
-## 6. Data & backend contract
+## 5. Data & backend contract
 
-App writes the **same** `bookings` collection the web form uses — admin sees app bookings with zero admin changes.
+The app reads and writes the **same** Firestore documents the website does.
 
 ```jsonc
-// bookings/{id}
+// bookings/{id} — created by the website, driven by both sides
 {
-  "ref_id": "HDL-260906-K4TQ",        // YYMMDD + 4 random chars, collision-safe
-  "guest_name": "...", "phone": "...", "email": "...",
-  "check_in": "2026-09-12", "check_out": "2026-09-14",   // ISO dates, same as web
-  "guests": 4, "accommodation": "main_house",             // web's slug ids
-  "notes": "...",
-  "status": "pending", "kyc_status": "required",
-  "kyc_id_url": "gs://…/kyc/{uid}/id.jpg",                // Storage, set on submit
-  "kyc_receipt_url": "gs://…/kyc/{uid}/receipt.jpg",
-  "uid": "anonymous-auth-uid",                            // guest identity
-  "created_at": "…", "source": "flutter_app"
+  "ref_id": "HDL-260906-K4TQ",
+  "uid": "guest-anonymous-uid",            // the Guest's identity (ADR-0004)
+  "source": "web",
+  "guest_name": "…", "phone": "…", "email": "…",
+  "accommodation": "main-house",           // src/config/site.ts id
+  "check_in": "2026-09-12", "check_out": "2026-09-14",
+  "guests": 4, "special_requests": "…",
+  "status": "KYC Submitted",               // canonical string
+  "hold_expires_at": "2026-09-07T10:00:00.000Z",
+  "kyc_status": "submitted", "kyc_id_url": "https://…", "kyc_receipt_url": "https://…", "kyc_reject_reason": null,
+  "payment_plan": "down-payment", "payment_status": "pending", "payment_proof_url": "https://…",
+  "amount_claimed": 5500, "stay_total": 11000, "amount_due": 5500, "security_deposit": 500, "balance_due": 5500,
+  "amount_verified": 6000,
+  "policy_version": "v2026-09", "policy_effective_date": "2026-09-01",
+  "refund_status": "none", "refund_total": 0, "refund_breakdown": null,
+  "rejection_reason": null, "cancellation_reason": null,
+  "created_at": <Timestamp>
 }
 ```
 
-**Rules changes** (current rules already cover most of this):
+| Collection | App reads | App writes | Rule |
+| --- | --- | --- | --- |
+| `bookings` | all, ordered by `created_at` | patches from `applyBookingAction`; delete | Admin: update within the terminal / KYC / payment guards; delete |
+| `bookings/{id}/activity` | oldest first | one entry per action, id = `seq` | append-only; `actor` must be the writer's role (`system` allowed for the Admin) |
+| `site_config/rates` | live | `publishRates` (validated) | public read, Admin write |
+| `tracking_sessions` | all | — | Admin read; created / deleted by the Guest's device |
+| `access_logs` | all | simulator events | Admin read / correct |
+| `rooms`, `guest_profiles` | all | status, price | Admin |
+| `profiles/{uid}` | own (role check) | — | own read; Admin may write anybody's role |
 
-```js
-match /bookings/{id} {
-  allow create: if true && request.resource.data.status == 'pending';  // unchanged
-  allow read:   if isOwner() || (isSignedIn() && resource.data.uid == request.auth.token.uid);
-  allow update: if isOwner()                                    // host only
-             || (isSignedIn() && resource.data.uid == request.auth.token.uid
-                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','kyc_status','kyc_id_url','kyc_receipt_url'])
-                 && resource.data.status == 'pending'            // guest may only:
-                 && request.resource.data.status in ['pending','cancelled']); // cancel self / attach kyc
-}
-```
-
-- **Guest identity:** anonymous Firebase Auth at first launch (no login friction). Upgrade path: phone auth later, linking past `uid`s.
-- **Local cache:** `shared_preferences` mirrors the booking list (ref IDs + snapshot) so the app opens instantly and survives restarts; Firestore stream reconciles.
-- **Availability:** before submit, query non-cancelled bookings overlapping the range (needs the composite index in `firestore.indexes.json`).
+Model mapping lives in `lib/models/booking_model.dart`: `rawStatus` keeps the exact status, `status` buckets it into five stages for filters and KPIs, and `toLifecycleDoc()` hands the rules the stored document. `BookingModel.accommodationLabel` turns the website's ids into names.
 
 ---
 
-## 7. Edge cases the flow must own
+## 6. Edge cases the app owns
 
 | Case | Behavior |
-|---|---|
-| Offline submit | Queue locally, banner "will send", send on reconnect; never fake success |
-| Host rejects KYC after confirming | Status stays `confirmed`, key stays disabled, banner: "Re-upload valid ID" |
-| Guest cancels after confirm | Ask to call host (rules already block self-cancel past `pending`) |
-| App reinstall / new device | Enter ref ID + phone → lookup → re-attach to anonymous uid |
-| Double-tap submit | Idempotency: disable button + ref generated server-side-friendly single write |
-| ESP32 unreachable | Key sheet shows "Walk to the door / call host" after 10 s timeout — never a silent failure |
-| Late checkout | Host flips `check_out` — key expiry follows automatically since gate is date-driven |
+| --- | --- |
+| Hold ran out before review | Detail shows the expired banner; **Record** writes `Expired` as `system`. Every other action on it is refused. |
+| Two Bookings want the same single unit | Approve of the second is refused with the conflicting Booking named; the Admin picks (ADR-0003). |
+| Guest sent the wrong proof | Reject proof → *let them resend* keeps Payment Pending and clears the URL; *cancel* ends the Booking with `refund_status: none`. |
+| Cancel after money was verified | Refund settled by the stamped policy version; `refund_breakdown` stored; MarkRefunded once the money is back. |
+| Firestore write fails | The action's dialog shows the Firestore error; nothing is patched locally in cloud mode. |
+| No Firebase (dev) | In-memory demo data; actions patch the list and a local Activity log so the flow can be exercised. |
+| Non-Admin account signs in | Signed out immediately with "Not authorized". |
 
 ---
 
-## 8. Implementation phases
+## 7. What is deliberately not here
 
-| Phase | Deliverable | Effort |
-|---|---|---|
-| **P1 — Local correctness** (no backend) | Remove seed booking + auto-confirm; persist to `shared_preferences`; unified status enum; key gate by date window; ref ID format; booking history list; empty states | ~1–2 days |
-| **P2 — Firestore sync** | `cloud_firestore` + anonymous auth; create/read-own bookings; live status on dashboard; admin sees app bookings | ~2–3 days |
-| **P3 — Real KYC** | `firebase_storage` uploads; `kyc_status` loop; reject/resubmit UI; KYC review row in web `/admin` | ~2–3 days |
-| **P4 — Real ESP32** | Replace `Esp32Service` simulation with `flutter_blue_plus` + challenge-response (key = signed token, not just BLE proximity) | ~1 week + hardware |
-
-P1 can ship immediately and makes the prototype honest; P2 is the one that connects guest → host → key as one pipeline.
-
----
-
-## 9. What stays as-is
-
-- 5-tab shell, theme, quiet-luxury styling, `AppTheme` palette
-- Stay/Explore/Home content and detail screens
-- Simulated ESP32 timing (800 ms unlock, 5 s relock, 1.2 s hold) — P4 swaps the transport only
-- Web `/admin` — needs only the KYC review row (P3) and the email allowlist uncommented
+- No Guest screens: booking form, KYC capture, Mobile Key UI. Those belong to the website (`src/`).
+- No Staff or Host role, no role switcher, no team screen (ADR-0007).
+- No scheduled hold sweep: expiry is a read-time rule (ADR-0002); the app only records what it reads.

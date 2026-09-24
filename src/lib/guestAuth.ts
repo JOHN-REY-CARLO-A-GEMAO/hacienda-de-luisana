@@ -29,7 +29,7 @@ export async function ensureGuestUid(): Promise<string | null> {
     return appSession().getState().user?.uid ?? null
   }
   try {
-    // Already signed in (the Host's own session, or an earlier anonymous one):
+    // Already signed in (the Admin's own session, or an earlier anonymous one):
     // reuse it rather than replacing it.
     if (auth.currentUser) return auth.currentUser.uid
     const credential = await signInAnonymously(auth)

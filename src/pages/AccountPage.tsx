@@ -60,7 +60,7 @@ export function AccountPage() {
     setNotice(null)
     try {
       // The lifecycle, not a status write: a Guest cannot cancel a Booking the
-      // Host has already taken past the point a Guest may reach alone.
+      // Admin has already taken past the point a Guest may reach alone.
       const result = await cloudBookingsDB.transition(
         booking.id,
         { type: 'Cancel', reason: 'Withdrawn by the Guest from their own account page.' },
@@ -74,7 +74,7 @@ export function AccountPage() {
     } catch (error) {
       setNotice({
         tone: 'bad',
-        text: 'That did not save — the request is unchanged. The Host can cancel it for you.',
+        text: 'That did not save — the request is unchanged. The Admin can cancel it for you.',
       })
       console.warn('[Account] withdraw failed', error)
     } finally {
@@ -91,7 +91,7 @@ export function AccountPage() {
             <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">My Bookings</h1>
             <p className="mt-3 text-sm text-forest-800/80 max-w-xl leading-relaxed">
               Signed in as <strong>{user?.email ?? user?.displayName ?? 'this browser'}</strong>. These are the requests
-              made from this account — send your government ID, watch the Date hold, and withdraw a request the Host has
+              made from this account — send your government ID, watch the Date hold, and withdraw a request the Admin has
               not reviewed yet.
             </p>
           </div>
@@ -132,7 +132,7 @@ export function AccountPage() {
             <h2 className="font-serif text-2xl text-forest-900 mt-4">No bookings on this account yet</h2>
             <p className="mt-2 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
               A request only shows up here if it was made while you were signed in with this account. Requests made
-              before you signed up stay with the browser that made them — ask the Host and they will find it by name.
+              before you signed up stay with the browser that made them — ask the Admin and they will find it by name.
             </p>
             <Link to="/book" className="btn-primary mt-6 inline-flex text-xs">
               Request your dates <ArrowRight size={14} />
@@ -169,7 +169,7 @@ export function AccountPage() {
 
                 {booking.rejection_reason && (
                   <p className="mt-3 text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                    The Host refused this request: “{booking.rejection_reason}”. Those dates are free again.
+                    The Admin refused this request: “{booking.rejection_reason}”. Those dates are free again.
                   </p>
                 )}
                 {booking.kyc_reject_reason && (
@@ -205,7 +205,7 @@ export function AccountPage() {
                   )}
                   {!WITHDRAWABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
                     <span className="text-[11px] text-forest-600 flex items-center gap-1">
-                      <Sparkle size={12} /> Past the point you can withdraw alone — message the Host to change it.
+                      <Sparkle size={12} /> Past the point you can withdraw alone — message the Admin to change it.
                     </span>
                   )}
                 </div>

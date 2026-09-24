@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class AppConstants {
   // Resort Info
   static const String appName = 'Hacienda de LuisAna';
-  static const String appTagline = 'Resort Client Hub & Operations';
+  static const String appTagline = 'Admin — Resort Operations';
   static const String resortAddress = 'Luisiana, Laguna, Philippines';
   
   // Resort Fixed Coordinates (Luisiana, Laguna)
@@ -17,14 +17,20 @@ class AppConstants {
   // Firestore Collection Names
   static const String colBookings = 'bookings';
   static const String colTrackingSessions = 'tracking_sessions';
-  static const String colSmartLockLogs = 'smart_lock_logs';
+  /// Same collection the website writes when a Credential touches a lock
+  /// (firestore.rules `access_logs`).
+  static const String colSmartLockLogs = 'access_logs';
   static const String colRooms = 'rooms';
   static const String colGuestProfiles = 'guest_profiles';
+  /// Published rates + cancellation policy the website quotes from
+  /// (`site_config/rates`).
+  static const String colSiteConfig = 'site_config';
+  static const String docRates = 'rates';
 
-  // Contact Info
-  static const String hostPhone = '09258507707';
-  static const String hostPhoneDisplay = '(0925) 850 7707';
-  static const String hostMessengerUrl = 'https://m.me/haciendadeluisana';
+  // Resort contact line (shown to the Admin as the number Guests dial)
+  static const String resortPhone = '09258507707';
+  static const String resortPhoneDisplay = '(0925) 850 7707';
+  static const String resortMessengerUrl = 'https://m.me/haciendadeluisana';
 }
 
 class AppColors {

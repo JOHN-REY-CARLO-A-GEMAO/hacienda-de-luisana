@@ -1,4 +1,4 @@
-// Ticket #14: every money step is written to the Activity log, and the Host
+// Ticket #14: every money step is written to the Activity log, and the Admin
 // reads it back in words. Pure seam (describeActivity over stored entries) —
 // no Firebase, no fallback needed.
 import { applyAction, describeActivity, type ActivityLogEntry } from '../../src/lib/booking'
@@ -9,20 +9,20 @@ function entry(over: Partial<ActivityLogEntry> = {}): ActivityLogEntry {
     action: 'VerifyPayment',
     from_status: 'Payment Pending',
     to_status: 'Reserved',
-    actor: 'host',
-    actor_id: 'host-1',
-    actor_name: 'Host',
+    actor: 'admin',
+    actor_id: 'admin-1',
+    actor_name: 'Admin',
     at: '2026-10-05T10:00:00.000Z',
     ...over,
   }
 }
 
-describe('payment history the Host reads', () => {
+describe('payment history the Admin reads', () => {
   it('names the verified payment that made the Reservation', () => {
     const line = describeActivity(entry())
     expect(line.headline).toBe('Payment proof verified — Booking Reserved')
     expect(line.change).toBe('Payment Pending → Reserved')
-    expect(line.actor).toBe('Host (Host)')
+    expect(line.actor).toBe('Admin (Admin)')
   })
 
   it('reads a rejected proof with the reason the Guest was given', () => {
@@ -51,7 +51,7 @@ describe('payment history the Host reads', () => {
       check_out: '2026-10-12',
       status: 'Approved',
     }
-    const host = { actor: 'host' as const, actor_id: 'host-1' }
+    const admin = { actor: 'admin' as const, actor_id: 'admin-1' }
     const guest = { actor: 'guest' as const, actor_id: 'g-1' }
 
     const chosen = applyAction(booking, { type: 'ChoosePaymentPlan', plan: 'full', stayTotal: 17000, rate: { securityDeposit: 2000 } }, guest)
@@ -69,7 +69,7 @@ describe('payment history the Host reads', () => {
     const verified = applyAction(
       { ...booking, ...chosen.patch, ...proof.patch },
       { type: 'VerifyPayment', amount_verified: 19000 },
-      host,
+      admin,
     )
     expect(verified.ok).toBe(true)
     if (!verified.ok) return

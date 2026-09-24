@@ -3,7 +3,7 @@
 //
 // Firebase Storage is the only place a proof goes. Like the KYC uploader, this
 // module deliberately does not fall back to a data URL or localStorage when
-// there is no Firebase project: a receipt parked in a browser the Host cannot
+// there is no Firebase project: a receipt parked in a browser the Admin cannot
 // read would strand the Booking in Payment Pending with nobody able to verify
 // it. With no Firebase the Guest is told the truth and given the route that
 // does work (email the receipt quoting the reference).
@@ -24,7 +24,7 @@ export type ProofUploadOutcome =
 export const PROOF_UPLOAD_UNAVAILABLE_MESSAGE =
   `This website has no Firebase project connected, so there is nowhere to put a receipt ` +
   `and we will not keep one in your browser. Email a photo of it to ${BUSINESS.contact.email} ` +
-  `quoting your booking reference, and the Host will verify it from there.`
+  `quoting your booking reference, and the Admin will verify it from there.`
 
 /**
  * How long one upload may run before the UI stops waiting for it.

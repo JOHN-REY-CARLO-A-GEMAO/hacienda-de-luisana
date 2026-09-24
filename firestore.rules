@@ -8,21 +8,22 @@ rules_version = '2';
 // submit. A person who opens the browser console and calls Firestore directly
 // bypasses all of that and lands here.
 //
-// Three roles, from CONTEXT.md § People:
+// Two roles, from CONTEXT.md § People, each with its own application
+// (ADR-0007):
 //
-//   Guest — books and stays. Reads and changes their own Booking, sends their
-//           own ID and payment proof, shares their own location. Sees nothing of
-//           anybody else's.
-//   Host  — operates the hacienda. Everything: reviews Bookings, reads IDs,
-//           verifies payments, refunds, deletes, reads the Access log, and
-//           decides who has which role.
-//   Staff — cleans and inspects. Reads Bookings and the Access log, and makes
-//           the one transition that is theirs (a cleaned stay is Completed).
-//           Never approves, never verifies money, never opens a government ID.
+//   Guest — books and stays, on the website. Reads and changes their own
+//           Booking, sends their own ID and payment proof, shares their own
+//           location. Sees nothing of anybody else's.
+//   Admin — operates the hacienda, from the Flutter mobile app. Everything:
+//           reviews Bookings, reads IDs, verifies payments, refunds, records
+//           check-in/out and completion, deletes, reads the Access log,
+//           publishes rates.
 //
-// A role is *stored*, not claimed: `profiles/{uid}` holds one of the three, and
-// `role()` below reads it. `src/lib/auth` resolves a role in exactly this order,
-// so a page never offers what this file is about to refuse. See ADR-0005.
+// There is no Staff role and no Host role. A role is *stored*, not claimed:
+// `profiles/{uid}` holds one of the two, and `role()` below reads it.
+// `src/lib/auth` (web) and `lib/services/auth_store.dart` (app) resolve a role
+// in exactly this order, so a screen never offers what this file is about to
+// refuse. See ADR-0005 and ADR-0007.
 // ============================================================================
 
 service cloud.firestore {
@@ -49,30 +50,26 @@ service cloud.firestore {
     // Roles
     // ------------------------------------------------------------------
 
-    // The bootstrap allowlist: two addresses that carry a role with no Profile
-    // written, so a deployment can never be locked out of itself by a missing
-    // document. Kept in step with BOOTSTRAP_ROLES in src/lib/auth/profile.ts,
-    // isHostEmail() in storage.rules and AuthStore.kOwnerEmail / kAnakEmail in
-    // lib/services/auth_store.dart.
-    //   host  — the owner's address (also site.ts BUSINESS.email).
-    //   staff — the locks-readonly address the rules have always called `anak`.
-    // Anonymous uids carry no email claim, so a Guest can never satisfy either.
-    function hostEmails() {
-      return ['haciendadeluisiana@gmail.com'];
-    }
-
-    function staffEmails() {
-      return ['gemaojohnreycarloarguilles@gmail.com'];
+    // The bootstrap allowlist: the Admin addresses, which carry the role with
+    // no Profile written, so a deployment can never be locked out of itself by
+    // a missing document. Kept in step with BOOTSTRAP_ROLES in
+    // src/lib/auth/profile.ts, isAdminEmail() in storage.rules and
+    // AuthStore.kAdminEmails in lib/services/auth_store.dart.
+    // Anonymous uids carry no email claim, so a Guest can never satisfy it.
+    function adminEmails() {
+      return ['haciendadeluisiana@gmail.com', 'gemaojohnreycarloarguilles@gmail.com'];
     }
 
     function profileOf(uid) {
       return /databases/$(database)/documents/profiles/$(uid);
     }
 
-    // A stored role that is not one of the three is no role at all, and reads as
-    // Guest: a document nobody can explain must not grant anything.
+    // A stored role that is not one of the two is no role at all, and reads as
+    // Guest: a document nobody can explain must not grant anything. The retired
+    // 'host' and 'staff' values fall here too — the Admin is recognised by the
+    // allowlist, or by a Profile that says 'admin'.
     function knownRole(value) {
-      return value in ['guest', 'host', 'staff'] ? value : 'guest';
+      return value in ['guest', 'admin'] ? value : 'guest';
     }
 
     // The role a Profile stores. No Profile is a Guest, so a signed-in person
@@ -89,60 +86,55 @@ service cloud.firestore {
     // which matches no role and therefore no rule below.
     function role() {
       return !isSignedIn() ? 'none'
-        : (request.auth.token.email in hostEmails()) ? 'host'
-        : (request.auth.token.email in staffEmails()) ? 'staff'
+        : (request.auth.token.email in adminEmails()) ? 'admin'
         : storedRole();
     }
 
-    function isHost() {
-      return role() == 'host';
-    }
-
-    function isStaff() {
-      return role() == 'staff';
+    function isAdmin() {
+      return role() == 'admin';
     }
 
     // ------------------------------------------------------------------
     // Profiles — who has which role
     // ------------------------------------------------------------------
-    // The whole of RBAC rests on this collection, so it is the one place that has
-    // to be impossible to talk into a lie:
+    // Who is the Admin rests on this collection (and the allowlist), so it is
+    // the one place that has to be impossible to talk into a lie:
     //   - you may write your own Profile, but only as a Guest;
-    //   - the Host may write anybody's, with one of the three roles;
-    //   - nobody may write a role that is not one of the three.
+    //   - the Admin may write anybody's, with one of the two roles;
+    //   - nobody may write a role that is not one of the two.
     match /profiles/{userId} {
 
-      // A Profile carries its own uid, one of the three roles, and nothing else:
+      // A Profile carries its own uid, one of the two roles, and nothing else:
       // a document that arrives with extra keys is refused rather than stored and
       // wondered about later.
       function isProfileShape() {
         return request.resource.data.uid == userId
-          && request.resource.data.role in ['guest', 'host', 'staff']
+          && request.resource.data.role in ['guest', 'admin']
           && request.resource.data.keys()
                .hasOnly(['uid', 'role', 'email', 'display_name', 'created_at', 'updated_at']);
       }
 
-      // Your own Profile, and the team's if you are the Host.
-      allow read: if isSignedIn() && (request.auth.uid == userId || isHost());
+      // Your own Profile, and everybody's if you are the Admin.
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
 
-      // Signing up writes this, and a sign-up is always a Guest. The Host may
+      // Signing up writes this, and a sign-up is always a Guest. The Admin may
       // open a Profile for somebody whose sign-up did not leave one.
       allow create: if isProfileShape()
         && ((isSignedIn() && request.auth.uid == userId && request.resource.data.role == 'guest')
-            || isHost());
+            || isAdmin());
 
-      // The Host decides roles. A person may correct their own name and address,
+      // The Admin decides roles. A person may correct their own name and address,
       // but never their own role — that is the one field this collection exists
       // to keep out of their hands.
       allow update: if isProfileShape()
-        && (isHost()
+        && (isAdmin()
             || (isSignedIn() && request.auth.uid == userId
                 && request.resource.data.diff(resource.data).affectedKeys()
                      .hasOnly(['display_name', 'email', 'updated_at'])));
 
       // Removing an account's role. Never your own: one click should not be able
-      // to leave the hacienda with no Host signed in.
-      allow delete: if isHost() && request.auth.uid != userId;
+      // to leave the hacienda with no Admin signed in.
+      allow delete: if isAdmin() && request.auth.uid != userId;
     }
 
     // ------------------------------------------------------------------
@@ -151,11 +143,11 @@ service cloud.firestore {
     // - CREATE stays public pending-only so a web inquiry works unauthenticated.
     //   Extra app keys (ref_id, uid, kyc_status, kyc urls, source,
     //   eta_share_url) are additive.
-    // - READ: own (the identity attached at creation), Host, Staff.
-    // - UPDATE: Host anything; Staff the one transition that is theirs; a Guest
-    //   their own self-serve keys. DELETE: Host.
-    //   The Host MUST re-check availability at approve time (G2), and the system
-    //   re-checks it for them: see src/lib/booking (forApproval).
+    // - READ: own (the identity attached at creation), and the Admin.
+    // - UPDATE: the Admin anything within the guard-rails below; a Guest their
+    //   own self-serve keys. DELETE: the Admin.
+    //   The Admin MUST re-check availability at approve time (G2), and the app
+    //   re-checks it for them: see lib/services/booking_lifecycle.dart.
     match /bookings/{bookingId} {
       allow create: if true
         && request.resource.data.keys().hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at'])
@@ -168,15 +160,14 @@ service cloud.firestore {
 
       // Cheapest check first: a Guest reading their own Booking should not pay
       // for a Profile read to find out they are allowed.
-      allow read: if isOwnDoc() || isHost() || isStaff();
+      allow read: if isOwnDoc() || isAdmin();
 
-      allow update: if (isHost()
-        // The Host's writes are checked at the rule layer for the moves that
+      allow update: if (isAdmin()
+        // The Admin's writes are checked at the rule layer for the moves that
         // must never go wrong: nothing leaves a terminal status, and the two
         // money gates cannot be skipped — Approved needs a reviewed ID,
-        // Reserved needs verified money. The full lifecycle table stays in
-        // src/lib/booking until the dashboard's SetStatus writes retire
-        // (ticket #13), when the table moves here in full.
+        // Reserved needs verified money. The full lifecycle table lives in
+        // lib/services/booking_lifecycle.dart (app) and src/lib/booking (web).
         && !(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
              && request.resource.data.status != resource.data.status)
         && !(request.resource.data.status == 'Approved'
@@ -184,17 +175,10 @@ service cloud.firestore {
         && !(request.resource.data.status == 'Reserved'
              && resource.data.status != 'Payment Pending')
       )
-        // Staff: a cleaned, inspected stay is Completed (flow §5 step 10) — the
-        // only move in the whole lifecycle that is theirs, and only the status
-        // key. No approval, no payment, no cancellation, no KYC.
-        || (isStaff()
-          && resource.data.status == 'Checked-Out'
-          && request.resource.data.status == 'Completed'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
         // A Guest may withdraw, upload or resend their ID and payment proof,
         // choose a payment plan, and stamp the cancellation policy their plan
         // was quoted under. They may never approve or verify anything
-        // themselves (ADR-0001: money moves only after the Host), and never
+        // themselves (ADR-0001: money moves only after the Admin), and never
         // touch the identity the Booking was created with. Live location no
         // longer rides on the Booking: it is a tracking_sessions document
         // owned by the same uid (G6).
@@ -202,7 +186,7 @@ service cloud.firestore {
           && resource.data.get('uid', '') == request.auth.uid
           // Forward or out, never backwards: a Guest may take their own Booking
           // to the next stage the lifecycle gives them, or withdraw it, but can
-          // never write a status that un-does a decision the Host already made.
+          // never write a status that un-does a decision the Admin already made.
           && ((resource.data.status in ['Pending', 'KYC Submitted']
                  && request.resource.data.status in ['Pending', 'KYC Submitted', 'Payment Pending', 'Cancelled'])
               || (resource.data.status == 'Approved'
@@ -218,29 +202,29 @@ service cloud.firestore {
                       'balance_due', 'cancellation_reason', 'hold_expires_at',
                       'policy_version', 'policy_effective_date']));
 
-      allow delete: if isHost();
+      allow delete: if isAdmin();
 
       // Activity log (spec #9, ticket #11): the append-only record of every
       // state change, with the actor and timestamp that made it.
       // - CREATE: anybody who may change the Booking, naming themselves truthfully.
-      // - READ: the Host, Staff, and the Guest it belongs to.
-      // - UPDATE/DELETE: nobody. Not the Host. An audit record that can be
+      // - READ: the Admin, and the Guest it belongs to.
+      // - UPDATE/DELETE: nobody. Not the Admin. An audit record that can be
       //   edited is not an audit record (CONTEXT.md § Activity log).
       match /activity/{entryId} {
         allow create: if request.resource.data.keys().hasAll(
             ['booking_id', 'action', 'from_status', 'to_status', 'actor', 'actor_id', 'at'])
           && request.resource.data.booking_id == bookingId
           // An entry has to be written in the name of whoever is writing it. An
-          // audit log that lets a Guest sign the Host's name to an approval is
+          // audit log that lets a Guest sign the Admin's name to an approval is
           // worse than no log at all.
           && (request.resource.data.actor == role()
               // A Date hold running out is the system's doing, recorded by the
-              // first Host or Staff surface that saw it (ADR-0002).
-              || (request.resource.data.actor == 'system' && (isHost() || isStaff()))
+              // Admin app's screen that saw it (ADR-0002).
+              || (request.resource.data.actor == 'system' && isAdmin())
               // The public inquiry path: no identity at all, so the only entry it
               // can write is a Guest's own submission.
               || (!isSignedIn() && request.resource.data.actor == 'guest'));
-        allow read: if isOwnDoc() || isHost() || isStaff();
+        allow read: if isOwnDoc() || isAdmin();
         allow update, delete: if false;
       }
     }
@@ -252,29 +236,30 @@ service cloud.firestore {
     // - CREATE: any signed-in client (guest app / lock gateway, incl. anon)
     //   with the exact shape, in their own name: the uid is the writer's, so
     //   a row is attributable. That matters because a granted row is the
-    //   Host's check-in cue — a row written in somebody else's uid is a cue
+    //   Admin's check-in cue — a row written in somebody else's uid is a cue
     //   about the wrong person.
-    // - READ: Host, and Staff (locks-readonly is exactly what Staff is for).
-    // - UPDATE/DELETE: Host only (tamper-evident history).
+    // - READ: the Admin (the Smart Lock screen of the app).
+    // - UPDATE/DELETE: the Admin only (tamper-evident history).
     match /access_logs/{logId} {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['timestamp','uid','ref_id','result','reason'])
         && request.resource.data.result in ['granted', 'denied']
         && request.resource.data.uid == request.auth.uid;
-      allow read: if isHost() || isStaff();
-      allow update, delete: if isHost();
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
     }
 
-    // Gallery images metadata (public read, Host write)
+    // Gallery images metadata (public read, Admin write)
     match /gallery/{imageId} {
       allow read: if true;
-      allow write: if isHost();
+      allow write: if isAdmin();
     }
 
-    // Site config (public read, Host write)
+    // Site config — including the published rates at site_config/rates that
+    // the app's Rates screen writes (public read, Admin write).
     match /site_config/{docId} {
       allow read: if true;
-      allow write: if isHost();
+      allow write: if isAdmin();
     }
 
     // Guest live-location sessions — one document per Booking (doc id = the
@@ -287,39 +272,37 @@ service cloud.firestore {
     // first ping, so a session without a consent cannot exist, and neither the
     // consent nor the identity may be rewritten afterwards.
     // - CREATE: the traveller only, with the shape.
-    // - READ: Host + Staff for the radar, and the traveller's own session.
-    // - UPDATE: the Host, or the traveller on their own session, touching
+    // - READ: the Admin for the radar, and the traveller's own session.
+    // - UPDATE: the Admin, or the traveller on their own session, touching
     //   nothing but position and the derived fields.
-    // - DELETE: the Host, or the traveller — deleting one's own session IS
+    // - DELETE: the Admin, or the traveller — deleting one's own session IS
     //   stopping the share.
     // Readers treat a session whose lastUpdated is older than 30 days as
-    // nonexistent; there is no backend worker to purge, so the Host's delete is
+    // nonexistent; there is no backend worker to purge, so the Admin's delete is
     // the physical erasure (G6).
     match /tracking_sessions/{sessionId} {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['bookingId', 'uid', 'tracking_consent_at', 'latitude', 'longitude', 'lastUpdated'])
         && request.resource.data.uid == request.auth.uid;
-      allow read: if isHost() || isStaff()
+      allow read: if isAdmin()
         || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
-      allow update: if isHost()
+      allow update: if isAdmin()
         || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid
             && !request.resource.data.diff(resource.data).affectedKeys()
                  .hasAny(['uid', 'bookingId', 'tracking_consent_at']));
-      allow delete: if isHost()
+      allow delete: if isAdmin()
         || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
     }
 
-    // Rooms + guest CRM (owner-ops reference data, seeded by the Host).
-    // No public writer: Host writes, Host/Staff read. Until seeded, the
-    // app shows its local reference copy.
+    // Rooms + guest CRM (operations reference data, seeded by the Admin).
+    // No public writer: the Admin reads and writes. Until seeded, the app
+    // shows its local reference copy.
     match /rooms/{roomId} {
-      allow read: if isHost() || isStaff();
-      allow write: if isHost();
+      allow read, write: if isAdmin();
     }
 
     match /guest_profiles/{profileId} {
-      allow read: if isHost() || isStaff();
-      allow write: if isHost();
+      allow read, write: if isAdmin();
     }
 
     // Deny all other collections by default unless explicitly allowed

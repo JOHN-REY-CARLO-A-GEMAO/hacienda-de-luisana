@@ -1,11 +1,12 @@
 // ----------------------------------------------------------------------------
 // Which pages a role may open — Hacienda de LuisAna
 // ----------------------------------------------------------------------------
-// A page is gated by the permission it exists to exercise, not by a list of
-// roles kept beside the catalogue: `/admin` is where a Booking is reviewed, so it
-// opens for whoever holds `bookings:review`. Add a permission to a role in
-// `roles.ts` and the pages that role can open follow, with nothing to remember
-// here.
+// The website is the Guest's application (ADR-0007). Its one gated page is the
+// Guest's own account, and it is gated by the permission it exists to exercise:
+// `/account` is where a Guest reads their own Bookings, so it opens for whoever
+// holds `booking:read:own`. The Admin's pages do not exist here at all — they
+// are screens in the Flutter app — so an Admin session on the website is a
+// person on the wrong front door, and is told so.
 //
 // Hiding a page is a courtesy, not the enforcement — firestore.rules is. Both
 // read the same catalogue.
@@ -19,29 +20,28 @@ import { ROLES, can, type Permission, type Role } from './roles'
  * The pages that are not public, each with the permission that opens it.
  *
  * Nested paths are listed with their parent: the deepest rule that matches a
- * path wins, so `/app/tracking` is narrower than `/app`.
+ * path wins.
  */
 const GATED_PAGES: ReadonlyArray<{ path: string; permission: Permission }> = [
-  { path: '/admin', permission: 'bookings:review' },
-  { path: '/app', permission: 'bookings:read:all' },
-  { path: '/app/tracking', permission: 'guest-location:read' },
-  { path: '/app/analytics', permission: 'analytics:read' },
-  { path: '/app/records', permission: 'access-logs:read' },
   { path: '/account', permission: 'booking:read:own' },
 ]
 
-/** Where each role lands after signing in. */
+/**
+ * Where each role lands after signing in on the website.
+ *
+ * The Admin has no page here: their home is the mobile app, so the website
+ * sends them back to the landing page, where the gate explains as much.
+ */
 const HOME_BY_ROLE: Record<Role, string> = {
-  host: '/admin',
-  staff: '/app',
   guest: '/account',
+  admin: '/',
 }
 
 /**
  * A path as the rules see it: no query, no hash, no trailing slash, lowercase.
  *
- * React Router matches case-insensitively, so `/Admin` would open the page while
- * a case-sensitive rule let it through ungated.
+ * React Router matches case-insensitively, so `/Account` would open the page
+ * while a case-sensitive rule let it through ungated.
  */
 export function normalizePath(path: string): string {
   const withoutQuery = (path.split(/[?#]/)[0] ?? '').replace(/\/+/g, '/')

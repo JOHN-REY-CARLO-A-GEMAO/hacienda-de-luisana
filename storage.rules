@@ -7,41 +7,36 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // The Host, by the bootstrap allowlist (ADR-0005).
+    // The Admin, by the bootstrap allowlist (ADR-0005, ADR-0007).
     //
     // Deliberately NOT the `profiles/{uid}` role that firestore.rules reads:
-    // Storage rules would have to reach into Firestore to see it, and nothing in
-    // either app writes to the two paths a Host-only Storage grant covers
-    // (/gallery, /accommodations — site images, published by the owner). The one
-    // Host-only read that matters, a Guest's government ID under /kyc, is keyed
-    // by uid and listed here by the same allowlist. If the site ever grows an
-    // image-publishing screen for a promoted Host, this becomes the place to
-    // teach Storage about Profiles.
-    // Keep this address in sync with hostEmails() in firestore.rules and
-    // BOOTSTRAP_ROLES in src/lib/auth/profile.ts.
-    function isHostEmail() {
+    // Storage rules would have to reach into Firestore to see it, and the only
+    // people who need an Admin Storage grant are the allowlisted addresses that
+    // sign into the mobile app. The Admin-only reads that matter — a Guest's
+    // government ID under /kyc and payment proof under /payments — are keyed by
+    // uid and opened here by the same allowlist. If a promoted Admin (Profile
+    // role 'admin', not on the allowlist) ever needs Storage, this becomes the
+    // place to teach Storage about Profiles.
+    // Keep these addresses in sync with adminEmails() in firestore.rules,
+    // BOOTSTRAP_ROLES in src/lib/auth/profile.ts and AuthStore.kAdminEmails in
+    // lib/services/auth_store.dart.
+    function isAdminEmail() {
       return isSignedIn()
-        && request.auth.token.email in ['haciendadeluisiana@gmail.com'];
+        && request.auth.token.email in ['haciendadeluisiana@gmail.com', 'gemaojohnreycarloarguilles@gmail.com'];
     }
 
-    // Staff (the address firestore.rules keeps in staffEmails()) get NO storage
-    // grants beyond public reads: /kyc holds government IDs (PII, RA 10173) and
-    // stays Host-only on purpose. Staff read lock records from Firestore
-    // access_logs, never from Storage — so that address appears nowhere in this
-    // file, and the absence is the decision, not an oversight.
-
-    // Public read for site assets, Host-only write (tightened P3:
-    // was any-signed-in; site images are Host-published).
+    // Public read for site assets, Admin-only write (site images are
+    // Admin-published).
     match /gallery/{allPaths=**} {
       allow read: if true;
-      allow write: if isHostEmail()
+      allow write: if isAdminEmail()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
     match /accommodations/{allPaths=**} {
       allow read: if true;
-      allow write: if isHostEmail()
+      allow write: if isAdminEmail()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
@@ -56,40 +51,38 @@ service firebase.storage {
     // P3 ENABLED: KYC ID + receipt uploads (sensitive PII, RA10173).
     // Layout: /kyc/{uid}/{bookingRef}/{id|receipt}.jpg
     // - WRITE own-uid only, 5MB, image/* (guest uploads own docs only).
-    // - READ own uid + the Host allowlist (Host review). Staff are BLOCKED
-    //   from IDs (locks-readonly ≠ ID review) — no Staff address appears in
-    //   this file at all. No public read.
+    // - READ own uid + the Admin allowlist (Admin review in the mobile app).
+    //   No public read.
     // - Deletes/overwrites follow the same write gate (resubmit loop), with
-    //   one exception: the Host deletes on PurgeKyc, within 30 days after the
+    //   one exception: the Admin deletes on PurgeKyc, within 30 days after the
     //   stay (the ID's purpose ended at approval). A delete carries no
     //   resource, and that is the only tell Storage rules have — so the
-    //   Host's write grant admits deletes and nothing else: an uploaded ID is
+    //   Admin's write grant admits deletes and nothing else: an uploaded ID is
     //   still the Guest's alone to write.
     match /kyc/{userId}/{allPaths=**} {
       allow read: if request.auth != null
-        && (request.auth.uid == userId || isHostEmail());
+        && (request.auth.uid == userId || isAdminEmail());
       allow write: if request.auth != null && request.auth.uid == userId
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
-      allow write: if isHostEmail() && request.resource == null;
+      allow write: if isAdminEmail() && request.resource == null;
     }
 
     // P4 ENABLED (#14): payment proof uploads (screenshots/receipts of money
     // sent outside the system — GCash / bank transfer, ADR-0001).
     // Layout: /payments/{uid}/{bookingRef}/proof.jpg
     // - WRITE own-uid only, 5MB, image/* (guest uploads own proof only).
-    // - READ own uid + the Host allowlist (Host verification). Staff are BLOCKED
-    //   from proofs — verifying money is the Host's alone — so no Staff address
-    //   appears in this file at all. No public read.
-    // - Deletes follow the same gate as /kyc: the Host deletes on request, which
+    // - READ own uid + the Admin allowlist (Admin verification in the mobile
+    //   app). No public read.
+    // - Deletes follow the same gate as /kyc: the Admin deletes on request, which
     //   carries no resource (request.resource == null).
     match /payments/{userId}/{allPaths=**} {
       allow read: if request.auth != null
-        && (request.auth.uid == userId || isHostEmail());
+        && (request.auth.uid == userId || isAdminEmail());
       allow write: if request.auth != null && request.auth.uid == userId
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
-      allow write: if isHostEmail() && request.resource == null;
+      allow write: if isAdminEmail() && request.resource == null;
     }
 
     // Deny everything else by default

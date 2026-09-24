@@ -5,10 +5,10 @@
 // Nothing here is invented. It is the web copy of what lib/services/
 // kyc_storage.dart writes and what storage.rules allows, so a document uploaded
 // from the website lands at the same address, with the same limits, as one
-// uploaded from the mobile app — and the Host reviews both the same way.
+// uploaded from the mobile app — and the Admin reviews both the same way.
 // ----------------------------------------------------------------------------
 
-/** The two documents the Host reviews: the government ID and its receipt. */
+/** The two documents the Admin reviews: the government ID and its receipt. */
 export type KycKind = 'id' | 'receipt'
 
 /** storage.rules: `request.resource.size < 5 * 1024 * 1024`. */

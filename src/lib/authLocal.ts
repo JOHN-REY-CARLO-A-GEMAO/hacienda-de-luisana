@@ -4,8 +4,8 @@
 // ----------------------------------------------------------------------------
 // The adapter that stands in for Firebase Auth and the Firestore `profiles`
 // collection when the project has no Firebase keys, so the website is still
-// something a person can click through: sign up, sign in, sign out, be promoted
-// to Staff, and come back after a reload with the same role.
+// something a person can click through: sign up as a Guest, sign in, sign out,
+// and come back after a reload with the same account.
 //
 // It satisfies the same two ports the Firebase adapter does, which is why the
 // session above it needs no idea which one it is holding. It is *not* a second
@@ -22,14 +22,11 @@
 import {
   AuthError,
   DEFAULT_ROLE,
-  ROLE_LABELS,
-  isRole,
   normalizeProfile,
   type AuthPort,
   type Profile,
   type ProfilePort,
   type SessionUser,
-  type Role,
 } from './auth'
 
 /** Where demo accounts, the current session and the Profiles live. */
@@ -189,9 +186,9 @@ function toSessionUser(account: StoredAccount): SessionUser {
 /**
  * Demo-mode accounts and Profiles.
  *
- * One factory for both ports because they share the storage a reload reads back,
- * and because stepping into a role has to write an account and its Profile
- * together or the person arrives with no role at all.
+ * One factory for both ports because they share the storage a reload reads back.
+ * Every account this adapter makes is a Guest: the website is the Guest's
+ * application, and demo mode has no Admin to be (ADR-0007).
  */
 export function createLocalPorts(): { auth: AuthPort; profiles: ProfilePort } {
   const listeners = new Set<(user: SessionUser | null) => void>()
@@ -299,36 +296,8 @@ export function createLocalPorts(): { auth: AuthPort; profiles: ProfilePort } {
     async resetPassword() {
       throw new AuthError(
         'hdl/unavailable',
-        'Demo mode has no email to send a reset link from. Ask the Host, or configure Firebase.',
+        'Demo mode has no email to send a reset link from. Configure Firebase for password resets.',
       )
-    },
-
-    /**
-     * Step into a role.
-     *
-     * Demo mode only, and only because there is no cloud and therefore no Host
-     * who could promote anybody: the account and its Profile are made here, with
-     * a password nobody knows, so the three roles can be walked through on a
-     * machine with no Firebase keys.
-     */
-    async signInAsRole(role: Role) {
-      if (!isRole(role)) throw new AuthError('hdl/unknown', 'That is not one of the three roles.')
-      const email = `demo-${role}@hacienda.test`
-      const existing = findAccount(email)
-      const account = existing ?? (await createAccount({ email, password: randomId(), displayName: `Demo ${ROLE_LABELS[role]}` }))
-      const stored = storedProfiles().find((profile) => profile.uid === account.uid)
-      if (!stored || stored.role !== role) {
-        const at = new Date().toISOString()
-        putProfile({
-          uid: account.uid,
-          role,
-          email: account.email,
-          display_name: account.display_name,
-          created_at: stored?.created_at ?? at,
-          updated_at: at,
-        })
-      }
-      return signIn(account)
     },
   }
 
@@ -339,27 +308,9 @@ export function createLocalPorts(): { auth: AuthPort; profiles: ProfilePort } {
     },
 
     async create(profile) {
-      // A sign-up writes its own Profile, and a sign-up is always a Guest.
-      return putProfile({ ...profile, role: isRole(profile.role) ? profile.role : DEFAULT_ROLE })
-    },
-
-    async assign(input) {
-      const before = storedProfiles().find((profile) => profile.uid === input.uid)
-      const at = new Date().toISOString()
-      return putProfile({
-        uid: input.uid,
-        role: input.role,
-        email: input.email ?? before?.email ?? null,
-        display_name: input.display_name ?? before?.display_name ?? null,
-        created_at: before?.created_at ?? at,
-        updated_at: at,
-      })
-    },
-
-    async list() {
-      return storedProfiles()
-        .map((profile) => normalizeProfile(profile))
-        .filter((profile): profile is Profile => profile !== null)
+      // A sign-up writes its own Profile, and a sign-up is always a Guest —
+      // the same constraint firestore.rules puts on a self-written Profile.
+      return putProfile({ ...profile, role: DEFAULT_ROLE })
     },
   }
 

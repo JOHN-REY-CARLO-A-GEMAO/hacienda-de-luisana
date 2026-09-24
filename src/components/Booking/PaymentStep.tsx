@@ -15,16 +15,16 @@ import type { Booking } from '../../lib/storage'
 
 /**
  * The Guest's own payment step: choose a payment plan on an approved Booking,
- * pay outside the system, and upload the proof for the Host to verify.
+ * pay outside the system, and upload the proof for the Admin to verify.
  *
- * Money moves last (ADR-0001): this renders only once the Host has approved,
+ * Money moves last (ADR-0001): this renders only once the Admin has approved,
  * and every button goes through the lifecycle (`cloudBookingsDB.transition`),
- * never a bare status write. Amounts are quoted from the Host's published
+ * never a bare status write. Amounts are quoted from the Admin's published
  * rates (`site_config/rates`); when nothing is published for this
  * Accommodation there is no price to commit to, and the choice is not offered.
  *
  * Where there is no Firebase there is no upload: a receipt is never parked in
- * a browser the Host cannot read.
+ * a browser the Admin cannot read.
  */
 export function PaymentStep({ booking }: { booking: Booking }) {
   const [rates, setRates] = useState<PublishedRates | null>(null)
@@ -128,7 +128,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       setSent(true)
       setMessage({
         tone: 'good',
-        text: 'Proof sent. The Host will verify it and confirm your Reservation — watch this page for the verdict.',
+        text: 'Proof sent. The Admin will verify it and confirm your Reservation — watch this page for the verdict.',
       })
     } catch (e) {
       console.warn('[Payment] could not record the proof upload', e)
@@ -153,13 +153,13 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       {status === 'Approved' && !planChosen && (
         <>
           <p className="mt-2 text-xs text-forest-700/80 leading-relaxed">
-            The Host approved your dates. Choose how to pay — then send the money externally and upload
+            The Admin approved your dates. Choose how to pay — then send the money externally and upload
             your proof below.
           </p>
           {options.length === 0 ? (
             <p className="mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
-              The Host has not published a payment option for this Accommodation yet. Please message the
-              Host for the amount — your dates stay held while you do.
+              The Admin has not published a payment option for this Accommodation yet. Please message the
+              Admin for the amount — your dates stay held while you do.
             </p>
           ) : (
             <div className="mt-3 space-y-2">
@@ -215,11 +215,11 @@ export function PaymentStep({ booking }: { booking: Booking }) {
           <div className="mt-2 rounded-xl bg-cream-50 border border-forest-900/10 px-3 py-2.5 text-xs text-forest-800 leading-relaxed">
             <strong className="block text-forest-900">Where to send it</strong>
             <span className="block mt-1">
-              <strong>GCash</strong> — message the Host at {BUSINESS.contact.phone} to confirm the current
+              <strong>GCash</strong> — message the Admin at {BUSINESS.contact.phone} to confirm the current
               number before sending.
             </span>
             <span className="block mt-1">
-              <strong>Bank transfer</strong> — ask the Host for the current account details at{' '}
+              <strong>Bank transfer</strong> — ask the Admin for the current account details at{' '}
               {BUSINESS.contact.email}.
             </span>
             <span className="block mt-1 text-forest-700/70">
@@ -236,7 +236,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
 
           {booking.payment_proof_url && !sent && booking.payment_status !== 'rejected' ? (
             <p className="mt-2 text-xs text-forest-800 leading-relaxed">
-              Your proof is with the Host. You can send a clearer photo below if you like.
+              Your proof is with the Admin. You can send a clearer photo below if you like.
             </p>
           ) : null}
 

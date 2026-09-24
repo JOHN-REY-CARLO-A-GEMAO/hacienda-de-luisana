@@ -316,13 +316,13 @@ class _TrackingRadarScreenState extends ConsumerState<TrackingRadarScreen> {
                         IconButton.filledTonal(
                           icon: const Icon(Icons.phone),
                           tooltip: 'Call Guest',
-                          onPressed: () => _launch('tel:${AppConstants.hostPhone}'),
+                          onPressed: () => _launch('tel:${AppConstants.resortPhone}'),
                         ),
                         const SizedBox(width: 8),
                         IconButton.filledTonal(
                           icon: const Icon(Icons.sms),
                           tooltip: 'SMS Guest',
-                          onPressed: () => _launch('sms:${AppConstants.hostPhone}'),
+                          onPressed: () => _launch('sms:${AppConstants.resortPhone}'),
                         ),
                       ],
                     ),

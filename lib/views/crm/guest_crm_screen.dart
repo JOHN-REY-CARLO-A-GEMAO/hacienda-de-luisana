@@ -187,7 +187,7 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
           ),
           const SizedBox(height: 10),
 
-          // Host notes
+          // Admin notes
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

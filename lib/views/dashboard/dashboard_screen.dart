@@ -78,7 +78,7 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
             Text(
-              'Client Hub · ${DateFormat('EEEE, MMM dd, yyyy').format(DateTime.now())}',
+              'Admin · ${DateFormat('EEEE, MMM dd, yyyy').format(DateTime.now())}',
               style: GoogleFonts.inter(
                 fontSize: 11,
                 color: AppColors.accentGoldLight.withOpacity(0.9),

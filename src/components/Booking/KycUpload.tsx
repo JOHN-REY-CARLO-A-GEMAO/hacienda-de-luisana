@@ -11,7 +11,7 @@ import type { Booking } from '../../lib/storage'
  * Documents go to Firebase Storage under the Guest's own uid and the Booking is
  * moved with the lifecycle's `UploadKyc`, so the web and the mobile app leave the
  * same trail (ticket #13). Where there is no Firebase there is no upload: an ID
- * is never parked in a browser the Host cannot read, and the Guest is told what
+ * is never parked in a browser the Admin cannot read, and the Guest is told what
  * to do instead rather than watching a spinner that will not finish.
  */
 export function KycUpload({ booking }: { booking: Booking }) {
@@ -31,7 +31,7 @@ export function KycUpload({ booking }: { booking: Booking }) {
   const canUpload = status === 'Pending' || status === 'KYC Submitted'
 
   if (!canUpload) {
-    // Nothing to send: either the Host has the ID or the request is over.
+    // Nothing to send: either the Admin has the ID or the request is over.
     if (kyc === 'approved' && status !== 'Cancelled' && status !== 'Rejected') {
       return (
         <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs text-emerald-900 leading-relaxed">
@@ -92,7 +92,7 @@ export function KycUpload({ booking }: { booking: Booking }) {
       if (receiptInput.current) receiptInput.current.value = ''
       setMessage({
         tone: 'good',
-        text: 'Sent. The host will read it and either approve your dates or tell you what to fix.',
+        text: 'Sent. The Hacienda will read it and either approve your dates or tell you what to fix.',
       })
     } catch (e) {
       // A refused write (permissions, connection) is the Guest's to hear about,
@@ -102,7 +102,7 @@ export function KycUpload({ booking }: { booking: Booking }) {
         tone: 'bad',
         text:
           'The photo went up but your booking could not be updated. Please try again — ' +
-          'if it keeps failing, email the photo to the host and mention your reference.',
+          'if it keeps failing, email the photo to the Hacienda and mention your reference.',
       })
     } finally {
       setBusy(false)
@@ -124,7 +124,7 @@ export function KycUpload({ booking }: { booking: Booking }) {
 
       {kyc === 'rejected' && booking.kyc_reject_reason ? (
         <p className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
-          <strong className="block">The host could not accept your ID.</strong>
+          <strong className="block">The Hacienda could not accept your ID.</strong>
           {booking.kyc_reject_reason}
           <span className="block mt-1 text-amber-800/80">
             Your dates are still held while you send another — but only for as long as the countdown
@@ -133,14 +133,14 @@ export function KycUpload({ booking }: { booking: Booking }) {
         </p>
       ) : kyc === 'submitted' ? (
         <p className="mt-2 text-xs text-forest-800 leading-relaxed">
-          Your ID is with the host.{' '}
+          Your ID is with the Hacienda.{' '}
           <button onClick={() => setSwapping(true)} className="underline font-medium">
             Send a different photo
           </button>
         </p>
       ) : (
         <p className="mt-2 text-xs text-forest-700/80 leading-relaxed">
-          The host has to see a valid government ID before they can approve your dates. A clear photo
+          The Hacienda has to see a valid government ID before they can approve your dates. A clear photo
           of a driver's license, passport or UMID is fine, up to 5MB. Your receipt can go with it.
         </p>
       )}
@@ -149,7 +149,7 @@ export function KycUpload({ booking }: { booking: Booking }) {
         <p className="mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
           This request was made before the website could sign your browser in, so it is not linked to
           you here and we cannot attach an ID to it. Send your ID from the Hacienda de LuisAna mobile
-          app, or email it to the host quoting reference{' '}
+          app, or email it to the Hacienda quoting reference{' '}
           <strong>{booking.ref_id || booking.id.slice(0, 8).toUpperCase()}</strong>.
         </p>
       )}

@@ -6,7 +6,7 @@ import { ACCOMMODATIONS } from '../../src/config/site'
 import { cloudBookingsDB, activityLogDB } from '../../src/lib/firestoreBookings'
 
 const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' } as const
-const host = { actor: 'host', actor_id: 'host-1', actor_name: 'Ana Luisana' } as const
+const admin = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana' } as const
 const NOW = '2026-09-20T01:00:00.000Z'
 const HOUR = 60 * 60 * 1000
 const MINUTE = 60 * 1000
@@ -118,7 +118,7 @@ describe('the hold on a submitted Booking', () => {
     expect(await activityLogDB.list((await cloudBookingsDB.list())[0].id)).toHaveLength(1)
   })
 
-  it('reads as Expired to every surface that reads it, and the Host sees the same thing', async () => {
+  it('reads as Expired to every surface that reads it, and the Admin sees the same thing', async () => {
     const booking = await cloudBookingsDB.add(request, { ...guest, now: NOW })
     const afterExpiry = Date.parse(NOW) + 25 * HOUR
 
@@ -145,7 +145,7 @@ describe('the hold on a submitted Booking', () => {
       from_status: 'Pending',
       to_status: 'Expired',
       actor: 'system',
-      reason: 'Date hold ran out before the Host reviewed the Booking.',
+      reason: 'Date hold ran out before the Admin reviewed the Booking.',
     })
 
     // Recording it twice must not log it twice: the expiry happened once.
@@ -154,13 +154,13 @@ describe('the hold on a submitted Booking', () => {
     expect((await activityLogDB.list(booking.id))).toHaveLength(2)
   })
 
-  it('does not expire a Booking the Host has already approved', async () => {
+  it('does not expire a Booking the Admin has already approved', async () => {
     const booking = await cloudBookingsDB.add(request, { ...guest, now: NOW })
     await cloudBookingsDB.transition(booking.id, { type: 'UploadKyc', kyc_id_url: 'gs://ids/1.jpg' }, { ...guest, now: NOW })
     const approved = await cloudBookingsDB.transition(
       booking.id,
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
-      { ...host, now: NOW },
+      { ...admin, now: NOW },
     )
     expect(approved.ok).toBe(true)
 

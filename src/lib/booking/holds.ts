@@ -3,7 +3,7 @@
 // Hacienda de LuisAna
 // ----------------------------------------------------------------------------
 // The countdown is the same fact everywhere it is shown, so the Guest's view and
-// the Host's view cannot disagree about how long is left (ticket #12).
+// the Admin's view cannot disagree about how long is left (ticket #12).
 //
 // This is an internal file of the `src/lib/booking` module: callers and tests
 // go through `src/lib/booking`, never through here directly.
@@ -41,7 +41,7 @@ export type UnitBearing = {
 /**
  * How many Bookings an Accommodation can hold at once.
  *
- * One, unless the Host has published more: the Main House is a single house, and
+ * One, unless the Admin has published more: the Main House is a single house, and
  * "Other / Ask Us" is not an Accommodation at all, so neither can be double-sold
  * on a unit count nobody wrote down.
  */

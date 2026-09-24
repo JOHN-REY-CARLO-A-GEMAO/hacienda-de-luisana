@@ -1,5 +1,5 @@
 // ----------------------------------------------------------------------------
-// Published rates — the document the Host publishes so money can move
+// Published rates — the document the Admin publishes so money can move
 // ----------------------------------------------------------------------------
 // The shape, the validator a publishing surface runs before it writes, and the
 // reader ChoosePaymentPlan and settleRefund take their arguments from. The

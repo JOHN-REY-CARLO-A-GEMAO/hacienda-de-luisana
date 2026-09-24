@@ -8,9 +8,9 @@ const TICK_MS = 30 * 1000
 /**
  * How long this Booking's Date hold has left.
  *
- * The countdown is read from the same stored field and the same rule the Host's
- * surfaces use, so a Guest and the Host are never looking at different answers
- * (ticket #12). It stops counting once the Host has acted: an approved Booking's
+ * The countdown is read from the same stored field and the same rule the Admin's
+ * surfaces use, so a Guest and the Admin are never looking at different answers
+ * (ticket #12). It stops counting once the Admin has acted: an approved Booking's
  * dates are firmly held and there is nothing left to run down.
  */
 export function HoldCountdown({ booking }: { booking: Booking }) {
@@ -50,7 +50,7 @@ export function HoldCountdown({ booking }: { booking: Booking }) {
       <span className="font-serif text-lg text-forest-900 font-semibold">
         {formatHoldCountdown(remaining)}
       </span>{' '}
-      <span className="text-forest-700/80">left for the host to review.</span>
+      <span className="text-forest-700/80">left for the Hacienda to review.</span>
       <span className="block mt-1 text-forest-700/70">
         After that the dates go back to other guests, so keep an eye on this page.
       </span>

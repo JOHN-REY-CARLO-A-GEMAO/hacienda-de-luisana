@@ -1,30 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:crypto/crypto.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-/// Lightweight user model for the demo guest portal.
-class AppUser {
-  final String name;
-  final String email;
-  final String phone;
-
-  const AppUser({required this.name, required this.email, required this.phone});
-
-  Map<String, dynamic> toJson() =>
-      {'name': name, 'email': email, 'phone': phone};
-
-  factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
-        name: json['name'] as String,
-        email: json['email'] as String,
-        phone: json['phone'] as String,
-      );
-}
 
 class AuthException implements Exception {
   final String message;
@@ -34,51 +14,29 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-/// Demo-only local authentication.
+/// The Admin session of the Hacienda de LuisAna Admin app.
 ///
-/// - Accounts + session live in `SharedPreferences` (survives app restarts).
-/// - Passwords are SHA-256 hashed — fine for a prototype, NOT real security.
-/// - Simulated network latency so loading states are visible in demos.
+/// Two roles exist in the whole system (ADR-0007): the **Guest**, who uses the
+/// website, and the **Admin**, who uses this app. There is no Staff and no
+/// Host role. A signed-in account is the Admin when either
 ///
-/// Phase 2 swaps this for Firebase Auth (email/password) with the same
-/// interface, so screens won't change.
+///  * its email is on [kAdminEmails] — the bootstrap allowlist that
+///    `firestore.rules` (`adminEmails()`), `storage.rules` (`isAdminEmail()`)
+///    and the website's `src/lib/auth/profile.ts` share — or
+///  * its `profiles/{uid}` document carries `role == 'admin'`.
+///
+/// Anyone else who signs in is told the app is for the Admin and signed
+/// straight back out; Guests book on the website.
 class AuthStore extends ChangeNotifier {
-  static const String _accountsKey = 'hdl_demo_accounts';
-  static const String _sessionKey = 'hdl_demo_session';
-  static const String _anonKey = 'hdl_anon_uid';
+  /// Bootstrap Admin allowlist. Keep in sync with firestore.rules,
+  /// storage.rules and src/lib/auth/profile.ts.
+  static const List<String> kAdminEmails = [
+    'haciendadeluisiana@gmail.com',
+    'gemaojohnreycarloarguilles@gmail.com',
+  ];
 
-  /// Owner allowlist (mirrors firestore.rules ownerEmails/anakEmails).
-  static const String kOwnerEmail = 'haciendadeluisiana@gmail.com';
-  static const String kAnakEmail = 'gemaojohnreycarloarguilles@gmail.com';
-
-  AppUser? _user;
-  AppUser? get user => _user;
-  bool get isAuthenticated => _user != null;
-
-  /// P2 guest identity: Firebase anonymous uid when cloud is live,
-  /// otherwise a persisted local UUID. Saved on every Booking as `uid`.
-  String? _anonUid;
-  String? get anonUid => _anonUid;
-
-  // ---- Google session (owner APK gate, Android only) ----
-
-  User? _firebaseUser;
-  User? get firebaseUser => _firebaseUser;
-
-  /// Google email on the Firebase token (null when anonymous/signed out).
-  String? get sessionEmail => _firebaseUser?.email;
-
-  bool get isSignedInGoogle =>
-      _firebaseUser != null && (_firebaseUser?.email?.isNotEmpty ?? false);
-
-  bool get isOwner =>
-      _firebaseUser?.email?.toLowerCase() == kOwnerEmail.toLowerCase();
-
-  bool get isAnak =>
-      _firebaseUser?.email?.toLowerCase() == kAnakEmail.toLowerCase();
-
-  /// Either allowlisted role may use the owner APK (anak = view-only).
-  bool get isAuthorizedRole => isOwner || isAnak;
+  /// The address pre-filled on the sign-in screen.
+  static String get kDefaultAdminEmail => kAdminEmails.last;
 
   /// Web OAuth client (type 3 in google-services.json). google_sign_in v7
   /// needs this to mint an ID token on Android — without it the account
@@ -86,9 +44,37 @@ class AuthStore extends ChangeNotifier {
   static const String kServerClientId =
       '648433185-oionh5246016o76d7hnr8fv2q35h4v9j.apps.googleusercontent.com';
 
+  User? _firebaseUser;
+  User? get firebaseUser => _firebaseUser;
+
+  /// Whether `profiles/{uid}.role == 'admin'` for the current session.
+  bool _profileIsAdmin = false;
+  bool _profileChecked = false;
+
+  /// Email on the Firebase token (null when signed out).
+  String? get sessionEmail => _firebaseUser?.email;
+  String? get uid => _firebaseUser?.uid;
+  String? get displayName => _firebaseUser?.displayName;
+
+  bool get isSignedIn =>
+      _firebaseUser != null && (_firebaseUser?.email?.isNotEmpty ?? false);
+
+  static bool isAllowlisted(String? email) =>
+      email != null && kAdminEmails.contains(email.trim().toLowerCase());
+
+  /// Is this session the Admin? The only authorization question the app asks.
+  bool get isAdmin =>
+      isSignedIn && (isAllowlisted(sessionEmail) || _profileIsAdmin);
+
+  /// True while the Profile lookup for a non-allowlisted account is in flight.
+  bool get isResolving => isSignedIn && !isAllowlisted(sessionEmail) && !_profileChecked;
+
   StreamSubscription<User?>? _authSub;
-  // google_sign_in v7: singleton, initialize() once per app start.
   bool _googleInitialized = false;
+
+  AuthStore() {
+    _listenFirebaseAuth();
+  }
 
   Future<void> _ensureGoogleInitialized() async {
     if (_googleInitialized) return;
@@ -96,164 +82,52 @@ class AuthStore extends ChangeNotifier {
     _googleInitialized = true;
   }
 
-  AuthStore() {
-    _restoreSession();
-    ensureAnonUid();
-    _listenFirebaseAuth();
-  }
-
-  Future<void> _restoreSession() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_sessionKey);
-      if (raw != null) {
-        _user = AppUser.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-        notifyListeners();
-      }
-    } catch (_) {
-      // Corrupt session — treat as signed out.
-    }
-  }
-
-  Future<Map<String, dynamic>> _readAccounts() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_accountsKey);
-    if (raw == null) return {};
-    try {
-      return jsonDecode(raw) as Map<String, dynamic>;
-    } catch (_) {
-      return {};
-    }
-  }
-
-  Future<void> _writeAccounts(Map<String, dynamic> accounts) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_accountsKey, jsonEncode(accounts));
-  }
-
-  Future<void> _saveSession(AppUser user) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_sessionKey, jsonEncode(user.toJson()));
-  }
-
-  /// Creates an account and signs the guest in.
-  Future<AppUser> register({
-    required String name,
-    required String email,
-    required String phone,
-    required String password,
-  }) async {
-    await Future.delayed(
-        const Duration(milliseconds: 600)); // simulated network
-    final key = email.trim().toLowerCase();
-    final accounts = await _readAccounts();
-    if (accounts.containsKey(key)) {
-      throw const AuthException(
-          'An account with this email already exists. Try logging in instead.');
-    }
-    accounts[key] = {
-      'name': name.trim(),
-      'phone': phone.trim(),
-      'hash': _hash(password),
-    };
-    await _writeAccounts(accounts);
-    final user = AppUser(name: name.trim(), email: key, phone: phone.trim());
-    await _saveSession(user);
-    _user = user;
-    notifyListeners();
-    return user;
-  }
-
-  /// Signs an existing guest in.
-  Future<AppUser> login({
-    required String email,
-    required String password,
-  }) async {
-    await Future.delayed(
-        const Duration(milliseconds: 600)); // simulated network
-    final key = email.trim().toLowerCase();
-    final accounts = await _readAccounts();
-    if (!accounts.containsKey(key)) {
-      throw const AuthException(
-          'No account found with this email. Create one below.');
-    }
-    final record = accounts[key] as Map<String, dynamic>;
-    if (record['hash'] != _hash(password)) {
-      throw const AuthException('Incorrect password. Please try again.');
-    }
-    final user = AppUser(
-      name: record['name'] as String,
-      email: key,
-      phone: record['phone'] as String,
-    );
-    await _saveSession(user);
-    _user = user;
-    notifyListeners();
-    return user;
-  }
-
-  Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_sessionKey);
-    _user = null;
-    notifyListeners();
-  }
-
-  /// Ensures a stable anonymous uid exists (called at first launch).
-  /// CloudBookings overwrites this key with the Firebase uid when online.
-  Future<String> ensureAnonUid() async {
-    if (_anonUid != null && _anonUid!.isNotEmpty) return _anonUid!;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(_anonKey);
-      if (cached != null && cached.isNotEmpty) {
-        _anonUid = cached;
-        return cached;
-      }
-      final fresh =
-          'local-${DateTime.now().millisecondsSinceEpoch}-${(cached ?? '').hashCode.abs()}${DateTime.now().microsecond}';
-      await prefs.setString(_anonKey, fresh);
-      _anonUid = fresh;
-      notifyListeners();
-      return fresh;
-    } catch (_) {
-      _anonUid ??= 'local-fallback-anon';
-      return _anonUid!;
-    }
-  }
-
-  /// Adopts the Firebase uid once cloud auth succeeds (same storage key).
-  Future<void> adoptUid(String uid) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_anonKey, uid);
-    } catch (_) {}
-    _anonUid = uid;
-    notifyListeners();
-  }
-
-  // ---- Google sign-in (anak default, Android only) ----
-  // NOTE: google_sign_in v6 has no loginHint param — the "hint" is UX-level:
-  // the login screen pre-fills kAnakEmail so the user picks that account.
-
   /// Subscribes to Firebase auth state (best-effort — never throws, so unit
   /// tests and local-only mode keep working without Firebase configured).
   void _listenFirebaseAuth() {
     try {
       if (Firebase.apps.isEmpty) return;
       _firebaseUser = FirebaseAuth.instance.currentUser;
+      _resolveProfileRole();
       _authSub = FirebaseAuth.instance.authStateChanges().listen((u) {
         _firebaseUser = u;
+        _profileIsAdmin = false;
+        _profileChecked = false;
         notifyListeners();
+        _resolveProfileRole();
       });
     } catch (_) {
-      // Local-only / test mode — Google gate stays signed-out.
+      // Local-only / test mode — stays signed out.
     }
   }
 
-  /// One-tap Google sign-in for the owner APK. Returns the signed-in email.
+  /// Reads `profiles/{uid}.role` for accounts not on the allowlist, so an
+  /// Admin promoted in Firestore can use the app without a rebuild.
+  Future<void> _resolveProfileRole() async {
+    final user = _firebaseUser;
+    if (user == null) return;
+    if (isAllowlisted(user.email)) {
+      _profileIsAdmin = true;
+      _profileChecked = true;
+      notifyListeners();
+      return;
+    }
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('profiles')
+          .doc(user.uid)
+          .get();
+      _profileIsAdmin = (snap.data()?['role'] ?? '') == 'admin';
+    } catch (_) {
+      _profileIsAdmin = false;
+    }
+    _profileChecked = true;
+    notifyListeners();
+  }
+
+  /// One-tap Google sign-in. Returns the signed-in email.
   /// Throws [AuthException] with a human message on cancel/failure.
-  Future<String> signInAnak() async {
+  Future<String> signInWithGoogle() async {
     try {
       if (Firebase.apps.isEmpty) {
         throw const AuthException(
@@ -263,7 +137,6 @@ class AuthStore extends ChangeNotifier {
       // v7: throws GoogleSignInException(code: canceled) on dismiss.
       final account = await GoogleSignIn.instance.authenticate();
       final googleAuth = account.authentication;
-      // v7 only mints an idToken; Firebase accepts credential with idToken alone.
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
       );
@@ -274,6 +147,7 @@ class AuthStore extends ChangeNotifier {
         throw const AuthException(
             'No email on this Google account — use another account.');
       }
+      await _resolveProfileRole();
       notifyListeners();
       return email;
     } on AuthException {
@@ -292,11 +166,9 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
-  /// Email/password sign-in for the owner APK. Unlike Google sign-in this
-  /// needs no SHA-1 / OAuth client registration, so it works while the
-  /// new applicationId is still unregistered in the Firebase console.
-  /// Returns the signed-in email. Throws [AuthException] on failure.
-  Future<String> signInOwnerEmail({
+  /// Email/password sign-in. Needs no SHA-1 / OAuth client registration, so
+  /// it works while a new applicationId is still unregistered in Firebase.
+  Future<String> signInWithEmail({
     required String email,
     required String password,
   }) async {
@@ -315,6 +187,7 @@ class AuthStore extends ChangeNotifier {
         throw const AuthException(
             'No email on this account — use another account.');
       }
+      await _resolveProfileRole();
       notifyListeners();
       return signedIn;
     } on AuthException {
@@ -329,8 +202,17 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
-  /// Clears Google + Firebase session (local demo session untouched).
-  Future<void> signOutGoogle() async {
+  /// Refuse a session that is not the Admin: sign it out and explain.
+  /// Call after a successful sign-in.
+  Future<void> requireAdmin() async {
+    if (isAdmin) return;
+    final email = sessionEmail ?? 'unknown email';
+    await signOut();
+    throw AuthException(
+        'Not authorized ($email). This app is for the Hacienda Admin only — Guests book on the website.');
+  }
+
+  Future<void> signOut() async {
     try {
       await GoogleSignIn.instance.signOut();
     } catch (_) {}
@@ -340,11 +222,10 @@ class AuthStore extends ChangeNotifier {
       }
     } catch (_) {}
     _firebaseUser = null;
+    _profileIsAdmin = false;
+    _profileChecked = false;
     notifyListeners();
   }
-
-  String _hash(String password) =>
-      sha256.convert(utf8.encode('hacienda-de-luisana::$password')).toString();
 
   @override
   void dispose() {

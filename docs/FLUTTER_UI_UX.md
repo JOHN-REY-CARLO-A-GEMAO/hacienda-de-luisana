@@ -1,4 +1,4 @@
-# Flutter UI/UX Refresh — Hacienda de LuisAna (owner app)
+# Flutter UI/UX Refresh — Hacienda de LuisAna (Admin app)
 
 Design-system consolidation, reusable widget library, motion language,
 accessibility and rendering-performance pass over the Flutter app (`lib/`),
@@ -8,17 +8,17 @@ executed with the `flutter-ui-ux` skill workflow.
 
 ### App structure
 
-- **Entry**: `main.dart` → `AuthGate` → `OwnerLoginScreen` (Google / owner email) → `MainShellScreen`.
-- **MainShellScreen**: 8 tabs kept alive in an `IndexedStack` — Dashboard, Bookings, Radar (live tracking), Stays, Analytics, Smart Lock, Rooms, Guest CRM. The `BottomNavigationBar` exposes 5 items; item 5 ("More") opens a modal bottom sheet to the four secondary tabs.
-- **State**: Riverpod stream providers (bookings, tracking sessions, smart-lock logs, rooms, guest profiles) + legacy `provider` (`AuthStore`, `BookingStore`, `CloudBookings`).
-- **Data**: Firestore + simulated ESP32 smart lock (`SimulationBar` one-tap checkpoints).
-- **Platform**: Android-first owner APK, Material 3, deep-green app bars, portrait.
+- **Entry**: `main.dart` → `AuthGate` → `AdminLoginScreen` (Google / Admin email + password) → `MainShellScreen`. Only the Admin passes the gate (ADR-0007).
+- **MainShellScreen**: 9 tabs kept alive in an `IndexedStack` — Dashboard, Bookings, Radar (live tracking), Stays, Analytics, Smart Lock, Rooms, Guest CRM, Rates. The `BottomNavigationBar` exposes 5 items; item 5 ("More") opens a modal bottom sheet to the secondary tabs and Sign out. Bookings push `BookingDetailScreen`.
+- **State**: Riverpod stream providers (bookings, tracking sessions, smart-lock logs, rooms, guest profiles, published rates, per-Booking activity) + legacy `provider` for the `AuthStore` session.
+- **Data**: Firestore (in-memory demo data when Firebase is absent) + simulated ESP32 smart lock (`SimulationBar` one-tap checkpoints).
+- **Platform**: Android-first Admin APK, Material 3, deep-green app bars, portrait.
 
 ### Design-system review findings
 
 | # | Finding | Impact |
 |---|---------|--------|
-| 1 | **Two `AppTheme` classes exist.** `core/theme/app_theme.dart` (Cinzel + `AppColors` palette) is wired to `MaterialApp`; `theme/app_theme.dart` (Cormorant "quiet luxury") is only used by `OwnerLoginScreen` and the three admin screens. Login visually disagrees with the rest of the app, and the "single source of truth" claim is false. | Brand inconsistency; dead token drift. |
+| 1 | **Two `AppTheme` classes existed.** `core/theme/app_theme.dart` (Cinzel + `AppColors` palette) is wired to `MaterialApp`; a second Cormorant "quiet luxury" theme was only used by the login screen. Login visually disagreed with the rest of the app. | Brand inconsistency; dead token drift. |
 | 2 | All 8 views hardcode `GoogleFonts.cinzel/inter` + `AppColors` inline. Component themes (`cardTheme`, `chipTheme`, `dialogTheme`, …) are defined but barely used. | Duplicated magic values (radii 14/16/18/20/22, shadow recipes). |
 | 3 | **Zero animation**: no screen entry, no tab transition, no micro-interactions, abrupt alert pop-ins. | Feels flat for a "quiet luxury" product. |
 | 4 | **No accessibility semantics**: icon-only buttons (refresh, notifications) have no label; the login visibility toggle has none. | Screen-reader users can't operate the app. |
@@ -84,7 +84,8 @@ themes for `Chip`, `Dialog`, `SnackBar`, `BottomSheet`, `Divider`,
 - **smart_lock_screen**: staggered counter tiles, keyed log list (new logs animate in), `EmptyState`.
 - **rooms_screen** / **guest_crm_screen**: `HaciendaCard`, `StatusPill` (rooms), `EmptyState`, staggered cards.
 - **analytics_screen**: staggered sections.
-- **owner_login_screen**: staggered entrance, labelled visibility toggle.
+- **admin_login_screen**: staggered entrance, labelled visibility toggle.
+- **booking_detail_screen** / **rates_screen** (added with ADR-0007): `HaciendaCard` sections, `StatusPill` for status / KYC / payment, `SectionHeader` for the Activity log and rate groups; dialogs use the shared `DialogTheme`.
 
 ### Verification
 
@@ -95,16 +96,14 @@ themes for `Chip`, `Dialog`, `SnackBar`, `BottomSheet`, `Divider`,
   53 dart files, and a manual API audit against Flutter 3.27+
   (`CardThemeData`/`TabBarThemeData`/`DialogThemeData` usage is consistent
   with what the repo already compiles with).
-- The existing `test/p1_local_correctness_test.dart` covers models/validators
-  only — untouched by this change.
+- Dart tests: `test/booking_lifecycle_test.dart`, `test/published_rates_test.dart`,
+  `test/booking_model_test.dart` (pure logic; no widget tests yet).
 - Run before release: `flutter analyze` and `flutter test` from a Flutter
   3.27+ stable.
 
-### Pre-existing issues noticed (not touched)
+### Resolved since
 
-- `lib/services/door_key.dart` (imports `flutter_blue_plus`) and
-  `lib/services/kyc_storage.dart` (imports `firebase_storage`, `image_picker`)
-  are **not imported anywhere** and their packages are absent from
-  `pubspec.yaml`. They are unreachable from `main.dart`, so builds succeed,
-  but `flutter analyze` will flag them. Either wire them up with their
-  dependencies or delete them.
+- The unreachable guest-prototype files (`door_key.dart`, `kyc_storage.dart`,
+  `esp32_service.dart`, `booking_store.dart`, `cloud_bookings.dart`, the
+  `views/admin/` screens and their models) were deleted with ADR-0007; the
+  Guest's flow lives on the website.

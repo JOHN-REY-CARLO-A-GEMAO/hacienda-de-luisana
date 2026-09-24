@@ -1,28 +1,19 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  MIN_PASSWORD_LENGTH,
-  ROLE_LABELS,
-  describeAuthError,
-  homeForRole,
-  type Role,
-} from '../../lib/auth'
+import { MIN_PASSWORD_LENGTH, describeAuthError, homeForRole } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 
 type Mode = 'login' | 'register' | 'reset'
 
 /**
- * Scoped copy for a page that signs one role in: the form stays the same —
- * Google and email both arrive through the same session — only the heading a
- * person reads changes, so `/guest/auth` and `/admin/auth` do not look like
- * two different systems.
+ * Scoped copy for the page that hosts the form: Google and email both arrive
+ * through the same session — only the heading a person reads changes.
  */
 export type AuthIntro = { eyebrow: string; title: string; body: string }
 
 /**
- * Scoped copy for the register mode. The default says Guest because that is
- * all a sign-up can make — except on `/admin/auth`, where the only address
- * worth registering is the owner's, which arrives as the Host (ADR-0005).
+ * Scoped copy for the register mode. It says Guest because that is all a
+ * sign-up can make (ADR-0005, ADR-0007).
  */
 export type RegisterIntro = AuthIntro & { submitLabel: string; successMessage: string }
 
@@ -35,12 +26,12 @@ const DEFAULT_REGISTER_INTRO: RegisterIntro = {
 }
 
 /**
- * The one form every role signs in through.
+ * The Guest's sign-in form.
  *
  * Signing up makes a Guest — there is no role to pick, because a role picked in a
- * browser is a role anybody could pick. The Host gives Staff their role from the
- * team panel on `/admin`, and the Host themselves is the address the Firestore
- * rules already allowlist (ADR-0005).
+ * browser is a role anybody could pick. The Admin is the address the Firestore
+ * rules already allowlist, and signs into the mobile app, not here (ADR-0005,
+ * ADR-0007).
  *
  * Every failure arrives as an AuthError with a message for a person, so this form
  * has no list of provider codes of its own to keep in step.
@@ -54,7 +45,7 @@ export function LoginForm({
   intro?: AuthIntro
   registerIntro?: RegisterIntro
 }) {
-  const { login, register, loginWithGoogle, resetPassword, signInAsRole, isConfigured, role } = useAuth()
+  const { login, register, loginWithGoogle, resetPassword, isConfigured, role } = useAuth()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -73,7 +64,7 @@ export function LoginForm({
     login: intro ?? {
       eyebrow: 'Welcome back',
       title: 'Sign in',
-      body: 'Guests, Staff and the Host all sign in here — the page you land on follows your role.',
+      body: 'Sign in to follow your own Booking, send your ID and keep your dates.',
     },
     register: registerIntro,
     reset: {
@@ -134,21 +125,6 @@ export function LoginForm({
     }
   }
 
-  const handleDemoRole = async (demoRole: Role) => {
-    setError(null)
-    setInfo(null)
-    setSuggestLogin(false)
-    setLoading(true)
-    try {
-      await signInAsRole(demoRole)
-      onSuccess?.()
-    } catch (err) {
-      setError(describeAuthError(err).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
     <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 lg:p-10 w-full max-w-md mx-auto">
       <div className="text-center mb-8">
@@ -183,27 +159,10 @@ export function LoginForm({
             Demo mode — no Firebase configured
           </div>
           <p className="mt-1.5 text-xs text-amber-900/85 leading-relaxed">
-            Accounts, roles and Bookings stay in this browser. Step into a role to walk the flows through, or sign up
-            normally as a Guest. Copy <code className="font-mono">.env.example</code> to{' '}
-            <code className="font-mono">.env.local</code> with real Firebase keys for cloud sign-in.
+            Accounts and Bookings stay in this browser. Sign up as a Guest to walk the flow through. Copy{' '}
+            <code className="font-mono">.env.example</code> to <code className="font-mono">.env.local</code> with real
+            Firebase keys for cloud sign-in.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(['host', 'staff', 'guest'] as Role[]).map((demoRole) => (
-              <button
-                key={demoRole}
-                type="button"
-                onClick={() => void handleDemoRole(demoRole)}
-                disabled={loading || role === demoRole}
-                className={`px-3 py-1.5 rounded-full border text-xs font-medium transition disabled:opacity-60 ${
-                  role === demoRole
-                    ? 'bg-amber-900 text-amber-50 border-amber-900'
-                    : 'bg-white border-amber-300 text-amber-900 hover:bg-amber-100'
-                }`}
-              >
-                {role === demoRole ? `Signed in as ${ROLE_LABELS[demoRole]}` : `Continue as ${ROLE_LABELS[demoRole]}`}
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
@@ -327,7 +286,7 @@ export function LoginForm({
         )}
         <div className="pt-1 text-forest-600">
           <Link to={homeForRole(role)} className="underline underline-offset-4 hover:text-forest-900">
-            {role ? `Go to the ${ROLE_LABELS[role]} page` : 'Continue browsing the Hacienda'}
+            {role === 'guest' ? 'Go to my bookings' : 'Continue browsing the Hacienda'}
           </Link>
         </div>
       </div>

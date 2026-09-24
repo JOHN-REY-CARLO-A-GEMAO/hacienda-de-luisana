@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/constants/app_constants.dart';
 
-/// Brand card surface for the owner app.
+/// Brand card surface for the Admin app.
 ///
 /// White surface, hairline border and a soft, low-contrast shadow — the
 /// same recipe previously inlined in Dashboard, Bookings, Stays, Rooms,

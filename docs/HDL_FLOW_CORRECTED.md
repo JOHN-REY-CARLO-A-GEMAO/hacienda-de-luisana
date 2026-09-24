@@ -1,5 +1,5 @@
 # PROPERTY MANAGEMENT, SMART LOCK (RFID + MOBILE KEY / ESP32) & TRACKING SYSTEM
-### Corrected Flow Chart Spec v2.1 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling; v2.1 adds the implementation status (§12)
+### Corrected Flow Chart Spec v3.0 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling; v2.1 added the implementation status (§12); **v3.0 collapses the actors to two roles — Customer (Guest) on the website, Admin on the mobile app — and removes Staff and Super Admin (ADR-0007)**
 
 > Paste-ready textual spec, same structure as the original export.
 > **Global Conventions (render as a legend/annotation box):**
@@ -11,21 +11,22 @@
 > - **G5 — One credential pipeline.** Credential = RFID card **or** in-app Mobile Key (BLE). Same verification checklist for both.
 > - **G6 — Tracking is consent-based.** No consent = no GPS tracking (access logs only). Location history auto-purges N days after check-out (Data Privacy Act / RA 10173).
 > - **G7 — Every state change** saves to Central DB with timestamp + Updated By (Booking Tracking / Activity Log).
+> - **G8 — Two roles, two apps.** Customer = the **Website**; Admin = the **Mobile App**. There is no Staff role and no Super Admin: every operator action in this chart is the Admin's, done in the mobile app. Access control is between the two roles only, never among operators.
 
 ---
 
 ## 1. Initial Authentication & Role Routing
 
-1. START → Open System
-2. Input: Register or Login
-   - Register → Role = **CUSTOMER** (default; staff/admin accounts are provisioned, never self-registered) → Account = ACTIVE
-3. Decision: Account Status ACTIVE?
-   - [No — INACTIVE/ARCHIVED] → Login Not Allowed → Notify: "Contact administrator" → END
-   - [Yes] → Identify Role:
-     - → Customer / User → Customer Dashboard
-     - → Staff → Staff Dashboard
-     - → Admin → Admin Dashboard
-     - → Super Admin → Super Admin Dashboard
+1. START → Open the **Website** (Customer) or the **Mobile App** (Admin) — G8
+2. **Website:** Input: Register or Login
+   - Register → Role = **CUSTOMER** (the only role a sign-up can create) → Account = ACTIVE
+   - Login as Customer → Customer Dashboard (`/account`)
+   - Login with an Admin account → Website says: "This website is for Guests — the Admin uses the mobile app" → END (website has no Admin screens)
+3. **Mobile App:** Input: Login (Google or email + password)
+   - Decision: Is this account the Admin? *(bootstrap allowlist **or** `profiles/{uid}.role == 'admin'`)*
+     - [No] → Signed out → Notify: "Not authorized — Guests book on the website" → END
+     - [Yes] → Admin Dashboard
+4. Roles in the whole system: **CUSTOMER** and **ADMIN**. No Staff, no Super Admin, no role hierarchy among operators.
 
 ---
 
@@ -38,9 +39,9 @@
 3. Decision: Dates valid & Guests ≤ Capacity?
    - [No] → Notify Customer: adjust dates/guests → back to Input
    - [Yes] → Submit Booking
-4. Sets Booking = **PENDING** → System places **24h TTL hold** on dates (G4) → Save to Central DB → Notify Admin: "New booking for review"
+4. Sets Booking = **PENDING** → System places **24h TTL hold** on dates (G4) → Save to Central DB → Notify Admin (mobile app): "New booking for review"
 5. Upload Valid Government ID (KYC) → Sets KYC = **SUBMITTED** → Save to Central DB
-6. **Booking Review** (Admin / Super Admin):
+6. **Booking Review** (Admin, in the mobile app):
    - 6a. System auto re-check: dates still free? (G2)
      - [No] → Suggest Alternative Dates → Notify Customer
        - Decision: Customer rebooks?
@@ -54,7 +55,7 @@
 7. Decision: Payment Option?
    - [50% Down Payment + Refundable Security Deposit] or [Full Payment + Refundable Security Deposit]
    - → Upload Payment Proof → Sets Payment = **PENDING**
-8. Admin / Super Admin Verifies Payment
+8. Admin Verifies Payment (mobile app)
 9. Decision: Payment Valid?
    - [No] → Reject Payment → Notify Customer → Decision: Resubmit Proof?
      - [Yes] → Loop back to Upload Payment Proof
@@ -63,9 +64,7 @@
 10. Create Booking Tracking Record (→ Booking Tracking & Central DB)
 11. **Customer Cancellation branches** (available anytime from the dashboard):
     - Cancel while PENDING/APPROVED (nothing verified) → Sets Booking = **CANCELLED** → Release Dates → Notify Admin → END
-    - Cancel while RESERVED (money verified) → Admin reviews per Cancellation Policy
-      - [Approved] → Sets Booking = **CANCELLED** → Release Dates → **Refund Initiated** → Refund per Policy (deposit rules apply) → **REFUNDED** → Notify Customer → END
-      - [Denied] → Booking stays RESERVED → Notify Customer: reason → END
+    - Cancel while RESERVED (money verified) → Sets Booking = **CANCELLED** → Release Dates → **Refund Initiated** (settled by the Published rates' cancellation policy stamped on the Booking: refund tier by days before check-in, deposit percentage, verified damage deduction) → Admin returns the money → Admin marks **REFUNDED** → Notify Customer → END
 12. TTL Expiry (any pending stage, 24h — G4): → Sets Booking = **EXPIRED** → Release Dates → Notify Customer & Admin → END
 13. Assign Credential → proceed to CHECK-IN (Module 3)
 
@@ -99,12 +98,12 @@
 2. Customer Stay → Get Guest Location
 3. Input / Record: Province, City/Municipality, GPS, Accuracy, Date/Time
 4. Save Location History (Central DB, encrypted at rest)
-5. Admin and Super Admin View Authorized Location (role-restricted; every view is logged)
+5. Admin views the authorized location on the mobile app's Radar (Admin-only; read by rule)
 6. Decision: Guest Still Staying?
    - [Yes] → Loop back to Get Guest Location
    - [No] → Proceed to CHECK-OUT
 7. Stop Location Tracking → Save Final Location
-8. **Retention rule (as built, §12):** the session forgets itself — a session not updated for 30 days reads as nonexistent (read-time expiry, no backend worker), and the Host's delete is the physical erasure (G6)
+8. **Retention rule (as built, §12):** the session forgets itself — a session not updated for 30 days reads as nonexistent (read-time expiry, no backend worker), and the Guest's own delete (stop sharing) is the physical erasure (G6)
 9. Disable Guest Credential (RFID + Mobile Key)
 
 ---
@@ -114,104 +113,67 @@
 1. CHECK-OUT (e.g. 12:00 NN) → Sets Credential = INACTIVE
 2. ESP32 Locks Door
 3. Save Check-out Access Log → Sets Booking = **CHECKED-OUT** → Notify Customer: check-out recorded
-4. Create Cleaning Task (auto-assign Staff / Caretaker)
-5. Decision: Damage Reported? *(staff inspection or guest declaration)*
-   - [No] → Proceed to Staff or Caretaker Cleans (step 6)
-   - [Yes] → Select Damaged Item → Enter Description → Upload Evidence (Photo/Video) → Submit Damage Report (Central DB)
-     - Admin / Super Admin View Report → Verify Damage:
-       - Decision: Damage Verified?
-         - [No] → Close Damage Report → Proceed to Cleans (step 6)
-         - [Yes] → Sets Damage = **VERIFIED** → Create Maintenance Task → **Security Deposit Settlement: deduct repair cost → refund deposit remainder** → Repair or Replace Item → Update Maintenance → Proceed to Cleans (step 6)
-6. Staff or Caretaker Cleans
-7. Decision: Cleaning Complete?
-   - [No] → Continue Cleaning
-   - [Yes] → Property Inspection
-8. Decision: Clean and Ready?
-   - [No] → Maintenance Repair → Re-inspection → Re-evaluate Clean and Ready?
-   - [Yes] → Sets Property = **AVAILABLE** *(dates rejoin the pool only now)*
-9. Save Cleaning, Maintenance, and Inspection Records (Central Database)
-10. Sets Booking = **COMPLETED** → Notify Customer: thank-you + deposit/deposit-refund receipt
-11. Generate Reports → END *(all states final, logs written — G1 satisfied)*
+4. Admin inspects the property (or has it cleaned — cleaners are not system users; the Admin records the outcome)
+5. Decision: Damage Found? *(Admin inspection or guest declaration)*
+   - [No] → Proceed to Cleaning (step 6)
+   - [Yes] → Admin records the damage (item, description, evidence) → **Security Deposit Settlement: deduct verified repair cost → refund deposit remainder** → Repair or Replace Item → Proceed to Cleaning (step 6)
+6. Cleaning
+7. Decision: Clean and Ready?
+   - [No] → Maintenance Repair → Re-inspection
+   - [Yes] → Admin sets Property = **AVAILABLE** in the app's Rooms screen *(dates rejoin the pool only now)*
+8. Save Cleaning, Maintenance, and Inspection Records (Central Database)
+9. Admin sets Booking = **COMPLETED** (mobile app) → Notify Customer: thank-you + deposit/deposit-refund receipt
+10. Admin purges the government ID and receipt from Storage (RA 10173) → Activity Log
+11. Reports (Analytics screen) → END *(all states final, logs written — G1 satisfied)*
 
 ---
 
-## 6. Staff Module Flow
+## 6. Customer Module — the Website (summary of what the Customer can do)
 
-1. Staff Dashboard
-2. Decision: Staff Account Active?
-   - [No] → Login Not Allowed → END
-   - [Yes] → Access Staff Dashboard:
-     - View Assigned Bookings
-     - Manage Cleaning
-     - Manage Assigned Maintenance
-     - Conduct Property Inspection
-     - Submit Inspection
-     - Save Staff Activity Log → END
-3. (Restriction: Staff cannot manage accounts, verify payments, or approve bookings.)
+1. Browse properties, rates and availability (public)
+2. Submit a Booking (§2) — an anonymous Guest identity is attached at submit so the Booking can be claimed only from that browser / account (ADR-0004)
+3. Sign up / sign in (Customer only) → `/account`:
+   - See own Bookings, exact status, Date hold countdown, Activity log
+   - Upload government ID + receipt (KYC) → **KYC SUBMITTED**
+   - After **APPROVED**: choose Payment plan (50 % down payment or full, plus refundable Security deposit) from the Published rates → **PAYMENT PENDING**; upload Payment proof
+   - Withdraw own Booking (PENDING / KYC SUBMITTED / APPROVED / PAYMENT PENDING / RESERVED → **CANCELLED**)
+   - Share live location during the stay (consent = the share click; G6)
+4. (Restriction: the Customer cannot approve, verify, refund, read other Bookings, or reach any management screen. `/admin` and `/app` on the website only point at the mobile app.)
 
 ---
 
-## 7. Admin Module Flow
+## 7. Admin Module — the Mobile App
 
-1. Admin Dashboard
-2. Decision: Admin Account Active?
-   - [No] → Login Not Allowed → END
-   - [Yes] → Access Full Admin Dashboard:
-     - Modules Managed: Users, Staff, Properties, Bookings, KYC/ID Verification, Payments & Refunds, Credentials (RFID/Mobile Key), ESP32, Damage, Maintenance, Cleaning, Inspection
-     - Verify ID (KYC) and Payments; Approve/Reject Bookings *(availability re-checked by system — G2)*
-     - Process Refunds per Policy
-     - Register, Assign, Activate, and Deactivate Credentials
-     - View Credential Logs, Booking Tracking, and Authorized Guest Locations (view-logged)
-     - Track Activities and Generate Reports
-     - Disable, Enable, Archive, or Restore Users and Staff
-     - (Restriction: Cannot restore another Admin or modify Super Admin)
-3. All operations write directly to Activity Log → Central Database.
-
----
-
-## 8. Super Admin Module Flow
-
-1. Super Admin Status = ALWAYS ACTIVE
-2. Super Admin Dashboard:
-   - All Admin Permissions
-   - **Account Provisioning: creates Admin and Staff accounts** (only path to those roles)
-   - Manage Admin Accounts (Disable, Enable, Archive, Delete, Restore Other Admins)
-   - Restore User and Staff Accounts
-   - View System-wide Logs, All Booking Tracking, Authorized Guest Locations, Payments, Refunds, Damage Reports, and RFID/ESP32 Logs
-   - Generate System Reports
-3. Self-Protection Checks:
-   - Delete Self? → Action Denied
-   - Archive Self? → Action Denied
-   - Disable Self? → Action Denied
-   - Restore Self? → Action Denied
-   - No Self-action → Remain ACTIVE
-4. All actions record to System-wide Activity Log → Central Database.
+1. Admin Dashboard (after the gate in §1 step 3)
+2. Modules managed — all in one app, one role:
+   - **Bookings:** every Booking; approve / reject (availability re-checked by the system — G2); refuse an ID for resubmission
+   - **KYC / ID Verification:** view the uploaded ID and receipt; purge after the stay (RA 10173)
+   - **Payments & Refunds:** verify or reject Payment proof; cancel; Refund settled per the stamped policy; mark REFUNDED
+   - **Stays:** CHECK-IN → STAYING → CHECKED-OUT → COMPLETED
+   - **Rates & Cancellation Policy:** publish nightly rates, Security deposit, down-payment %, refund tiers (`site_config/rates`) — the website quotes from these
+   - **Credentials / ESP32:** revoke a Credential; read the Access log (RFID / Mobile Key events, denials, lockouts)
+   - **Guest Location:** Radar of consented sessions, distance and ETA
+   - **Properties:** availability status and pricing (Rooms)
+   - **Guest CRM & History**, **Analytics & Reports**
+3. All operations write the Booking patch and the Activity Log entry in one write → Central Database (G7).
+4. Adding a second operator = giving another account the Admin role (allowlist or Profile) — not a new role.
 
 ---
 
-## 9. Account Management & Soft Archive Flow
+## 8. Account Management
 
-- **Provisioning (new):**
-  1. Public Register → Customer role only
-  2. Admin creates Staff accounts; Super Admin creates Admin accounts
-  3. All creations → Save Provisioning Log
+- **Provisioning:**
+  1. Public Register (website) → Customer role only
+  2. The Admin role is granted in Firestore — bootstrap allowlist (`adminEmails()`) or `profiles/{uid}.role = 'admin'`; nothing a client sends can grant it
+- **Customer accounts:** a Customer may delete their own account through Firebase Auth; Bookings keep their Activity history. Active bookings? → [Yes] → resolve / cancel first (G1).
+- **Admin account:** cannot demote itself in the rules (`profiles` update never changes one's own role) — the hacienda can never be left with nobody able to act.
+- There is no Staff module, no Super Admin module, no archive / restore hierarchy: with one operator role there is nobody to provision, disable or restore but the Admin's own second account.
 
-- **User / Staff Accounts:**
-  1. User/Staff Requests Account Deletion → Admin/Super Admin Review
-  2. Soft Delete / Archive Account → Sets Status = ARCHIVED
-  3. Login Not Allowed → Moved to Archived Accounts Database
-  4. Active bookings? → [Yes] → Resolve/cancel bookings first (G1) → then archive
-  5. Restore Selected?
-     - [No] → Remain in Archived Accounts
-     - [Yes] → Sets Status = ACTIVE → Login Allowed → Save Restore Log (Central DB)
+---
 
-- **Admin Accounts:**
-  1. Super Admin Authorized Action → Archive/Delete Other Admin
-  2. Sets Admin Status = ARCHIVED → Admin Login Not Allowed
-  3. Keep in Archived Admins Database
-  4. Restore Selected?
-     - [No] → Keep Archived
-     - [Yes] → Sets Admin Status = ACTIVE → Login Allowed → Save Restore Log (Central DB)
+## 9. (Reserved)
+
+Section numbers 10–12 below are kept stable for cross-references from the thesis text.
 
 ---
 
@@ -224,7 +186,7 @@
 
 - **Terminal branches (all release dates + notify — G1):**
   - `REJECTED` — Admin denies ID/availability at review (no money involved)
-  - `CANCELLED` — Customer/host cancels
+  - `CANCELLED` — Customer withdraws (website) or Admin cancels (app)
     - money already verified → `REFUND INITIATED → REFUNDED` before terminal
   - `EXPIRED` — 24h TTL passed in any pending stage (G4)
 - **Trigger definitions:**
@@ -232,7 +194,7 @@
   - `STAYING` = after first unlock until check-out
   - `CHECKED-OUT` = credential deactivated at check-out
   - `COMPLETED` = cleaning + inspection passed, property back to AVAILABLE
-- Admin and Super Admin can view the complete tracking history.
+- The Admin views the complete tracking history in the app (Booking detail → Activity log); the Customer sees their own Booking's history on `/account`.
 
 ---
 
@@ -240,28 +202,29 @@
 
 The Central Database stores and interconnects:
 
-- Users, **ID/KYC Verification Records**, Staff, Admins, Super Admin
-- Properties & Availability, **Date Holds (TTL)**
+- Users (Customers) and their **Profiles** (role: customer | admin), **ID/KYC Verification Records**
+- Properties & Availability, **Date Holds (TTL)**, **Published Rates & Cancellation Policy** (`site_config/rates`)
 - Bookings, Payments, Payment Proofs, **Refunds & Security Deposits**, Booking Tracking
 - Credentials (RFID Cards/Tags, UIDs, Mobile Key Tokens), Credential Status, ESP32 Controls, Access Logs, **Offline Log Buffer**, **Lockout/Alert Events**
 - Guest Locations & Location History, **Consent Records**, **Retention/Purge Log**
 - Damage Reports, Photo/Video Evidence, Maintenance, Cleaning, Inspections
-- Account Deletion Requests, Archived Accounts, **Provisioning Logs**, System Activity Logs, Notifications, Reports.
+- System Activity Logs (per-Booking `activity` sub-collection), Notifications, Reports.
 
 ---
 
-## 12. Implementation status (v2.1, 2026-09-22)
+## 12. Implementation status (v3.0, 2026-09-24)
 
 Where each convention lives in code, and where the build is deliberately short of the chart.
 
-- **G1 — no dangling ENDs.** `src/lib/booking/actions.ts` is the one place a Booking's state changes, and every accepted action returns the Activity log entries it owes — a transition cannot happen unlogged, and a terminal status releases the dates because `holdsDates` is false for Rejected, Cancelled, Expired and Completed. The one clause not yet built is **(3) notify the customer**: the system has no notification channel, so the Guest sees the terminal status in their own dashboard / app instead of a message arriving at them.
-- **G2 — the system enforces availability.** Overlap is re-checked at submit (the create path, against the stored Bookings) and at approval — and since ADR-0006 the approval re-check and the approval write run in one Firestore transaction, so a rival Booking committed in between aborts the transaction and the approval is rerun on the fresh state.
-- **G3 — money last.** ADR-0001: the Host approves before any money moves, `VerifyPayment` refuses less than what was asked, and `settleRefund` in `src/lib/booking/money.ts` is the only path money leaves.
-- **G4 — 24h TTL.** The hold is stored data (`hold_expires_at`), and expiry is a read-time rule (ADR-0002) — no timer, no worker: a Booking that sat 24 hours reads as Expired, and Expired holds no dates. The two stages that expire are the two pre-approval ones, Pending and KYC Submitted; once the Host approves, the hold becomes firm.
-- **G6 — consent-based tracking.** Live location no longer rides on the Booking: it is the `tracking_sessions/{bookingId}` session, created by the traveller's own device, with `tracking_consent_at` written in the same write as the first ping (the Share click is the consent — a session without a consent cannot exist). Retention as built: 30 days from the last update, at read time; the Host's delete is the physical erasure.
-- **G7 — every state change is logged.** Same contract as G1: `applyAction` owes its log entries, and `firestore.rules` keeps `bookings/{id}/activity` append-only, written in the writer's own role.
-- **Payment plans and the policy stamp (new in v2.1).** The Host publishes figures once — the `site_config/rates` document, `FIREBASE_SETUP.md` step 6 — and `ChoosePaymentPlan` quotes the stay from them (or from the recorded total, when the quote is a phone call rather than a card), stamping the policy version and effective date on the Booking at choice time. Republishing changes the terms of future choices only, never of a stay already promised; a Booking stamped with nothing refunds nothing.
-- **Charted, not yet built:** the customer notifications at every terminal path (§2, §3, §5); the credential pipeline of Module 3 (RFID / Mobile Key / ESP32) in code; moving the full lifecycle table from `src/lib/booking` into `firestore.rules`, waiting on the dashboard's `SetStatus` writes to retire (ticket #13).
+- **G1 — no dangling ENDs.** `src/lib/booking/actions.ts` (Customer actions, website) and `lib/services/booking_lifecycle.dart` (Admin and system actions, mobile app) are the two places a Booking's state changes — the same status table and transition whitelist on both sides — and every accepted action returns the Activity log entry it owes — a transition cannot happen unlogged, and a terminal status releases the dates because `holdsDates` is false for Rejected, Cancelled, Expired and Completed. The one clause not yet built is **(3) notify the customer**: the system has no notification channel, so the Guest sees the terminal status in their own dashboard / app instead of a message arriving at them.
+- **G2 — the system enforces availability.** Overlap is re-checked at submit (the website's create path, against the stored Bookings) and at approval in the Admin app (`applyAdminAction` → `findDateConflicts` against the latest Bookings snapshot, committed statuses only — ADR-0003). ADR-0006's transactional Approve describes the web protocol; moving the app's approval write into a transaction is the open follow-up.
+- **G3 — money last.** ADR-0001: the Admin approves before any money moves, `VerifyPayment` (app) refuses less than what was asked, and `settleRefund` (`src/lib/booking/money.ts` and its Dart port) is the only path money leaves.
+- **G4 — 24h TTL.** The hold is stored data (`hold_expires_at`), and expiry is a read-time rule (ADR-0002) — no timer, no worker: a Booking that sat 24 hours reads as Expired, and Expired holds no dates. The two stages that expire are the two pre-approval ones, Pending and KYC Submitted; once the Admin approves, the hold becomes firm. The Admin app records a run-out hold as `Expired` in the system's name.
+- **G6 — consent-based tracking.** Live location no longer rides on the Booking: it is the `tracking_sessions/{bookingId}` session, created by the traveller's own device, with `tracking_consent_at` written in the same write as the first ping (the Share click is the consent — a session without a consent cannot exist). Retention as built: 30 days from the last update, at read time; the Guest's own delete is the physical erasure. The Admin reads sessions on the app's Radar.
+- **G7 — every state change is logged.** Same contract as G1: `applyAction` / `applyAdminAction` owe their log entries, and `firestore.rules` keeps `bookings/{id}/activity` append-only, written in the writer's own role (`guest`, `admin`, or `system` written by the Admin app).
+- **G8 — two roles, two apps (v3.0).** `firestore.rules` knows `guest` and `admin` only (`role()`, `isAdmin()`); the website's `src/lib/auth` has the same two roles and no management pages (`/admin/*`, `/app/*` signpost to the app); the mobile app's `AuthStore.isAdmin` is the only gate and it has no Guest screens. See ADR-0007.
+- **Payment plans and the policy stamp (v2.1).** The Admin publishes figures from the app's Rates screen — the `site_config/rates` document, `FIREBASE_SETUP.md` step 6 — and `ChoosePaymentPlan` (website) quotes the stay from them (or from the recorded total, when the quote is a phone call rather than a card), stamping the policy version and effective date on the Booking at choice time. Republishing changes the terms of future choices only, never of a stay already promised; a Booking stamped with nothing refunds nothing.
+- **Charted, not yet built:** the customer notifications at every terminal path (§2, §3, §5); the credential pipeline of Module 3 (RFID / Mobile Key / ESP32) in code — the app reads and simulates `access_logs`, it does not yet drive a lock; damage reports and cleaning records as documents (§5 is recorded through the Booking's completion and the deposit settlement only); moving the full lifecycle table into `firestore.rules` (the rules enforce the terminal, KYC and payment guards today).
 
 ---
 
@@ -277,7 +240,8 @@ Where each convention lives in code, and where the build is deliberately short o
 | 6 | **Mobile Key as co-credential** with RFID, one pipeline (G5); offline mode, failure lockout, alerting | §3 |
 | 7 | **CHECKED-IN vs STAYING defined** — trigger = first successful unlock | §3 step 6; §10 |
 | 8 | **Security deposit + damage settlement** wired into the flow | §2 step 7; §5 step 5 |
-| 9 | **Account provisioning** — who creates Staff/Admins; register = Customer only | §1; §8; §9 |
+| 9 | **Account provisioning** — register = Customer only; the Admin role is granted in Firestore, never by a client | §1; §8 |
 | 10 | **Notifications everywhere**, not just payment rejection | §2, §3, §5 |
 | 11 | **Archive checks active bookings first** (G1) | §9 |
 | 12 | **(v2.1) Implementation status** — where each G lives in code, the G6 retention rule corrected to what is built, the policy stamp added, and the not-yet-built clauses named | §4 step 8; §12 |
+| 13 | **(v3.0) Two roles, two apps** — Staff and Super Admin modules removed; Customer = website, Admin = mobile app; every operator step re-attributed to the Admin; G8 added | §1, §5–§9, §11, §12 |

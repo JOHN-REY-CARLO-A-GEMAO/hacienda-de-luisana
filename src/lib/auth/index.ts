@@ -3,9 +3,10 @@
 // Hacienda de LuisAna
 // ----------------------------------------------------------------------------
 // One deep module owning everything the system knows about *who* is asking: the
-// three roles CONTEXT.md defines, the permissions each of them holds, the pages
-// those permissions open, the Profile that stores a person's role, the words for
-// every way a sign-in can fail, and the session that ties a provider to a role.
+// two roles CONTEXT.md defines (Guest and Admin), the permissions each of them
+// holds, the page those permissions open on this website, the Profile that
+// stores a person's role, the words for every way a sign-in can fail, and the
+// session that ties a provider to a role.
 //
 // Nothing in here imports Firebase. The two adapters that do — Firebase Auth with
 // Firestore Profiles, and the local demo store — live beside this module and are

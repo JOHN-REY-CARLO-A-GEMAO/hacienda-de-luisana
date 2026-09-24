@@ -1,13 +1,17 @@
 // ----------------------------------------------------------------------------
-// The session: who is signed in, which of the three roles they have, and what
+// The session: who is signed in, which of the two roles they have, and what
 // they may do about it
 // ----------------------------------------------------------------------------
 // One store every surface reads, whether the person signed in with Firebase or
 // with the local demo adapter that stands in when there is no Firebase project.
 // It owns the parts that are easy to get wrong separately: waiting for a Profile
 // before anybody is told what their role is, resolving that role exactly the way
-// firestore.rules resolves it, refusing a role change from somebody who is not
-// the Host, and turning every provider failure into an AuthError a form can show.
+// firestore.rules resolves it, and turning every provider failure into an
+// AuthError a form can show.
+//
+// Nothing here changes anybody's role. The website is the Guest's application
+// (ADR-0007): a sign-up makes a Guest, and the Admin is recognised — never
+// made — from the bootstrap allowlist or a Profile written outside this app.
 //
 // Nothing here knows which provider it is talking to — the ports do — so the
 // whole of it is testable with two in-memory adapters and no network.
@@ -17,7 +21,7 @@
 
 import type { Actor } from '../booking'
 import { DEFAULT_ROLE, resolveRole, type Profile } from './profile'
-import { ROLE_LABELS, can as roleCan, isRole, type Permission, type Role } from './roles'
+import { ROLE_LABELS, can as roleCan, type Permission, type Role } from './roles'
 import {
   AuthError,
   describeAuthError,
@@ -59,20 +63,16 @@ export type AuthPort = {
   loginWithGoogle(): Promise<SessionUser>
   logout(): Promise<void>
   resetPassword(email: string): Promise<void>
-  /**
-   * Sign in as a ready-made account for a role. Present only on the local demo
-   * adapter, where there is no Host to promote anybody and no Firebase to hold
-   * the accounts.
-   */
-  signInAsRole?(role: Role): Promise<SessionUser>
 }
 
-/** Reading and writing the Profile that says which role a person has. */
+/**
+ * Reading the Profile that says which role a person has, and writing the one a
+ * sign-up leaves behind. There is no way to write any other role from here: the
+ * website never promotes anybody (ADR-0007).
+ */
 export type ProfilePort = {
   read(uid: string): Promise<Profile | null>
   create(profile: Profile): Promise<Profile>
-  assign(input: { uid: string; role: Role; email?: string | null; display_name?: string | null }): Promise<Profile>
-  list(): Promise<Profile[]>
 }
 
 export type SessionState = {
@@ -99,13 +99,7 @@ export type SessionStore = {
   loginWithGoogle(): Promise<SessionUser>
   logout(): Promise<void>
   resetPassword(email: string): Promise<void>
-  /** Demo mode only: step into a role that has no Host to grant it. */
-  signInAsRole(role: Role): Promise<SessionUser>
-  /** Host only: decide which of the three roles somebody has. */
-  assignRole(target: { uid: string; email?: string | null; displayName?: string | null }, role: Role): Promise<Profile>
-  /** Host only: everybody who has a Profile. */
-  team(): Promise<Profile[]>
-  /** Re-read the signed-in person's Profile, in case a Host changed their role. */
+  /** Re-read the signed-in person's Profile, in case its role changed elsewhere. */
   refresh(): Promise<void>
 }
 
@@ -228,7 +222,7 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
         if (!checked.ok) throw checked.error
         const user = await auth.register(checked.value)
         // A sign-up is a Guest. There is no role to pass in, so nothing a person
-        // types can arrive as the Host (ADR-0005).
+        // types can arrive as the Admin (ADR-0005).
         const at = new Date().toISOString()
         try {
           await profiles.create({
@@ -281,46 +275,6 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
         const checked = validateEmail(email)
         if (!checked.ok) throw checked.error
         await auth.resetPassword(checked.value.email)
-      }),
-
-    signInAsRole: (role) =>
-      guard(async () => {
-        if (!auth.signInAsRole) {
-          throw new AuthError('hdl/unavailable', 'Demo sign-in is only available while Firebase is not configured.')
-        }
-        if (!isRole(role)) throw new AuthError('hdl/unknown', 'That is not one of the three roles.')
-        const user = await auth.signInAsRole(role)
-        await settleFor(user)
-        return user
-      }),
-
-    assignRole: (target, role) =>
-      guard(async () => {
-        if (!roleCan(state.role, 'team:manage')) {
-          throw new AuthError('hdl/forbidden', 'Only the Host decides which role somebody has.')
-        }
-        if (!isRole(role)) throw new AuthError('hdl/unknown', 'That is not one of the three roles.')
-        if (!target?.uid) throw new AuthError('hdl/unknown', 'Nobody to give that role to.')
-        if (target.uid === state.user?.uid) {
-          // Otherwise one wrong click leaves the hacienda with no Host and nobody
-          // signed in who can put it right.
-          throw new AuthError('hdl/forbidden', 'You cannot change your own role — ask another Host.')
-        }
-        const profile = await profiles.assign({
-          uid: target.uid,
-          role,
-          email: target.email ?? null,
-          display_name: target.displayName ?? null,
-        })
-        return profile
-      }),
-
-    team: () =>
-      guard(async () => {
-        if (!roleCan(state.role, 'team:manage')) {
-          throw new AuthError('hdl/forbidden', 'Only the Host can see who has which role.')
-        }
-        return profiles.list()
       }),
 
     refresh: () =>
