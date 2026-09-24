@@ -162,9 +162,11 @@ describe('Bookings', () => {
   })
 
   it('keeps the Admin from un-rejecting, and from skipping the two money gates', () => {
-    // Three guard lines on the Admin branch: terminals never leave, Approved
-    // only from a reviewed ID, Reserved only from verified money. The full
-    // table lives in the two lifecycle modules (web and app).
+    // Guard lines on the Admin branch: terminals never leave, Approved only from
+    // a reviewed ID, Reserved only from Payment Pending — and a `verified`
+    // document must carry the marker saying who verified it. The full table
+    // lives in the two lifecycle modules (web and app); the money invariants are
+    // repeated here because they bind every writer, including a console.
     const update = allow(bookings, 'update:')
     expect(update).toContain(
       "!(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired'] && request.resource.data.status != resource.data.status)",
@@ -175,6 +177,32 @@ describe('Bookings', () => {
     expect(update).toContain(
       "!(request.resource.data.status == 'Reserved' && resource.data.status != 'Payment Pending')",
     )
+    expect(update).toContain('reservedIsPaidFor()')
+    expect(update).toContain('hasVerificationMarker()')
+  })
+
+  it('never lets a Guest claim a verified payment, only claim one for review', () => {
+    const update = allow(bookings, 'update:')
+    // The Guest branch constrains the *value*, not just the key: `unpaid` or
+    // `pending`, or the value already stored. `verified`, `approved` and
+    // `rejected` are the Admin's words.
+    expect(update).toContain(
+      "request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'pending']",
+    )
+    expect(update).toContain(
+      "request.resource.data.get('kyc_status', 'required') in ['required', 'submitted']",
+    )
+    // The verification fields are not on the self-serve key list at all.
+    const guestKeys = update.slice(update.indexOf('.hasOnly(['))
+    for (const field of ['amount_verified', 'payment_verified_at', 'payment_verified_by']) {
+      expect(guestKeys.slice(0, guestKeys.indexOf('])'))).not.toContain(field)
+    }
+  })
+
+  it('refuses a Booking created already claiming a payment or review state', () => {
+    const create = allow(bookings, 'create:')
+    expect(create).toContain("request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'none', '']")
+    expect(create).toContain("request.resource.data.get('kyc_status', 'required') in ['required', 'submitted', '']")
   })
 
   it('have no Staff branch: completing a stay is the Admin’s, like every other move', () => {
@@ -184,9 +212,11 @@ describe('Bookings', () => {
   })
 
   it('let the Admin move a Booking through the lifecycle, inside the guard lines, and delete', () => {
-    // The Admin branch is parenthesised: the three guard lines (terminals,
-    // Approved, Reserved) are checked before anything else the Admin may write.
-    expect(allow(bookings, 'update:')).toContain('if (isAdmin()')
+    // The Admin branch is parenthesised and comes after the invariant that binds
+    // every writer, so the money rule is checked before anything else.
+    const update = allow(bookings, 'update:')
+    expect(update).toContain('if reservedIsPaidFor() && (')
+    expect(update).toContain('(isAdmin()')
     expect(allow(bookings, 'delete:')).toBe('allow delete: if isAdmin();')
   })
 
@@ -236,11 +266,13 @@ describe('the Tracking sessions (retired — location tracker removed)', () => {
 describe('the Activity log', () => {
   it('refuses an entry that is not written in the writer’s own name', () => {
     const create = allow(activity, 'create:')
-    expect(create).toContain('request.resource.data.actor == role()')
-    // A Date hold expiring is the system's doing, recorded by the Admin app;
-    // a public inquiry with no identity at all can only write a Guest's.
-    expect(create).toContain("request.resource.data.actor == 'system' && isAdmin()")
-    expect(create).toContain("!isSignedIn() && request.resource.data.actor == 'guest'")
+    // Role *and* uid: an entry carries the identity of whoever wrote it.
+    expect(create).toContain("request.resource.data.actor == 'guest' && request.resource.data.actor_id == request.auth.uid")
+    expect(create).toContain("request.resource.data.actor == 'admin' && isAdmin() && request.resource.data.actor_id == request.auth.uid")
+    // A Date hold expiring is the system's doing, recorded by the Admin app; a
+    // public inquiry with no identity at all can only write the submission.
+    expect(create).toContain("request.resource.data.actor == 'system' && isAdmin() && request.resource.data.actor_id == 'system'")
+    expect(create).toContain("!isSignedIn() && request.resource.data.actor == 'guest' && request.resource.data.action == 'Submit'")
   })
 
   it('is readable by the Guest it belongs to and the Admin', () => {

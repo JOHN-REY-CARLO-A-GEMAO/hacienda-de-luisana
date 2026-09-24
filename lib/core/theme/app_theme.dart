@@ -6,7 +6,7 @@ import '../constants/app_constants.dart';
 ///
 /// Two token families live here on purpose:
 /// * the `AppColors`-based ops palette (deep pine + gold) used by the
-///   Dashboard/Bookings/Radar/Stays/Analytics/SmartLock/Rooms/CRM screens,
+///   Dashboard/Bookings/Chat/Stays/Analytics/SmartLock/Rooms/CRM screens,
 /// * the quiet-luxury forest/cream/gold tokens (`forest900`, `cream50`, …)
 ///   used by the Admin login and every Admin surface.
 ///

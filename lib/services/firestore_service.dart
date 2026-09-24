@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../models/booking_model.dart';
-import '../models/guest_location_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
@@ -16,7 +15,6 @@ class FirestoreService {
 
   // In-memory fallback stream controllers
   final _bookingsController = StreamController<List<BookingModel>>.broadcast();
-  final _trackingController = StreamController<List<GuestLocationModel>>.broadcast();
   final _lockLogsController = StreamController<List<SmartLockEventModel>>.broadcast();
   final _roomsController = StreamController<List<RoomModel>>.broadcast();
   final _crmController = StreamController<List<GuestCrmModel>>.broadcast();
@@ -27,7 +25,6 @@ class FirestoreService {
 
   // In-memory state buffers
   List<BookingModel> _bookings = [];
-  List<GuestLocationModel> _trackingSessions = [];
   List<SmartLockEventModel> _lockLogs = [];
   List<RoomModel> _rooms = [];
   List<GuestCrmModel> _crmProfiles = [];
@@ -46,7 +43,6 @@ class FirestoreService {
 
   void _initialize() {
     _bookings = MockDataService.initialBookings;
-    _trackingSessions = MockDataService.initialLocations;
     _lockLogs = MockDataService.initialSmartLockLogs;
     _rooms = MockDataService.initialRooms;
     _crmProfiles = MockDataService.initialGuestProfiles;
@@ -65,7 +61,6 @@ class FirestoreService {
 
   void _emitAllLocal() {
     _bookingsController.add(List.unmodifiable(_bookings));
-    _trackingController.add(List.unmodifiable(_trackingSessions));
     _lockLogsController.add(List.unmodifiable(_lockLogs));
     _roomsController.add(List.unmodifiable(_rooms));
     _crmController.add(List.unmodifiable(_crmProfiles));
@@ -132,30 +127,6 @@ class FirestoreService {
       } catch (_) {}
     }
     return _withInitial(_bookings, _bookingsController);
-  }
-
-  Stream<List<GuestLocationModel>> streamTrackingSessions() {
-    if (_isFirebaseReady && _firestore != null) {
-      try {
-        return _cloudOrLocal(
-          _firestore!
-              .collection(AppConstants.colTrackingSessions)
-              .snapshots()
-              .map((snap) {
-            if (snap.docs.isEmpty) return _trackingSessions;
-            try {
-              return snap.docs
-                  .map((doc) => GuestLocationModel.fromJson(doc.data(), doc.id))
-                  .toList();
-            } catch (_) {
-              return _trackingSessions;
-            }
-          }),
-          _trackingSessions,
-        );
-      } catch (_) {}
-    }
-    return _withInitial(_trackingSessions, _trackingController);
   }
 
   /// Reads the `access_logs` collection every lock touch is written to.
@@ -416,68 +387,6 @@ class FirestoreService {
     return const [];
   }
 
-  Future<void> updateGuestLocation({
-    required String bookingId,
-    required double latitude,
-    required double longitude,
-    required String area,
-    required double distanceKm,
-    required int etaMinutes,
-  }) async {
-    final index = _trackingSessions.indexWhere((s) => s.bookingId == bookingId);
-    final isNear = distanceKm <= AppConstants.nearbyThresholdKm;
-    final hasArr = distanceKm <= AppConstants.arrivedThresholdKm;
-
-    if (index != -1) {
-      _trackingSessions[index] = _trackingSessions[index].copyWith(
-        latitude: latitude,
-        longitude: longitude,
-        currentArea: area,
-        distanceRemainingKm: distanceKm,
-        estimatedMinutesRemaining: etaMinutes,
-        isNearResort: isNear,
-        hasArrived: hasArr,
-        lastUpdated: DateTime.now(),
-      );
-    } else {
-      _trackingSessions.insert(
-        0,
-        GuestLocationModel(
-          sessionId: 'sess-${DateTime.now().millisecondsSinceEpoch}',
-          bookingId: bookingId,
-          guestName: 'Guest $bookingId',
-          latitude: latitude,
-          longitude: longitude,
-          currentArea: area,
-          distanceRemainingKm: distanceKm,
-          estimatedMinutesRemaining: etaMinutes,
-          isNearResort: isNear,
-          hasArrived: hasArr,
-          lastUpdated: DateTime.now(),
-        ),
-      );
-    }
-    _trackingController.add(List.unmodifiable(_trackingSessions));
-
-    if (_isFirebaseReady && _firestore != null) {
-      try {
-        await _firestore!
-            .collection(AppConstants.colTrackingSessions)
-            .doc(bookingId)
-            .set({
-          'bookingId': bookingId,
-          'latitude': latitude,
-          'longitude': longitude,
-          'currentArea': area,
-          'distanceRemainingKm': distanceKm,
-          'estimatedMinutesRemaining': etaMinutes,
-          'isNearResort': isNear,
-          'hasArrived': hasArr,
-          'lastUpdated': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      } catch (_) {}
-    }
-  }
 
   Future<void> recordSmartLockEvent(SmartLockEventModel event) async {
     _lockLogs.insert(0, event);
@@ -513,7 +422,6 @@ class FirestoreService {
 
   void dispose() {
     _bookingsController.close();
-    _trackingController.close();
     _lockLogsController.close();
     _roomsController.close();
     _crmController.close();

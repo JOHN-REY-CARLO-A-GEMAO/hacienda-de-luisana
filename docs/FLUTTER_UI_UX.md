@@ -9,8 +9,8 @@ executed with the `flutter-ui-ux` skill workflow.
 ### App structure
 
 - **Entry**: `main.dart` → `AuthGate` → `AdminLoginScreen` (Google / Admin email + password) → `MainShellScreen`. Only the Admin passes the gate (ADR-0007).
-- **MainShellScreen**: 9 tabs kept alive in an `IndexedStack` — Dashboard, Bookings, Radar (live tracking), Stays, Analytics, Smart Lock, Rooms, Guest CRM, Rates. The `BottomNavigationBar` exposes 5 items; item 5 ("More") opens a modal bottom sheet to the secondary tabs and Sign out. Bookings push `BookingDetailScreen`.
-- **State**: Riverpod stream providers (bookings, tracking sessions, smart-lock logs, rooms, guest profiles, published rates, per-Booking activity) + legacy `provider` for the `AuthStore` session.
+- **MainShellScreen**: 9 tabs kept alive in an `IndexedStack` — Dashboard, Bookings, Chat, Stays, Analytics, Smart Lock, Rooms, Guest CRM, Rates, Payment references. The `BottomNavigationBar` exposes 5 items; item 5 ("More") opens a modal bottom sheet to the secondary tabs and Sign out. Bookings push `BookingDetailScreen`.
+- **State**: Riverpod stream providers (bookings, smart-lock logs, rooms, guest profiles, published rates, per-Booking activity) + legacy `provider` for the `AuthStore` session.
 - **Data**: Firestore (in-memory demo data when Firebase is absent) + simulated ESP32 smart lock (`SimulationBar` one-tap checkpoints).
 - **Platform**: Android-first Admin APK, Material 3, deep-green app bars, portrait.
 
@@ -22,10 +22,10 @@ executed with the `flutter-ui-ux` skill workflow.
 | 2 | All 8 views hardcode `GoogleFonts.cinzel/inter` + `AppColors` inline. Component themes (`cardTheme`, `chipTheme`, `dialogTheme`, …) are defined but barely used. | Duplicated magic values (radii 14/16/18/20/22, shadow recipes). |
 | 3 | **Zero animation**: no screen entry, no tab transition, no micro-interactions, abrupt alert pop-ins. | Feels flat for a "quiet luxury" product. |
 | 4 | **No accessibility semantics**: icon-only buttons (refresh, notifications) have no label; the login visibility toggle has none. | Screen-reader users can't operate the app. |
-| 5 | **Rendering**: no `RepaintBoundary` around the radar `CustomPaint` (repaints the whole tab on every stream tick); list items lack `ValueKey`s; the dashboard feed builds a non-builder `ListView` over `.take(5)`. | Jank risk on mid-range Android hardware. |
+| 5 | **Rendering**: list items lack `ValueKey`s; the dashboard feed builds a non-builder `ListView` over `.take(5)`. | Jank risk on mid-range Android hardware. |
 | 6 | **Responsive**: metric grid fixed at 2 columns; no `LayoutBuilder` anywhere except the login screen. | Wasted space on tablets / landscape. |
 
-Performance constraints: radar painter + bar charts live inside the always-hot
+Performance constraints: the charts live inside the always-hot
 `IndexedStack`; simulation checkpoints push stream updates that rebuild whole
 tabs, so all new motion must be paint-only (transforms/opacity) and respect
 `MediaQuery.disableAnimations`.
@@ -74,13 +74,12 @@ themes for `Chip`, `Dialog`, `SnackBar`, `BottomSheet`, `Divider`,
 ### Phase 3–5 wiring map
 
 - **main_shell_screen**: `AnimatedTabPage` per tab, `AnimatedBadge` on Bookings,
-  animated dot on Radar, branded "More" sheet (`SectionHeader`, `PressableCard` rows).
+  branded "More" sheet (`SectionHeader`, `PressableCard` rows).
 - **dashboard_screen**: staggered banner → metrics → quick actions → feed;
   `LayoutBuilder` metric grid (2 cols < 700 dp, 4 cols ≥ 700 dp); `PulseDot`
   in the approaching-guest banner; keyed `ListView.builder` feed; semantics on the notifications button.
 - **bookings_screen**: `HaciendaCard` + `StatusPill` + `EmptyState` + staggered cards.
 - **stay_duration_screen**: same trio + `LuxeProgress`.
-- **tracking_radar_screen**: `RepaintBoundary` on the radar `CustomPaint`, `EmptyState`.
 - **smart_lock_screen**: staggered counter tiles, keyed log list (new logs animate in), `EmptyState`.
 - **rooms_screen** / **guest_crm_screen**: `HaciendaCard`, `StatusPill` (rooms), `EmptyState`, staggered cards.
 - **analytics_screen**: staggered sections.

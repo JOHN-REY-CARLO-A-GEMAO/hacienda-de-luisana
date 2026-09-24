@@ -50,28 +50,6 @@ class NotificationService {
     } catch (_) {}
   }
 
-  Future<void> showProximityGeofenceAlert(String guestName, double distanceKm, int etaMinutes) async {
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'proximity_channel',
-        'Guest Radar Alert',
-        channelDescription: 'High-priority alert when guests are near the resort',
-        importance: Importance.max,
-        priority: Priority.max,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
-
-    try {
-      await _localNotifications.show(
-        102,
-        '🚨 Booker Malapit Na!',
-        '$guestName is ${distanceKm.toStringAsFixed(1)} km away (~$etaMinutes mins)! Prepare the villa keys.',
-        details,
-      );
-    } catch (_) {}
-  }
-
   Future<void> showSmartLockSecurityAlert(String doorName, String reason) async {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(

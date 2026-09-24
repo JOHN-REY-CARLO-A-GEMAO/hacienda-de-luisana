@@ -33,7 +33,7 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph Tabs [Bottom bar]
-        T1[Dashboard] --- T2[Bookings] --- T3[Radar] --- T4[Stays] --- T5[More]
+        T1[Dashboard] --- T2[Bookings] --- T3[Chat] --- T4[Stays] --- T5[More]
     end
     T5 --> M1[Rates & Cancellation Policy]
     T5 --> M2[Smart Lock Security Logs]
@@ -42,11 +42,11 @@ flowchart LR
     T5 --> M5[Guest CRM & History]
     T5 --> M6[Sign out]
     T1 -->|Review Bookings| T2
-    T1 -->|Open Live Radar| T3
+    T1 -->|Open the chat inbox| T3
     T2 -->|tap / Review| D[BookingDetailScreen]
 ```
 
-`MainShellScreen` keeps every tab in an `IndexedStack`; the Bookings tab badge counts Pending requests and the Radar tab dot lights when a Guest is within 5 km.
+`MainShellScreen` keeps every tab in an `IndexedStack`; the Bookings tab badge counts Pending requests and the Chat tab opens the guest inbox.
 
 ---
 
@@ -111,10 +111,10 @@ Every accepted action writes one Activity entry (`bookings/{id}/activity/{seq}`)
 | Screen | Shows | Primary actions | Empty / error state |
 | --- | --- | --- | --- |
 | **AdminLoginScreen** | Google button with the Admin address, email + password | Sign in → `requireAdmin()` | Not authorized → signed out with the reason |
-| **Dashboard** | Today's check-ins, active stays, pending requests, revenue, recent lock events, approaching-Guest banner | Review Bookings, Open Live Radar | Metrics at zero |
+| **Dashboard** | Today's check-ins, active stays, pending requests, revenue, recent lock events | Review Bookings, open the chat inbox | Metrics at zero |
 | **Bookings** | Every Booking, newest first; filters All / Needs action / Pending / Reserved / Active Stay / Completed / Cancelled; per card: exact status, next step, Date hold countdown | Review → detail; one-tap Approve / Check in / Begin stay / Check out / Complete; call / SMS | "No bookings found" |
 | **Booking detail** | Guest, dates, notes, submission time, Date hold; KYC status + ID / receipt links + refusal reason; payment plan, totals, proof link, verified amount; refund breakdown; **the actions the current status allows**; Activity log | Every lifecycle action with its dialog (reason, amount, damage deduction, resend-or-cancel) | "Nothing to do — X is a final status"; expired-hold banner with **Record** |
-| **Radar** | Live Guest locations from `tracking_sessions`, distance and ETA to the resort | Call / SMS, map | No active sessions |
+| **Chat** | Guest conversations from `conversations` + `messages`; reply, mark read | Reply, open the Booking | No conversations |
 | **Stays** | Stay durations, progress, days remaining | — | No stays |
 | **Analytics** | Confirmed vs projected revenue, conversion, average length of stay, duration buckets, top Accommodation | — | Zeros |
 | **Smart lock** | `access_logs` newest first, per-door filter, simulator | Record an event | No events |
@@ -156,7 +156,6 @@ The app reads and writes the **same** Firestore documents the website does.
 | `bookings` | all, ordered by `created_at` | patches from `applyBookingAction`; delete | Admin: update within the terminal / KYC / payment guards; delete |
 | `bookings/{id}/activity` | oldest first | one entry per action, id = `seq` | append-only; `actor` must be the writer's role (`system` allowed for the Admin) |
 | `site_config/rates` | live | `publishRates` (validated) | public read, Admin write |
-| `tracking_sessions` | all | — | Admin read; created / deleted by the Guest's device |
 | `access_logs` | all | simulator events | Admin read / correct |
 | `rooms`, `guest_profiles` | all | status, price | Admin |
 | `profiles/{uid}` | own (role check) | — | own read; Admin may write anybody's role |

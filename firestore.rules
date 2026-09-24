@@ -95,6 +95,37 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
+    // The two invariants the rule layer has to hold on its own
+    // ------------------------------------------------------------------
+    // A Booking's money is claimed by the Guest and verified by the Admin
+    // (ADR-0001). The lifecycle modules — `src/lib/booking` on the web,
+    // `lib/services/booking_lifecycle.dart` in the app — are the application's
+    // copy of that rule, and a client that talks to Firestore directly never
+    // loads them. These two functions are the enforcement's copy:
+
+    // A document that says `payment_status: 'verified'` must carry the marker
+    // that makes the claim checkable — an amount above zero, an instant, and
+    // the verifier's own uid. The verifier is the person making the write: a
+    // console cannot sign another Admin's name to a verification, and the
+    // fixture fields the Guest may write can never produce this marker.
+    function hasVerificationMarker() {
+      return request.resource.data.get('amount_verified', 0) > 0
+        && request.resource.data.get('payment_verified_at', '') != ''
+        && request.resource.data.get('payment_verified_by', '') == request.auth.uid;
+    }
+
+    // `Reserved` is the status verified money *buys*: the Admin approves the
+    // Booking, the Guest pays, the Admin verifies, and only then is it Reserved
+    // (ADR-0001). No writer — Guest or Admin — may reach it with the money
+    // unverified, whether the money is missing from this write or from the
+    // document. Read against the resulting document, so it also refuses a write
+    // that would un-verify money a Reserved Booking is standing on.
+    function reservedIsPaidFor() {
+      return request.resource.data.get('status', resource.data.get('status', '')) != 'Reserved'
+        || request.resource.data.get('payment_status', '') == 'verified';
+    }
+
+    // ------------------------------------------------------------------
     // Profiles — who has which role
     // ------------------------------------------------------------------
     // Who is the Admin rests on this collection (and the allowlist), so it is
@@ -158,32 +189,49 @@ service cloud.firestore {
         && request.resource.data.check_in is string
         && request.resource.data.check_out is string
         && request.resource.data.status == 'Pending'
-        && request.resource.data.get('uid', '') != '';
+        && request.resource.data.get('uid', '') != ''
+        // A Booking is born with nothing claimed and nothing reviewed. `pending`
+        // only exists once a proof has been attached, `verified` is the Admin's
+        // answer, and `approved` is a decision — none of them can be true of a
+        // Booking created a moment ago (ADR-0001).
+        && request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'none', '']
+        && request.resource.data.get('kyc_status', 'required') in ['required', 'submitted', ''];
 
       // Cheapest check first: a Guest reading their own Booking should not pay
       // for a Profile read to find out they are allowed.
       allow read: if isOwnDoc() || isAdmin();
 
-      allow update: if (isAdmin()
+      allow update: if reservedIsPaidFor() && (
         // The Admin's writes are checked at the rule layer for the moves that
-        // must never go wrong: nothing leaves a terminal status, and the two
-        // money gates cannot be skipped — Approved needs a reviewed ID,
-        // Reserved needs verified money. The full lifecycle table lives in
+        // must never go wrong: nothing leaves a terminal status, the money
+        // gates cannot be skipped — Approved needs a reviewed ID, Reserved
+        // needs verified money (the invariant above) — and a Booking can never
+        // be left saying `verified` without the marker that says who verified
+        // it. The full lifecycle table lives in
         // lib/services/booking_lifecycle.dart (app) and src/lib/booking (web).
-        && !(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
-             && request.resource.data.status != resource.data.status)
-        && !(request.resource.data.status == 'Approved'
-             && resource.data.status != 'KYC Submitted')
-        && !(request.resource.data.status == 'Reserved'
-             && resource.data.status != 'Payment Pending')
-      )
+        (isAdmin()
+          && !(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
+               && request.resource.data.status != resource.data.status)
+          && !(request.resource.data.status == 'Approved'
+               && resource.data.status != 'KYC Submitted')
+          && !(request.resource.data.status == 'Reserved'
+               && resource.data.status != 'Payment Pending')
+          && (request.resource.data.get('payment_status', '') != 'verified'
+              || hasVerificationMarker())
+          // The verifier named on the document is whoever wrote it, or the name
+          // already recorded there — never a third party.
+          && (request.resource.data.get('payment_verified_by', '')
+                == resource.data.get('payment_verified_by', '')
+              || request.resource.data.get('payment_verified_by', '') == request.auth.uid))
+
         // A Guest may withdraw, upload or resend their ID and payment proof,
         // choose a payment plan, and stamp the cancellation policy their plan
         // was quoted under. They may never approve or verify anything
         // themselves (ADR-0001: money moves only after the Admin), and never
-        // touch the identity the Booking was created with. Live location no
-        // longer rides on the Booking: it is a tracking_sessions document
-        // owned by the same uid (G6).
+        // touch the identity the Booking was created with. No location key is
+        // legitimate on a Booking either: live tracking was removed entirely
+        // (ADR-0009), so a position written here is refused like any other
+        // unknown key.
         || (isSignedIn()
           && resource.data.get('uid', '') == request.auth.uid
           // Forward or out, never backwards: a Guest may take their own Booking
@@ -199,12 +247,47 @@ service cloud.firestore {
                  && request.resource.data.status in ['Reserved', 'Cancelled']))
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'kyc_status', 'kyc_id_url', 'kyc_receipt_url', 'kyc_reject_reason',
-                      'payment_plan', 'payment_status', 'payment_proof_url',
+                      'payment_plan', 'payment_status', 'payment_proof_url', 'payment_reject_reason',
                       'amount_claimed', 'stay_total', 'amount_due', 'security_deposit',
                       'balance_due', 'cancellation_reason', 'hold_expires_at',
+                      'refund_status', 'refund_total', 'refund_breakdown',
                       'policy_version', 'policy_effective_date',
                       'payment_reference', 'ocr_reference', 'ocr_amount',
-                      'terms_version', 'terms_accepted_at']));
+                      'terms_version', 'terms_accepted_at'])
+          // Money and identity move in one direction only, and only into the
+          // Guest's own words: `unpaid` -> `pending` by sending a proof,
+          // `required` -> `submitted` by sending an ID. `verified`, `approved`
+          // and `rejected` are the Admin's — a Guest may not claim them, and may
+          // not un-do one the Admin already wrote (a verified Booking cannot be
+          // pushed back to `pending` to submit a different proof).
+          && (request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'pending']
+              || request.resource.data.get('payment_status', '') == resource.data.get('payment_status', ''))
+          && (request.resource.data.get('kyc_status', 'required') in ['required', 'submitted']
+              || request.resource.data.get('kyc_status', '') == resource.data.get('kyc_status', ''))
+          // The Admin's notes are the Admin's words. A Guest may clear one only
+          // by attaching a fresh document in the same write — the resubmit loop
+          // — and can never write a note of their own.
+          && (request.resource.data.get('kyc_reject_reason', '') == resource.data.get('kyc_reject_reason', '')
+              || (request.resource.data.get('kyc_reject_reason', '') == null
+                  && request.resource.data.get('kyc_id_url', '') != resource.data.get('kyc_id_url', '')))
+          && (request.resource.data.get('payment_reject_reason', '') == resource.data.get('payment_reject_reason', '')
+              || (request.resource.data.get('payment_reject_reason', '') == null
+                  && request.resource.data.get('payment_proof_url', '') != resource.data.get('payment_proof_url', '')))
+          // A Guest who withdraws a paid Reservation records what the published
+          // policy says comes back (the settlement is computed once, in
+          // `src/lib/booking/money.ts` / `booking_lifecycle.dart`, and reaches
+          // the database as a patch). What a Guest may *not* do is invent money:
+          // the refund can never exceed the amount the Admin actually verified,
+          // the breakdown has to agree with the total, and `refunded` — the fact
+          // that money went back — is the Admin's to record.
+          && request.resource.data.get('refund_status', resource.data.get('refund_status', 'none')) in ['none', 'initiated']
+          && request.resource.data.get('refund_total', 0) is number
+          && request.resource.data.get('refund_total', 0) >= 0
+          && request.resource.data.get('refund_total', 0)
+               <= request.resource.data.get('amount_verified', resource.data.get('amount_verified', 0))
+          && request.resource.data.get('refund_breakdown', {}).get('refundTotal', request.resource.data.get('refund_total', 0))
+               == request.resource.data.get('refund_total', 0))
+      );
 
       allow delete: if isAdmin();
 
@@ -218,16 +301,27 @@ service cloud.firestore {
         allow create: if request.resource.data.keys().hasAll(
             ['booking_id', 'action', 'from_status', 'to_status', 'actor', 'actor_id', 'at'])
           && request.resource.data.booking_id == bookingId
-          // An entry has to be written in the name of whoever is writing it. An
-          // audit log that lets a Guest sign the Admin's name to an approval is
-          // worse than no log at all.
-          && (request.resource.data.actor == role()
+          // An entry has to be written in the name of whoever is writing it —
+          // both the role *and* the uid. An audit log that lets a Guest file an
+          // entry naming another Guest, or sign the Admin's name to an approval,
+          // is worse than no log at all.
+          && request.resource.data.actor_id != ''
+          && ((request.resource.data.actor == 'guest'
+               && request.resource.data.actor_id == request.auth.uid)
+              // An Admin-signed entry names the Admin writing it.
+              || (request.resource.data.actor == 'admin' && isAdmin()
+                  && request.resource.data.actor_id == request.auth.uid)
               // A Date hold running out is the system's doing, recorded by the
-              // Admin app's screen that saw it (ADR-0002).
-              || (request.resource.data.actor == 'system' && isAdmin())
-              // The public inquiry path: no identity at all, so the only entry it
-              // can write is a Guest's own submission.
-              || (!isSignedIn() && request.resource.data.actor == 'guest'));
+              // Admin app's screen that saw it (ADR-0002) — the one entry that
+              // belongs to nobody.
+              || (request.resource.data.actor == 'system' && isAdmin()
+                  && request.resource.data.actor_id == 'system')
+              // The public inquiry path: a Booking made without any identity
+              // (Anonymous sign-in disabled). There is nobody to impersonate
+              // there, so the only entry it may write is the submission itself.
+              || (!isSignedIn()
+                  && request.resource.data.actor == 'guest'
+                  && request.resource.data.action == 'Submit'));
         allow read: if isOwnDoc() || isAdmin();
         allow update, delete: if false;
       }
@@ -269,68 +363,116 @@ service cloud.firestore {
     // Guest live-location sessions — one document per Booking (doc id = the
     // booking id), written by the traveller's own device: the web /track share
     // button and the Flutter one-tap pickup.
-    // Shape: {bookingId, uid, tracking_consent_at, latitude, longitude,
-    //   currentArea, distanceRemainingKm, estimatedMinutesRemaining,
-    //   isNearResort, hasArrived, lastUpdated}.
-    // G6: the Share click is the consent. It lands in the same write as the
-    // first ping, so a session without a consent cannot exist, and neither the
-    // consent nor the identity may be rewritten afterwards.
-    // - CREATE: the traveller only, with the shape.
-    // - READ: the Admin for the radar, and the traveller's own session.
-    // - UPDATE: the Admin, or the traveller on their own session, touching
-    //   nothing but position and the derived fields.
-    // - DELETE: the Admin, or the traveller — deleting one's own session IS
-    //   stopping the share.
-    // Readers treat a session whose lastUpdated is older than 30 days as
-    // nonexistent; there is no backend worker to purge, so the Admin's delete is
-    // the physical erasure (G6).
+    // REMOVED (ADR-0009): the live-location module was withdrawn — no client
+    // records, reads or displays a Guest position any more. The collection stays
+    // closed rather than dropped so a document left over from the retired
+    // feature can be cleared, and so a stale build cannot write here by
+    // accident:
+    // - READ / CREATE / UPDATE: refused to every caller, the Admin included.
+    // - DELETE: the Admin only, so an orphaned session can be erased — which is
+    //   the physical erasure the module's retention rule used to describe.
+    // Door events are logged in access_logs; a position never belongs there.
     match /tracking_sessions/{sessionId} {
       allow read, create, update: if false;
       allow delete: if isAdmin();
     }
 
+    // The reference catalogue the Admin's verification checks a proof against.
+    // An entry that has been used is evidence — which reference paid for which
+    // stay — so it can be voided but not rewritten or deleted, or the same
+    // reference could be quietly re-used for a second Booking.
     match /payment_references/{refId} {
       allow read: if isAdmin();
-      allow write: if isAdmin()
+      allow create: if isAdmin()
         && request.resource.data.keys().hasAll(['reference', 'amount', 'status'])
         && request.resource.data.status in ['available', 'used', 'void'];
+      allow update: if isAdmin()
+        && request.resource.data.keys().hasAll(['reference', 'amount', 'status'])
+        && request.resource.data.status in ['available', 'used', 'void']
+        && request.resource.data.reference == resource.data.reference
+        && request.resource.data.amount == resource.data.amount;
+      allow delete: if isAdmin() && resource.data.get('status', '') != 'used';
+    }
+
+    // A conversation belongs to exactly one Guest, and only that Guest (or the
+    // Admin) can reach it. Knowing a conversation id is not a membership: the
+    // rule reads the conversation's own `guest_uid` and compares it with the
+    // caller, and the Admin is the allowlist/Profile role, nothing weaker.
+    function conversationDoc(convoId) {
+      return /databases/$(database)/documents/conversations/$(convoId);
+    }
+
+    function isConversationMember(convoId) {
+      return isSignedIn()
+        && exists(conversationDoc(convoId))
+        && get(conversationDoc(convoId)).data.get('guest_uid', '') == request.auth.uid;
     }
 
     match /conversations/{convoId} {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['guest_uid', 'category', 'created_at', 'updated_at'])
         && request.resource.data.guest_uid == request.auth.uid;
-      allow read: if isAdmin()
-        || (isSignedIn() && resource.data.get('guest_uid', '') == request.auth.uid);
-      allow update: if isAdmin()
-        || (isSignedIn() && resource.data.get('guest_uid', '') == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['updated_at', 'last_message', 'unread_admin', 'unread_guest']));
+      allow read: if isAdmin() || isConversationMember(convoId);
+      // Neither side may re-point a conversation at a different Guest: that
+      // would hand one Guest's history to another.
+      allow update: if request.resource.data.get('guest_uid', '') == resource.data.get('guest_uid', '')
+        && (isAdmin()
+            || (isConversationMember(convoId)
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['updated_at', 'last_message', 'unread_admin', 'unread_guest'])));
       allow delete: if isAdmin();
 
       match /messages/{messageId} {
-        allow create: if isSignedIn()
-          && request.resource.data.keys().hasAll(['sender_uid', 'sender_role', 'text', 'created_at'])
+        // - CREATE: a member of *this* conversation, signing their own uid. A
+        //   stranger who learns the conversation id cannot post into it, and
+        //   nobody can post as somebody else. The role label has to match what
+        //   the writer actually is, so a Guest cannot mark their message as the
+        //   Admin's.
+        // - READ: the Admin, and the Guest whose conversation it is.
+        // - UPDATE/DELETE: nobody. Chat is a record, not a canvas.
+        //
+        // The two branches are written out separately, deliberately: a Guest's
+        // branch never reads the Admin's token claim, so a Guest is judged on the
+        // conversation's own `guest_uid` alone and the rule does not depend on
+        // how a missing claim behaves.
+        allow create: if request.resource.data.keys().hasAll(['sender_uid', 'sender_role', 'text', 'created_at'])
           && request.resource.data.sender_uid == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() < 2001;
-        allow read: if isAdmin()
-          || (isSignedIn() && get(/databases/$(database)/documents/conversations/$(convoId)).data.get('guest_uid', '') == request.auth.uid);
+          && request.resource.data.text.size() < 2001
+          && ((request.resource.data.sender_role == 'guest' && isConversationMember(convoId))
+              || (request.resource.data.sender_role == 'admin' && isAdmin()));
+        allow read: if isAdmin() || isConversationMember(convoId);
         allow update, delete: if false;
       }
     }
 
+    // One Review per stay, and only the Guest who stayed may write it. The
+    // document id *is* the Booking id, so the rule can read the Booking the
+    // Review claims to be about and check all three things the app checked until
+    // now: it is that Guest's Booking, the stay is over, and no second Review
+    // can be filed for it (the id already exists).
     match /reviews/{reviewId} {
+      function bookingReviewed() {
+        return /databases/$(database)/documents/bookings/$(reviewId);
+      }
+
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['booking_id', 'uid', 'stars', 'created_at'])
+        && request.resource.data.booking_id == reviewId
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.stars is int
         && request.resource.data.stars >= 1
-        && request.resource.data.stars <= 5;
+        && request.resource.data.stars <= 5
+        && exists(bookingReviewed())
+        && get(bookingReviewed()).data.get('uid', '') == request.auth.uid
+        && get(bookingReviewed()).data.get('status', '') in ['Checked-Out', 'Completed'];
       allow read: if isAdmin()
         || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
-      allow update, delete: if isAdmin();
+      // A Review is a Guest's words about their own stay: the Admin may remove
+      // one (a slur is not a review), but not rewrite it.
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
     // Rooms + guest CRM (operations reference data, seeded by the Admin).

@@ -27,7 +27,7 @@ export type Booking = BookingState & {
   created_at: string // ISO
   uid?: string
   source?: string
-  // Live location tracking was retired. Access logs remain on access_logs.
+  // Live location tracking was retired (ADR-0009). Access logs remain on access_logs.
 }
 
 const KEY = 'hdl:bookings'

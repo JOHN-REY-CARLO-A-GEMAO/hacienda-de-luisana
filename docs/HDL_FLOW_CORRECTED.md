@@ -1,5 +1,5 @@
 # PROPERTY MANAGEMENT, SMART LOCK (RFID + MOBILE KEY / ESP32) & TRACKING SYSTEM
-### Corrected Flow Chart Spec v3.0 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling; v2.1 added the implementation status (§12); **v3.0 collapses the actors to two roles — Customer (Guest) on the website, Admin on the mobile app — and removes Staff and Super Admin (ADR-0007)**
+### Corrected Flow Chart Spec v3.0 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling; v2.1 added the implementation status (§12); **v3.0 collapses the actors to two roles — Customer (Guest) on the website, Admin on the mobile app — and removes Staff and Super Admin (ADR-0007); v3.1 removes Guest Location Tracking entirely (§4, ADR-0009)**
 
 > Paste-ready textual spec, same structure as the original export.
 > **Global Conventions (render as a legend/annotation box):**
@@ -90,21 +90,27 @@
 
 ---
 
-## 4. Guest Location Tracking Module Flow *(consent-gated)*
+## 4. Guest Location Tracking — **REMOVED** (ADR-0009)
 
-1. Decision: Guest consented to Location Tracking? *(consent screen with Data Privacy notice, shown at booking/check-in)*
-   - [No] → Tracking = **DISABLED** (RFID/access logs only) → skip to step 7
-   - [Yes] → Tracking = ENABLED (during stay only)
-2. Customer Stay → Get Guest Location
-3. Input / Record: Province, City/Municipality, GPS, Accuracy, Date/Time
-4. Save Location History (Central DB, encrypted at rest)
-5. Admin views the authorized location on the mobile app's Radar (Admin-only; read by rule)
-6. Decision: Guest Still Staying?
-   - [Yes] → Loop back to Get Guest Location
-   - [No] → Proceed to CHECK-OUT
-7. Stop Location Tracking → Save Final Location
-8. **Retention rule (as built, §12):** the session forgets itself — a session not updated for 30 days reads as nonexistent (read-time expiry, no backend worker), and the Guest's own delete (stop sharing) is the physical erasure (G6)
-9. Disable Guest Credential (RFID + Mobile Key)
+This module no longer exists. No application records, stores, or displays a Guest's
+position, and `tracking_sessions` is closed to every read and write (see
+`firestore.rules` and `docs/DATA_STORES.md`). What remains of the module's original
+security intent is the **Access log** — door events only, never position:
+
+1. Decision: Guest consented to location sharing? — **withdrawn with the module**; no
+   consent field is collected because nothing is collected.
+2. Customer Stay → **no location is read, sent or stored.**
+3. Input / Record (Province, City, GPS, Accuracy, Date/Time) → **removed.**
+4. Save Location History → **removed**; `tracking_sessions` create is denied by rule.
+5. Admin view of a Guest location → **removed**; `tracking_sessions` read is denied by rule.
+6. Decision: Guest Still Staying? → no longer part of any flow.
+7. Stop Location Tracking → **removed.**
+8. Retention: nothing to retain; the collection is empty and closed, so every path
+   through this module resolves to a denial in the rules and in the offline suite
+   (`test/rules/firestore-rules.test.ts`, Tracker suite).
+9. Disable Guest Credential (RFID + Mobile Key) — **unchanged and still built**: a
+   revoked Credential is refused at the door and the refusal is written to the
+   Access log. See §5.
 
 ---
 
@@ -137,7 +143,7 @@
    - Upload government ID + receipt (KYC) → **KYC SUBMITTED**
    - After **APPROVED**: choose Payment plan (50 % down payment or full, plus refundable Security deposit) from the Published rates → **PAYMENT PENDING**; upload Payment proof
    - Withdraw own Booking (PENDING / KYC SUBMITTED / APPROVED / PAYMENT PENDING / RESERVED → **CANCELLED**)
-   - Share live location during the stay (consent = the share click; G6)
+   - Chat with the Admin, and leave a Review after the stay
 4. (Restriction: the Customer cannot approve, verify, refund, read other Bookings, or reach any management screen. `/admin` and `/app` on the website only point at the mobile app.)
 
 ---
@@ -152,7 +158,6 @@
    - **Stays:** CHECK-IN → STAYING → CHECKED-OUT → COMPLETED
    - **Rates & Cancellation Policy:** publish nightly rates, Security deposit, down-payment %, refund tiers (`site_config/rates`) — the website quotes from these
    - **Credentials / ESP32:** revoke a Credential; read the Access log (RFID / Mobile Key events, denials, lockouts)
-   - **Guest Location:** Radar of consented sessions, distance and ETA
    - **Properties:** availability status and pricing (Rooms)
    - **Guest CRM & History**, **Analytics & Reports**
 3. All operations write the Booking patch and the Activity Log entry in one write → Central Database (G7).
@@ -206,7 +211,6 @@ The Central Database stores and interconnects:
 - Properties & Availability, **Date Holds (TTL)**, **Published Rates & Cancellation Policy** (`site_config/rates`)
 - Bookings, Payments, Payment Proofs, **Refunds & Security Deposits**, Booking Tracking
 - Credentials (RFID Cards/Tags, UIDs, Mobile Key Tokens), Credential Status, ESP32 Controls, Access Logs, **Offline Log Buffer**, **Lockout/Alert Events**
-- Guest Locations & Location History, **Consent Records**, **Retention/Purge Log**
 - Damage Reports, Photo/Video Evidence, Maintenance, Cleaning, Inspections
 - System Activity Logs (per-Booking `activity` sub-collection), Notifications, Reports.
 
@@ -220,7 +224,7 @@ Where each convention lives in code, and where the build is deliberately short o
 - **G2 — the system enforces availability.** Overlap is re-checked at submit (the website's create path, against the stored Bookings) and at approval in the Admin app (`applyAdminAction` → `findDateConflicts` against the latest Bookings snapshot, committed statuses only — ADR-0003). ADR-0006's transactional Approve describes the web protocol; moving the app's approval write into a transaction is the open follow-up.
 - **G3 — money last.** ADR-0001: the Admin approves before any money moves, `VerifyPayment` (app) refuses less than what was asked, and `settleRefund` (`src/lib/booking/money.ts` and its Dart port) is the only path money leaves.
 - **G4 — 24h TTL.** The hold is stored data (`hold_expires_at`), and expiry is a read-time rule (ADR-0002) — no timer, no worker: a Booking that sat 24 hours reads as Expired, and Expired holds no dates. The two stages that expire are the two pre-approval ones, Pending and KYC Submitted; once the Admin approves, the hold becomes firm. The Admin app records a run-out hold as `Expired` in the system's name.
-- **G6 — consent-based tracking.** Live location no longer rides on the Booking: it is the `tracking_sessions/{bookingId}` session, created by the traveller's own device, with `tracking_consent_at` written in the same write as the first ping (the Share click is the consent — a session without a consent cannot exist). Retention as built: 30 days from the last update, at read time; the Guest's own delete is the physical erasure. The Admin reads sessions on the app's Radar.
+- **G6 — no location collection (superseded by ADR-0009).** The consent gate was built, then the module was withdrawn: no client records a Guest position, `tracking_sessions` denies create / read / update to every caller, and nothing in either app displays one. The retention question is therefore moot — there is no personal location data to expire. What the module was there to protect is now covered by the **Access log** (`access_logs`: door events, granted / denied, with timestamps and the credential used) and by the per-Booking `activity` trail.
 - **G7 — every state change is logged.** Same contract as G1: `applyAction` / `applyAdminAction` owe their log entries, and `firestore.rules` keeps `bookings/{id}/activity` append-only, written in the writer's own role (`guest`, `admin`, or `system` written by the Admin app).
 - **G8 — two roles, two apps (v3.0).** `firestore.rules` knows `guest` and `admin` only (`role()`, `isAdmin()`); the website's `src/lib/auth` has the same two roles and no management pages (`/admin/*`, `/app/*` signpost to the app); the mobile app's `AuthStore.isAdmin` is the only gate and it has no Guest screens. See ADR-0007.
 - **Payment plans and the policy stamp (v2.1).** The Admin publishes figures from the app's Rates screen — the `site_config/rates` document, `FIREBASE_SETUP.md` step 6 — and `ChoosePaymentPlan` (website) quotes the stay from them (or from the recorded total, when the quote is a phone call rather than a card), stamping the policy version and effective date on the Booking at choice time. Republishing changes the terms of future choices only, never of a stay already promised; a Booking stamped with nothing refunds nothing.
@@ -236,7 +240,7 @@ Where each convention lives in code, and where the build is deliberately short o
 | 2 | **No dangling ENDs** — every terminal sets final status + releases dates + notifies + logs (G1) | all END paths |
 | 3 | **Double-booking race closed** — system overlap re-check at approval + 24h TTL auto-expiry (G2, G4) | §2 steps 3, 4, 6a, 12 |
 | 4 | **KYC/ID verification added** to the customer flow (was only a DB entity) | §2 steps 5–6b |
-| 5 | **Tracking consent + retention/purge** — Data Privacy compliant (G6) | §4; §11 |
+| 5 | **Tracking consent + retention/purge** — Data Privacy compliant (G6) — *reversed by ADR-0009: the module was removed rather than shipped* | §4; §11 |
 | 6 | **Mobile Key as co-credential** with RFID, one pipeline (G5); offline mode, failure lockout, alerting | §3 |
 | 7 | **CHECKED-IN vs STAYING defined** — trigger = first successful unlock | §3 step 6; §10 |
 | 8 | **Security deposit + damage settlement** wired into the flow | §2 step 7; §5 step 5 |

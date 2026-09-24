@@ -85,7 +85,6 @@ class BookingModel {
   final int totalNights;
   final double totalAmount;
   final DateTime createdAt;
-  final String? trackingSessionId;
 
   /// The exact lifecycle status as stored (canonical spelling).
   final String rawStatus;
@@ -131,7 +130,6 @@ class BookingModel {
     required this.totalNights,
     required this.totalAmount,
     required this.createdAt,
-    this.trackingSessionId,
     String? rawStatus,
     this.refId,
     this.uid,
@@ -192,8 +190,6 @@ class BookingModel {
         'special_requests': raw['special_requests'] ?? specialRequests,
         'total_amount': raw['total_amount'] ?? totalAmount,
         'created_at': raw['created_at'] ?? createdAt.toIso8601String(),
-        'tracking_session_id':
-            raw['tracking_session_id'] ?? trackingSessionId,
         if (!raw.containsKey('hold_expires_at') && holdExpiresAt != null)
           'hold_expires_at': holdExpiresAt!.toUtc().toIso8601String(),
       };
@@ -301,7 +297,6 @@ class BookingModel {
       createdAt: json['createdAt'] != null
           ? _parseDate(json['createdAt'], now)
           : _parseDate(json['created_at'], now),
-      trackingSessionId: json['trackingSessionId'] ?? json['tracking_session_id'],
       refId: _str(json['ref_id']),
       uid: _str(json['uid']),
       source: _str(json['source']),
@@ -347,7 +342,6 @@ class BookingModel {
       'totalNights': totalNights,
       'totalAmount': totalAmount,
       'createdAt': createdAt.toIso8601String(),
-      'trackingSessionId': trackingSessionId,
     };
   }
 
@@ -365,7 +359,6 @@ class BookingModel {
     int? totalNights,
     double? totalAmount,
     DateTime? createdAt,
-    String? trackingSessionId,
     String? rawStatus,
     Map<String, dynamic>? raw,
   }) {
@@ -383,7 +376,6 @@ class BookingModel {
       totalNights: totalNights ?? this.totalNights,
       totalAmount: totalAmount ?? this.totalAmount,
       createdAt: createdAt ?? this.createdAt,
-      trackingSessionId: trackingSessionId ?? this.trackingSessionId,
       rawStatus: rawStatus ??
           (status != null && status != this.status ? null : this.rawStatus),
       refId: refId,

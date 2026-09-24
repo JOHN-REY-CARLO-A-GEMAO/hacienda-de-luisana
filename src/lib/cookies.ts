@@ -30,6 +30,6 @@ export function clearCookie(name: string) {
 }
 
 export const COOKIE = {
+  /** The tour was finished or dismissed; the only cookie the website sets. */
   tutorialDone: 'hdl_tutorial_done',
-  prefs: 'hdl_ui_prefs',
 }

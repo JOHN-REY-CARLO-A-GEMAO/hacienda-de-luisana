@@ -29,11 +29,11 @@ _Avoid_: Scope, entitlement, access level
 ### Applications
 
 **Website**:
-The Guest's application (`src/`): availability, the Booking form, KYC and Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, and live location sharing. It has no management screens; `/admin` and `/app` only point at the Admin app.
+The Guest's application (`src/`): availability, the Booking form, KYC and Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app.
 _Avoid_: Portal, dashboard, admin site
 
 **Admin app**:
-The Admin's application (`lib/`, Flutter, Android): every management function of the system — Booking review and lifecycle, KYC, payments, refunds, Published rates, stays, arrival radar, Access log, rooms, CRM, analytics.
+The Admin's application (`lib/`, Flutter, Android): every management function of the system — Booking review and lifecycle, KYC, payments, refunds, Published rates, stays, the chat inbox, Access log, rooms, CRM, analytics.
 _Avoid_: Owner app, guest app, client app, staff app
 
 ### Stay
@@ -117,14 +117,6 @@ _Avoid_: User account, login, session
 The append-only audit record of every state change in the system, with a timestamp and the actor who made it.
 _Avoid_: Audit trail, system log, history (per-Booking history is a view over this log)
 
-**Tracking consent**:
-A Guest's explicit, recorded permission for the system to record their Guest location during a stay. No consent means access logs only. The share click is the consent: it is recorded (`tracking_consent_at`) in the same write as the first location ping, so a location session without a consent cannot exist.
-_Avoid_: Geolocation permission, opt-in
-
-**Tracking session**:
-The document at `tracking_sessions/{bookingId}` — one per Booking, created by the traveller's own device, holding the live Guest location of a consented stay. It carries the consent (Tracking consent); its self-deletion is how the Guest stops sharing, and its 30-day read-time expiry is how the location is forgotten.
-_Avoid_: Breadcrumb store, location log (the Access log is about doors, not position)
-
-**Guest location**:
-A province / city / GPS reading recorded during a consented stay. It lives in the stay's Tracking session, never on the Booking.
-_Avoid_: Breadcrumb, ping, route
+**Live location (removed)**:
+Location tracking was retired (ADR-0009). `tracking_sessions` is closed to every writer and reader, no application records or shows a Guest's position, and the vocabulary that used to describe it — Tracking consent, Tracking session, Guest location, arrival radar — has no referent in this repository. The Access log remains: it is about doors, not position.
+_Avoid_: Breadcrumb, ping, route, radar, geofence

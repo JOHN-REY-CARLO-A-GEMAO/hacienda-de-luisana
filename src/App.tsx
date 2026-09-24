@@ -49,7 +49,7 @@ function WebsiteLayout() {
 
 /**
  * The Guest website (ADR-0007). Every route here is the Guest's: the public
- * pages, booking, live location sharing, the Guest's own account. The Admin's
+ * pages, booking, the Guest's own account, chat and reviews. The Admin's
  * work — reviewing Bookings, KYC, payments, stays, the smart lock, analytics —
  * lives in the Flutter mobile app under `lib/`, so the old `/admin` and `/app`
  * addresses answer with a pointer to it rather than a dashboard.

@@ -22,7 +22,7 @@ import {
   type DocumentData,
   type QuerySnapshot,
 } from 'firebase/firestore'
-import { db, isFirebaseConfigured } from './firebase'
+import { auth, db, isFirebaseConfigured } from './firebase'
 import { activityLogStorage, bookingsDB, type Booking } from './storage'
 import { ACCOMMODATIONS } from '../config/site'
 import {
@@ -115,7 +115,7 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     kyc_id_url: data.kyc_id_url,
     kyc_receipt_url: data.kyc_receipt_url,
     kyc_reject_reason: data.kyc_reject_reason,
-    // Live location keys on old documents are ignored. Tracking is retired.
+    // Legacy live-location keys on old documents are ignored (ADR-0009).
   }
 }
 
@@ -150,12 +150,13 @@ export const activityLogDB = {
       activityLogStorage.append(entries)
       return
     }
+    const signed = signActivityEntries(entries, auth?.currentUser?.uid)
     try {
       // Grouped per Booking, because the sequence continues from that Booking's
       // last entry. The id is the sequence, so two appends that both think they
       // are next collide instead of silently reordering the log.
       const byBooking = new Map<string, ActivityLogEntry[]>()
-      for (const entry of entries) {
+      for (const entry of signed) {
         byBooking.set(entry.booking_id, [...(byBooking.get(entry.booking_id) ?? []), entry])
       }
       await Promise.all(
@@ -179,6 +180,29 @@ export const activityLogDB = {
       activityLogStorage.append(entries)
     }
   },
+}
+
+/**
+ * Sign a batch of Activity entries with the identity that is actually connected.
+ *
+ * `firestore.rules` refuses an entry whose `actor_id` is not the uid making the
+ * write — an append-only log that lets a writer name somebody else is no log at
+ * all — so an entry the caller attributed to a different uid (a Booking minted
+ * before ADR-0004 forced an identity, a `guest` placeholder) is refused by the
+ * database and drops out of the cloud log while the change it describes still
+ * lands. Signing it with the writer keeps the two facts together: the entry says
+ * who did write it. A `system` entry is the one that belongs to nobody — the
+ * Admin app's screen recording a Date hold running out (ADR-0002) — and is left
+ * exactly as it was written.
+ */
+export function signActivityEntries<T extends { actor: string; actor_id: string }>(
+  entries: readonly T[],
+  writerUid: string | null | undefined,
+): readonly T[] {
+  if (!writerUid) return entries
+  return entries.map((entry) =>
+    entry.actor !== 'system' && entry.actor_id !== writerUid ? { ...entry, actor_id: writerUid } : entry,
+  )
 }
 
 /**
@@ -372,13 +396,19 @@ export const cloudBookingsDB = {
    * a Guest from /book — and defaults to an unnamed Guest.
    */
   async add(input: Omit<Booking, 'id' | 'status' | 'created_at'>, actor?: Actor): Promise<Booking> {
-    const at = instantOf(actor ?? {})
+    // The submission entry is signed by the identity the Booking is being
+    // attached to. The Activity rule refuses an entry whose `actor_id` is not the
+    // writer's uid, and the Booking carries the uid the Guest was given when the
+    // form was opened (ADR-0004) — so the two are the same identity by
+    // construction, not by convention.
+    const submitter: Actor = actor ?? { actor: 'guest', actor_id: input.uid ?? 'guest' }
+    const at = instantOf(submitter)
     const holdExpiresAt = initialHoldExpiry(at)
     const withHold = { ...input, hold_expires_at: holdExpiresAt }
 
     if (!isCloud || !db) {
       const booking = bookingsDB.add(withHold)
-      activityLogStorage.append([submissionEntry(booking.id, actor ?? { actor: 'guest', actor_id: 'guest' }, at)])
+      activityLogStorage.append([submissionEntry(booking.id, submitter, at)])
       return booking
     }
     try {
@@ -388,7 +418,7 @@ export const cloudBookingsDB = {
         created_at: serverTimestamp(),
       }
       const ref = await addDoc(collection(db, COLLECTION), payload)
-      await activityLogDB.append([submissionEntry(ref.id, actor ?? { actor: 'guest', actor_id: 'guest' }, at)])
+      await activityLogDB.append([submissionEntry(ref.id, submitter, at)])
       // Return optimistic booking
       return {
         id: ref.id,
@@ -399,7 +429,7 @@ export const cloudBookingsDB = {
     } catch (e) {
       console.warn('[Firestore] add() failed, falling back to local', e)
       const booking = bookingsDB.add(withHold)
-      activityLogStorage.append([submissionEntry(booking.id, actor ?? { actor: 'guest', actor_id: 'guest' }, at)])
+      activityLogStorage.append([submissionEntry(booking.id, submitter, at)])
       return booking
     }
   },

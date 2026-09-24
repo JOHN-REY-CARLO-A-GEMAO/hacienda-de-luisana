@@ -1,9 +1,7 @@
 import '../models/booking_model.dart';
-import '../models/guest_location_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
-import '../core/constants/app_constants.dart';
 
 class MockDataService {
   static List<BookingModel> get initialBookings {
@@ -33,7 +31,6 @@ class MockDataService {
         totalNights: 2,
         totalAmount: 32000.0,
         createdAt: now.subtract(const Duration(hours: 18)),
-        trackingSessionId: 'sess-001',
         raw: const {'accommodation': 'main-house'},
       ),
       BookingModel(
@@ -55,7 +52,6 @@ class MockDataService {
         totalNights: 3,
         totalAmount: 24000.0,
         createdAt: now.subtract(const Duration(minutes: 45)),
-        trackingSessionId: 'sess-002',
         raw: const {'accommodation': 'main-house'},
       ),
       BookingModel(
@@ -82,7 +78,6 @@ class MockDataService {
         totalNights: 3,
         totalAmount: 48000.0,
         createdAt: now.subtract(const Duration(days: 3)),
-        trackingSessionId: 'sess-003',
         raw: const {'accommodation': 'main-house'},
       ),
       BookingModel(
@@ -129,39 +124,6 @@ class MockDataService {
         totalAmount: 18000.0,
         createdAt: now.subtract(const Duration(days: 7)),
         raw: const {'accommodation': 'house-a-camping'},
-      ),
-    ];
-  }
-
-  static List<GuestLocationModel> get initialLocations {
-    final now = DateTime.now();
-
-    return [
-      GuestLocationModel(
-        sessionId: 'sess-001',
-        bookingId: 'bk-001',
-        guestName: 'Juan Dela Cruz',
-        latitude: 14.1850,
-        longitude: 121.5150,
-        currentArea: 'Luisiana Town Proper (Approaching)',
-        distanceRemainingKm: 2.4,
-        estimatedMinutesRemaining: 6,
-        isNearResort: true,
-        hasArrived: false,
-        lastUpdated: now.subtract(const Duration(minutes: 2)),
-      ),
-      GuestLocationModel(
-        sessionId: 'sess-002',
-        bookingId: 'bk-002',
-        guestName: 'Maria Clarissa Reyes',
-        latitude: 14.2150,
-        longitude: 121.5050,
-        currentArea: 'Cavinti - Luisiana Road',
-        distanceRemainingKm: 8.2,
-        estimatedMinutesRemaining: 16,
-        isNearResort: false,
-        hasArrived: false,
-        lastUpdated: now.subtract(const Duration(minutes: 12)),
       ),
     ];
   }

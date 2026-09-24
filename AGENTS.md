@@ -2,8 +2,8 @@
 
 Two roles, two apps, one Firebase project (ADR-0007):
 
-- **Guest website** (`src/`) — React + Vite + TS + Tailwind + Firebase. Guest-only: landing page, `/book`, `/account` (own Bookings, KYC + payment proof upload, payment plan), `/track` live location sharing. No management screens.
-- **Admin mobile app** (`lib/`) — Flutter. Admin-only: Booking review and lifecycle, KYC and payment verification, refunds, published rates, stays, arrival radar, smart-lock Access log, rooms, CRM, analytics.
+- **Guest website** (`src/`) — React + Vite + TS + Tailwind + Firebase. Guest-only: landing page, `/book`, `/account` (own Bookings, KYC + payment proof upload, payment plan), `/messages` (chat with the Admin). No management screens.
+- **Admin mobile app** (`lib/`) — Flutter. Admin-only: Booking review and lifecycle, KYC and payment verification, refunds, published rates, stays, chat inbox, smart-lock Access log, rooms, CRM, analytics.
 
 There is no Staff role and no Host role. Roles are `guest` | `admin`.
 

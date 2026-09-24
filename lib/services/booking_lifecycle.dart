@@ -887,6 +887,12 @@ ActionResult applyAdminAction(
       }
       patch['payment_status'] = 'verified';
       patch['amount_verified'] = verified;
+      // The marker that makes the claim checkable, and the one the rules
+      // require of a `verified` document: an instant, and the verifier's own
+      // uid (firestore.rules `hasVerificationMarker()`). The website's
+      // `applyAction` writes the same four fields — the two must not drift.
+      patch['payment_verified_at'] = at.toIso8601String();
+      patch['payment_verified_by'] = actor.id;
       break;
 
     case AdminAction.rejectPaymentProof:
