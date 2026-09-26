@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { SceneHeader } from '../components/Scene'
 import { ACCOMMODATIONS, FEES, LISTINGS, type Fee } from '../config/site'
 import { ArrowRight, Check, Sparkle } from '../lib/icons'
 import { usePublishedRates } from '../hooks/usePublishedRates'
@@ -35,16 +36,19 @@ export function Rates() {
   return (
     <section id="rates" className="py-24 lg:py-36 bg-cream-50">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 reveal">
-          <div className="max-w-2xl">
-            <div className="eyebrow">Rates &amp; Fees</div>
-            <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
-              What a Stay
-              <br />
-              <span className="italic font-light">Costs</span>
-            </h2>
-          </div>
-          <p className="max-w-md text-forest-800/80 leading-relaxed">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
+          <SceneHeader
+            index="05"
+            eyebrow="Rates &amp; What's Included"
+            title={
+              <>
+                What a Stay
+                <br />
+                <span className="italic font-light">Costs</span>
+              </>
+            }
+          />
+          <p className="reveal max-w-md text-forest-800/80 leading-relaxed lg:pb-2">
             No surprises: the nightly rate, what is included, the extras, and the refundable deposit — all
             in one place. The Hacienda confirms the final quote with you before anything is reserved.
           </p>

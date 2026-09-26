@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
 import { ACCOMMODATIONS, AMENITIES, type Accommodation } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
+import { TiltCard } from '../components/TiltCard'
+import { SceneHeader } from '../components/Scene'
 import { AMENITY_ICONS, ArrowRight, Bed, House, Users } from '../lib/icons'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { ratesForAccommodation, type PublishedRates } from '../lib/booking'
@@ -38,31 +40,31 @@ export function Accommodations() {
   return (
     <section id="stay" className="py-24 lg:py-36 bg-gradient-to-b from-cream-50 to-cream-100/50">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="max-w-2xl reveal">
-          <div className="eyebrow">Accommodations</div>
-          <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
-            Stay Your Way
-          </h2>
-          <p className="mt-6 text-forest-800/80 leading-relaxed">
+        <SceneHeader index="03" eyebrow="Accommodations" title="Stay Your Way">
+          <p>
             Two ways to unwind at Hacienda de LuisAna — a private main house for the whole barkada,
             or a more intimate camping stay tucked into the countryside.
           </p>
-        </div>
+        </SceneHeader>
 
         <div className="mt-14 grid lg:grid-cols-2 gap-8 lg:gap-10">
           {ACCOMMODATIONS.filter((a) => a.active).map((a) => {
             const rate = displayedRate(a, published)
             return (
-              <article
-                key={a.id}
-                className="group reveal bg-white rounded-[28px] overflow-hidden border border-forest-900/5 shadow-card hover:shadow-soft transition-all duration-500 flex flex-col"
+              <div key={a.id} className="reveal">
+              <TiltCard
+                as="article"
+                className="group h-full bg-white rounded-[28px] overflow-hidden border border-forest-900/5 shadow-card hover:shadow-depth flex flex-col"
+                data-accommodation={a.id}
               >
-                <div className="relative overflow-hidden">
+                <div className="relative overflow-hidden bg-forest-100">
                   <SmartImage
                     src={a.images[0]}
                     alt={`${a.name} — ${a.shortName}`}
-                    className="h-72 lg:h-80 w-full object-cover transition-transform duration-[1400ms] ease-out-expo group-hover:scale-[1.04]"
+                    className="tilt-media h-72 lg:h-80 w-full object-cover"
                   />
+                  <div className="tilt-glare" aria-hidden="true" />
+                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-forest-950/35 to-transparent pointer-events-none" />
                   <div className="absolute top-4 left-4 flex gap-2">
                     <span className="rounded-full bg-cream-50/95 text-forest-900 text-[11px] uppercase tracking-eyebrow px-3 py-1.5 backdrop-blur">
                       {a.shortName}
@@ -157,7 +159,8 @@ export function Accommodations() {
                     </div>
                   </div>
                 </div>
-              </article>
+              </TiltCard>
+              </div>
             )
           })}
         </div>

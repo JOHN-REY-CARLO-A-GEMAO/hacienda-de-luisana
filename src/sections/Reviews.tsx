@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AIRBNB_RATING, REVIEWS, type Review } from '../config/site'
 import { Star, Sparkle, ArrowRight } from '../lib/icons'
+import { SceneHeader } from '../components/Scene'
 
 /** "2026-09-26" → "September 2026", for the "as of" footnote. */
 export function monthYear(iso: string): string {
@@ -18,22 +19,25 @@ export function Reviews() {
   return (
     <section id="reviews" className="py-24 lg:py-32 bg-cream-100/40">
       <div className="mx-auto max-w-6xl px-5 lg:px-8">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 reveal">
-          <div className="max-w-2xl">
-            <div className="eyebrow">Guest Experiences</div>
-            <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
-              Kind Words from
-              <br />
-              <span className="italic font-light">Our Guests</span>
-            </h2>
-          </div>
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
+          <SceneHeader
+            index="08"
+            eyebrow="Guest Experiences"
+            title={
+              <>
+                Kind Words from
+                <br />
+                <span className="italic font-light">Our Guests</span>
+              </>
+            }
+          />
 
           {/* Airbnb's own summary of the listing, dated so it is refreshed rather than assumed */}
           <a
             href={AIRBNB_RATING.url}
             target="_blank"
             rel="noreferrer"
-            className="group rounded-3xl bg-white border border-forest-900/5 shadow-card p-6 flex items-center gap-5 hover:shadow-soft transition"
+            className="reveal group rounded-3xl bg-white border border-forest-900/5 shadow-card p-6 flex items-center gap-5 hover:shadow-depth hover:-translate-y-0.5 transition"
             aria-label={`Rated ${AIRBNB_RATING.rating.toFixed(1)} out of 5 from ${AIRBNB_RATING.reviewCount} reviews on Airbnb — open the listing`}
           >
             <div className="text-center">
@@ -81,9 +85,10 @@ export function Reviews() {
           </div>
         ) : (
           <>
+            {/* Editorial layout: the most recent review runs large, the rest as cards */}
             <div className="mt-14 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {REVIEWS.map((r, i) => (
-                <ReviewCard key={`${r.name}-${r.date}`} review={r} delay={i * 40} />
+                <ReviewCard key={`${r.name}-${r.date}`} review={r} delay={i * 40} featured={i === 0} />
               ))}
             </div>
 
@@ -115,16 +120,24 @@ export function Reviews() {
 /** Verbatim reviews: long ones are clamped, never cut — the guest's words stay whole. */
 const CLAMP_AT = 320
 
-function ReviewCard({ review: r, delay }: { review: Review; delay: number }) {
+function ReviewCard({ review: r, delay, featured = false }: { review: Review; delay: number; featured?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const long = r.body.length > CLAMP_AT
   const paragraphs = r.body.split('\n\n')
 
   return (
     <article
-      className="reveal bg-white rounded-3xl p-8 border border-forest-900/5 shadow-card flex flex-col"
+      className={`reveal relative bg-white rounded-3xl border border-forest-900/5 shadow-card hover:shadow-depth hover:-translate-y-1 transition-all duration-700 ease-out-expo flex flex-col ${
+        featured ? 'md:col-span-2 p-8 lg:p-12 bg-gradient-to-br from-white to-cream-100/60' : 'p-8'
+      }`}
       style={{ transitionDelay: `${delay}ms` }}
+      data-featured={featured || undefined}
     >
+      {featured && (
+        <span className="pointer-events-none absolute right-8 -bottom-6 font-serif text-[140px] leading-none text-forest-900/[0.06] select-none" aria-hidden="true">
+          &rdquo;
+        </span>
+      )}
       <div className="flex items-center justify-between gap-3">
         <div className="flex gap-0.5 text-olive-400" aria-label={`${r.rating} out of 5 stars`}>
           {Array.from({ length: 5 }).map((_, s) => (
@@ -135,7 +148,9 @@ function ReviewCard({ review: r, delay }: { review: Review; delay: number }) {
       </div>
 
       <blockquote
-        className={`mt-4 text-forest-800/85 leading-relaxed space-y-3 ${long && !expanded ? 'line-clamp-6' : ''}`}
+        className={`mt-4 text-forest-800/85 space-y-3 ${featured ? 'font-serif text-xl lg:text-2xl leading-relaxed' : 'leading-relaxed'} ${
+          long && !expanded ? 'line-clamp-6' : ''
+        }`}
       >
         {paragraphs.map((p, i) => (
           <p key={i}>{i === 0 ? `“${p}` : p}{i === paragraphs.length - 1 ? '”' : ''}</p>

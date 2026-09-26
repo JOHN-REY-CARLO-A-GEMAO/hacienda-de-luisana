@@ -44,8 +44,12 @@ export function Gallery() {
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 reveal">
           <div>
-            <div className="eyebrow">Gallery</div>
-            <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
+            <div className="flex items-center gap-4">
+              <span className="scene-index text-forest-400" aria-hidden="true">04</span>
+              <span className="h-px w-8 bg-forest-900/15" aria-hidden="true" />
+              <div className="eyebrow">Gallery</div>
+            </div>
+            <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-5 text-forest-900">
               A Glimpse of the
               <br />
               <span className="italic font-light">Hacienda</span>
@@ -76,7 +80,7 @@ export function Gallery() {
             <button
               key={g.id}
               onClick={() => setOpenIdx(i)}
-              className="block w-full overflow-hidden rounded-2xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 aspect-[4/3] bg-white"
+              className="block w-full overflow-hidden rounded-2xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 aspect-[4/3] bg-white shadow-card lg:hover:shadow-depth lg:hover:-translate-y-1 transition-all duration-700 ease-out-expo"
               aria-label={`Open ${g.caption}`}
             >
               <SmartImage

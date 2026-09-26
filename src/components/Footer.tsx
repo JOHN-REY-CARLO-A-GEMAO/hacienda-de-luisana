@@ -4,7 +4,7 @@ import { Facebook, Instagram, Mail, Phone, MapPin } from '../lib/icons'
 
 export function Footer() {
   return (
-    <footer className="bg-forest-950 text-cream-100 pt-20 pb-10">
+    <footer className="relative bg-forest-950 text-cream-100 pt-20 pb-10 border-t border-cream-100/10">
       <div className="mx-auto max-w-7xl px-5 lg:px-8 grid gap-12 lg:grid-cols-4">
         <div className="lg:col-span-2 max-w-md">
           <div className="font-serif text-3xl mb-4">Hacienda de LuisAna</div>
@@ -36,6 +36,7 @@ export function Footer() {
             <li><a href="/#experience" className="hover:text-white">Experience</a></li>
             <li><a href="/#gallery" className="hover:text-white">Gallery</a></li>
             <li><a href="/#location" className="hover:text-white">Location</a></li>
+            <li><a href="/#reviews" className="hover:text-white">Reviews</a></li>
             <li><a href="/#house-rules" className="hover:text-white">House Rules</a></li>
             <li><a href="/#faqs" className="hover:text-white">FAQs</a></li>
             <li><Link to="/book" className="hover:text-white">Book Your Stay</Link></li>

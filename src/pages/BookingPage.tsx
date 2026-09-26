@@ -240,11 +240,21 @@ export function BookingPage() {
   }
 
   return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <div className="relative pt-28 pb-24 bg-cream-50 min-h-screen">
+      {/* Visual shell only — soft countryside wash behind the form; the form itself is untouched */}
+      <div
+        className="pointer-events-none absolute -top-32 right-[-10%] h-[560px] w-[560px] rounded-full opacity-70 blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgba(198,214,193,0.6), transparent 65%)' }}
+        aria-hidden="true"
+      />
+      <div className="relative mx-auto max-w-7xl px-5 lg:px-8">
         <div className="max-w-2xl">
-          <div className="eyebrow">Book Your Stay</div>
-          <h1 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
+          <div className="flex items-center gap-4">
+            <span className="scene-index text-forest-400" aria-hidden="true">09</span>
+            <span className="h-px w-8 bg-forest-900/15" aria-hidden="true" />
+            <div className="eyebrow">Book Your Stay</div>
+          </div>
+          <h1 className="display text-4xl sm:text-5xl lg:text-6xl mt-5 text-forest-900">
             Plan Your Stay
           </h1>
           <p className="mt-5 text-forest-800/80 leading-relaxed">
@@ -420,17 +430,18 @@ export function BookingPage() {
           </form>
 
           <aside className="lg:sticky lg:top-28 self-start">
-            <div className="rounded-[28px] overflow-hidden border border-forest-900/5 shadow-card bg-white">
+            <div className="rounded-[28px] overflow-hidden border border-forest-900/5 shadow-depth bg-white">
               <div className="relative">
                 <SmartImage
                   src={selectedAcc?.images[0] || '/images/gmaps/img-07.jpg'}
                   alt={selectedAcc?.name || 'Hacienda'}
-                  className="w-full h-40 object-cover"
+                  className="w-full h-44 lg:h-52 object-cover"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-forest-950/60 to-transparent" />
-                <div className="absolute bottom-3 left-4 text-cream-50">
-                  <div className="text-[10px] uppercase tracking-eyebrow opacity-80">Selected</div>
-                  <div className="font-serif text-lg">{selectedAcc?.name || 'Ask Us'}</div>
+                <div className="absolute inset-0 bg-gradient-to-t from-forest-950/75 via-forest-950/20 to-transparent" />
+                <div className="absolute bottom-4 left-5 right-5 text-cream-50">
+                  <div className="text-[10px] uppercase tracking-eyebrow opacity-80">Your stay at a glance</div>
+                  <div className="font-serif text-2xl leading-tight">{selectedAcc?.name || 'Ask Us'}</div>
+                  <div className="mt-1 text-[11px] text-cream-100/80">{BUSINESS.address.city}, {BUSINESS.address.region}</div>
                 </div>
               </div>
               <div className="p-6 space-y-4">

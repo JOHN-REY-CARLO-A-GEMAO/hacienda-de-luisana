@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { SceneHeader } from '../components/Scene'
 import { AIRBNB_RATING, GUEST_NOTES, HOUSE_RULES } from '../config/site'
 import { ArrowRight, Check, Users } from '../lib/icons'
 
@@ -14,18 +15,22 @@ export function GoodToKnow() {
   return (
     <section id="house-rules" className="py-24 lg:py-36 bg-cream-100/60">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="max-w-2xl reveal">
-          <div className="eyebrow">House Rules &amp; Good to Know</div>
-          <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
-            Before You
-            <br />
-            <span className="italic font-light">Arrive</span>
-          </h2>
-          <p className="mt-6 text-forest-800/80 leading-relaxed">
+        <SceneHeader
+          index="06"
+          eyebrow="House Rules &amp; Good to Know"
+          title={
+            <>
+              Before You
+              <br />
+              <span className="italic font-light">Arrive</span>
+            </>
+          }
+        >
+          <p>
             The few things every guest should know — the Hacienda's own house rules first, then what recent
             guests found useful to pass on.
           </p>
-        </div>
+        </SceneHeader>
 
         <div className="mt-14 grid lg:grid-cols-5 gap-8">
           {/* The Hacienda's rules */}

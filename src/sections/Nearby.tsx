@@ -1,21 +1,25 @@
 import { NEARBY } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
+import { SceneHeader } from '../components/Scene'
 import { ArrowRight, Clock, Compass, MapPin } from '../lib/icons'
 
 export function Nearby() {
   return (
     <section id="nearby" className="py-24 lg:py-36 bg-cream-100/60">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 reveal">
-          <div className="max-w-2xl">
-            <div className="eyebrow">Nearby Adventures</div>
-            <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
-              Adventure Is Never
-              <br />
-              <span className="italic font-light">Too Far Away</span>
-            </h2>
-          </div>
-          <p className="max-w-md text-forest-800/80 leading-relaxed">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
+          <SceneHeader
+            index="04"
+            eyebrow="Nearby Adventures"
+            title={
+              <>
+                Adventure Is Never
+                <br />
+                <span className="italic font-light">Too Far Away</span>
+              </>
+            }
+          />
+          <p className="reveal max-w-md text-forest-800/80 leading-relaxed lg:pb-2">
             The Luisiana countryside is stitched together with waterfalls, caves, heritage towns and
             lakes. Slow mornings at the Hacienda, big adventures within reach.
           </p>
@@ -25,7 +29,7 @@ export function Nearby() {
           {NEARBY.map((n, i) => (
             <article
               key={n.id}
-              className="reveal group bg-white rounded-3xl overflow-hidden border border-forest-900/5 hover:shadow-card transition-all duration-500 flex flex-col"
+              className="reveal group bg-white rounded-3xl overflow-hidden border border-forest-900/5 shadow-card hover:shadow-depth lg:hover:-translate-y-1.5 transition-all duration-700 ease-out-expo flex flex-col"
               style={{ transitionDelay: `${i * 40}ms` }}
             >
               <div className="relative overflow-hidden">
