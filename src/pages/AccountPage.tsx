@@ -169,7 +169,7 @@ export function AccountPage() {
         )}
 
         {!loading && bookings.length > 0 && (
-          <div className="mt-8 grid sm:grid-cols-3 gap-3">
+          <div className="mt-8 grid sm:grid-cols-3 gap-3" data-tour="account-tools">
             <input
               className="field text-sm"
               placeholder="Search bookings"
@@ -209,7 +209,11 @@ export function AccountPage() {
           {paged.items.map((booking) => {
             const status = effectiveStatus(booking)
             return (
-              <article key={booking.id} className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-6">
+              <article
+                key={booking.id}
+                className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-6"
+                data-tour="booking-card"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="eyebrow">Request {reference(booking)}</div>

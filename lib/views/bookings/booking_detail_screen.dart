@@ -10,6 +10,7 @@ import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
+import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/status_pill.dart';
@@ -428,6 +429,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       BookingModel booking, List<AdminAction> actions, bool expired) {
     if (actions.isEmpty) {
       return HaciendaCard(
+        key: TourKeys.detailActions,
         child: Text(
           'Nothing to do — ${booking.rawStatus} is a final status.',
           style: GoogleFonts.inter(color: AppColors.textMuted),
@@ -435,6 +437,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       );
     }
     return HaciendaCard(
+      key: TourKeys.detailActions,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

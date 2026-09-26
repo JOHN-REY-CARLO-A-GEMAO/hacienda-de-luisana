@@ -102,6 +102,7 @@ export function Accommodations() {
 
                   <Link
                     to={`/book?accommodation=${a.id}`}
+                    data-tour="accommodation-cta"
                     className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 group/btn"
                   >
                     View Accommodation

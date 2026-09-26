@@ -17,19 +17,19 @@ There is **no Staff role and no Host role**. The Admin does everything an operat
 
 ```
 # Guest website (Vercel / Firebase Hosting)
-src/                    # React app (components, pages, sections, lib, context, config)
+src/                    # React app (components, pages, sections, lib, tutorial, context, config)
 public/                 # Static assets (images/gmaps, nearby, favicon, CNAME)
 index.html · vite.config.ts · tailwind.config.js · postcss.config.js · tsconfig.json
 firebase.json · firestore.rules · firestore.indexes.json · storage.rules
 vercel.json · package.json
-test/web/               # vitest — booking lifecycle, auth, rules mirror
+test/web/               # vitest — booking lifecycle, auth, rules mirror, interactive tutorial walk
 
 # Admin mobile app
-lib/                    # Flutter app (main.dart, models/, services/, providers/, views/, widgets/, core/)
+lib/                    # Flutter app (main.dart, models/, services/, providers/, views/, widgets/, core/, tutorial/)
 android/                # Flutter Android project (Gradle 8.11.1, Kotlin 2.2.20, compileSdk 36)
 assets/                 # Flutter asset images
 pubspec.yaml
-test/*_test.dart        # flutter test — lifecycle rules, published rates, booking model
+test/*_test.dart        # flutter test — lifecycle rules, published rates, booking model, tour state machine
 
 # Shared
 CONTEXT.md              # Domain glossary (the vocabulary both apps use)
@@ -66,6 +66,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 - `/account` — the Guest's own Bookings: status timeline, Date hold countdown, government ID + receipt upload (KYC), Payment plan choice from the published rates, Payment proof upload, withdraw, Activity log
 - `/login`, `/guest/auth` — Guest sign-in / sign-up, email + password and Google, password reset, session kept across reloads
 - `/admin/*`, `/app/*` — a notice: the Admin dashboard moved to the Admin mobile app
+- Interactive guided tutorial (first visit + "Replay tutorial") — drives the real UI instead of slides; see [TUTORIAL.md](./TUTORIAL.md)
 
 ### Routes
 
@@ -107,8 +108,9 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 
 ### Tech stack
 
-- Flutter / Dart ≥ 3.2 — `flutter_riverpod` (data streams), `provider` (auth session), `firebase_core`, `firebase_auth`, `cloud_firestore`, `google_sign_in`, `google_maps_flutter`, `geolocator`, `fl_chart`, `google_fonts`, `intl`, `url_launcher`, `flutter_local_notifications`
+- Flutter / Dart ≥ 3.2 — `flutter_riverpod` (data streams), `provider` (auth session), `firebase_core`, `firebase_auth`, `cloud_firestore`, `google_sign_in`, `fl_chart`, `google_fonts`, `intl`, `url_launcher`, `flutter_local_notifications`, `shared_preferences`
 - Theme (`lib/core/theme/app_theme.dart`): forest greens + gold accent, Cinzel / Cormorant Garamond / Inter
+- Interactive guided tour (`lib/tutorial/`) — first launch + More → "Replay the guided tour"; drives the real screens, see [TUTORIAL.md](./TUTORIAL.md)
 
 ### Screens (`lib/views/`)
 

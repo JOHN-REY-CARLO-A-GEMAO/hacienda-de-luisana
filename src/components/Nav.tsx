@@ -98,6 +98,7 @@ export function Nav() {
 
           <Link
             to="/book"
+            data-tour="nav-book"
             className={
               transparent
                 ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs px-4 py-2'

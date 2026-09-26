@@ -6,6 +6,7 @@ import '../../core/constants/app_constants.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/booking_lifecycle.dart';
+import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/section_header.dart';
 
@@ -340,6 +341,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
             ],
             const SizedBox(height: 16),
             SizedBox(
+              key: TourKeys.ratesPublish,
               height: 50,
               child: ElevatedButton.icon(
                 onPressed: _busy ? null : _publish,

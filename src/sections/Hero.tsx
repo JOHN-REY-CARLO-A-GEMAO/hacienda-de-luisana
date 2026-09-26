@@ -39,7 +39,7 @@ export function Hero() {
               </p>
 
               <div className="mt-10 flex flex-wrap gap-3">
-                <Link to="/book" className="btn bg-cream-50 text-forest-900 hover:bg-white shadow-soft">
+                <Link to="/book" data-tour="hero-cta" className="btn bg-cream-50 text-forest-900 hover:bg-white shadow-soft">
                   Check Availability
                 </Link>
                 <a href="#stay" className="btn-secondary">

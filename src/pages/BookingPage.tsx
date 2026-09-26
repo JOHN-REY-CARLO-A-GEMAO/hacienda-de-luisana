@@ -260,13 +260,14 @@ export function BookingPage() {
 
             <div>
               <h2 className="font-serif text-2xl text-forest-900">Stay Details</h2>
-              <div className="mt-6 grid sm:grid-cols-2 gap-5">
+              <div className="mt-6 grid sm:grid-cols-2 gap-5" data-tour="stay-details">
                 <Field label="Check-in" error={errors.check_in}>
                   <input
                     type="date"
                     className="field"
                     min={today()}
                     value={form.check_in}
+                    data-tour-field="check-in"
                     onChange={(e) => set('check_in', e.target.value)}
                   />
                 </Field>
@@ -276,6 +277,7 @@ export function BookingPage() {
                     className="field"
                     min={form.check_in || today()}
                     value={form.check_out}
+                    data-tour-field="check-out"
                     onChange={(e) => set('check_out', e.target.value)}
                   />
                 </Field>
@@ -290,7 +292,7 @@ export function BookingPage() {
                     onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
                   />
                 </Field>
-                <Field label="Accommodation" error={errors.accommodation}>
+                <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
                   <select
                     className="field appearance-none pr-10"
                     value={form.accommodation}
@@ -307,15 +309,18 @@ export function BookingPage() {
             <div className="pt-2 border-t border-forest-900/5">
               <h2 className="font-serif text-2xl text-forest-900 mt-6">Your Details</h2>
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
-                <Field label="Name" error={errors.name} className="sm:col-span-2">
-                  <input
-                    className="field"
-                    placeholder="Juan Dela Cruz"
-                    value={form.name}
-                    onChange={(e) => set('name', e.target.value)}
-                    autoComplete="name"
-                  />
-                </Field>
+                <div className="sm:col-span-2" data-tour="guest-details">
+                  <Field label="Name" error={errors.name}>
+                    <input
+                      className="field"
+                      placeholder="Juan Dela Cruz"
+                      value={form.name}
+                      data-tour-field="guest-name"
+                      onChange={(e) => set('name', e.target.value)}
+                      autoComplete="name"
+                    />
+                  </Field>
+                </div>
                 <Field label="Mobile number" error={errors.phone}>
                   <input
                     className="field"
@@ -358,7 +363,7 @@ export function BookingPage() {
               </div>
             )}
 
-            <label className="flex items-start gap-2 text-xs text-forest-800">
+            <label className="flex items-start gap-2 text-xs text-forest-800" data-tour="terms">
               <input
                 type="checkbox"
                 className="mt-0.5"
@@ -382,6 +387,7 @@ export function BookingPage() {
                 type="submit"
                 disabled={status === 'submitting' || (availability !== null && !availability.available)}
                 className="btn-primary w-full sm:w-auto disabled:opacity-70 disabled:cursor-not-allowed"
+                data-tour="submit-booking"
               >
                 {status === 'submitting' ? 'Sending…' : 'Send Booking Request'}
                 {status !== 'submitting' && <ArrowRight size={16} />}
@@ -456,15 +462,17 @@ export function BookingPage() {
 }
 
 function Field({
-  label, error, className = '', children,
+  label, error, className = '', tour, children,
 }: {
   label: string
   error?: string
   className?: string
+  /** Optional tour anchor (data-tour) for the interactive Guest tutorial. */
+  tour?: string
   children: React.ReactNode
 }) {
   return (
-    <label className={`block ${className}`}>
+    <label className={`block ${className}`} data-tour={tour}>
       <span className="label">{label}</span>
       {children}
       {error && <span className="mt-1.5 block text-xs text-red-600">{error}</span>}
@@ -509,7 +517,10 @@ function SuccessScreen({
   return (
     <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
       <div className="mx-auto max-w-3xl px-5 lg:px-8">
-        <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-8 sm:p-12 text-center">
+        <div
+          className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-8 sm:p-12 text-center"
+          data-tour="booking-success"
+        >
           <div className="mx-auto w-16 h-16 rounded-full bg-forest-100 text-forest-700 flex items-center justify-center">
             <Sparkle size={26} />
           </div>

@@ -9,6 +9,8 @@ import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
+import '../../tutorial/tutorial_controller.dart';
+import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/status_pill.dart';
@@ -88,6 +90,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
+                      key: index == 1 ? TourKeys.needsActionChip : null,
                       label: Text(
                         _filters[index],
                         style: GoogleFonts.inter(
@@ -104,7 +107,10 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                       ),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       onSelected: (val) {
-                        if (val) setState(() => _selectedFilterIndex = index);
+                        if (val) {
+                          setState(() => _selectedFilterIndex = index);
+                          TourBus.event('filter-changed');
+                        }
                       },
                     ),
                   );
@@ -116,15 +122,19 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
+              key: TourKeys.searchField,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search),
                 hintText: 'Search name, email, ref, stay…',
                 isDense: true,
               ),
-              onChanged: (v) => setState(() {
-                _query = v;
-                _page = 0;
-              }),
+              onChanged: (v) {
+                setState(() {
+                  _query = v;
+                  _page = 0;
+                });
+                TourBus.input('search-typed', v);
+              },
             ),
           ),
           Padding(
@@ -201,7 +211,10 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 14),
                         itemBuilder: (context, i) {
                           final booking = slice[i];
-                          return _buildBookingCard(booking);
+                          return _buildBookingCard(
+                            booking,
+                            key: i == 0 ? TourKeys.firstBookingCard : null,
+                          );
                         },
                       ),
                     ),
@@ -239,6 +252,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   }
 
   void _openDetail(BookingModel booking) {
+    TourBus.event('open-detail');
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => BookingDetailScreen(bookingId: booking.id),
     ));
@@ -279,7 +293,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     ));
   }
 
-  Widget _buildBookingCard(BookingModel booking) {
+  Widget _buildBookingCard(BookingModel booking, {Key? key}) {
     Color statusColor;
     switch (booking.status) {
       case BookingStatus.pending:
@@ -304,6 +318,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     final hold = holdRemaining(booking.toLifecycleDoc(), DateTime.now());
 
     return PressableBookingCard(
+      key: key,
       onTap: () => _openDetail(booking),
       child: HaciendaCard(
         padding: EdgeInsets.zero,

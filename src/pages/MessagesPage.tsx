@@ -99,11 +99,12 @@ export function MessagesPage() {
           )}
           <Pager page={paged} onPage={setPage} />
         </div>
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex gap-2" data-tour="message-composer">
           <input
             className="field flex-1"
             value={text}
             maxLength={2000}
+            data-tour-field="message"
             onChange={(e) => setText(e.target.value)}
             placeholder="Write a message"
           />

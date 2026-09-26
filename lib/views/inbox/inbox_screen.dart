@@ -2,7 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
+import '../../services/auth_store.dart';
+import '../../tutorial/tutorial_controller.dart';
+import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
 
 /// Guest ↔ Admin messages from `conversations/*`.
@@ -62,16 +66,20 @@ class InboxScreen extends StatelessWidget {
                   itemBuilder: (context, i) {
                     final d = docs[i].data();
                     return ListTile(
+                      key: i == 0 ? TourKeys.firstThread : null,
                       tileColor: Colors.white,
                       title: Text(d['last_message']?.toString().isNotEmpty == true
                           ? d['last_message'].toString()
                           : 'New conversation'),
                       subtitle: Text('${d['category'] ?? 'booking'} · ${d['guest_uid'] ?? ''}'),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => _ThreadScreen(convoId: docs[i].id, guestUid: d['guest_uid']?.toString() ?? ''),
-                        ),
-                      ),
+                      onTap: () {
+                        TourBus.event('open-thread');
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => _ThreadScreen(convoId: docs[i].id, guestUid: d['guest_uid']?.toString() ?? ''),
+                          ),
+                        );
+                      },
                     );
                   },
                 );
@@ -173,6 +181,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
               children: [
                 Expanded(
                   child: TextField(
+                    key: TourKeys.threadComposer,
                     controller: _text,
                     decoration: const InputDecoration(hintText: 'Reply'),
                   ),

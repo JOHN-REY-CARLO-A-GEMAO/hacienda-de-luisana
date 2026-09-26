@@ -6,6 +6,7 @@ import '../../core/utils/date_formatter.dart';
 import '../../models/smart_lock_event_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/notification_service.dart';
+import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/staggered_entrance.dart';
 
@@ -62,6 +63,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
             children: [
               // 1. Summary Metric Counters at Top
               Padding(
+                key: TourKeys.smartLockStats,
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
