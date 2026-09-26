@@ -8,6 +8,7 @@ import { canOpenPage, homeForRole } from '../lib/auth'
 const LINKS = [
   { href: '/', label: 'Home' },
   { href: '/#stay', label: 'Stay' },
+  { href: '/#rates', label: 'Rates' },
   { href: '/#experience', label: 'Experience' },
   { href: '/#gallery', label: 'Gallery' },
   { href: '/#location', label: 'Location' },

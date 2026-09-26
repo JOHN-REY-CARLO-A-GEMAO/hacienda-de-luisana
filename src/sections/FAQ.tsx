@@ -11,7 +11,7 @@ export function FAQ() {
         <div className="max-w-2xl reveal">
           <div className="eyebrow">FAQs</div>
           <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
-            Good to Know
+            Common Questions
           </h2>
           <p className="mt-6 text-forest-800/80 leading-relaxed">
             A few answers to the most common questions. For anything else, message the Hacienda —

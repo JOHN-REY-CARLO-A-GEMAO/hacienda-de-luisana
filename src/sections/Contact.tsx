@@ -1,5 +1,6 @@
-import { BUSINESS } from '../config/site'
-import { Phone, Mail, Facebook, Messenger, MapPin, ArrowRight } from '../lib/icons'
+import { BUSINESS, LISTINGS } from '../config/site'
+import { Phone, Mail, Facebook, Messenger, MapPin, ArrowRight, House } from '../lib/icons'
+import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 
 export function Contact() {
   const tel = BUSINESS.contact.phone.replace(/\s+/g, '')
@@ -35,6 +36,12 @@ export function Contact() {
       value: 'Open location',
       href: BUSINESS.contact.googleMaps,
     },
+    {
+      icon: House,
+      label: 'Also on',
+      value: `${LISTINGS.airbnb.label} · ${LISTINGS.agoda.label}`,
+      href: LISTINGS.airbnb.url,
+    },
   ]
 
   return (
@@ -59,6 +66,10 @@ export function Contact() {
               <a href={BUSINESS.contact.directions} target="_blank" rel="noreferrer" className="btn bg-transparent text-cream-50 border border-cream-50/30 hover:bg-cream-50/10">
                 Get Directions
               </a>
+            </div>
+
+            <div className="mt-10">
+              <OfficialChannelsNotice tone="dark" />
             </div>
           </div>
 

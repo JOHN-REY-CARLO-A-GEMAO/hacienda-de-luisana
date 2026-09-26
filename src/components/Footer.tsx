@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { BUSINESS } from '../config/site'
+import { BUSINESS, LISTINGS } from '../config/site'
 import { Facebook, Instagram, Mail, Phone, MapPin } from '../lib/icons'
 
 export function Footer() {
@@ -19,15 +19,24 @@ export function Footer() {
               <Instagram size={18} />
             </a>
           </div>
+          <div className="mt-5 text-xs text-cream-200/70">
+            Also on{' '}
+            <a href={LISTINGS.airbnb.url} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-white">{LISTINGS.airbnb.label}</a>
+            {' and '}
+            <a href={LISTINGS.agoda.url} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-white">{LISTINGS.agoda.label}</a>
+            . These, this website, and the contacts below are our only official channels.
+          </div>
         </div>
 
         <div>
           <div className="eyebrow text-cream-100/60 mb-4">Explore</div>
           <ul className="space-y-3 text-sm">
             <li><a href="/#stay" className="hover:text-white">Stay</a></li>
+            <li><a href="/#rates" className="hover:text-white">Rates &amp; Fees</a></li>
             <li><a href="/#experience" className="hover:text-white">Experience</a></li>
             <li><a href="/#gallery" className="hover:text-white">Gallery</a></li>
             <li><a href="/#location" className="hover:text-white">Location</a></li>
+            <li><a href="/#house-rules" className="hover:text-white">House Rules</a></li>
             <li><a href="/#faqs" className="hover:text-white">FAQs</a></li>
             <li><Link to="/book" className="hover:text-white">Book Your Stay</Link></li>
             <li><Link to="/account" className="hover:text-white">My Bookings</Link></li>

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
-import { ArrowDown, MapPin } from '../lib/icons'
+import { ArrowDown, MapPin, Star } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
-import { BUSINESS } from '../config/site'
+import { AIRBNB_RATING, BUSINESS } from '../config/site'
 
 export function Hero() {
   return (
@@ -46,6 +46,25 @@ export function Hero() {
                   Explore Hacienda
                 </a>
               </div>
+
+              {/* Airbnb's rating of the listing — dated in config, refreshed rather than assumed */}
+              <a
+                href={AIRBNB_RATING.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-6 inline-flex items-center gap-2 rounded-full border border-cream-50/25 bg-forest-950/30 backdrop-blur-sm px-3.5 py-1.5 text-xs text-cream-100 hover:bg-forest-950/50 transition"
+                aria-label={`Rated ${AIRBNB_RATING.rating.toFixed(1)} out of 5 on Airbnb from ${AIRBNB_RATING.reviewCount} reviews`}
+              >
+                <Star size={13} className="text-olive-300" />
+                <span className="font-medium">{AIRBNB_RATING.rating.toFixed(1)}</span>
+                <span className="text-cream-100/80">on Airbnb · {AIRBNB_RATING.reviewCount} reviews</span>
+                {AIRBNB_RATING.superhost && (
+                  <>
+                    <span className="text-cream-100/40">|</span>
+                    <span className="text-cream-100/90">Superhost</span>
+                  </>
+                )}
+              </a>
               <Link
                 to="/account"
                 className="mt-5 inline-flex lg:hidden text-sm text-cream-100/80 underline underline-offset-4"

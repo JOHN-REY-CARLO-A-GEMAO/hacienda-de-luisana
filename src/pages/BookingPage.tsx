@@ -19,6 +19,9 @@ import {
 } from '../lib/validation'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { LEGAL_VERSION } from '../lib/legal'
+import { usePublishedRates } from '../hooks/usePublishedRates'
+import { displayedRate } from '../sections/Accommodations'
+import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 
 type FormState = {
   check_in: string
@@ -104,10 +107,18 @@ export function BookingPage() {
     return Math.max(0, Math.round((b - a) / (1000 * 60 * 60 * 24)))
   }, [form.check_in, form.check_out])
 
+  // The estimate uses the Admin's Published rates when they exist (the figure a
+  // Booking is actually quoted at), else the Hacienda's own listed price; when
+  // neither exists the summary says the Hacienda quotes it, rather than guess.
+  const published = usePublishedRates()
+  const rate = useMemo(
+    () => (selectedAcc ? displayedRate(selectedAcc, published) : null),
+    [selectedAcc, published],
+  )
   const estimatedTotal = useMemo(() => {
-    if (!selectedAcc?.price || !nights) return null
-    return selectedAcc.price * nights
-  }, [selectedAcc, nights])
+    if (!rate?.nightly || !nights) return null
+    return rate.nightly * nights
+  }, [rate, nights])
 
   useEffect(() => {
     if (!form.check_in || !form.check_out || !form.accommodation) {
@@ -434,8 +445,10 @@ export function BookingPage() {
                     <div className="text-right">
                       {estimatedTotal ? (
                         <>
-                          <div className="font-serif text-2xl text-forest-900">₱{estimatedTotal.toLocaleString()}</div>
-                          <div className="text-[11px] text-forest-700/60">{nights} night{nights > 1 ? 's' : ''} · placeholder rate</div>
+                          <div className="font-serif text-2xl text-forest-900">₱{estimatedTotal.toLocaleString('en-PH')}</div>
+                          <div className="text-[11px] text-forest-700/60">
+                            {nights} night{nights > 1 ? 's' : ''} × {rate?.label}
+                          </div>
                         </>
                       ) : (
                         <div className="text-sm text-forest-800/70">Quoted by the Hacienda</div>
@@ -446,10 +459,16 @@ export function BookingPage() {
 
                 <div className="mt-4 rounded-2xl bg-cream-100/70 p-4 text-xs text-forest-700 leading-relaxed">
                   <Sparkle size={14} className="inline mr-1 -mt-1 text-forest-600" />
-                  Prices shown are editable placeholders. The Hacienda will confirm the final rate before
-                  your reservation is finalized.
+                  {estimatedTotal
+                    ? 'An estimate of the stay only. The refundable security deposit is added at the payment step, extras such as the ₱300 pet fee are settled with the Hacienda, and the final quote is confirmed before anything is reserved.'
+                    : 'The Hacienda quotes this stay on request and confirms the final figure — plus the refundable security deposit — before anything is reserved.'}{' '}
+                  <Link to="/#rates" className="underline underline-offset-2">Rates &amp; Fees</Link>
                 </div>
               </div>
+            </div>
+
+            <div className="mt-6">
+              <OfficialChannelsNotice compact />
             </div>
 
             <div className="mt-6 bg-forest-900 text-cream-100 rounded-[28px] p-6">

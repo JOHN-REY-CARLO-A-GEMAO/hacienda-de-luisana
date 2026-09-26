@@ -1,6 +1,6 @@
 import { NEARBY } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
-import { ArrowRight, Compass, MapPin } from '../lib/icons'
+import { ArrowRight, Clock, Compass, MapPin } from '../lib/icons'
 
 export function Nearby() {
   return (
@@ -38,13 +38,21 @@ export function Nearby() {
               <div className="p-5 flex-1 flex flex-col">
                 <h3 className="font-serif text-xl text-forest-900">{n.name}</h3>
                 <p className="mt-2 text-sm text-forest-800/80 leading-relaxed flex-1">{n.description}</p>
-                <div className="mt-4 flex items-center gap-4 text-[11px] uppercase tracking-eyebrow text-forest-600">
+                {/* The town is always known; distance and travel time only appear once the Hacienda has measured them. */}
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] uppercase tracking-eyebrow text-forest-600">
                   <span className="inline-flex items-center gap-1.5">
-                    <Compass size={12} /> {n.distance}
+                    <MapPin size={12} /> {n.area}
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin size={12} /> {n.travelTime}
-                  </span>
+                  {n.distance && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Compass size={12} /> {n.distance}
+                    </span>
+                  )}
+                  {n.travelTime && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Clock size={12} /> {n.travelTime}
+                    </span>
+                  )}
                 </div>
                 <a
                   href={n.mapsUrl}
