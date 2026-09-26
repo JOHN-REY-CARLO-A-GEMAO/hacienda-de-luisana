@@ -60,6 +60,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
         <div className="bg-amber-100/90 border-b border-amber-200 text-amber-900 text-xs px-4 py-2 flex items-center gap-2">
           <span className="font-semibold uppercase tracking-eyebrow text-[10px]">Local Mode Active:</span>
           <span>Signed in as {role ? ROLE_LABELS[role] : 'Guest'} · bookings are stored in this browser only.</span>
+          <Link to="/status" className="ml-auto underline whitespace-nowrap">Why?</Link>
         </div>
       )}
       {children}

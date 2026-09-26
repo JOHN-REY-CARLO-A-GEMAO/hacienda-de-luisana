@@ -76,6 +76,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 | `/book` | Booking form + availability | everyone (an anonymous Guest identity is attached at submit — ADR-0004) |
 | `/login`, `/guest/auth` | Sign in / sign up | Guests |
 | `/account` | My Bookings | signed-in Guest (`booking:read:own`) |
+| `/status` | Deployment status — is this build wired to Firebase, and why not | everyone (read-only; the key is masked) |
 | `/admin/*`, `/app/*` | "Moved to the Admin app" | — |
 
 ### Quick start
@@ -90,15 +91,17 @@ npm run build
 npm run preview
 ```
 
-With no Firebase keys configured the site runs in **demo mode**: Guest accounts and Bookings live in this browser (passwords PBKDF2-hashed), and a banner says so on every protected page.
+With no Firebase keys configured the site runs in **demo mode**: Guest accounts and Bookings live in this browser (passwords PBKDF2-hashed), and a banner says so on every protected page. That is the local-development behaviour; a *deployed* build falls back to the committed project in `src/lib/firebaseDefaults.ts`, so a deployment with an empty dashboard still reaches the Admin app instead of quietly keeping Guest requests in their own browser.
 
 ### Deployment
 
-- **Vercel**: `vercel.json` present — set `VITE_*` env vars in the dashboard. Deployed build is `dist/`.
+- **Vercel**: `vercel.json` present — set `VITE_*` env vars in the dashboard to override the committed project, then **redeploy** (Vite reads them at build time). Deployed build is `dist/`.
 - **Firebase Hosting**: `firebase deploy --only hosting` (public = `dist`)
 - **GitHub Pages**: workflow `.github/workflows/deploy.yml`
 
 Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`.
+
+Two switches worth knowing: `FIREBASE_ENV_STRICT=1` makes a build with no Firebase at all **fail** instead of shipping in demo mode, and `/status` on any deployment says which project it was built for and can test the connection from the browser. Which source wins, and why the committed config is not a secret, is in [FIREBASE_SETUP.md § 3c](./FIREBASE_SETUP.md).
 
 Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 

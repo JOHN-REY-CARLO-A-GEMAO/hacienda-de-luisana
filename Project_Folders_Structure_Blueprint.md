@@ -143,7 +143,7 @@ Content statistics (non-generated): `src 70 | lib 43 | test 22 (web 19 + dart 3)
 - **Web build:** `npm run dev` (vite :3000, host 0.0.0.0), `npm run build` (`tsc -b && vite build` → `dist/`), `npm run preview`, `npm run lint`, `npm test` / `npx vitest run`. Deploy: Vercel (`vercel.json` → `dist/`) or `firebase deploy --only hosting`.
 - **Flutter build:** `flutter pub get`, `flutter run`, `flutter test`, `flutter build apk --release` (`build/app/outputs/flutter-apk/app-release.apk`). Native shells `android/` + `ios/` are build inputs; hand-edit only manifests / icons / `google-services.json`.
 - **Outputs (gitignored):** `dist/`, `build/`, `.dart_tool/`, `android/.gradle|build`, `ios/build`, `*.tsbuildinfo`, `*.log`, `emulator-data/`.
-- **Env variants:** dev (`npm run dev`, `npm run emulators`, Flutter debug with in-memory demo data when Firebase is absent) vs prod (`dist/` + Vercel / Hosting; Flutter release APK). Missing `VITE_FIREBASE_*` → in-browser demo mode (`authLocal.ts`).
+- **Env variants:** dev (`npm run dev`, `npm run emulators`, Flutter debug with in-memory demo data when Firebase is absent) vs prod (`dist/` + Vercel / Hosting; Flutter release APK). Missing `VITE_FIREBASE_*` → dev runs in in-browser demo mode (`authLocal.ts`); a production build falls back to the committed project (`src/lib/firebaseDefaults.ts`, resolved by `src/lib/firebaseConfig.ts`, reported at `/status`).
 
 ## 8. Technology-Specific Organization
 

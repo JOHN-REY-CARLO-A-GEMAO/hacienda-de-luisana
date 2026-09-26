@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore'
 import { auth, db, isFirebaseConfigured } from './firebase'
 import { activityLogStorage, bookingsDB, type Booking } from './storage'
+import { describeFirestoreFailure } from './firebaseFailure'
 import { ACCOMMODATIONS } from '../config/site'
 import {
   applyAction,
@@ -234,7 +235,8 @@ async function writePatch(id: string, patch: Partial<Booking>): Promise<void> {
     const { id: _omit, ...rest } = patch as any
     await updateDoc(doc(db, COLLECTION, id), rest)
   } catch (e) {
-    console.warn('[Firestore] update() failed, falling back to local', e)
+    lastWriteFailure = describeFirestoreFailure(e)
+    console.warn(`[Firestore] update() failed, falling back to local. ${lastWriteFailure.advice}`, e)
     bookingsDB.update(id, patch)
   }
 }
@@ -272,6 +274,26 @@ async function logStatusChange(
 }
 
 const isCloud = isFirebaseConfigured && Boolean(db)
+
+/**
+ * A Booking that has just been submitted, and where it actually landed.
+ *
+ * `storage` is not decoration. A cloud write can be refused — the rules are not
+ * deployed, Anonymous sign-in is switched off, the Guest is offline — and when
+ * that happens this store keeps the Booking locally so nothing typed is lost.
+ * The screen that says "sent" has to know which of the two happened, because
+ * "sent to the Hacienda" and "saved in your browser" are different promises to
+ * a Guest, and only one of them gets the Guest their dates.
+ */
+export type SubmittedBooking = Booking & { storage: 'cloud' | 'local' }
+
+/** Why the last cloud write fell back to this browser, if it did. */
+let lastWriteFailure: ReturnType<typeof describeFirestoreFailure> | null = null
+
+/** Why the last cloud write fell back to this browser, or null if it landed. */
+export function lastCloudWriteFailure(): ReturnType<typeof describeFirestoreFailure> | null {
+  return lastWriteFailure
+}
 
 // ----------------------------------------------------------------------------
 // Public API — mirrors bookingsDB but cloud-aware
@@ -395,7 +417,10 @@ export const cloudBookingsDB = {
    * Booking's first Activity log entry. The `actor` is whoever is submitting —
    * a Guest from /book — and defaults to an unnamed Guest.
    */
-  async add(input: Omit<Booking, 'id' | 'status' | 'created_at'>, actor?: Actor): Promise<Booking> {
+  async add(
+    input: Omit<Booking, 'id' | 'status' | 'created_at'>,
+    actor?: Actor,
+  ): Promise<SubmittedBooking> {
     // The submission entry is signed by the identity the Booking is being
     // attached to. The Activity rule refuses an entry whose `actor_id` is not the
     // writer's uid, and the Booking carries the uid the Guest was given when the
@@ -409,7 +434,7 @@ export const cloudBookingsDB = {
     if (!isCloud || !db) {
       const booking = bookingsDB.add(withHold)
       activityLogStorage.append([submissionEntry(booking.id, submitter, at)])
-      return booking
+      return { ...booking, storage: 'local' }
     }
     try {
       const payload: Omit<FirestoreBooking, 'id'> = {
@@ -419,18 +444,27 @@ export const cloudBookingsDB = {
       }
       const ref = await addDoc(collection(db, COLLECTION), payload)
       await activityLogDB.append([submissionEntry(ref.id, submitter, at)])
+      lastWriteFailure = null
       // Return optimistic booking
       return {
         id: ref.id,
         ...withHold,
         status: 'Pending',
         created_at: at,
+        storage: 'cloud',
       }
     } catch (e) {
-      console.warn('[Firestore] add() failed, falling back to local', e)
+      // The write did not land: keep the Booking here so nothing the Guest typed
+      // is lost, and remember why — the success screen tells them the truth
+      // rather than promising a request that never left the device.
+      lastWriteFailure = describeFirestoreFailure(e)
+      console.warn(
+        `[Firestore] add() failed, falling back to local. ${lastWriteFailure.advice}`,
+        e,
+      )
       const booking = bookingsDB.add(withHold)
       activityLogStorage.append([submissionEntry(booking.id, submitter, at)])
-      return booking
+      return { ...booking, storage: 'local' }
     }
   },
 

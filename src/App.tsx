@@ -10,6 +10,7 @@ import { BookingPage } from './pages/BookingPage'
 import { AccountPage } from './pages/AccountPage'
 import { LegalPage } from './pages/LegalPage'
 import { MessagesPage } from './pages/MessagesPage'
+import { StatusPage } from './pages/StatusPage'
 import { Tutorial } from './components/Tutorial'
 import { GuestAuthPage } from './pages/AuthPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
@@ -63,6 +64,10 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/book" element={<BookingPage />} />
           <Route path="/legal" element={<LegalPage />} />
+          {/* Whether this deployment reaches Firebase, and why not when it does
+              not. Public and read-only: a Firebase web config is public by
+              design, and the key is masked. */}
+          <Route path="/status" element={<StatusPage />} />
           <Route path="/login" element={<SignInPage />} />
           {/* The Guest's sign-in page. Email and Google arrive through the
               same session either way. */}
