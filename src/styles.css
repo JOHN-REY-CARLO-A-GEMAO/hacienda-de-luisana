@@ -58,20 +58,26 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: #6d956a; }
 
 /* Reveal on scroll */
+/* Uses the individual `translate` property so it never fights `transform`
+   utilities (hover lifts, tilt) on the same element. */
 .reveal {
   opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 900ms cubic-bezier(0.16,1,0.3,1), transform 900ms cubic-bezier(0.16,1,0.3,1);
-  will-change: opacity, transform;
+  translate: 0 24px;
+  transition: opacity 900ms cubic-bezier(0.16,1,0.3,1), translate 900ms cubic-bezier(0.16,1,0.3,1);
 }
 .reveal.in {
   opacity: 1;
-  transform: translateY(0);
+  translate: 0 0;
 }
 
 /* Typographic helpers */
-.eyebrow {
-  @apply text-[11px] font-medium uppercase tracking-eyebrow text-forest-600;
+/* `.eyebrow` lives in the components layer so a colour utility next to it
+   (`eyebrow text-cream-100/70` on the dark scenes) wins — outside the layer
+   the helper came after the utilities and painted forest-green on forest-green. */
+@layer components {
+  .eyebrow {
+    @apply text-[11px] font-medium uppercase tracking-eyebrow text-forest-600;
+  }
 }
 .display {
   @apply font-serif font-medium leading-[1.05] tracking-tight;
@@ -115,4 +121,95 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* Immersive depth layer (CSS-only 3D). Decorative; see src/lib/motion */
+/* ------------------------------------------------------------------ */
+
+/* Transforms on parallax layers must never create horizontal scroll. */
+html, body { overflow-x: clip; }
+
+.hero-layer {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+/* Depth-of-field on the foreground foliage (desktop only — blur is not free) */
+@media (min-width: 768px) {
+  .foliage { filter: blur(1.1px) drop-shadow(0 0 1px rgba(214, 232, 204, 0.35)) drop-shadow(0 18px 24px rgba(0, 0, 0, 0.4)); }
+}
+
+/* Parallax media: a frame clips a slightly taller image that drifts on scroll */
+.parallax-frame { overflow: hidden; } /* position comes from the component (relative unless placed absolutely) */
+.parallax-media {
+  position: absolute;
+  inset: -16% 0;
+  height: 132%;
+  width: 100%;
+  will-change: transform;
+}
+.parallax-media > img { height: 100%; width: 100%; object-fit: cover; }
+
+/* Tilt cards: the hook writes --tilt-x/--tilt-y/--glare-*; CSS does the rest */
+.tilt {
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  --glare-x: 50%;
+  --glare-y: 50%;
+  --shift-x: 0px;
+  --shift-y: 0px;
+  transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Only fine pointers with motion allowed get the 3D transform (touch keeps a flat card) */
+.tilt[data-tilt='on'] {
+  transform: perspective(1200px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+}
+.tilt-live:hover { transition-duration: 160ms; }
+.tilt-media { transform: translate3d(var(--shift-x), var(--shift-y), 0) scale(1.06); transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1); }
+.tilt-glare {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(420px circle at var(--glare-x) var(--glare-y), rgba(255, 255, 255, 0.22), transparent 60%);
+  transition: opacity 400ms ease;
+}
+.tilt-live:hover .tilt-glare { opacity: 1; }
+
+/* Scene numbering used by every homepage section header */
+.scene-index {
+  @apply font-serif text-2xl leading-none tracking-normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fine film grain for large photographic panels (static, one raster) */
+.grain::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Horizontal scroll rows (mobile reviews / nearby) */
+.snap-row { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+.snap-row > * { scroll-snap-align: start; }
+
+/* Visible keyboard focus everywhere the depth layer adds interactive surfaces */
+a:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid #385d37;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Reduced motion: no parallax, tilt, drift, Ken Burns or scroll-reveal travel */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .hero-layer, .parallax-media, .tilt, .tilt-media { transform: none !important; transition: none !important; }
+  .animate-kenburns, .animate-bounce, .animate-drift, .tour-nudge { animation: none !important; }
+  .tour-ring { animation: none !important; }
+  .reveal { translate: 0 0; transition: opacity 400ms ease; }
+  .tilt-glare { display: none; }
 }

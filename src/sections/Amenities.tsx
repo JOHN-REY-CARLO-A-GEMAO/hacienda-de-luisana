@@ -1,18 +1,22 @@
 import { AMENITIES } from '../config/site'
+import { SceneHeader } from '../components/Scene'
 import { AMENITY_ICONS } from '../lib/icons'
 
 export function Amenities() {
   return (
     <section id="amenities" className="py-24 lg:py-32 bg-cream-50">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="max-w-2xl reveal">
-          <div className="eyebrow">Amenities</div>
-          <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
-            Everything You Need for a
-            <br />
-            <span className="italic font-light">Comfortable Escape</span>
-          </h2>
-        </div>
+        <SceneHeader
+          index="05"
+          eyebrow="Amenities"
+          title={
+            <>
+              Everything You Need for a
+              <br />
+              <span className="italic font-light">Comfortable Escape</span>
+            </>
+          }
+        />
 
         <div className="mt-14 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-y-10 gap-x-4">
           {AMENITIES.map((a) => {

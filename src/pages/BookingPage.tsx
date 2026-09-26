@@ -19,6 +19,9 @@ import {
 } from '../lib/validation'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { LEGAL_VERSION } from '../lib/legal'
+import { usePublishedRates } from '../hooks/usePublishedRates'
+import { displayedRate } from '../sections/Accommodations'
+import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 
 type FormState = {
   check_in: string
@@ -104,10 +107,18 @@ export function BookingPage() {
     return Math.max(0, Math.round((b - a) / (1000 * 60 * 60 * 24)))
   }, [form.check_in, form.check_out])
 
+  // The estimate uses the Admin's Published rates when they exist (the figure a
+  // Booking is actually quoted at), else the Hacienda's own listed price; when
+  // neither exists the summary says the Hacienda quotes it, rather than guess.
+  const published = usePublishedRates()
+  const rate = useMemo(
+    () => (selectedAcc ? displayedRate(selectedAcc, published) : null),
+    [selectedAcc, published],
+  )
   const estimatedTotal = useMemo(() => {
-    if (!selectedAcc?.price || !nights) return null
-    return selectedAcc.price * nights
-  }, [selectedAcc, nights])
+    if (!rate?.nightly || !nights) return null
+    return rate.nightly * nights
+  }, [rate, nights])
 
   useEffect(() => {
     if (!form.check_in || !form.check_out || !form.accommodation) {
@@ -229,11 +240,21 @@ export function BookingPage() {
   }
 
   return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <div className="relative pt-28 pb-24 bg-cream-50 min-h-screen">
+      {/* Visual shell only — soft countryside wash behind the form; the form itself is untouched */}
+      <div
+        className="pointer-events-none absolute -top-32 right-[-10%] h-[560px] w-[560px] rounded-full opacity-70 blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgba(198,214,193,0.6), transparent 65%)' }}
+        aria-hidden="true"
+      />
+      <div className="relative mx-auto max-w-7xl px-5 lg:px-8">
         <div className="max-w-2xl">
-          <div className="eyebrow">Book Your Stay</div>
-          <h1 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
+          <div className="flex items-center gap-4">
+            <span className="scene-index text-forest-400" aria-hidden="true">09</span>
+            <span className="h-px w-8 bg-forest-900/15" aria-hidden="true" />
+            <div className="eyebrow">Book Your Stay</div>
+          </div>
+          <h1 className="display text-4xl sm:text-5xl lg:text-6xl mt-5 text-forest-900">
             Plan Your Stay
           </h1>
           <p className="mt-5 text-forest-800/80 leading-relaxed">
@@ -409,17 +430,18 @@ export function BookingPage() {
           </form>
 
           <aside className="lg:sticky lg:top-28 self-start">
-            <div className="rounded-[28px] overflow-hidden border border-forest-900/5 shadow-card bg-white">
+            <div className="rounded-[28px] overflow-hidden border border-forest-900/5 shadow-depth bg-white">
               <div className="relative">
                 <SmartImage
                   src={selectedAcc?.images[0] || '/images/gmaps/img-07.jpg'}
                   alt={selectedAcc?.name || 'Hacienda'}
-                  className="w-full h-40 object-cover"
+                  className="w-full h-44 lg:h-52 object-cover"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-forest-950/60 to-transparent" />
-                <div className="absolute bottom-3 left-4 text-cream-50">
-                  <div className="text-[10px] uppercase tracking-eyebrow opacity-80">Selected</div>
-                  <div className="font-serif text-lg">{selectedAcc?.name || 'Ask Us'}</div>
+                <div className="absolute inset-0 bg-gradient-to-t from-forest-950/75 via-forest-950/20 to-transparent" />
+                <div className="absolute bottom-4 left-5 right-5 text-cream-50">
+                  <div className="text-[10px] uppercase tracking-eyebrow opacity-80">Your stay at a glance</div>
+                  <div className="font-serif text-2xl leading-tight">{selectedAcc?.name || 'Ask Us'}</div>
+                  <div className="mt-1 text-[11px] text-cream-100/80">{BUSINESS.address.city}, {BUSINESS.address.region}</div>
                 </div>
               </div>
               <div className="p-6 space-y-4">
@@ -434,8 +456,10 @@ export function BookingPage() {
                     <div className="text-right">
                       {estimatedTotal ? (
                         <>
-                          <div className="font-serif text-2xl text-forest-900">₱{estimatedTotal.toLocaleString()}</div>
-                          <div className="text-[11px] text-forest-700/60">{nights} night{nights > 1 ? 's' : ''} · placeholder rate</div>
+                          <div className="font-serif text-2xl text-forest-900">₱{estimatedTotal.toLocaleString('en-PH')}</div>
+                          <div className="text-[11px] text-forest-700/60">
+                            {nights} night{nights > 1 ? 's' : ''} × {rate?.label}
+                          </div>
                         </>
                       ) : (
                         <div className="text-sm text-forest-800/70">Quoted by the Hacienda</div>
@@ -446,10 +470,16 @@ export function BookingPage() {
 
                 <div className="mt-4 rounded-2xl bg-cream-100/70 p-4 text-xs text-forest-700 leading-relaxed">
                   <Sparkle size={14} className="inline mr-1 -mt-1 text-forest-600" />
-                  Prices shown are editable placeholders. The Hacienda will confirm the final rate before
-                  your reservation is finalized.
+                  {estimatedTotal
+                    ? 'An estimate of the stay only. The refundable security deposit is added at the payment step, extras such as the ₱300 pet fee are settled with the Hacienda, and the final quote is confirmed before anything is reserved.'
+                    : 'The Hacienda quotes this stay on request and confirms the final figure — plus the refundable security deposit — before anything is reserved.'}{' '}
+                  <Link to="/#rates" className="underline underline-offset-2">Rates &amp; Fees</Link>
                 </div>
               </div>
+            </div>
+
+            <div className="mt-6">
+              <OfficialChannelsNotice compact />
             </div>
 
             <div className="mt-6 bg-forest-900 text-cream-100 rounded-[28px] p-6">

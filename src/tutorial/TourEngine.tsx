@@ -51,7 +51,15 @@ export type TourContextValue = {
   skip: () => void
   /** Close without remembering — the tour offers itself again next visit. */
   exit: () => void
+  /**
+   * Viewport space the overlay's own card takes (the docked bottom sheet on
+   * phones, the fixed site header on top). The overlay writes it; the engine
+   * scrolls each step's control into the part of the screen that is left.
+   */
+  insets: React.MutableRefObject<ViewportInsets>
 }
+
+export type ViewportInsets = { top: number; bottom: number }
 
 const TourContext = createContext<TourContextValue | null>(null)
 
@@ -127,12 +135,22 @@ const cancelFrame: (id: number) => void =
     ? (id) => window.cancelAnimationFrame(id)
     : (id) => window.clearTimeout(id)
 
-function scrollTowards(el: HTMLElement) {
+function scrollTowards(el: HTMLElement, insets: ViewportInsets) {
   try {
     const r = el.getBoundingClientRect()
+    if (r.width === 0 && r.height === 0) return // no layout (jsdom) — nothing to scroll to
     const vh = window.innerHeight || 800
-    if (r.top > vh * 0.15 && r.bottom < vh * 0.75) return
-    if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    /* The band of the screen not covered by the site header or the tour card. */
+    const freeTop = insets.top
+    const free = Math.max(160, vh - insets.bottom - freeTop)
+    if (r.top > freeTop + free * 0.15 && r.bottom < freeTop + free * 0.75) return
+    /* Centre the control in the free band; a control taller than the band
+       sits with its top just inside it instead, so its first fields show. */
+    const delta =
+      r.height > free * 0.6 ? r.top - (freeTop + 16) : r.top + r.height / 2 - (freeTop + free / 2)
+    if (Math.abs(delta) < 2) return
+    if (typeof window.scrollBy === 'function') window.scrollBy({ top: delta, behavior: 'smooth' })
+    else if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   } catch {
     /* scrolling is a courtesy, never a failure */
   }
@@ -163,6 +181,7 @@ export function TourProvider({
   const [index, setIndex] = useState(0)
   const [rect, setRect] = useState<Rect | null>(null)
   const [missing, setMissing] = useState(false)
+  const insets = useRef<ViewportInsets>({ top: 0, bottom: 0 })
 
   const step = steps[Math.min(index, steps.length - 1)]
 
@@ -236,6 +255,10 @@ export function TourProvider({
       if (el) {
         const r = paddedRect(el)
         setRect((prev) => (sameRect(prev, r) ? prev : r))
+        /* A late anchor (the /book page still loading on a slow connection)
+           must lift the fallback again, or the step would keep ignoring the
+           Guest's real input after its control finally appeared. */
+        setMissing((prev) => (prev ? false : prev))
       } else {
         setRect((prev) => (prev === null ? prev : null))
         if (Date.now() - startedAt > MISSING_GRACE_MS && current.targets) setMissing(true)
@@ -251,7 +274,7 @@ export function TourProvider({
     if (!running) return
     const timer = window.setTimeout(() => {
       const el = findTarget(stepRef.current)
-      if (el) scrollTowards(el)
+      if (el) scrollTowards(el, insets.current)
     }, 250)
     return () => window.clearTimeout(timer)
   }, [running, index])
@@ -267,11 +290,13 @@ export function TourProvider({
     [],
   )
 
-  /* Re-evaluate satisfiable steps once on activation: pressing Back onto a
-     step whose gesture already happened (dates still filled, terms still
-     ticked) must not strand the Guest waiting for an event that won't refire. */
+  /* Re-evaluate satisfiable steps once on activation (and again whenever the
+     anchor comes back): pressing Back onto a step whose gesture already
+     happened (dates still filled, terms still ticked), or filling the dates
+     while the step was still waiting for its control, must not strand the
+     Guest waiting for an event that won't refire. */
   useEffect(() => {
-    if (!running) return
+    if (!running || missing) return
     const timer = window.setTimeout(() => {
       const s = stepRef.current
       const aw = s.await
@@ -296,7 +321,7 @@ export function TourProvider({
       }
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [running, index, location.pathname, advanceFrom])
+  }, [running, index, missing, location.pathname, advanceFrom])
 
   /* The interaction listeners. Nothing is ever prevented or stopped: the
      highlighted control behaves exactly as it does without a tour. */
@@ -382,6 +407,7 @@ export function TourProvider({
       back,
       skip: finish,
       exit,
+      insets,
     }
   }, [running, step, index, steps.length, rect, missing, start, next, back, finish, exit])
 

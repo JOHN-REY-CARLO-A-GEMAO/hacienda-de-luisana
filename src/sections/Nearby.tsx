@@ -1,21 +1,25 @@
 import { NEARBY } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
-import { ArrowRight, Compass, MapPin } from '../lib/icons'
+import { SceneHeader } from '../components/Scene'
+import { ArrowRight, Clock, Compass, MapPin } from '../lib/icons'
 
 export function Nearby() {
   return (
     <section id="nearby" className="py-24 lg:py-36 bg-cream-100/60">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 reveal">
-          <div className="max-w-2xl">
-            <div className="eyebrow">Nearby Adventures</div>
-            <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-4 text-forest-900">
-              Adventure Is Never
-              <br />
-              <span className="italic font-light">Too Far Away</span>
-            </h2>
-          </div>
-          <p className="max-w-md text-forest-800/80 leading-relaxed">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
+          <SceneHeader
+            index="04"
+            eyebrow="Nearby Adventures"
+            title={
+              <>
+                Adventure Is Never
+                <br />
+                <span className="italic font-light">Too Far Away</span>
+              </>
+            }
+          />
+          <p className="reveal max-w-md text-forest-800/80 leading-relaxed lg:pb-2">
             The Luisiana countryside is stitched together with waterfalls, caves, heritage towns and
             lakes. Slow mornings at the Hacienda, big adventures within reach.
           </p>
@@ -25,7 +29,7 @@ export function Nearby() {
           {NEARBY.map((n, i) => (
             <article
               key={n.id}
-              className="reveal group bg-white rounded-3xl overflow-hidden border border-forest-900/5 hover:shadow-card transition-all duration-500 flex flex-col"
+              className="reveal group bg-white rounded-3xl overflow-hidden border border-forest-900/5 shadow-card hover:shadow-depth lg:hover:-translate-y-1.5 transition-all duration-700 ease-out-expo flex flex-col"
               style={{ transitionDelay: `${i * 40}ms` }}
             >
               <div className="relative overflow-hidden">
@@ -38,13 +42,21 @@ export function Nearby() {
               <div className="p-5 flex-1 flex flex-col">
                 <h3 className="font-serif text-xl text-forest-900">{n.name}</h3>
                 <p className="mt-2 text-sm text-forest-800/80 leading-relaxed flex-1">{n.description}</p>
-                <div className="mt-4 flex items-center gap-4 text-[11px] uppercase tracking-eyebrow text-forest-600">
+                {/* The town is always known; distance and travel time only appear once the Hacienda has measured them. */}
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] uppercase tracking-eyebrow text-forest-600">
                   <span className="inline-flex items-center gap-1.5">
-                    <Compass size={12} /> {n.distance}
+                    <MapPin size={12} /> {n.area}
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin size={12} /> {n.travelTime}
-                  </span>
+                  {n.distance && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Compass size={12} /> {n.distance}
+                    </span>
+                  )}
+                  {n.travelTime && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Clock size={12} /> {n.travelTime}
+                    </span>
+                  )}
                 </div>
                 <a
                   href={n.mapsUrl}
