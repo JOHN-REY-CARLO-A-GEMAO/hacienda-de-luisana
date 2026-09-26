@@ -71,8 +71,13 @@ body {
 }
 
 /* Typographic helpers */
-.eyebrow {
-  @apply text-[11px] font-medium uppercase tracking-eyebrow text-forest-600;
+/* `.eyebrow` lives in the components layer so a colour utility next to it
+   (`eyebrow text-cream-100/70` on the dark scenes) wins — outside the layer
+   the helper came after the utilities and painted forest-green on forest-green. */
+@layer components {
+  .eyebrow {
+    @apply text-[11px] font-medium uppercase tracking-eyebrow text-forest-600;
+  }
 }
 .display {
   @apply font-serif font-medium leading-[1.05] tracking-tight;

@@ -255,6 +255,10 @@ export function TourProvider({
       if (el) {
         const r = paddedRect(el)
         setRect((prev) => (sameRect(prev, r) ? prev : r))
+        /* A late anchor (the /book page still loading on a slow connection)
+           must lift the fallback again, or the step would keep ignoring the
+           Guest's real input after its control finally appeared. */
+        setMissing((prev) => (prev ? false : prev))
       } else {
         setRect((prev) => (prev === null ? prev : null))
         if (Date.now() - startedAt > MISSING_GRACE_MS && current.targets) setMissing(true)
@@ -286,11 +290,13 @@ export function TourProvider({
     [],
   )
 
-  /* Re-evaluate satisfiable steps once on activation: pressing Back onto a
-     step whose gesture already happened (dates still filled, terms still
-     ticked) must not strand the Guest waiting for an event that won't refire. */
+  /* Re-evaluate satisfiable steps once on activation (and again whenever the
+     anchor comes back): pressing Back onto a step whose gesture already
+     happened (dates still filled, terms still ticked), or filling the dates
+     while the step was still waiting for its control, must not strand the
+     Guest waiting for an event that won't refire. */
   useEffect(() => {
-    if (!running) return
+    if (!running || missing) return
     const timer = window.setTimeout(() => {
       const s = stepRef.current
       const aw = s.await
@@ -315,7 +321,7 @@ export function TourProvider({
       }
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [running, index, location.pathname, advanceFrom])
+  }, [running, index, missing, location.pathname, advanceFrom])
 
   /* The interaction listeners. Nothing is ever prevented or stopped: the
      highlighted control behaves exactly as it does without a tour. */

@@ -130,7 +130,7 @@ export function Hero() {
           </div>
           <a
             href="#intro"
-            className="flex flex-col items-center gap-2 text-cream-100/70 hover:text-cream-100 transition group mx-auto sm:mx-0"
+            className="flex flex-col items-center gap-2 text-cream-100/70 hover:text-cream-100 transition group mx-auto lg:mx-0"
           >
             <span className="text-[10px] uppercase tracking-eyebrow">Discover the Hacienda</span>
             <ArrowDown size={18} className={reducedMotion ? '' : 'animate-bounce'} />

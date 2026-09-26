@@ -459,6 +459,57 @@ try {
     assert('C Back from step 2 returns to the welcome (step 1)', s.index === 1)
     await context.close()
   }
+
+  /* ============ D. the dates block renders late (slow device / connection) ============ */
+  // Seen once in a real Chromium under load: /book took longer than the tour's
+  // missing-anchor grace, the dates step degraded to "read along" and then
+  // ignored the dates the Guest typed. The block is kept invisible for 3.5 s
+  // after it first appears; the step must fall back, recover, and still react.
+  {
+    const { context, page } = await freshPage()
+    await context.addInitScript(() => {
+      const css = document.createElement('style')
+      css.textContent = '[data-tour="stay-details"]{display:none !important}'
+      let armed = false
+      const mo = new MutationObserver(() => {
+        if (armed || !document.querySelector('[data-tour="stay-details"]')) return
+        armed = true
+        document.head.appendChild(css)
+        setTimeout(() => css.remove(), 3500)
+      })
+      const start = () => mo.observe(document.documentElement, { childList: true, subtree: true })
+      if (document.documentElement) start()
+      else document.addEventListener('readystatechange', start, { once: true })
+    })
+    await page.goto(BASE + '/', { waitUntil: 'commit' })
+    await page.waitForSelector(DIALOG, { timeout: 10000 })
+    await page.getByRole('button', { name: 'Start the tour' }).click()
+    await waitForStep(page, 'Choose how you want to stay')
+    await page.waitForTimeout(1500)
+    await page.locator('[data-tour="accommodation-cta"]').first().click()
+    await waitForStep(page, 'Pick your dates first')
+    const cardText = () => page.locator(DIALOG).innerText()
+    let fellBack = false
+    for (let i = 0; i < 11 && !fellBack; i++) {
+      await page.waitForTimeout(300)
+      fellBack = /isn’t on screen right now/.test(await cardText())
+    }
+    assert('D dates step falls back to "read along" while its block is not on screen', fellBack)
+    await page.waitForFunction(() => {
+      const el = document.querySelector('[data-tour="stay-details"]')
+      return el && getComputedStyle(el).display !== 'none'
+    }, null, { timeout: 15000 })
+    await page.waitForTimeout(600)
+    assert('D fallback lifts once the block appears', !/isn’t on screen right now/.test(await cardText()))
+    const g = await geometry(page, ['stay-details'])
+    assert('D spotlight is back on the dates block', g.target && g.target.name === 'stay-details')
+    await page.fill('[data-tour-field="check-in"]', futureDate(30))
+    await page.fill('[data-tour-field="check-out"]', futureDate(32))
+    const s4 = await waitForStep(page, 'Tell us who’s coming', 6000).catch(() => null)
+    assert('D typing the dates after the late appearance still advances to step 4', s4 && s4.index === 4, s4 ? `${s4.index}` : 'stayed on step 3')
+    await shot(page, 'late-anchor-recovered')
+    await context.close()
+  }
 } catch (err) {
   record('UNCAUGHT test-runner error', false, err.stack?.split('\n').slice(0, 3).join(' | '))
 } finally {

@@ -160,3 +160,145 @@ describe('the overlay lets taps through the spotlight window', () => {
     expect(card.textContent).toContain('Look here')
   })
 })
+
+describe('a step whose control arrives late (slow page load)', () => {
+  const mounted: Root[] = []
+  afterEach(() => {
+    for (const root of mounted.splice(0)) act(() => root.unmount())
+    document.body.innerHTML = ''
+  })
+
+  const laidOut = (el: HTMLElement, top: number) => {
+    el.getBoundingClientRect = () => ({ top, left: 40, width: 300, height: 120, right: 340, bottom: top + 120, x: 40, y: top, toJSON: () => ({}) })
+    el.getClientRects = () => [el.getBoundingClientRect()] as unknown as DOMRectList
+  }
+
+  it(
+    'lifts the fallback once the anchor appears and then honours the Guest\'s already-typed values',
+    async () => {
+      // Seen in a real phone-sized Chromium under load: /book took longer than the
+      // missing-anchor grace to render, the dates step degraded to "read along",
+      // and typing the dates afterwards did nothing — `missing` was never cleared.
+      const steps: TourStep[] = [
+        {
+          id: 'dates',
+          title: 'Pick your dates first',
+          body: 'Real body.',
+          fallbackBody: 'Fallback body.',
+          targets: ['stay-details'],
+          actionHint: 'Choose both dates.',
+          await: {
+            type: 'fields',
+            fields: [
+              { field: 'check-in', ok: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) },
+              { field: 'check-out', ok: (v, all) => /^\d{4}-\d{2}-\d{2}$/.test(v) && v > all['check-in'] },
+            ],
+          },
+        },
+        { id: 'party', title: 'Tell us who is coming', body: 'Second step.', await: { type: 'none' } },
+      ]
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      mounted.push(root)
+      act(() => {
+        root.render(
+          <MemoryRouter>
+            <TourProvider steps={steps} autoOpen onDone={() => {}} onExit={() => {}}>
+              <TourOverlay />
+            </TourProvider>
+          </MemoryRouter>,
+        )
+      })
+      const text = () => (container.textContent ?? '').replace(/\s+/g, ' ')
+
+      // No anchor for longer than the grace period → the step degrades to the fallback.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 2700))
+      })
+      expect(text()).toContain('Fallback body.')
+      expect(text()).toContain('isn’t on screen right now')
+
+      // The page finishes loading: the anchor and its fields appear, already filled
+      // (the Guest typed while the card was still in fallback mode).
+      const anchor = document.createElement('div')
+      anchor.setAttribute('data-tour', 'stay-details')
+      laidOut(anchor, 200)
+      const checkIn = document.createElement('input')
+      checkIn.setAttribute('data-tour-field', 'check-in')
+      checkIn.value = '2026-11-10'
+      const checkOut = document.createElement('input')
+      checkOut.setAttribute('data-tour-field', 'check-out')
+      checkOut.value = '2026-11-12'
+      anchor.append(checkIn, checkOut)
+      document.body.appendChild(anchor)
+
+      // The spotlight loop notices the anchor, the fallback lifts …
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 120))
+      })
+      expect(text()).toContain('Real body.')
+      expect(text()).not.toContain('isn’t on screen right now')
+
+      // … and the re-evaluation advances on the values that are already there.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 900))
+      })
+      expect(text()).toContain('Tell us who is coming')
+    },
+    15_000,
+  )
+
+  it('keeps reacting to typing after the anchor turned up late', async () => {
+    const steps: TourStep[] = [
+      {
+        id: 'name',
+        title: 'Your name',
+        body: 'Real body.',
+        fallbackBody: 'Fallback body.',
+        targets: ['guest-details'],
+        await: { type: 'fields', fields: [{ field: 'guest-name', ok: (v) => v.trim().length >= 2 }] },
+      },
+      { id: 'after', title: 'All done here', body: 'Second step.', await: { type: 'none' } },
+    ]
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    mounted.push(root)
+    act(() => {
+      root.render(
+        <MemoryRouter>
+          <TourProvider steps={steps} autoOpen onDone={() => {}} onExit={() => {}}>
+            <TourOverlay />
+          </TourProvider>
+        </MemoryRouter>,
+      )
+    })
+    const text = () => (container.textContent ?? '').replace(/\s+/g, ' ')
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 2700))
+    })
+    expect(text()).toContain('Fallback body.')
+
+    const anchor = document.createElement('div')
+    anchor.setAttribute('data-tour', 'guest-details')
+    laidOut(anchor, 160)
+    const name = document.createElement('input')
+    name.setAttribute('data-tour-field', 'guest-name')
+    anchor.append(name)
+    document.body.appendChild(anchor)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 120))
+    })
+    expect(text()).toContain('Real body.')
+
+    // A real keystroke now counts again.
+    name.value = 'Maria'
+    await act(async () => {
+      name.dispatchEvent(new Event('input', { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 400))
+    })
+    expect(text()).toContain('All done here')
+  }, 15_000)
+})
