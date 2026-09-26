@@ -45,6 +45,14 @@ describe('the booking store seam', () => {
     expect(stored?.hold_expires_at).toBe(new Date(Date.parse(NOW) + DATE_HOLD_MS).toISOString())
   })
 
+  it('says the Booking landed in this browser, so the screen can promise nothing it cannot keep', async () => {
+    const submitted = await cloudBookingsDB.add(request, { ...guest, now: NOW })
+
+    // No Firebase in a test run: the success screen says "saved on this device"
+    // rather than "sent to the Admin app" (src/pages/BookingPage.tsx).
+    expect(submitted.storage).toBe('local')
+  })
+
   it('writes an Activity log entry when a Booking is created', async () => {
     const submitted = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 

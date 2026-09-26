@@ -9,6 +9,17 @@ There is no Staff role and no Host role. Roles are `guest` | `admin`.
 
 Read `docs/README.md` for the repository layout, and `docs/agents/domain.md` for the domain docs rules before exploring.
 
+## Which Firebase project a build talks to
+
+Decided once, at build time, by `src/lib/firebaseConfig.ts`: `VITE_FIREBASE_*`
+variables first, then the committed project in `src/lib/firebaseDefaults.ts` for
+production builds, then nothing (demo mode, `authLocal.ts`). So `npm run dev`,
+`npm test` and the emulator workflow run in demo mode, while a deployed build talks
+to the Hacienda's real project. `/status` reports which source won, and the build
+log prints it (`[firebase] Building for project …`). Never put a secret in a
+`VITE_*` variable — everything Vite exposes is public — and read
+`docs/FIREBASE_SETUP.md` § 3c before changing any of this.
+
 ## Agent skills
 
 ### Issue tracker

@@ -150,6 +150,65 @@ npm run dev
 4. For the Admin app, register the Android app (package `com.haciendadeluisana.client2`)
    with its SHA-1 — see [ANDROID.md](./ANDROID.md). Email + password works without it.
 
+### 3c. Which project a *build* talks to (and why a deployment said “Demo mode”)
+
+The web app decides this once, at build time, in one pure module
+(`src/lib/firebaseConfig.ts`). Three sources, in this order:
+
+| # | Source | When it is used | Effect |
+| --- | --- | --- | --- |
+| 1 | `VITE_FIREBASE_*` environment variables | whenever they are complete | that project, and nothing from anywhere else |
+| 2 | `src/lib/firebaseDefaults.ts` (committed) | production builds (`vite build`) with no variables | the Hacienda's own project, so a deployment with an empty dashboard still reaches the Admin app |
+| 3 | nothing | `npm run dev`, the test run, or a build with no project anywhere | **demo mode**: accounts and Bookings live in this browser (`authLocal.ts`) |
+
+Two consequences worth knowing:
+
+- **A deployed site is never silently in demo mode.** If a production build has no
+  project at all, the build log says so in capitals (`[firebase] This build has NO
+  Firebase project…`). Set `FIREBASE_ENV_STRICT=1` in the hosting dashboard (or in
+  front of `npm run build`) to make such a build *fail* instead of shipping.
+- **Local development is unchanged.** `npm run dev`, `npm test` and the emulator
+  workflow stay in demo mode unless `.env.local` supplies keys — no accidental writes
+  to the live project from a laptop. A local `npm run build && npm run preview` *is*
+  a production build, so it talks to the real project; use `.env.local` with the
+  emulator flag (`VITE_USE_FIREBASE_EMULATORS=true`, §1 of `.env.example`) to keep
+  practice data out of it.
+
+**Why the committed config is not a secret** (and may be committed): a Firebase web
+config identifies a project; it authorises nothing. `firestore.rules`,
+`storage.rules` and Firebase Auth answer every request whether or not somebody knows
+the key — see § Security Notes. The Admin app already ships the same project's keys
+in `lib/firebase_options.dart`.
+
+**Vercel** (or any host) — to override the committed values:
+
+1. Project → Settings → Environment Variables → add `VITE_FIREBASE_API_KEY`,
+   `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+   `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`,
+   `VITE_FIREBASE_APP_ID` (and optionally `VITE_FIREBASE_MEASUREMENT_ID`) for
+   **Production and Preview**.
+2. **Redeploy.** Vite reads those variables while building; adding one does nothing
+   to a deployment that is already live.
+3. Open `/status` on the deployment: it names the project, shows which source each
+   value came from, and its **Test the connection** button signs in anonymously and
+   reads Firestore to prove the wiring end to end.
+
+### 3d. Domains Firebase will accept sign-in from
+
+Google sign-in (and password-reset links) only work on hosts listed in
+**Authentication → Settings → Authorized domains**. The list on the project
+(`hacienda-de-luisana`) currently holds `localhost`, the Firebase Hosting domains,
+and three older `hacienda-*.vercel.app` preview URLs — **the addresses the site is
+served from today are missing**:
+
+- `hacienda-de-luisana.vercel.app`
+- `haciendadeluisana.com`
+- `www.haciendadeluisana.com`
+
+Add all three. A missing domain fails Google sign-in with
+`auth/unauthorized-domain` (the form says so in words); email/password and
+anonymous sign-in keep working, which is why this hides so well.
+
 ### 4. Deploy Firestore Rules & Indexes
 ```bash
 npm install -g firebase-tools
@@ -254,6 +313,12 @@ code bases — `src/lib/booking/rates.ts` and `lib/services/booking_lifecycle.da
 
 **Added:**
 - `src/lib/firebase.ts`
+- `src/lib/firebaseConfig.ts` (which project a build talks to — pure, tested)
+- `src/lib/firebaseDefaults.ts` (the committed project, used by production builds)
+- `src/lib/firebaseFailure.ts` (Firebase's refusals in words)
+- `src/lib/connectionCheck.ts` (`/status`'s "Test the connection")
+- `src/pages/StatusPage.tsx` (`/status` — where a deployment explains itself)
+- `src/lib/guestAuth.ts` (the anonymous Guest identity)
 - `src/context/AuthContext.tsx`
 - `src/hooks/useAuth.ts`
 - `src/components/Auth/LoginForm.tsx`
@@ -287,6 +352,14 @@ npm run build
 
 ## 🛠 Troubleshooting
 
+- **A deployed site says "Demo mode"**: open `/status` on that deployment. It reports
+  which values the build carries and where each came from. Usual causes: the build
+  ran before the dashboard variables were added (redeploy), a variable is still the
+  `.env.example` placeholder (it is refused and named on `/status`), or the project
+  was never filled in. See § 3c.
+- **Guests cannot sign in / bookings do not arrive**: run **Test the connection** on
+  `/status`. It names the switch that is off — Anonymous sign-in, the rules not
+  deployed, or a domain missing from Authorized domains (§ 3d).
 - **"Firebase not configured" warning**: Create `.env.local` from `.env.example`
 - **Auth popup blocked**: Allow popups or use email login
 - **Firestore permission denied**: Check `firestore.rules` deployed, user is logged in

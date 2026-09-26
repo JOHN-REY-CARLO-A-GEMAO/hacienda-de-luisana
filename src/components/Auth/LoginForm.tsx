@@ -166,7 +166,8 @@ export function LoginForm({
           <p className="mt-1.5 text-xs text-amber-900/85 leading-relaxed">
             Accounts and Bookings stay in this browser. Sign up as a Guest to walk the flow through. Copy{' '}
             <code className="font-mono">.env.example</code> to <code className="font-mono">.env.local</code> with real
-            Firebase keys for cloud sign-in.
+            Firebase keys for cloud sign-in, or read <Link to="/status" className="underline">deployment status</Link>{' '}
+            for why this build has none.
           </p>
         </div>
       )}

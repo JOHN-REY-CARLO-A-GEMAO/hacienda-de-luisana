@@ -2,76 +2,55 @@
 // Firebase Configuration & Initialization
 // Hacienda de LuisAna — Centralized Firebase setup
 // ----------------------------------------------------------------------------
-// Uses Vite environment variables (prefix VITE_) for security.
-// Populate your .env.local file using .env.example as template.
+// Where the project this build talks to comes from is decided in one pure place
+// (`firebaseConfig.ts`): `VITE_FIREBASE_*` if the build has them, the committed
+// project (`firebaseDefaults.ts`) for a deployed build that has none, and the
+// local demo adapter if there is no project at all. This file only does the
+// wiring — initialise the SDK once, connect the emulators in practice mode, and
+// describe what happened for `/status`.
 //
 // Supported services:
-// - Authentication (Email/Password + Google)
+// - Authentication (Email/Password + Google + Anonymous for web Guests)
 // - Firestore Database
 // - Storage
-// - Analytics (optional, browser only)
+// - Analytics (optional, browser only, needs an app id)
 // ----------------------------------------------------------------------------
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, type Auth, GoogleAuthProvider } from 'firebase/auth'
 import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore'
 import { connectStorageEmulator, getStorage, type FirebaseStorage } from 'firebase/storage'
+import {
+  fieldReport,
+  resolveFirebaseConfig,
+  type FirebaseConfigReport,
+} from './firebaseConfig'
+import { COMMITTED_PROJECT } from './firebaseDefaults'
 
 // ----------------------------------------------------------------------------
-// Environment Variables
+// The decision
 // ----------------------------------------------------------------------------
-// Vite requires VITE_ prefix for client-side env vars.
-// See .env.example for required keys.
+// `import.meta.env.PROD` is a build-time constant, so which of the three
+// sources applies is fixed into the bundle: a deployed build (Vercel, GitHub
+// Pages, Firebase Hosting) may fall back to the committed project, while
+// `npm run dev` and the test run stay in demo mode until `.env.local` or the
+// emulator flag says otherwise.
+const resolution: FirebaseConfigReport = resolveFirebaseConfig({
+  env: import.meta.env as unknown as Record<string, unknown>,
+  defaults: COMMITTED_PROJECT,
+  allowDefaults: Boolean(import.meta.env.PROD),
+})
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID as string | undefined,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID as string | undefined,
-}
+const firebaseConfig = resolution.config
 
-// Helper to check if an environment string has a non-placeholder value
-function isValidConfigValue(val?: string): boolean {
-  if (!val) return false
-  const trimmed = val.trim()
-  if (!trimmed) return false
-  const lower = trimmed.toLowerCase()
-  // Reject common dummy / placeholder patterns
-  if (
-    lower.includes('your_') ||
-    lower.includes('placeholder') ||
-    lower.includes('example') ||
-    lower.includes('xxxx') ||
-    lower.startsWith('<') ||
-    lower.endsWith('>') ||
-    lower === 'undefined' ||
-    lower === 'null' ||
-    lower === 'your_api_key_here' ||
-    lower === 'your_project_id' ||
-    lower === 'your_app_id' ||
-    lower === 'your_sender_id'
-  ) {
-    return false
-  }
-  return true
-}
+/** True when this build has a Firebase project to talk to. */
+export const isFirebaseConfigured = resolution.configured
 
-// Google / Firebase Web API keys start with AIza and are ~39 characters long
-function isValidApiKey(key?: string): boolean {
-  if (!isValidConfigValue(key)) return false
-  return Boolean(key && key.startsWith('AIza') && key.length >= 20)
-}
+/** Where the project settings came from: 'env' | 'defaults' | 'mixed' | 'none'. */
+export const firebaseConfigSource = resolution.source
 
-// Check if Firebase is properly configured (all required fields present and non-placeholder)
-export const isFirebaseConfigured = Boolean(
-  isValidApiKey(firebaseConfig.apiKey) &&
-  isValidConfigValue(firebaseConfig.authDomain) &&
-  isValidConfigValue(firebaseConfig.projectId) &&
-  isValidConfigValue(firebaseConfig.appId)
-)
+/** The full account of every field — what `/status` and the build log read. */
+export const firebaseConfigReport = resolution
 
 // Practice database: the Firebase Emulator Suite on localhost (Auth :9099,
 // Firestore :8080, Storage :9199). Set VITE_USE_FIREBASE_EMULATORS=true in
@@ -81,19 +60,45 @@ export const isFirebaseConfigured = Boolean(
 export const isUsingEmulators =
   isFirebaseConfigured && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true'
 
-// Warn in development if not configured, but don't crash the app
+// A build that would talk to an emulator on a visitor's machine is a mistake
+// worth shouting about: there is no emulator at 127.0.0.1 in a browser that is
+// not the developer's.
+if (isUsingEmulators && import.meta.env.PROD) {
+  console.error(
+    '[Firebase] This production build is pointed at the local Emulator Suite ' +
+      '(VITE_USE_FIREBASE_EMULATORS=true). Visitors have no emulator on their machine — ' +
+      'remove that variable from the hosting dashboard and rebuild.',
+  )
+}
+
 if (!isFirebaseConfigured && import.meta.env.DEV) {
   console.info(
     '[Firebase] Running in local offline mode. ' +
-    'To connect to Firebase, update .env.local with valid Firebase credentials (API key starting with AIza). ' +
-    'Bookings and admin dashboard will use local persistence.'
+      'To connect to Firebase, update .env.local with valid Firebase credentials (API key starting with AIza). ' +
+      'Bookings and admin dashboard will use local persistence.',
+  )
+}
+
+if (isFirebaseConfigured && resolution.source !== 'env' && import.meta.env.PROD) {
+  console.info(
+    '[Firebase] Configured from the project committed in src/lib/firebaseDefaults.ts — ' +
+      'this build has no VITE_FIREBASE_* environment variables of its own. ' +
+      'Set them in the hosting dashboard (and redeploy) to override any value.',
+  )
+}
+
+if (resolution.refusedEnvKeys.length > 0) {
+  console.warn(
+    '[Firebase] These environment variables are set but were refused, so the committed project ' +
+      `is used for those values instead: ${resolution.refusedEnvKeys.join(', ')}. ` +
+      'Check them in the hosting dashboard (a Firebase web API key starts with "AIza").',
   )
 }
 
 if (isUsingEmulators && import.meta.env.DEV) {
   console.info(
     '[Firebase] Talking to the local Emulator Suite (Auth :9099, Firestore :8080, Storage :9199). ' +
-    'Nothing here touches the live project. Inspect data at http://127.0.0.1:4000.',
+      'Nothing here touches the live project. Inspect data at http://127.0.0.1:4000.',
   )
 }
 
@@ -137,11 +142,14 @@ if (isFirebaseConfigured) {
     googleProvider = new GoogleAuthProvider()
     googleProvider.setCustomParameters({ prompt: 'select_account' })
 
-    // Optional Analytics — only in browser, only if measurementId present and not a placeholder
+    // Optional Analytics — only in browser, and only when the build has both a
+    // measurement id and an app id to key it to. Without an app id the SDK has
+    // nothing to file the data under, so Analytics stays off rather than
+    // initialised half way.
     if (
       typeof window !== 'undefined' &&
-      isValidConfigValue(firebaseConfig.measurementId) &&
-      !firebaseConfig.measurementId?.includes('XXXX')
+      fieldReport(resolution, 'appId').value &&
+      fieldReport(resolution, 'measurementId').value
     ) {
       // Dynamic import to avoid SSR issues and keep bundle lean
       import('firebase/analytics')
@@ -165,7 +173,7 @@ if (isFirebaseConfigured) {
     googleProvider = null
   }
 } else {
-  // Dummy placeholders to keep imports working when not configured
+  // No project to reach: every consumer below already checks the flag first.
   app = null
   auth = null
   db = null
@@ -176,16 +184,22 @@ if (isFirebaseConfigured) {
 export { app, auth, db, storage, googleProvider, firebaseConfig }
 
 // ----------------------------------------------------------------------------
-// Helper for debugging / admin UI
+// Helper for debugging / admin UI / the /status page
 // ----------------------------------------------------------------------------
 export function getFirebaseStatus() {
   const isReady = isFirebaseConfigured && Boolean(app)
   return {
     configured: isReady,
+    source: resolution.source,
     emulators: isUsingEmulators,
-    projectId: isReady ? (firebaseConfig.projectId || 'not-set') : 'local-mode',
-    authDomain: isReady ? (firebaseConfig.authDomain || 'not-set') : 'local-mode',
-    hasApiKey: isValidApiKey(firebaseConfig.apiKey),
-    hasMeasurementId: isValidConfigValue(firebaseConfig.measurementId) && !firebaseConfig.measurementId?.includes('XXXX'),
+    projectId: isReady ? firebaseConfig.projectId || 'not-set' : 'local-mode',
+    authDomain: isReady ? firebaseConfig.authDomain || 'not-set' : 'local-mode',
+    hasApiKey: Boolean(fieldReport(resolution, 'apiKey').value),
+    hasAppId: Boolean(fieldReport(resolution, 'appId').value),
+    hasMeasurementId: Boolean(fieldReport(resolution, 'measurementId').value),
+    /** Required values this build does not have — why it is in demo mode. */
+    missingRequired: resolution.missingRequired,
+    /** Variables that were set and refused, with the reason. */
+    refusedEnvKeys: resolution.refusedEnvKeys,
   }
 }

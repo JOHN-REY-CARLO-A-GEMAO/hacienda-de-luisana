@@ -61,6 +61,13 @@ export function BookingPage() {
   const [submittedRef, setSubmittedRef] = useState<string>('')
   const [submittedId, setSubmittedId] = useState<string>('')
   const [submittedBooking, setSubmittedBooking] = useState<Booking | null>(null)
+  // Where the request actually landed. A cloud write can be refused (rules not
+  // deployed, Anonymous sign-in off, the Guest offline), and when it is, the
+  // Booking is kept in this browser — the screen has to say so rather than
+  // promise a request the Hacienda never received.
+  const [submittedStorage, setSubmittedStorage] = useState<'cloud' | 'local'>(
+    cloudBookingsDB.isCloud ? 'cloud' : 'local',
+  )
   // G2: availability is checked by the system before the Guest commits, not
   // only in the Admin's head at approval time (ticket #12).
   const [availability, setAvailability] = useState<{ available: boolean; heldBy: number } | null>(null)
@@ -190,6 +197,7 @@ export function BookingPage() {
       setSubmittedId(b.id)
       setSubmittedRef(b.id.slice(0, 8).toUpperCase())
       setSubmittedBooking(b)
+      setSubmittedStorage(b.storage)
       setStatus('success')
     } catch (err: any) {
       console.error('[Booking] failed', err)
@@ -204,7 +212,7 @@ export function BookingPage() {
         bookingId={submittedId}
         reference={submittedRef}
         booking={submittedBooking}
-        isCloud={cloudBookingsDB.isCloud}
+        storage={submittedStorage}
         checkIn={form.check_in}
         checkOut={form.check_out}
         guests={form.guests}
@@ -235,8 +243,9 @@ export function BookingPage() {
           </p>
           {!isFirebaseConfigured && (
             <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
-              <strong>Demo mode:</strong> Firebase not configured — your request will be stored locally in this browser
-              and will not reach the Admin app. Configure Firebase for real requests.
+              <strong>Demo mode:</strong> Firebase not configured in this build — your request will be stored
+              locally in this browser and will not reach the Admin app. Please message or call us as well, so
+              your dates are held. <Link to="/status" className="underline">Deployment status</Link>
             </div>
           )}
           {cloudBookingsDB.isCloud && (
@@ -496,7 +505,7 @@ function SuccessScreen({
   reference,
   booking,
   onNew,
-  isCloud,
+  storage,
   checkIn,
   checkOut,
   guests,
@@ -506,13 +515,20 @@ function SuccessScreen({
   reference: string
   booking: Booking | null
   onNew: () => void
-  isCloud: boolean
+  /**
+   * Where the request went. 'cloud' means Firestore holds it and the Admin app
+   * reads it. 'local' means this browser holds it and the Hacienda has not been
+   * told — whether because the build has no Firebase or because the write was
+   * refused — and the screen says so, with a way to reach the Hacienda.
+   */
+  storage: 'cloud' | 'local'
   checkIn?: string
   checkOut?: string
   guests?: number
   accommodationName?: string
 }) {
   void bookingId
+  const delivered = storage === 'cloud'
 
   return (
     <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
@@ -521,14 +537,27 @@ function SuccessScreen({
           className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-8 sm:p-12 text-center"
           data-tour="booking-success"
         >
-          <div className="mx-auto w-16 h-16 rounded-full bg-forest-100 text-forest-700 flex items-center justify-center">
+          <div
+            className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center ${
+              delivered ? 'bg-forest-100 text-forest-700' : 'bg-amber-100 text-amber-700'
+            }`}
+          >
             <Sparkle size={26} />
           </div>
-          <div className="eyebrow mt-6">Request Received & Sent to App</div>
+          <div className="eyebrow mt-6">
+            {delivered ? 'Request Received & Sent to App' : 'Request Received & Saved on This Device'}
+          </div>
           <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">Salamat!</h1>
-          <p className="mt-4 text-forest-800/80 leading-relaxed max-w-lg mx-auto">
-            Matagumpay na naipadala ang iyong booking request diretso sa <strong>Client App</strong> ng Hacienda de LuisAna para sa kumpirmasyon.
-          </p>
+          {delivered ? (
+            <p className="mt-4 text-forest-800/80 leading-relaxed max-w-lg mx-auto">
+              Matagumpay na naipadala ang iyong booking request diretso sa <strong>Client App</strong> ng Hacienda de LuisAna para sa kumpirmasyon.
+            </p>
+          ) : (
+            <p className="mt-4 text-forest-800/80 leading-relaxed max-w-lg mx-auto">
+              Naka-save ang iyong booking request sa browser na ito, pero <strong>hindi ito naipadala sa Hacienda</strong>.
+              I-message o tawagan kami para ma-hold ang iyong dates.
+            </p>
+          )}
           <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-forest-50 border border-forest-100 text-forest-800 px-4 py-2 text-xs">
             Reference Number: <span className="font-mono font-bold text-forest-900">{reference}</span>
           </div>
@@ -568,8 +597,29 @@ function SuccessScreen({
             </div>
           )}
 
-          {isCloud && (
-            <div className="mt-3 text-xs text-forest-600">✓ Real-time synced to Client App via Firebase Cloud</div>
+          {delivered ? (
+            <div className="mt-3 text-xs text-forest-600">
+              ✓ Real-time synced to the Admin app via Firebase Cloud
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-left text-xs text-amber-900 leading-relaxed">
+              <strong>Hindi ito naipadala sa Admin app.</strong> Naka-save lang ang request na ito sa
+              browser na ito, kaya i-message o tawagan kami para ma-hold ang iyong dates — sabihin ang
+              reference number na <span className="font-mono font-bold">{reference}</span>.
+              <div className="mt-3 flex flex-wrap gap-3">
+                <a
+                  href={BUSINESS.contact.messenger}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-primary text-[11px]"
+                >
+                  Message us
+                </a>
+                <a href={`tel:${BUSINESS.contact.phone.replace(/\s/g, '')}`} className="btn-ghost text-[11px]">
+                  {BUSINESS.contact.phoneDisplay}
+                </a>
+              </div>
+            </div>
           )}
 
           {/* Access — the credential, never the Guest's position */}
