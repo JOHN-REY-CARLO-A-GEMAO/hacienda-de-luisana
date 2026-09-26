@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../providers/app_providers.dart';
+import '../../tutorial/tutorial_keys.dart';
 import '../../models/smart_lock_event_model.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/metric_stat_card.dart';
@@ -163,6 +164,7 @@ class DashboardScreen extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
+                        key: TourKeys.reviewBookings,
                         onPressed: () => onNavigateTab(1), // Bookings tab
                         icon: const Icon(Icons.confirmation_number_outlined, size: 16),
                         label: const Text('Review Bookings'),

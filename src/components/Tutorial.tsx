@@ -1,79 +1,65 @@
-import { useEffect, useState } from 'react'
-import { COOKIE, getCookie, setCookie } from '../lib/cookies'
+// ----------------------------------------------------------------------------
+// The interactive Guest tutorial — mount point
+// Hacienda de LuisAna
+// ----------------------------------------------------------------------------
+// Not a slideshow: a guided walkthrough of the real Guest UI. The engine
+// (src/tutorial) highlights the actual Booking button, date fields, terms
+// checkbox and so on, and waits for the Guest to use each one before moving
+// on. Completion is remembered in the same cookie the old slideshow used, so
+// returning Guests are not asked again; "Replay tutorial" starts it over.
+// ----------------------------------------------------------------------------
 
-const STEPS = [
-  'Create or sign in to your Guest account.',
-  'Browse accommodations and pick dates.',
-  'Check availability before you send a request.',
-  'Submit a booking inquiry (not instant confirmation).',
-  'Read and accept the Terms and Conditions.',
-  'After Admin approval, choose a payment plan and pay externally.',
-  'Upload your receipt. OCR may suggest the reference and amount — confirm or correct them.',
-  'Wait while the Admin verifies the reference against their valid-payment list.',
-  'When payment is verified your stay is Reserved.',
-  'Use your RFID or Mobile Key on the stay dates. Access attempts are logged.',
-  'Complete the stay, then leave a star rating and optional review.',
-]
+import { useCallback } from 'react'
+import { COOKIE, getCookie, setCookie } from '../lib/cookies'
+import { GUEST_TOUR_STEPS } from '../tutorial/steps'
+import { TourProvider, useTour } from '../tutorial/TourEngine'
+import { TourOverlay } from '../tutorial/TourOverlay'
+
+/** localStorage mirrors the cookie: some in-app webviews drop cookies. */
+const LS_KEY = 'hdl_tutorial_done'
+
+function tourCompleted(): boolean {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(LS_KEY) === '1') return true
+  } catch {
+    /* private modes */
+  }
+  return getCookie(COOKIE.tutorialDone) === '1'
+}
+
+function rememberTourCompleted() {
+  setCookie(COOKIE.tutorialDone, '1', { days: 180, sameSite: 'Lax' })
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(LS_KEY, '1')
+  } catch {
+    /* private modes */
+  }
+}
+
+function ReplayButton() {
+  const tour = useTour()
+  if (tour.running) return null
+  return (
+    <button
+      type="button"
+      onClick={tour.start}
+      className="fixed bottom-20 right-4 z-30 text-[11px] px-3 py-2 rounded-full bg-forest-900 text-cream-50 shadow-card hover:bg-forest-800 transition-colors lg:bottom-6"
+    >
+      Replay tutorial
+    </button>
+  )
+}
 
 export function Tutorial({ force }: { force?: boolean }) {
-  const [open, setOpen] = useState(false)
-  const [step, setStep] = useState(0)
-
-  useEffect(() => {
-    if (force || getCookie(COOKIE.tutorialDone) !== '1') setOpen(true)
-  }, [force])
-
-  const close = (remember: boolean) => {
-    setOpen(false)
-    if (remember) setCookie(COOKIE.tutorialDone, '1', { days: 180, sameSite: 'Lax' })
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          setStep(0)
-          setOpen(true)
-        }}
-        className="fixed bottom-20 right-4 z-30 text-[11px] px-3 py-2 rounded-full bg-forest-900 text-cream-50 shadow-card lg:bottom-6"
-      >
-        Replay tutorial
-      </button>
-    )
-  }
+  const done = useCallback(() => rememberTourCompleted(), [])
+  const exited = useCallback(() => {
+    /* Exit (× / Esc) remembers nothing — the tour offers itself next visit. */
+  }, [])
 
   return (
-    <div className="fixed inset-0 z-50 bg-forest-950/50 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal>
-      <div className="bg-white rounded-[24px] max-w-md w-full p-6 shadow-card">
-        <div className="eyebrow">How a stay works</div>
-        <h2 className="font-serif text-2xl mt-1 text-forest-900">
-          Step {step + 1} of {STEPS.length}
-        </h2>
-        <p className="mt-3 text-sm text-forest-800 leading-relaxed">{STEPS[step]}</p>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button type="button" className="btn-ghost text-xs" onClick={() => close(true)}>
-            Skip
-          </button>
-          {step > 0 && (
-            <button type="button" className="btn-ghost text-xs" onClick={() => setStep((s) => s - 1)}>
-              Back
-            </button>
-          )}
-          {step < STEPS.length - 1 ? (
-            <button type="button" className="btn-primary text-xs" onClick={() => setStep((s) => s + 1)}>
-              Next
-            </button>
-          ) : (
-            <button type="button" className="btn-primary text-xs" onClick={() => close(true)}>
-              Done
-            </button>
-          )}
-          <button type="button" className="text-xs underline ml-auto" onClick={() => close(false)}>
-            Exit
-          </button>
-        </div>
-      </div>
-    </div>
+    <TourProvider steps={GUEST_TOUR_STEPS} autoOpen={Boolean(force) || !tourCompleted()} onDone={done} onExit={exited}>
+      <TourOverlay />
+      <ReplayButton />
+    </TourProvider>
   )
 }

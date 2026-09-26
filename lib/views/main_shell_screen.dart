@@ -5,6 +5,8 @@ import 'package:provider/provider.dart' as legacy;
 import '../core/constants/app_constants.dart';
 import '../services/auth_store.dart';
 import '../providers/app_providers.dart';
+import '../tutorial/tutorial_controller.dart';
+import '../tutorial/tutorial_keys.dart';
 import '../widgets/animated_badge.dart';
 import '../widgets/animated_tab_page.dart';
 import '../widgets/pressable_card.dart';
@@ -29,9 +31,33 @@ class MainShellScreen extends ConsumerStatefulWidget {
 
 class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   int _currentIndex = 0;
+  TutorialController? _tutorial;
 
   void _navigateToTab(int index) {
     setState(() => _currentIndex = index);
+    // The guided tour hears every tab change through the Bus, however it came
+    // — bottom bar, dashboard shortcut, More sheet or the tour itself.
+    TourBus.tab(index);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _tutorial = ref.read(tutorialControllerProvider);
+      _tutorial?.attachTabNavigator(_navigateToTab);
+      // Sync the current tab so the tour knows where the app already is.
+      TourBus.tab(_currentIndex);
+      // First launch as the Admin: offer the interactive guided tour.
+      _tutorial?.maybeOfferTutorial();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tutorial?.detachTabNavigator(_navigateToTab);
+    super.dispose();
   }
 
   @override
@@ -82,6 +108,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           elevation: 0,
           onTap: (index) {
             if (index == 4) {
+              TourBus.event('more-opened');
               _showMoreModal(context);
             } else {
               _navigateToTab(index);
@@ -95,6 +122,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
             ),
             BottomNavigationBarItem(
               icon: Stack(
+                key: TourKeys.tabBookings,
                 clipBehavior: Clip.none,
                 children: [
                   const Icon(Icons.confirmation_number_outlined),
@@ -108,18 +136,18 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
               activeIcon: const Icon(Icons.confirmation_number),
               label: 'Bookings',
             ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline),
-              activeIcon: Icon(Icons.chat_bubble),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.chat_bubble_outline, key: TourKeys.tabChat),
+              activeIcon: const Icon(Icons.chat_bubble),
               label: 'Chat',
             ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.hourglass_bottom_outlined),
-              activeIcon: Icon(Icons.hourglass_bottom),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.hourglass_bottom_outlined, key: TourKeys.tabStays),
+              activeIcon: const Icon(Icons.hourglass_bottom),
               label: 'Stays',
             ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.grid_view_rounded),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.grid_view_rounded, key: TourKeys.tabMore),
               label: 'More',
             ),
           ],
@@ -161,7 +189,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                 ),
                 const SizedBox(height: 4),
                 PressableCard(
+                  key: TourKeys.moreRates,
                   onTap: () {
+                    TourBus.event('open-rates');
                     Navigator.pop(ctx);
                     _navigateToTab(8); // Rates
                   },
@@ -183,7 +213,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                   ),
                 ),
                 PressableCard(
+                  key: TourKeys.moreSmartLock,
                   onTap: () {
+                    TourBus.event('open-smartlock');
                     Navigator.pop(ctx);
                     _navigateToTab(5); // Smart lock
                   },
@@ -227,6 +259,15 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                   ),
                 ),
                 const Divider(height: 20),
+                ListTile(
+                  leading: const Icon(Icons.school_outlined, color: AppColors.primaryForest),
+                  title: const Text('Replay the guided tour'),
+                  subtitle: const Text('An interactive walkthrough of the app’s screens'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    ref.read(tutorialControllerProvider).replay();
+                  },
+                ),
                 ListTile(
                   leading: const Icon(Icons.logout, color: AppColors.statusAlert),
                   title: const Text('Sign out'),

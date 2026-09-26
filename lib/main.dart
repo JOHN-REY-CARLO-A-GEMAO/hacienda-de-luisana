@@ -6,6 +6,7 @@ import 'core/theme/app_theme.dart';
 import 'firebase_options.dart';
 import 'services/auth_store.dart';
 import 'services/notification_service.dart';
+import 'tutorial/tutorial_keys.dart';
 import 'views/auth/admin_login_screen.dart';
 import 'views/main_shell_screen.dart';
 
@@ -56,6 +57,10 @@ class HaciendaAdminApp extends StatelessWidget {
       title: 'Hacienda de LuisAna — Admin',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      // The guided tour floats its spotlight through this navigator's overlay
+      // and steps between rooms by popping routes it did not open.
+      navigatorKey: TourKeys.rootNavigator,
+      navigatorObservers: [TourKeys.routeObserver],
       home: const AuthGate(),
     );
   }
