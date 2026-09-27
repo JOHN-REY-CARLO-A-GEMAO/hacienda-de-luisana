@@ -410,6 +410,12 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
   Widget _actionsCard(
       BookingModel booking, List<AdminAction> actions, bool expired) {
+    final doc = booking.toLifecycleDoc();
+    final blockedReasons = actions
+        .map((a) => adminActionBlockedReason(doc, a))
+        .whereType<String>()
+        .toSet()
+        .toList();
     if (actions.isEmpty) {
       return HaciendaCard(
         key: TourKeys.detailActions,
@@ -437,8 +443,14 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             children: actions.map((a) {
               final primary = _isPrimary(a);
               final danger = _isDanger(a);
-              final onPressed =
-                  (_busy || expired) ? null : () => _onAction(booking, a);
+              // The lifecycle's own precondition, asked before the button is
+              // offered rather than after it is pressed: Verify with no proof
+              // behind it is refused, so a live button would only ever produce
+              // an error the Admin did not need to see.
+              final blocked = adminActionBlockedReason(doc, a);
+              final onPressed = (_busy || expired || blocked != null)
+                  ? null
+                  : () => _onAction(booking, a);
               if (primary) {
                 return ElevatedButton.icon(
                   onPressed: onPressed,
@@ -463,6 +475,12 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               );
             }).toList(),
           ),
+          if (blockedReasons.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(blockedReasons.join(' '),
+                style: GoogleFonts.inter(
+                    fontSize: 11, color: AppColors.textMuted, height: 1.4)),
+          ],
           if (_busy) ...[
             const SizedBox(height: 10),
             const LinearProgressIndicator(minHeight: 2),
