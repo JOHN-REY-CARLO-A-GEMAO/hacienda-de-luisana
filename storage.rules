@@ -22,7 +22,7 @@ service firebase.storage {
     // lib/services/auth_store.dart.
     function isAdminEmail() {
       return isSignedIn()
-        && request.auth.token.email in ['haciendadeluisiana@gmail.com', 'gemaojohnreycarloarguilles@gmail.com'];
+        && request.auth.token.email in ['haciendadeluisiana@gmail.com', 'gemaojohnreyarguilles@gmail.com'];
     }
 
     // Public read for site assets, Admin-only write (site images are

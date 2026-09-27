@@ -679,6 +679,23 @@ List<AdminAction> adminActionsFor(String status) {
       .toList();
 }
 
+/// Why this action cannot be taken on this Booking right now, or null when it can.
+///
+/// The same conditions [applyAdminAction] refuses on, read without writing.
+/// [adminActionsFor] is given a status and nothing else, so it cannot know that
+/// a `Payment Pending` Booking has no proof behind it yet: on status alone,
+/// Verify is offered for every Payment Pending Booking, and pressing it is
+/// refused. A screen that offers an action the lifecycle will refuse is a screen
+/// that lies, which is the same failure as an allowlist the rules do not share.
+String? adminActionBlockedReason(
+    Map<String, dynamic> booking, AdminAction action) {
+  if (action != AdminAction.verifyPayment) return null;
+  if (_blank(booking['payment_proof_url'])) {
+    return 'There is no Payment proof to verify yet.';
+  }
+  return null;
+}
+
 /// Inputs an action may need. Only the fields relevant to the action are read.
 class ActionInput {
   final String? reason;
@@ -821,9 +838,9 @@ ActionResult applyAdminAction(
       break;
 
     case AdminAction.verifyPayment:
-      if (_blank(booking['payment_proof_url'])) {
-        return ActionResult.refused('There is no Payment proof to verify yet.');
-      }
+      final blocked =
+          adminActionBlockedReason(booking, AdminAction.verifyPayment);
+      if (blocked != null) return ActionResult.refused(blocked);
       final verified = input.amountVerified ?? 0;
       if (!(verified > 0)) {
         return ActionResult.refused(

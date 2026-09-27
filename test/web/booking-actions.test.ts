@@ -62,7 +62,12 @@ describe('applyAction — the journey from submission to a completed stay', () =
     const proof = expectOk(
       applyAction(
         booking,
-        { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/transfer.jpg', amount_claimed: 10500 },
+        {
+          type: 'UploadPaymentProof',
+          payment_proof_url: 'gs://proofs/transfer.jpg',
+          payment_reference: '1234567890123',
+          amount_claimed: 10500,
+        },
         { ...guest, now: NOW },
       ),
     )
@@ -216,7 +221,12 @@ describe('applyAction — the rules that protect the Guest and the Admin', () =>
     const resent = expectOk(
       applyAction(
         booking,
-        { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/clear.jpg', amount_claimed: 10500 },
+        {
+          type: 'UploadPaymentProof',
+          payment_proof_url: 'gs://proofs/clear.jpg',
+          payment_reference: '1234567890123',
+          amount_claimed: 10500,
+        },
         { ...guest, now: NOW },
       ),
     )
@@ -304,7 +314,12 @@ function reserve(booking: BookingState): BookingState {
   const proof = expectOk(
     applyAction(
       { ...booking, ...plan.patch },
-      { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/transfer.jpg', amount_claimed: 10500 },
+      {
+        type: 'UploadPaymentProof',
+        payment_proof_url: 'gs://proofs/transfer.jpg',
+        payment_reference: '1234567890123',
+        amount_claimed: 10500,
+      },
       { ...guest, now: NOW },
     ),
   )
@@ -455,6 +470,33 @@ describe('applyAction — money', () => {
     )
   })
 
+  it('takes a Payment proof only when the Guest has submitted all of it', () => {
+    // A Payment proof is three things the Admin cannot supply: the photo, the
+    // reference read off it and the amount it claims. Any one of them missing
+    // leaves the Admin a Verify Payment button with nothing to check, so the
+    // Payment proof is refused whole rather than stored as a photo and a hope.
+    const booking: BookingState = { ...approvedBooking(), status: 'Payment Pending', payment_plan: 'full' }
+    const whole = {
+      payment_proof_url: 'gs://proofs/transfer.jpg',
+      payment_reference: '1234567890123',
+      amount_claimed: 10500,
+    }
+
+    for (const partial of [
+      { ...whole, payment_proof_url: '  ' },
+      { ...whole, payment_reference: undefined },
+      { ...whole, payment_reference: '   ' },
+      { ...whole, amount_claimed: undefined },
+    ]) {
+      expectRefused(applyAction(booking, { type: 'UploadPaymentProof', ...partial }, { ...guest, now: NOW }))
+    }
+
+    const accepted = expectOk(applyAction(booking, { type: 'UploadPaymentProof', ...whole }, { ...guest, now: NOW }))
+    // A whole receipt lands all three, so the Admin reads the Booking and finds
+    // the reference and the amount already on it.
+    expect(accepted.patch).toMatchObject(whole)
+  })
+
   it('lets the Admin reject a blurry proof and the Guest send another inside the same stage', () => {
     const booking: BookingState = {
       ...approvedBooking(),
@@ -483,7 +525,12 @@ describe('applyAction — money', () => {
     const resent = expectOk(
       applyAction(
         { ...booking, ...rejected.patch },
-        { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/clear.jpg' },
+        {
+          type: 'UploadPaymentProof',
+          payment_proof_url: 'gs://proofs/clear.jpg',
+          payment_reference: '1234567890123',
+          amount_claimed: 10500,
+        },
         { ...guest, now: NOW },
       ),
     )

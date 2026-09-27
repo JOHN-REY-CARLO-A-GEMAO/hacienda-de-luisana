@@ -210,6 +210,39 @@ void main() {
       expect(under.reason, contains('9500'));
     });
 
+    test('the screen is told before the press, not after', () {
+      // `adminActionsFor` sees only the status, so it offers Verify for every
+      // Payment Pending Booking — including one with no proof behind it. The
+      // blocker is what stops the screen offering an action the lifecycle
+      // refuses, and it must say the same thing the refusal says.
+      final noProof = booking(status: 'Payment Pending');
+      expect(adminActionsFor('Payment Pending'),
+          contains(AdminAction.verifyPayment));
+      expect(adminActionBlockedReason(noProof, AdminAction.verifyPayment),
+          isNotNull);
+      expect(adminActionBlockedReason(pp, AdminAction.verifyPayment), isNull);
+
+      final refused = applyAdminAction(noProof, AdminAction.verifyPayment, admin,
+          input: const ActionInput(amountVerified: 9500), now: now);
+      expect(refused.ok, isFalse);
+      expect(refused.reason, adminActionBlockedReason(noProof, AdminAction.verifyPayment));
+    });
+
+    test('a proof that is an empty string is still no proof', () {
+      final blank = booking(status: 'Payment Pending',
+          extra: {'payment_proof_url': '   '});
+      expect(adminActionBlockedReason(blank, AdminAction.verifyPayment), isNotNull);
+    });
+
+    test('no other Admin action is blocked on the document alone', () {
+      final pending = booking(status: 'Payment Pending');
+      for (final a in adminActionsFor('Payment Pending')) {
+        if (a == AdminAction.verifyPayment) continue;
+        expect(adminActionBlockedReason(pending, a), isNull,
+            reason: '$a should not be blocked by the booking document');
+      }
+    });
+
     test('lands the Booking on Reserved in one move', () {
       final r = applyAdminAction(pp, AdminAction.verifyPayment, admin,
           input: const ActionInput(amountVerified: 9500), now: now);

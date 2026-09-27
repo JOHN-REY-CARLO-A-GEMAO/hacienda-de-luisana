@@ -20,6 +20,7 @@ import {
   homeForRole,
   roleForEmail,
   resolveRole,
+  BOOTSTRAP_ROLES,
   type Role,
 } from '../../src/lib/auth'
 
@@ -170,7 +171,9 @@ describe('which pages a role may open', () => {
 })
 
 describe('which role a signed-in user has', () => {
-  const BOOTSTRAP_ADMINS = ['haciendadeluisiana@gmail.com', 'gemaojohnreycarloarguilles@gmail.com']
+  // The allowlist is read from the module rather than repeated here, so a
+  // corrected address in one place cannot leave this test asserting a stale one.
+  const BOOTSTRAP_ADMINS = BOOTSTRAP_ROLES.filter((entry) => entry.role === 'admin').map((entry) => entry.email)
 
   it('recognises the allowlisted addresses the Firestore rules already recognise', () => {
     for (const email of BOOTSTRAP_ADMINS) {
