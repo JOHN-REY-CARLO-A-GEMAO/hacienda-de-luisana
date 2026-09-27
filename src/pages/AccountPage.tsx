@@ -24,9 +24,9 @@ function accommodationName(id: string) {
 }
 
 function statusChip(status: ReturnType<typeof effectiveStatus>) {
-  if (status === 'Reserved') return 'bg-emerald-100 text-emerald-800'
+  if (status === 'Approved' || status === 'Reserved') return 'bg-emerald-100 text-emerald-800'
   if (status === 'Pending') return 'bg-amber-100 text-amber-800'
-  if (status === 'Expired' || status === 'Rejected' || status === 'Cancelled') return 'bg-red-100 text-red-700'
+  if (status === 'Rejected' || status === 'Expired' || status === 'Cancelled') return 'bg-red-100 text-red-700'
   return 'bg-cream-100 text-forest-700'
 }
 

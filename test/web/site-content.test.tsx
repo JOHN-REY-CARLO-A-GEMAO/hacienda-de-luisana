@@ -213,7 +213,7 @@ describe('rates, fees and sleeping arrangements', () => {
     expect(page.text()).toContain('₱1,200 / unit / night')
     expect(page.text()).toContain('₱300')
     expect(page.text()).toContain('Ask for the current price')
-    expect(page.text()).toContain('set in the Hacienda\'s published rates')
+    expect(page.text()).toContain('Nothing is confirmed until the Hacienda approves the screenshot.')
   })
 
   it('lists the Main House beds room by room and leaves the bathroom count out until it is confirmed', () => {

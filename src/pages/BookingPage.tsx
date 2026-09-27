@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
-import { ensureGuestUid } from '../lib/guestAuth'
-import type { Booking } from '../lib/storage'
+import { saveBookingDraft } from '../lib/bookingDraft'
+import { FlowSteps } from '../components/Booking/FlowSteps'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
-import { HoldCountdown } from '../components/Booking/HoldCountdown'
 import { useAuth } from '../hooks/useAuth'
 import {
   guestCountValid,
@@ -44,6 +43,7 @@ const OPTIONS = [
 
 export function BookingPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const initialAccommodation = params.get('accommodation') || ACCOMMODATIONS[0].id
 
@@ -58,26 +58,12 @@ export function BookingPage() {
     special_requests: '',
   })
   const [errors, setErrors] = useState<Errors>({})
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string>('')
-  const [submittedRef, setSubmittedRef] = useState<string>('')
-  const [submittedId, setSubmittedId] = useState<string>('')
-  const [submittedBooking, setSubmittedBooking] = useState<Booking | null>(null)
-  // Where the request actually landed. A cloud write can be refused (rules not
-  // deployed, Anonymous sign-in off, the Guest offline), and when it is, the
-  // Booking is kept in this browser — the screen has to say so rather than
-  // promise a request the Hacienda never received.
-  const [submittedStorage, setSubmittedStorage] = useState<'cloud' | 'local'>(
-    cloudBookingsDB.isCloud ? 'cloud' : 'local',
-  )
   // G2: availability is checked by the system before the Guest commits, not
   // only in the Admin's head at approval time (ticket #12).
   const [availability, setAvailability] = useState<{ available: boolean; heldBy: number } | null>(null)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
-
-  useEffect(() => {
-    if (status === 'success') window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [status])
 
   // A signed-in Guest does not type their own details again. Filled once, and
   // only into fields they have left empty: a name they are typing is theirs.
@@ -180,62 +166,21 @@ export function BookingPage() {
       setErrorMsg(limited.message)
       return
     }
-    setStatus('submitting')
+    setStatus('idle')
     setErrorMsg('')
-    try {
-      // firestore.rules lets a Guest change their own Booking only when the
-      // document already carries their uid, and `uid` is not among the keys a
-      // Guest may add afterwards — so the anonymous identity is attached here, at
-      // creation, exactly as the mobile app does. Without Firebase, or with
-      // Anonymous sign-in disabled, the booking still goes through and the Guest
-      // is told at upload time what that costs them.
-      const uid = (await ensureGuestUid()) ?? undefined
-      // Use cloud-aware service: Firestore if configured, else localStorage
-      const b = await cloudBookingsDB.add({
-        guest_name: form.name.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-        check_in: form.check_in,
-        check_out: form.check_out,
-        guests: Number(form.guests),
-        accommodation: form.accommodation,
-        special_requests: form.special_requests.trim(),
-        ...(uid ? { uid } : {}),
-      })
-      // Small UX delay
-      await new Promise((r) => setTimeout(r, 400))
-      setSubmittedId(b.id)
-      setSubmittedRef(b.id.slice(0, 8).toUpperCase())
-      setSubmittedBooking(b)
-      setSubmittedStorage(b.storage)
-      setStatus('success')
-    } catch (err: any) {
-      console.error('[Booking] failed', err)
-      setErrorMsg(err?.message || 'Failed to send request. Please try again.')
-      setStatus('error')
-    }
-  }
-
-  if (status === 'success') {
-    return (
-      <SuccessScreen
-        bookingId={submittedId}
-        reference={submittedRef}
-        booking={submittedBooking}
-        storage={submittedStorage}
-        checkIn={form.check_in}
-        checkOut={form.check_out}
-        guests={form.guests}
-        accommodationName={selectedAcc?.name || OPTIONS.find((o) => o.id === form.accommodation)?.label}
-        onNew={() => {
-          setStatus('idle')
-          setSubmittedRef('')
-          setSubmittedId('')
-          setSubmittedBooking(null)
-          setForm((f) => ({ ...f, name: '', phone: '', email: '', special_requests: '' }))
-        }}
-      />
-    )
+    // The form does not create a Booking. The downpayment screenshot is
+    // mandatory, and the Booking is born Pending only after that upload.
+    saveBookingDraft({
+      check_in: form.check_in,
+      check_out: form.check_out,
+      guests: Number(form.guests),
+      accommodation: form.accommodation,
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      special_requests: form.special_requests.trim(),
+    })
+    navigate('/book/pay')
   }
 
   return (
@@ -251,21 +196,22 @@ export function BookingPage() {
           <div className="flex items-center gap-4">
             <span className="scene-index text-forest-400" aria-hidden="true">09</span>
             <span className="h-px w-8 bg-forest-900/15" aria-hidden="true" />
-            <div className="eyebrow">Book Your Stay</div>
+            <div className="eyebrow">Book a room · no account needed</div>
           </div>
           <h1 className="display text-4xl sm:text-5xl lg:text-6xl mt-5 text-forest-900">
             Plan Your Stay
           </h1>
           <p className="mt-5 text-forest-800/80 leading-relaxed">
-            Send us a booking request and Hacienda de LuisAna will get back to you to confirm
-            availability and finalize your reservation. This is a booking inquiry — not an
-            instant-confirmation engine.
+            Browse every room, then book it here — no login and no account. After these details
+            you will upload a screenshot of your downpayment. The booking is not submitted, and
+            not confirmed, until that proof is in and the Hacienda approves it.
           </p>
+          <FlowSteps current={0} />
           {!isFirebaseConfigured && (
             <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
-              <strong>Demo mode:</strong> Firebase not configured in this build — your request will be stored
-              locally in this browser and will not reach the Admin app. Please message or call us as well, so
-              your dates are held. <Link to="/status" className="underline">Deployment status</Link>
+              <strong>Demo mode:</strong> Firebase is not configured in this build. A submitted booking is
+              stored in this browser, and you can approve or reject it from the review desk.{' '}
+              <Link to="/status" className="underline">Deployment status</Link>
             </div>
           )}
           {cloudBookingsDB.isCloud && (
@@ -418,12 +364,12 @@ export function BookingPage() {
                 className="btn-primary w-full sm:w-auto disabled:opacity-70 disabled:cursor-not-allowed"
                 data-tour="submit-booking"
               >
-                {status === 'submitting' ? 'Sending…' : 'Send Booking Request'}
-                {status !== 'submitting' && <ArrowRight size={16} />}
+                Continue to downpayment
+                <ArrowRight size={16} />
               </button>
               <p className="text-xs text-forest-700/60 mt-4 max-w-md">
-                By sending a request you agree to be contacted by the Hacienda to confirm availability
-                and finalize your stay. No payment is taken at this step.
+                This step does not create a booking. The next page asks for a downpayment screenshot,
+                which is required before the booking can be submitted as Pending.
               </p>
             </div>
           </form>
@@ -525,157 +471,6 @@ function SummaryRow({ icon: Icon, label, value }: { icon: any; label: string; va
         <Icon size={15} className="text-forest-600" /> {label}
       </span>
       <span className="text-forest-900 font-medium text-right">{value}</span>
-    </div>
-  )
-}
-
-function SuccessScreen({
-  bookingId,
-  reference,
-  booking,
-  onNew,
-  storage,
-  checkIn,
-  checkOut,
-  guests,
-  accommodationName,
-}: {
-  bookingId: string
-  reference: string
-  booking: Booking | null
-  onNew: () => void
-  /**
-   * Where the request went. 'cloud' means Firestore holds it and the Admin app
-   * reads it. 'local' means this browser holds it and the Hacienda has not been
-   * told — whether because the build has no Firebase or because the write was
-   * refused — and the screen says so, with a way to reach the Hacienda.
-   */
-  storage: 'cloud' | 'local'
-  checkIn?: string
-  checkOut?: string
-  guests?: number
-  accommodationName?: string
-}) {
-  void bookingId
-  const delivered = storage === 'cloud'
-
-  return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-3xl px-5 lg:px-8">
-        <div
-          className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-8 sm:p-12 text-center"
-          data-tour="booking-success"
-        >
-          <div
-            className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center ${
-              delivered ? 'bg-forest-100 text-forest-700' : 'bg-amber-100 text-amber-700'
-            }`}
-          >
-            <Sparkle size={26} />
-          </div>
-          <div className="eyebrow mt-6">
-            {delivered ? 'Request Received & Sent to App' : 'Request Received & Saved on This Device'}
-          </div>
-          <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">Salamat!</h1>
-          {delivered ? (
-            <p className="mt-4 text-forest-800/80 leading-relaxed max-w-lg mx-auto">
-              Matagumpay na naipadala ang iyong booking request diretso sa <strong>Client App</strong> ng Hacienda de LuisAna para sa kumpirmasyon.
-            </p>
-          ) : (
-            <p className="mt-4 text-forest-800/80 leading-relaxed max-w-lg mx-auto">
-              Naka-save ang iyong booking request sa browser na ito, pero <strong>hindi ito naipadala sa Hacienda</strong>.
-              I-message o tawagan kami para ma-hold ang iyong dates.
-            </p>
-          )}
-          <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-forest-50 border border-forest-100 text-forest-800 px-4 py-2 text-xs">
-            Reference Number: <span className="font-mono font-bold text-forest-900">{reference}</span>
-          </div>
-
-          {booking && (
-            <div className="mt-6 text-left">
-              <HoldCountdown booking={booking} />
-            </div>
-          )}
-
-          {checkIn && checkOut && (
-            <div className="mt-6 rounded-2xl bg-cream-50 border border-forest-900/5 p-4 text-left grid sm:grid-cols-3 gap-3 text-xs">
-              <div>
-                <span className="text-forest-600 block uppercase tracking-eyebrow text-[10px]">Stay Duration</span>
-                <span className="font-serif text-sm text-forest-900 font-semibold">
-                  {(() => {
-                    const nights = Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)))
-                    return `${nights + 1} Days · ${nights} Night${nights > 1 ? 's' : ''}`
-                  })()}
-                </span>
-              </div>
-              <div>
-                <span className="text-forest-600 block uppercase tracking-eyebrow text-[10px]">Dates</span>
-                <span className="font-medium text-forest-900">{checkIn} → {checkOut}</span>
-              </div>
-              <div>
-                <span className="text-forest-600 block uppercase tracking-eyebrow text-[10px]">Accommodation</span>
-                <span className="font-medium text-forest-900 truncate block">{accommodationName || 'Hacienda'}</span>
-              </div>
-            </div>
-          )}
-
-          {delivered ? (
-            <div className="mt-3 text-xs text-forest-600">
-              ✓ Real-time synced to the Admin app via Firebase Cloud
-            </div>
-          ) : (
-            <div className="mt-6 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-left text-xs text-amber-900 leading-relaxed">
-              <strong>Hindi ito naipadala sa Admin app.</strong> Naka-save lang ang request na ito sa
-              browser na ito, kaya i-message o tawagan kami para ma-hold ang iyong dates — sabihin ang
-              reference number na <span className="font-mono font-bold">{reference}</span>.
-              <div className="mt-3 flex flex-wrap gap-3">
-                <a
-                  href={BUSINESS.contact.messenger}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-primary text-[11px]"
-                >
-                  Message us
-                </a>
-                <a href={`tel:${BUSINESS.contact.phone.replace(/\s/g, '')}`} className="btn-ghost text-[11px]">
-                  {BUSINESS.contact.phoneDisplay}
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* Access — the credential, never the Guest's position */}
-          <div className="mt-8 rounded-3xl bg-forest-900 text-cream-50 p-6 sm:p-7 text-left relative overflow-hidden">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                RFID / Mobile Key Access
-              </div>
-              <span className="text-[11px] text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                Nakatala ang bawat pag-unlock (granted / denied)
-              </span>
-            </div>
-
-            <h3 className="font-serif text-xl sm:text-2xl text-cream-50 mt-2">
-              RFID or Mobile Key on stay dates
-            </h3>
-            <p className="mt-1 text-xs sm:text-sm text-cream-100/75 leading-relaxed">
-              After payment is verified, unlock with your credential. Access attempts are logged.
-              We do not collect live GPS location.
-            </p>
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3 justify-center">
-            <Link to="/" className="btn-ghost">Bumalik sa Home</Link>
-            <a href={BUSINESS.contact.messenger} target="_blank" rel="noreferrer" className="btn-primary">
-              I-message si Client <ArrowRight size={16} />
-            </a>
-            <button onClick={onNew} className="btn bg-transparent text-forest-800 underline underline-offset-4">
-              Magpadala ng isa pang booking
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

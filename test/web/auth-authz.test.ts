@@ -24,6 +24,10 @@ const request = {
   accommodation: 'main-house',
   special_requests: '',
   uid: 'guest-1',
+  payment_proof_url: 'payments/guest-1/HDL/proof.jpg',
+  amount_claimed: 15000,
+  amount_due: 15000,
+  payment_plan: 'down-payment' as const,
 }
 
 const rateCard = { nightlyRate: 10000, securityDeposit: 500 }
@@ -42,14 +46,18 @@ async function atStage(stage: 'Pending' | 'Payment Pending' | 'Reserved' | 'Chec
   const booking = await cloudBookingsDB.add(request, guest)
   if (stage === 'Pending') return booking.id
 
+  // Historical bookings already opened for payment still walk the old money
+  // path. New submissions are confirmed by Approve, which lands on Approved.
+  if (stage === 'Payment Pending' || stage === 'Reserved') {
+    await cloudBookingsDB.update(booking.id, { status: 'Payment Pending', hold_expires_at: null, payment_status: 'unpaid' })
+    await expectAccepted(booking.id, { type: 'ChoosePaymentPlan', plan: 'full', rateCard }, guest)
+    if (stage === 'Payment Pending') return booking.id
+    await expectAccepted(booking.id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/1.jpg', payment_reference: '1234567890123', amount_claimed: 30500 }, guest)
+    await expectAccepted(booking.id, { type: 'VerifyPayment', amount_verified: 30500 }, admin)
+    return booking.id
+  }
+
   await expectAccepted(booking.id, { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } }, admin)
-  await expectAccepted(booking.id, { type: 'ChoosePaymentPlan', plan: 'full', rateCard }, guest)
-  if (stage === 'Payment Pending') return booking.id
-
-  await expectAccepted(booking.id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/1.jpg', payment_reference: '1234567890123', amount_claimed: 30500 }, guest)
-  await expectAccepted(booking.id, { type: 'VerifyPayment', amount_verified: 30500 }, admin)
-  if (stage === 'Reserved') return booking.id
-
   await expectAccepted(booking.id, { type: 'CheckIn' }, admin)
   await expectAccepted(booking.id, { type: 'BeginStay' }, admin)
   await expectAccepted(booking.id, { type: 'CheckOut' }, admin)
@@ -138,9 +146,9 @@ describe('what the Admin may do through the API', () => {
       admin,
     )
 
-    // The approval itself opens the Booking for payment (KYC removed).
-    expect(approved.patch.status).toBe('Payment Pending')
-    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Payment Pending' })
+    // Accepting the downpayment screenshot is what confirms the Booking.
+    expect(approved.patch.status).toBe('Approved')
+    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Approved', payment_status: 'verified' })
   })
 
   it('verifies a payment, which is what makes a Booking Reserved', async () => {

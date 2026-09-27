@@ -49,7 +49,7 @@ describe('payment history the Admin reads', () => {
       accommodation: 'main-house',
       check_in: '2026-10-10',
       check_out: '2026-10-12',
-      status: 'Approved',
+      status: 'Payment Pending',
     }
     const admin = { actor: 'admin' as const, actor_id: 'admin-1' }
     const guest = { actor: 'guest' as const, actor_id: 'g-1' }

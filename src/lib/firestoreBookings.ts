@@ -34,6 +34,8 @@ import {
   formatHoldCountdown,
   holdMsRemaining,
   instantOf,
+  assertSubmittable,
+  interpretStoredStatus,
   normalizeStatus,
   unitsForAccommodation,
   DATE_HOLD_MS,
@@ -80,7 +82,10 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     special_requests: data.special_requests || '',
     // Old documents are migrated on read: a stored `Confirmed` reads as
     // `Reserved`, and nothing is rewritten in Firestore (spec #9).
-    status: normalizeStatus(data.status),
+    status: interpretStoredStatus(data.status, {
+      payment_status: data.payment_status,
+      payment_proof_url: data.payment_proof_url ?? data.paymentProofUrl ?? null,
+    }),
     created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at || new Date().toISOString(),
     // Booking lifecycle v2 (additive — absent on Bookings stored before it)
     hold_expires_at: data.hold_expires_at ?? null,
@@ -225,6 +230,18 @@ function submissionEntry(bookingId: string, actor: Actor, at: string): ActivityL
   }
 }
 
+/** A status or money marker a Guest must not be able to invent in this browser. */
+function patchClaimsADecision(patch: Partial<Booking>): boolean {
+  const status = patch.status ? normalizeStatus(patch.status) : undefined
+  if (
+    status &&
+    ['Approved', 'Reserved', 'Payment Verified', 'Checked-In', 'Staying', 'Checked-Out', 'Completed'].includes(status)
+  ) {
+    return true
+  }
+  return patch.payment_status === 'verified' || patch.amount_verified != null || Boolean(patch.payment_verified_by)
+}
+
 /** Store a patch, in Firestore when it is configured and locally when it is not. */
 async function writePatch(id: string, patch: Partial<Booking>): Promise<void> {
   if (!isCloud || !db) {
@@ -237,6 +254,13 @@ async function writePatch(id: string, patch: Partial<Booking>): Promise<void> {
     await updateDoc(doc(db, COLLECTION, id), rest)
   } catch (e) {
     lastWriteFailure = describeFirestoreFailure(e)
+    // A refused cloud write is not a local approval. Demo mode (no Firebase)
+    // still writes above; a configured project that rejects the write must not
+    // leave this browser believing the Hacienda accepted it.
+    if (patchClaimsADecision(patch)) {
+      console.warn(`[Firestore] update() refused a decision. ${lastWriteFailure.advice}`, e)
+      throw e
+    }
     console.warn(`[Firestore] update() failed, falling back to local. ${lastWriteFailure.advice}`, e)
     bookingsDB.update(id, patch)
   }
@@ -427,10 +451,31 @@ export const cloudBookingsDB = {
     // writer's uid, and the Booking carries the uid the Guest was given when the
     // form was opened (ADR-0004) — so the two are the same identity by
     // construction, not by convention.
-    const submitter: Actor = actor ?? { actor: 'guest', actor_id: input.uid ?? 'guest' }
+    // ADR-0012: a Booking is born Pending, with a downpayment screenshot
+    // already attached. A caller that skips the proof — or that tries to
+    // arrive already verified — is refused here, not stored and wondered
+    // about later. Verification fields are stripped so a Guest cannot claim
+    // the Admin's decision at creation.
+    const ready = assertSubmittable(input)
+    if (!ready.ok) throw new Error(ready.reason)
+    const {
+      amount_verified: _amountVerified,
+      payment_verified_at: _verifiedAt,
+      payment_verified_by: _verifiedBy,
+      ...rest
+    } = input
+    void _amountVerified
+    void _verifiedAt
+    void _verifiedBy
+    const submitter: Actor = actor ?? { actor: 'guest', actor_id: rest.uid ?? 'guest' }
     const at = instantOf(submitter)
     const holdExpiresAt = initialHoldExpiry(at)
-    const withHold = { ...input, hold_expires_at: holdExpiresAt }
+    const withHold = {
+      ...rest,
+      payment_status: 'pending' as const,
+      payment_plan: rest.payment_plan ?? 'down-payment',
+      hold_expires_at: holdExpiresAt,
+    }
 
     if (!isCloud || !db) {
       const booking = bookingsDB.add(withHold)

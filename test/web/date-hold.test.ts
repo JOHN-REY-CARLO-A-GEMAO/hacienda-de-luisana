@@ -20,6 +20,10 @@ const request = {
   guests: 4,
   accommodation: 'main-house',
   special_requests: '',
+  payment_proof_url: 'payments/guest-1/HDL/proof.jpg',
+  amount_claimed: 15000,
+  amount_due: 15000,
+  payment_plan: 'down-payment' as const,
 }
 
 beforeEach(() => {
@@ -167,7 +171,7 @@ describe('the hold on a submitted Booking', () => {
     expect((await cloudBookingsDB.materialiseExpiry(booking.id, afterExpiry)).ok).toBe(false)
 
     const stored = await cloudBookingsDB.get(booking.id)
-    expect(stored?.status).toBe('Payment Pending')
+    expect(stored?.status).toBe('Approved')
     // Approval means the dates are firmly held, so the countdown is over.
     expect(cloudBookingsDB.holdRemaining(stored!, afterExpiry)).toBe(0)
   })

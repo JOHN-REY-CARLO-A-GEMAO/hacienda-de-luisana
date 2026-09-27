@@ -154,7 +154,7 @@ describe('Bookings', () => {
   it('still let anybody submit a Pending inquiry, but never without a Guest identity', () => {
     const create = allow(bookings, 'create:')
     expect(create).toContain("request.resource.data.status == 'Pending'")
-    expect(create).toContain("hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at'])")
+    expect(create).toContain("hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at','payment_proof_url','payment_status','amount_claimed'])")
     // A Booking minted while anonymous sign-in is down is unclaimable forever,
     // so a broken console fails loud: the write is refused, not silently
     // minted (ADR-0004 consequence, amended).
@@ -198,9 +198,12 @@ describe('Bookings', () => {
     }
   })
 
-  it('refuses a Booking created already claiming a payment or review state', () => {
+  it('refuses a Booking created without a downpayment screenshot', () => {
     const create = allow(bookings, 'create:')
-    expect(create).toContain("request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'none', '']")
+    expect(create).toContain("request.resource.data.status == 'Pending'")
+    expect(create).toContain("request.resource.data.payment_status == 'pending'")
+    expect(create).toContain('request.resource.data.amount_claimed > 0')
+    expect(create).toContain('request.resource.data.payment_proof_url.size() > 0')
   })
 
   it('have no Staff branch: completing a stay is the Admin’s, like every other move', () => {
@@ -225,7 +228,7 @@ describe('Bookings', () => {
       "resource.data.status in ['Pending', 'KYC Submitted'] && request.resource.data.status in ['Pending', 'Cancelled']",
     )
     expect(update).toContain(
-      "resource.data.status == 'Approved' && request.resource.data.status in ['Payment Pending', 'Cancelled']",
+      "resource.data.status == 'Approved' && request.resource.data.status in ['Approved', 'Cancelled']",
     )
     expect(update).toContain(
       "resource.data.status == 'Payment Pending' && request.resource.data.status in ['Payment Pending', 'Cancelled']",

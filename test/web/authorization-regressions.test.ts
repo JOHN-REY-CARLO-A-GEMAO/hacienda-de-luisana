@@ -221,6 +221,9 @@ describe('P1: the submission entry is signed by the identity the Booking belongs
       check_in: '2026-11-01',
       check_out: '2026-11-03',
       uid: 'guest-uid-7',
+      payment_proof_url: 'payments/guest-uid-7/proof.jpg',
+      amount_claimed: 15000,
+      amount_due: 15000,
     })
     const entries = activityLogStorage.list(created.id)
     expect(entries).toHaveLength(1)

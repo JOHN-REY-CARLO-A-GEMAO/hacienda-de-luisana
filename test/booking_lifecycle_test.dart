@@ -26,6 +26,11 @@ Map<String, dynamic> booking({
 
 final now = DateTime.utc(2026, 10, 1, 12);
 const admin = Actor.admin('admin-uid', 'The Admin');
+const proof = {
+  'payment_proof_url': 'payments/g/proof.jpg',
+  'amount_claimed': 5000,
+  'amount_due': 5000,
+};
 
 void main() {
   group('normalizeStatus', () {
@@ -35,7 +40,7 @@ void main() {
       expect(normalizeStatus('payment_pending'), 'Payment Pending');
       // Retired vocabulary still reads as its successor (never as itself).
       expect(normalizeStatus('kyc submitted'), 'Pending');
-      expect(normalizeStatus('Approved'), 'Payment Pending');
+      expect(normalizeStatus('Approved'), 'Approved');
       expect(normalizeStatus('Confirmed'), 'Reserved');
       expect(normalizeStatus(null), 'Pending');
       expect(normalizeStatus('garbage'), 'Pending');
@@ -44,8 +49,10 @@ void main() {
 
   group('transitions', () {
     test('whitelist matches the website', () {
-      // Approval is the one step from review into payment (KYC removed).
-      expect(canTransition('Pending', 'Payment Pending'), isTrue);
+      // Approval accepts the downpayment screenshot (ADR-0012).
+      expect(canTransition('Pending', 'Approved'), isTrue);
+      expect(canTransition('Pending', 'Payment Pending'), isFalse);
+      expect(canTransition('Approved', 'Checked-In'), isTrue);
       expect(canTransition('Reserved', 'Checked-In'), isTrue);
       // Money still cannot be skipped, and retired statuses never move.
       expect(canTransition('Pending', 'Payment Verified'), isFalse);
@@ -53,6 +60,7 @@ void main() {
       expect(canTransition('Payment Pending', 'Reserved'), isFalse);
       expect(canTransition('KYC Submitted', 'Payment Pending'), isFalse);
       expect(canTransition('Approved', 'Rejected'), isFalse);
+      expect(canTransition('Approved', 'Cancelled'), isTrue);
       expect(canTransition('Completed', 'Pending'), isFalse);
       expect(canTransition('Cancelled', 'Reserved'), isFalse);
     });
@@ -79,20 +87,26 @@ void main() {
       expect(r.reason, contains('Payment Pending'));
     });
 
-    test('opens payment, stops the hold and logs the move', () {
+    test('accepts the downpayment, stops the hold and logs the move', () {
       final r = applyAdminAction(
-        booking(extra: {'hold_expires_at': '2026-10-02T00:00:00Z'}),
+        booking(extra: {
+          'hold_expires_at': '2026-10-02T00:00:00Z',
+          'payment_proof_url': 'payments/g/proof.jpg',
+          'amount_claimed': 5000,
+          'amount_due': 5000,
+        }),
         AdminAction.approve,
         admin,
         now: now,
       );
       expect(r.ok, isTrue);
-      expect(r.patch['status'], 'Payment Pending');
+      expect(r.patch['status'], 'Approved');
+      expect(r.patch['payment_status'], 'verified');
       expect(r.patch.containsKey('hold_expires_at'), isTrue);
       expect(r.patch['hold_expires_at'], isNull);
       expect(r.entry!['action'], 'Approve');
       expect(r.entry!['from_status'], 'Pending');
-      expect(r.entry!['to_status'], 'Payment Pending');
+      expect(r.entry!['to_status'], 'Approved');
       expect(r.entry!['actor'], 'admin');
       expect(r.entry!['actor_id'], 'admin-uid');
       expect(r.entry!['actor_name'], 'The Admin');
@@ -102,7 +116,7 @@ void main() {
     test('refuses when another committed Booking holds the dates', () {
       final other = booking(id: 'bk-2', status: 'Reserved', checkIn: '2026-10-11', checkOut: '2026-10-13');
       final r = applyAdminAction(
-        booking(),
+        booking(extra: proof),
         AdminAction.approve,
         admin,
         input: ActionInput(otherBookings: [other]),
@@ -115,7 +129,7 @@ void main() {
     test('a Booking still under review does not block approval', () {
       final other = booking(id: 'bk-2', extra: {'hold_expires_at': '2026-10-02T00:00:00Z'});
       final r = applyAdminAction(
-        booking(),
+        booking(extra: proof),
         AdminAction.approve,
         admin,
         input: ActionInput(otherBookings: [other]),
@@ -127,7 +141,7 @@ void main() {
     test('camping has two units', () {
       final other = booking(id: 'bk-2', status: 'Reserved', accommodation: 'house-a-camping');
       final r = applyAdminAction(
-        booking(accommodation: 'house-a-camping'),
+        booking(accommodation: 'house-a-camping', extra: proof),
         AdminAction.approve,
         admin,
         input: ActionInput(otherBookings: [other]),
@@ -148,7 +162,7 @@ void main() {
     });
 
     test('a pre-hold Booking (no hold recorded) can still be approved', () {
-      final r = applyAdminAction(booking(), AdminAction.approve, admin, now: now);
+      final r = applyAdminAction(booking(extra: proof), AdminAction.approve, admin, now: now);
       expect(r.ok, isTrue);
     });
   });

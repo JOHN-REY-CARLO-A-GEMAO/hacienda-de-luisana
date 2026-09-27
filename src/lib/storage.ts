@@ -8,7 +8,7 @@
 // `Confirmed` is retired: a stored Confirmed Booking reads as `Reserved`.
 export type { BookingStatus } from './booking'
 
-import { normalizeStatus } from './booking'
+import { interpretStoredStatus } from './booking'
 import type { ActivityLogEntry, BookingState, BookingStatus } from './booking'
 
 /**
@@ -240,7 +240,27 @@ function writeActivity(entries: ActivityLogEntry[]) {
  * disagree about the same Booking.
  */
 function migrateOnRead(booking: Booking): Booking {
-  return { ...booking, status: normalizeStatus(booking.status) }
+  return {
+    ...booking,
+    status: interpretStoredStatus(booking.status, {
+      payment_status: booking.payment_status,
+      payment_proof_url: booking.payment_proof_url,
+    }),
+  }
+}
+
+/** The demo-mode screenshot stored for a proof path, or null when there is none. */
+export function readLocalPaymentProof(path: string | null | undefined): string | null {
+  if (!path || typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PROOF_KEY)
+    if (!raw) return null
+    const store = JSON.parse(raw) as Record<string, unknown>
+    const value = store[path]
+    return typeof value === 'string' ? value : null
+  } catch {
+    return null
+  }
 }
 
 export const bookingsDB = {

@@ -59,6 +59,7 @@ export const DATE_HOLD_MS = DAY_MS
  */
 const DATE_HOLDING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Approved',
   'Payment Pending',
   'Payment Verified',
   'Reserved',
@@ -77,6 +78,7 @@ const DATE_HOLDING_STATUSES: readonly BookingStatus[] = [
  * would make a one-unit Accommodation unapprovable forever.
  */
 const COMMITTED_STATUSES: readonly BookingStatus[] = [
+  'Approved',
   'Payment Pending',
   'Payment Verified',
   'Reserved',

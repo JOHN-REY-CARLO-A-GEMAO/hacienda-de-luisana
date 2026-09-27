@@ -12,7 +12,7 @@ export const TERMS: LegalSection[] = [
     title: 'Terms and Conditions',
     body: [
       'These Terms govern bookings at Hacienda de LuisAna in Luisiana, Laguna.',
-      'A booking is a request until the Admin approves the stay and verifies payment.',
+      'A booking is not confirmed until the Admin approves the downpayment screenshot. Until that decision it stays Pending; if the screenshot is declined it is Rejected.',
       'You must be at least 10 years old to create an account. Guests under 18 must be accompanied by a responsible adult during the stay.',
       'You agree to provide accurate guest, contact, and payment information.',
     ],
@@ -50,10 +50,10 @@ export const TERMS: LegalSection[] = [
     id: 'payment',
     title: 'Payment instructions',
     body: [
-      'Pay the quoted amount to the Hacienda GCash / bank details shown on the payment step — never to a third party claiming to be staff.',
-      'Use a unique payment reference. Duplicate references are rejected.',
+      'Pay the downpayment only through the Hacienda’s official phone, email, or Facebook page shown on the payment step — never to a third party claiming to be staff.',
+      'A screenshot of the transfer is required before the booking can be submitted.',
       'Upload a clear photo of the receipt. OCR may suggest a reference and amount; you must confirm or correct it.',
-      'OCR is not verification. Status stays Pending until an Admin matches the reference and amount against the valid-reference list.',
+      'OCR is not a decision. The booking stays Pending until an Admin approves or rejects the screenshot.',
       'Do not send passwords, PINs, or OTP codes. We never ask for them.',
     ],
   },

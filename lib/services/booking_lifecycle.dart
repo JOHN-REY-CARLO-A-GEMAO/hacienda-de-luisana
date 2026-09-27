@@ -16,12 +16,13 @@ import 'dart:math' as math;
 
 /// The canonical Booking statuses, in lifecycle order, then the terminal
 /// branches (CONTEXT.md § Booking status). `Confirmed` is retired: the paid
-/// state is `Reserved`. Government ID KYC is retired: `KYC Submitted` and
-/// `Approved` read as `Pending` / `Payment Pending` on stored documents.
+/// state used to be `Reserved`. `Approved` is the confirmation written when
+/// the Admin accepts a downpayment screenshot (ADR-0012).
 class BookingStatuses {
   BookingStatuses._();
 
   static const String pending = 'Pending';
+  static const String approved = 'Approved';
   static const String paymentPending = 'Payment Pending';
   static const String paymentVerified = 'Payment Verified';
   static const String reserved = 'Reserved';
@@ -35,6 +36,7 @@ class BookingStatuses {
 
   static const List<String> all = [
     pending,
+    approved,
     paymentPending,
     paymentVerified,
     reserved,
@@ -50,6 +52,7 @@ class BookingStatuses {
   /// Statuses whose Booking still claims its dates.
   static const List<String> dateHolding = [
     pending,
+    approved,
     paymentPending,
     paymentVerified,
     reserved,
@@ -60,6 +63,7 @@ class BookingStatuses {
 
   /// Statuses the Admin has already committed dates to.
   static const List<String> committed = [
+    approved,
     paymentPending,
     paymentVerified,
     reserved,
@@ -77,9 +81,10 @@ class BookingStatuses {
 /// The legal transitions out of each status. A whitelist: anything missing is
 /// refused, so no surface can shortcut past review or payment verification.
 const Map<String, List<String>> kTransitions = {
-  'Pending': ['Payment Pending', 'Rejected', 'Cancelled', 'Expired'],
-  // `Rejected` from Payment Pending is the pre-money rejection the retired
-  // `Approved` stage used to offer: no money is verified before Reserved.
+  // ADR-0012: the Admin accepts the downpayment screenshot, or declines it.
+  'Pending': ['Approved', 'Rejected', 'Cancelled', 'Expired'],
+  'Approved': ['Checked-In', 'Cancelled'],
+  // Historical bookings opened for payment before the downpayment-first change.
   'Payment Pending': ['Payment Verified', 'Rejected', 'Cancelled'],
   'Payment Verified': ['Reserved', 'Cancelled'],
   'Reserved': ['Checked-In', 'Cancelled'],
@@ -99,10 +104,8 @@ final Map<String, String> _canonicalByFolded = {
   for (final s in BookingStatuses.all) _fold(s): s,
   // Retired: the old web `Confirmed` reads as the paid state.
   'confirmed': BookingStatuses.reserved,
-  // Retired with Government ID KYC: pre-review documents read as `Pending`,
-  // and documents approved before the change read as `Payment Pending`.
+  // Retired with Government ID KYC: pre-review documents read as `Pending`.
   'kycsubmitted': BookingStatuses.pending,
-  'approved': BookingStatuses.paymentPending,
 };
 
 /// Read a stored status as a canonical one. Anything missing or unknown reads
@@ -113,6 +116,21 @@ String normalizeStatus(Object? stored) {
   final raw = stored.toString();
   if (raw.trim().isEmpty) return BookingStatuses.pending;
   return _canonicalByFolded[_fold(raw)] ?? BookingStatuses.pending;
+}
+
+/// A stored `Approved` that never had a verified screenshot reads as
+/// `Payment Pending` — the successor it meant before ADR-0012. New writes
+/// always carry the proof and the marker, so they stay `Approved`.
+String interpretStoredStatus(
+  Object? stored, {
+  String? paymentStatus,
+  String? paymentProofUrl,
+}) {
+  final normalized = normalizeStatus(stored);
+  if (stored == null || _fold(stored.toString()) != 'approved') return normalized;
+  final proven =
+      (paymentProofUrl ?? '').trim().isNotEmpty && paymentStatus == 'verified';
+  return proven ? BookingStatuses.approved : BookingStatuses.paymentPending;
 }
 
 bool canTransition(String from, String to) =>
@@ -649,20 +667,20 @@ class _Rule {
 }
 
 const Map<AdminAction, _Rule> _rules = {
-  // The Admin's review lands directly on `Payment Pending`: with Government ID
-  // KYC gone, approving a Booking *is* opening it for payment (ADR-0001).
-  AdminAction.approve: _Rule(['admin'], ['Pending'], 'Payment Pending'),
+  // Accepting the downpayment screenshot confirms the Booking (ADR-0012).
+  AdminAction.approve: _Rule(['admin'], ['Pending'], 'Approved'),
   AdminAction.reject:
       _Rule(['admin'], ['Pending', 'Payment Pending'], 'Rejected'),
   AdminAction.verifyPayment: _Rule(['admin'], ['Payment Pending'], 'Reserved'),
   AdminAction.rejectPaymentProof: _Rule(['admin'], ['Payment Pending'], null),
   AdminAction.cancel: _Rule(['guest', 'admin'],
-      ['Pending', 'Payment Pending', 'Reserved'], 'Cancelled'),
+      ['Pending', 'Approved', 'Payment Pending', 'Reserved'], 'Cancelled'),
   AdminAction.markRefunded: _Rule(['admin'], ['Cancelled'], null),
   AdminAction.revokeKey:
-      _Rule(['admin'], ['Reserved', 'Checked-In', 'Staying'], null),
+      _Rule(['admin'], ['Approved', 'Reserved', 'Checked-In', 'Staying'], null),
   AdminAction.expire: _Rule(['system'], ['Pending'], 'Expired'),
-  AdminAction.checkIn: _Rule(['system', 'admin'], ['Reserved'], 'Checked-In'),
+  AdminAction.checkIn:
+      _Rule(['system', 'admin'], ['Approved', 'Reserved'], 'Checked-In'),
   AdminAction.beginStay: _Rule(['system', 'admin'], ['Checked-In'], 'Staying'),
   AdminAction.checkOut: _Rule(['system', 'admin'], ['Staying'], 'Checked-Out'),
   AdminAction.complete: _Rule(['admin', 'system'], ['Checked-Out'], 'Completed'),
@@ -689,6 +707,17 @@ List<AdminAction> adminActionsFor(String status) {
 /// that lies, which is the same failure as an allowlist the rules do not share.
 String? adminActionBlockedReason(
     Map<String, dynamic> booking, AdminAction action) {
+  if (action == AdminAction.approve) {
+    if (_blank(booking['payment_proof_url']) &&
+        _blank(booking['paymentProofUrl'])) {
+      return 'A downpayment screenshot has to be attached before this Booking can be approved.';
+    }
+    final claimed = _num(booking['amount_claimed']);
+    if (!(claimed > 0)) {
+      return 'The downpayment amount on the proof has to be more than zero before it can be approved.';
+    }
+    return null;
+  }
   if (action != AdminAction.verifyPayment) return null;
   if (_blank(booking['payment_proof_url'])) {
     return 'There is no Payment proof to verify yet.';
@@ -810,6 +839,15 @@ ActionResult applyAdminAction(
 
   switch (action) {
     case AdminAction.approve:
+      final blocked =
+          adminActionBlockedReason(booking, AdminAction.approve);
+      if (blocked != null) return ActionResult.refused(blocked);
+      final claimed = _num(booking['amount_claimed']);
+      final owed = _num(booking['amount_due']);
+      if (owed > 0 && claimed < owed) {
+        return ActionResult.refused(
+            'The proof covers $claimed but $owed is due — approve only a downpayment that covers it.');
+      }
       final accommodation = (booking['accommodation'] ?? '').toString();
       final conflicts = findDateConflicts(
         booking,
@@ -824,8 +862,12 @@ ActionResult applyAdminAction(
             'These dates are already held by another Booking, so this one cannot be approved. Offer the Guest alternative dates.',
             conflicts);
       }
-      // Approval means the dates are firmly held: the countdown stops here.
+      // Approval accepts the screenshot and firms the dates in one decision.
       patch['hold_expires_at'] = null;
+      patch['payment_status'] = 'verified';
+      patch['amount_verified'] = claimed;
+      patch['payment_verified_at'] = at.toIso8601String();
+      patch['payment_verified_by'] = actor.id;
       break;
 
     case AdminAction.reject:
@@ -835,6 +877,7 @@ ActionResult applyAdminAction(
       }
       reason = input.reason!.trim();
       patch['rejection_reason'] = reason;
+      patch['payment_status'] = 'rejected';
       break;
 
     case AdminAction.verifyPayment:
@@ -881,7 +924,9 @@ ActionResult applyAdminAction(
     case AdminAction.cancel:
       reason = _blank(input.reason) ? null : input.reason!.trim();
       patch['cancellation_reason'] = reason;
-      if (from == BookingStatuses.reserved) {
+      if (from == BookingStatuses.reserved ||
+          (from == BookingStatuses.approved &&
+              booking['payment_status'] == 'verified')) {
         final rates = ratesForAccommodation(
             input.publishedRates, (booking['accommodation'] ?? '').toString());
         final settlement = settleRefund(

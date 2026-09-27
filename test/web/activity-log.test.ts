@@ -19,6 +19,10 @@ const request = {
   guests: 4,
   accommodation: 'main-house',
   special_requests: '',
+  payment_proof_url: 'payments/guest-1/HDL/proof.jpg',
+  amount_claimed: 15000,
+  amount_due: 15000,
+  payment_plan: 'down-payment' as const,
 }
 
 beforeEach(() => {
@@ -61,7 +65,7 @@ describe('the Activity log records every state change', () => {
     // having moved on.
     for (const action of [
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
-      { type: 'ChoosePaymentPlan', plan: 'full', rateCard: { nightlyRate: 10000, securityDeposit: 500 } },
+      { type: 'Cancel', reason: 'Plans changed after approval' },
     ] as const) {
       const actor = action.type === 'Approve' ? admin : guest
       const result = await cloudBookingsDB.transition(booking.id, action, { ...actor, now: NOW })
@@ -69,8 +73,8 @@ describe('the Activity log records every state change', () => {
     }
 
     const history = await activityLogDB.list(booking.id)
-    expect(history.map((entry) => entry.action)).toEqual(['Submit', 'Approve', 'ChoosePaymentPlan'])
-    expect(history.map((entry) => entry.to_status)).toEqual(['Pending', 'Payment Pending', 'Payment Pending'])
+    expect(history.map((entry) => entry.action)).toEqual(['Submit', 'Approve', 'Cancel'])
+    expect(history.map((entry) => entry.to_status)).toEqual(['Pending', 'Approved', 'Cancelled'])
 
     // The sequence is part of the record, so a reader can order it without
     // trusting two timestamps to differ.
@@ -124,7 +128,7 @@ describe('describeActivity', () => {
     booking_id: 'book-1',
     action: 'Approve',
     from_status: 'Pending',
-    to_status: 'Payment Pending',
+    to_status: 'Approved',
     actor: 'admin',
     actor_id: 'admin-1',
     actor_name: 'Ana Luisana',
@@ -137,7 +141,7 @@ describe('describeActivity', () => {
     const line = describeActivity(entry())
 
     expect(line.headline).toBe('Booking approved')
-    expect(line.change).toBe('Pending → Payment Pending')
+    expect(line.change).toBe('Pending → Approved')
     expect(line.actor).toBe('Ana Luisana (Admin)')
     expect(line.at).toBe('2026-09-20T01:00:00.000Z')
     expect(line.reason).toBeUndefined()

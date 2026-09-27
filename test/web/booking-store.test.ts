@@ -18,6 +18,10 @@ const request = {
   guests: 4,
   accommodation: 'main-house',
   special_requests: '',
+  payment_proof_url: 'payments/guest-1/HDL/proof.jpg',
+  amount_claimed: 15000,
+  amount_due: 15000,
+  payment_plan: 'down-payment' as const,
 }
 
 beforeEach(() => {
@@ -82,16 +86,16 @@ describe('the booking store seam', () => {
     )
     expect(approval.ok).toBe(true)
 
-    // With Government ID KYC gone, approval lands the Booking on Payment
-    // Pending and stops the hold countdown.
+    // Accepting the downpayment screenshot confirms the Booking and stops the hold.
     const stored = await cloudBookingsDB.get(submitted.id)
-    expect(stored?.status).toBe('Payment Pending')
+    expect(stored?.status).toBe('Approved')
+    expect(stored?.payment_status).toBe('verified')
     expect(stored?.hold_expires_at).toBeNull()
 
     const history = await activityLogDB.list(submitted.id)
     expect(history.map((entry) => [entry.action, entry.from_status, entry.to_status])).toEqual([
       ['Submit', 'Pending', 'Pending'],
-      ['Approve', 'Pending', 'Payment Pending'],
+      ['Approve', 'Pending', 'Approved'],
     ])
     expect(history.map((entry) => entry.actor)).toEqual(['guest', 'admin'])
   })

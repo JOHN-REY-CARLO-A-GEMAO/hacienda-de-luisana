@@ -1,3 +1,5 @@
+> **Superseded for new bookings (2026-09-27, ADR-0012).** A Guest browses without an account, fills the booking form, and must upload a downpayment screenshot before the Booking is submitted as Pending. The Admin approves that screenshot (`Approved`) or rejects it (`Rejected`). G3 below — approve before any money — no longer applies to new bookings. This chart remains the record of the flow it corrected.
+
 # PROPERTY MANAGEMENT, SMART LOCK (RFID + MOBILE KEY / ESP32) & TRACKING SYSTEM
 ### Corrected Flow Chart Spec v3.0 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling; v2.1 added the implementation status (§12); **v3.0 collapses the actors to two roles — Customer (Guest) on the website, Admin on the mobile app — and removes Staff and Super Admin (ADR-0007); v3.1 removes Guest Location Tracking entirely (§4, ADR-0009); v3.2 removes Government ID KYC entirely — the ID step and the KYC stages are gone, an approval opens payment directly (2026-09-27, ADR-0004 amendment)**
 

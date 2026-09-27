@@ -66,7 +66,7 @@ export function Rates() {
                 <div className="mt-1 text-xs text-forest-700/70">{rate.source}</div>
                 <div className="mt-4 text-sm text-forest-800">{a.capacityLabel}{a.availableUnits ? ` · ${a.availableUnits} units` : ''}</div>
                 <Link to={`/book?accommodation=${a.id}`} className="btn-ghost mt-6 text-xs group">
-                  Request these dates
+                  Book this room
                   <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
                 </Link>
               </div>
@@ -97,9 +97,9 @@ export function Rates() {
               </ul>
             ) : (
               <p className="mt-4 text-sm text-cream-100/80 leading-relaxed">
-                A refundable security deposit is held against damage and settled at check-out. Its amount, and
-                whether a down-payment plan is offered for your stay, are set in the Hacienda's published rates
-                and shown to you at the payment step — nothing is paid when you send a request.
+                A refundable security deposit is held against damage and settled at check-out. The downpayment
+                due now is shown on the payment step, before the booking is submitted. Nothing is confirmed
+                until the Hacienda approves the screenshot.
               </p>
             )}
             <p className="mt-5 text-xs text-cream-100/60 leading-relaxed">

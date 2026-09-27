@@ -207,13 +207,10 @@ const ACTION_RULES: Record<
   BookingAction['type'],
   { actors: readonly ActorKind[]; from: readonly BookingStatus[]; to: BookingStatus | 'stays' }
 > = {
-  // The Admin's review lands directly on `Payment Pending`: with Government ID
-  // KYC gone, approving a Booking *is* opening it for payment (ADR-0001 —
-  // nothing moves before the Admin has said yes).
-  Approve: { actors: ['admin'], from: ['Pending'], to: 'Payment Pending' },
-  // `Payment Pending` covers everything the pre-KYC `Approved` stage covered:
-  // an approved Booking the Guest has not paid for yet, and one whose proof is
-  // already in — rejecting either is a pre-money rejection.
+  // The Admin's review of the downpayment screenshot is the confirmation
+  // (ADR-0012). Accepting it lands on Approved and marks the payment verified.
+  // Declining it lands on Rejected. A Guest cannot take either step.
+  Approve: { actors: ['admin'], from: ['Pending'], to: 'Approved' },
   Reject: { actors: ['admin'], from: ['Pending', 'Payment Pending'], to: 'Rejected' },
   ChoosePaymentPlan: { actors: ['guest'], from: ['Payment Pending'], to: 'stays' },
   UploadPaymentProof: { actors: ['guest'], from: ['Payment Pending'], to: 'stays' },
@@ -221,7 +218,7 @@ const ACTION_RULES: Record<
   RejectPaymentProof: { actors: ['admin'], from: ['Payment Pending'], to: 'stays' },
   Cancel: {
     actors: ['guest', 'admin'],
-    from: ['Pending', 'Payment Pending', 'Reserved'],
+    from: ['Pending', 'Approved', 'Payment Pending', 'Reserved'],
     to: 'Cancelled',
   },
   // Flow §2 step 11: the Refund pipeline ends when the money is back with the
@@ -231,10 +228,10 @@ const ACTION_RULES: Record<
   // from a stay that is live. The Booking does not move; the lock's allowlist
   // entry is removed on the next physical touch (first hardware generation),
   // and the log records who decided and when.
-  RevokeKey: { actors: ['admin'], from: ['Reserved', 'Checked-In', 'Staying'], to: 'stays' },
+  RevokeKey: { actors: ['admin'], from: ['Approved', 'Reserved', 'Checked-In', 'Staying'], to: 'stays' },
   Expire: { actors: ['system'], from: ['Pending'], to: 'Expired' },
   // The first successful Credential use on the check-in day (flow §3 step 6).
-  CheckIn: { actors: ['system', 'admin'], from: ['Reserved'], to: 'Checked-In' },
+  CheckIn: { actors: ['system', 'admin'], from: ['Approved', 'Reserved'], to: 'Checked-In' },
   BeginStay: { actors: ['system', 'admin'], from: ['Checked-In'], to: 'Staying' },
   CheckOut: { actors: ['system', 'admin'], from: ['Staying'], to: 'Checked-Out' },
   // Only once cleaning and inspection have passed (flow §5 step 10). The Admin
@@ -314,6 +311,21 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
 
   switch (action.type) {
     case 'Approve': {
+      // The screenshot is what the Admin is accepting. A Pending Booking with
+      // no proof has not been submitted the way the flow requires (ADR-0012),
+      // and approving it would confirm a stay nobody paid for.
+      const proof = booking.payment_proof_url?.trim() || booking.paymentProofUrl?.trim()
+      if (!proof) {
+        return refuse('A downpayment screenshot has to be attached before this Booking can be approved.')
+      }
+      const claimed = booking.amount_claimed ?? 0
+      if (!(claimed > 0)) {
+        return refuse('The downpayment amount on the proof has to be more than zero before it can be approved.')
+      }
+      const owed = booking.amount_due ?? 0
+      if (owed > 0 && claimed < owed) {
+        return refuse(`The proof covers ${claimed} but ${owed} is due — approve only a downpayment that covers it.`)
+      }
       // G2: the system re-checks availability at approval, not the Admin's eyeball.
       const conflicts = findDateConflicts(booking, action.availability.bookings, {
         unitsAvailable: action.availability.unitsAvailable,
@@ -327,8 +339,14 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
           conflicts,
         )
       }
-      // Approval means the dates are firmly held: the countdown stops here.
+      // Approval means the dates are firmly held and the downpayment is
+      // accepted: the countdown stops, and the payment is verified in the
+      // same decision. There is no second money step after this.
       patch.hold_expires_at = null
+      patch.payment_status = 'verified'
+      patch.amount_verified = claimed
+      patch.payment_verified_at = at
+      patch.payment_verified_by = actor.actor_id
       break
     }
 
@@ -336,6 +354,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       if (!action.reason.trim()) return refuse('A rejection has to say why, so the Guest knows what to fix.')
       reason = action.reason
       patch.rejection_reason = action.reason
+      patch.payment_status = 'rejected'
       break
     }
 
@@ -434,7 +453,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
     case 'Cancel': {
       reason = action.reason
       patch.cancellation_reason = action.reason ?? null
-      if (from === 'Reserved') {
+      if (from === 'Reserved' || (from === 'Approved' && booking.payment_status === 'verified')) {
         // Money was verified, so the cancellation goes through the Refund pipeline.
         const settlement = settleRefund(booking, action.refund?.policy ?? {}, {
           cancelledAt: at,

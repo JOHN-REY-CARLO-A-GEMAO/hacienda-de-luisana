@@ -1,6 +1,6 @@
 # The money and audit invariants are enforced in the rule layer, not only in the apps
 
-**Status**: accepted, 2026-09-24; amended 2026-09-27 for the Government ID KYC removal (the `kyc_status` clauses are gone from the rules). Resolves the six findings of the verification pass (PR #28, `docs/VERIFICATION.md` §3.3).
+**Status**: accepted, 2026-09-24; amended 2026-09-27 for the Government ID KYC removal (the `kyc_status` clauses are gone from the rules); amended again the same day by ADR-0012 — a Booking is no longer born with nothing claimed. Resolves the six findings of the verification pass (PR #28, `docs/VERIFICATION.md` §3.3).
 
 The application's lifecycle module — `src/lib/booking/` on the website,
 `lib/services/booking_lifecycle.dart` in the Admin app — remains the **single
@@ -15,7 +15,7 @@ console never loads the module:
 | Invariant | Rule |
 | --- | --- |
 | A Guest claims money, the Admin verifies it (ADR-0001) | A Guest's self-serve write may only put `payment_status` at `unpaid` or `pending`, or leave the stored value alone. `verified` is the Admin's word. |
-| A Booking is born with nothing claimed and nothing reviewed | `create` accepts `payment_status` ∈ {`unpaid`, `none`, absent}. |
+| A Booking is born Pending, with a screenshot and a claimed amount, and nothing reviewed (ADR-0012) | `create` requires `status == Pending`, a non-empty `payment_proof_url`, `payment_status == pending`, `amount_claimed > 0`, and no verification marker. |
 | `verified` is a claim that names its author | A document left saying `payment_status: 'verified'` must carry `amount_verified > 0`, a `payment_verified_at`, and `payment_verified_by == request.auth.uid`. A console cannot verify in another Admin's name, and a Guest cannot produce the marker at all. |
 | `Reserved` is what verified money buys | The first clause of the update rule: no writer — Guest or Admin — may leave a Booking at `Reserved` unless it says `verified`. It also refuses a write that would un-verify money a Reserved Booking stands on. |
 | Decisions are not undone by the person they were made about | A Guest's write may not move `payment_status` off an Admin-set value (`verified`, `rejected`), and may not clear an Admin's rejection note except by attaching a fresh proof in the same write. |
