@@ -75,7 +75,11 @@ async function seed(work: (rulesDisabled: ReturnType<RulesTestEnvironment['authe
 describe('authentication and roles', () => {
   it('lets a signed-out visitor create an inquiry Booking and refuses one with no uid', async () => {
     const anon = env.unauthenticatedContext()
-    await assertSucceeds(addDoc(collection(anon.firestore(), 'bookings'), bookingDoc()))
+    await assertSucceeds(addDoc(collection(anon.firestore(), 'bookings'), bookingDoc({
+      payment_status: 'pending',
+      payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+      amount_claimed: 5000,
+    })))
     await assertFails(addDoc(collection(anon.firestore(), 'bookings'), bookingDoc({ uid: '' })))
   })
 
@@ -85,7 +89,12 @@ describe('authentication and roles', () => {
     const guest = anonymousGuest()
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'verified' })))
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'pending' })))
-    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'unpaid' })))
+    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'unpaid' })))
+    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({
+      payment_status: 'pending',
+      payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+      amount_claimed: 5000,
+    })))
   })
 
   it('resolves the Admin from the allowlisted address in the token', async () => {
@@ -208,7 +217,7 @@ describe('bookings', () => {
     )
     await assertSucceeds(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Payment Pending' }))
     await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Reserved' }))
-    // A retired status may not be written back, by anybody.
+    // Approved from Payment Pending is not earned. From Pending, it needs the marker.
     await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Approved' }))
   })
 

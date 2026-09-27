@@ -13,13 +13,15 @@
 // are implementation detail.
 //
 // Vocabulary: CONTEXT.md. Decisions respected here:
-//   ADR-0001 — a Booking is approved before any money moves.
+//   ADR-0012 — a Booking is submitted only with a downpayment screenshot, as
+//              Pending, and is confirmed only when the Admin approves that proof.
 //   ADR-0002 — Date hold expiry is a read-time rule, never a scheduled sweep.
 // ----------------------------------------------------------------------------
 
 export {
   BOOKING_STATUSES,
   canTransition,
+  interpretStoredStatus,
   normalizeStatus,
   type BookingStatus,
 } from './statuses'
@@ -45,6 +47,7 @@ export {
 } from './availability'
 
 export {
+  downPaymentAmount,
   paymentOptions,
   paymentOptionsForTotal,
   quoteStay,
@@ -74,6 +77,8 @@ export {
 } from './rates'
 
 export { formatHoldCountdown, unitsForAccommodation, type UnitBearing } from './holds'
+
+export { assertSubmittable, type SubmissionProof, type SubmissionReady } from './submit'
 
 export {
   applyAction,

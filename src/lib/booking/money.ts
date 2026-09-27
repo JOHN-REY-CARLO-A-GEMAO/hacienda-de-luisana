@@ -46,6 +46,18 @@ export function quoteStay(dates: { check_in: string; check_out: string }, rateCa
   return roundMoney(nightsBetween(dates.check_in, dates.check_out) * rateCard.nightlyRate)
 }
 
+/**
+ * Floor a published down-payment percent to whole centavos.
+ *
+ * A missing percent is not a percent. Callers that have no published figure
+ * must ask the Guest what they sent, not invent a share (ADR-0012).
+ */
+export function downPaymentAmount(stayTotal: number, percent: number): number | null {
+  if (!(percent > 0 && percent < 100)) return null
+  const total = roundMoney(Math.max(0, stayTotal))
+  return Math.floor(roundMoney((total * percent) / 100) * 100) / 100
+}
+
 export type PaymentPlan = 'down-payment' | 'full'
 
 export type PaymentOption = {

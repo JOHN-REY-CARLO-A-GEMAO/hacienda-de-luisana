@@ -114,15 +114,26 @@ service cloud.firestore {
         && request.resource.data.get('payment_verified_by', '') == request.auth.uid;
     }
 
-    // `Reserved` is the status verified money *buys*: the Admin approves the
-    // Booking, the Guest pays, the Admin verifies, and only then is it Reserved
-    // (ADR-0001). No writer — Guest or Admin — may reach it with the money
-    // unverified, whether the money is missing from this write or from the
-    // document. Read against the resulting document, so it also refuses a write
-    // that would un-verify money a Reserved Booking is standing on.
+    // `Reserved` is the status verified money *buys* on a historical booking.
+    // `Approved` is the confirmation a downpayment screenshot buys (ADR-0012):
+    // the Admin accepts the proof, and the same write verifies the money.
+    // No writer may reach either status with the money unverified.
     function reservedIsPaidFor() {
       return request.resource.data.get('status', resource.data.get('status', '')) != 'Reserved'
         || request.resource.data.get('payment_status', '') == 'verified';
+    }
+
+    // Approved is earned, not typed. It may be written only from Pending, and
+    // only when the resulting document carries the screenshot plus the
+    // verification marker. A Booking that is already Approved may stay there.
+    function approvedIsEarned() {
+      return request.resource.data.get('status', '') != 'Approved'
+        || resource.data.get('status', '') == 'Approved'
+        || (resource.data.get('status', '') == 'Pending'
+            && request.resource.data.get('payment_proof_url', '') is string
+            && request.resource.data.get('payment_proof_url', '').size() > 0
+            && request.resource.data.get('payment_status', '') == 'verified'
+            && hasVerificationMarker());
     }
 
     // ------------------------------------------------------------------
@@ -183,18 +194,24 @@ service cloud.firestore {
     //   re-checks it for them: see lib/services/booking_lifecycle.dart.
     match /bookings/{bookingId} {
       allow create: if true
-        && request.resource.data.keys().hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at'])
+        && request.resource.data.keys().hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at','payment_proof_url','payment_status','amount_claimed'])
         && request.resource.data.guest_name is string && request.resource.data.guest_name.size() > 0
         && request.resource.data.email is string
         && request.resource.data.check_in is string
         && request.resource.data.check_out is string
         && request.resource.data.status == 'Pending'
         && request.resource.data.get('uid', '') != ''
-        // A Booking is born with nothing claimed and nothing reviewed. `pending`
-        // only exists once a proof has been attached, `verified` is the Admin's
-        // answer, and `approved` is a decision — none of them can be true of a
-        // Booking created a moment ago (ADR-0001).
-        && request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'none', ''];
+        // ADR-0012: a Booking is born Pending, and only with a downpayment
+        // screenshot attached. It cannot arrive Approved, Rejected, or already
+        // verified — those are the Admin's decision, made later.
+        && request.resource.data.payment_proof_url is string
+        && request.resource.data.payment_proof_url.size() > 0
+        && request.resource.data.payment_status == 'pending'
+        && request.resource.data.amount_claimed is number
+        && request.resource.data.amount_claimed > 0
+        && request.resource.data.get('amount_verified', 0) == 0
+        && request.resource.data.get('payment_verified_by', '') == ''
+        && request.resource.data.get('payment_verified_at', '') == '';
 
       // Cheapest check first: a Guest reading their own Booking should not pay
       // for a Profile read to find out they are allowed.
@@ -210,12 +227,13 @@ service cloud.firestore {
         // lifecycle table lives in lib/services/booking_lifecycle.dart (app)
         // and src/lib/booking (web).
         (isAdmin()
+          && approvedIsEarned()
           && !(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
                && request.resource.data.status != resource.data.status)
           // Retired statuses are read as their successors (Confirmed →
-          // Reserved, KYC Submitted → Pending, Approved → Payment Pending)
-          // and are never written again by anybody.
-          && !(request.resource.data.status in ['Confirmed', 'KYC Submitted', 'Approved'])
+          // Reserved, KYC Submitted → Pending) and are never written again.
+          // `Approved` is written again: it is the confirmation (ADR-0012).
+          && !(request.resource.data.status in ['Confirmed', 'KYC Submitted'])
           && !(request.resource.data.status == 'Payment Pending'
                && !(resource.data.status in ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending']))
           && !(request.resource.data.status == 'Reserved'
@@ -246,7 +264,7 @@ service cloud.firestore {
           && ((resource.data.status in ['Pending', 'KYC Submitted']
                  && request.resource.data.status in ['Pending', 'Cancelled'])
               || (resource.data.status == 'Approved'
-                 && request.resource.data.status in ['Payment Pending', 'Cancelled'])
+                 && request.resource.data.status in ['Approved', 'Cancelled'])
               || (resource.data.status == 'Payment Pending'
                  && request.resource.data.status in ['Payment Pending', 'Cancelled'])
               || (resource.data.status == 'Reserved'

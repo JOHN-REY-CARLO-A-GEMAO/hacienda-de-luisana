@@ -32,8 +32,8 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     body:
       'Each card is an Accommodation you can book — the private Main House for the whole barkada, or a camping unit. ' +
       'The rate on each card is the figure the Hacienda has published — its Published rates when there are any, otherwise its listed price — and the final quote is always confirmed with you.',
-    why: 'Picking “View Accommodation” carries your choice into the Booking form for you.',
-    actionHint: 'Tap “View Accommodation” on a stay card to continue.',
+    why: 'Picking “Book this room” carries your choice into the Booking form. No account is required.',
+    actionHint: 'Tap “Book this room” on a stay card to continue.',
     await: { type: 'click' },
   },
   {
@@ -100,25 +100,24 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     route: '/book',
     targets: ['submit-booking'],
     eyebrow: 'Guest tour · 5 of 5 — send it',
-    title: 'Send the Booking request',
+    title: 'Continue to the downpayment',
     body:
-      'This is a booking inquiry, not an instant confirmation: the Admin reviews every request in the mobile app, ' +
-      'and your dates are held for 24 hours while they do. No payment is taken at this step.',
-    why: 'Everything you filled in is real — this sends your actual request to the Hacienda.',
-    actionHint: 'Press “Send Booking Request” to send your request and finish this part of the tour.',
+      'This step does not submit the booking. Next you upload a screenshot of the downpayment — that file is ' +
+      'required. The booking is then Pending until an admin approves or rejects the proof. It is not confirmed yet.',
+    why: 'A booking without a downpayment screenshot is not a booking.',
+    actionHint: 'Press “Continue to downpayment” to open the payment page.',
     await: { type: 'click' },
   },
   {
     id: 'sent',
-    route: '/book',
-    targets: ['booking-success'],
+    route: '/book/pay',
+    targets: ['payment-proof', 'booking-success'],
     eyebrow: 'Guest tour',
-    title: 'Your request is in — watch the Date hold',
+    title: 'Upload the downpayment screenshot',
     body:
-      'Salamat! The reference number names your request, and the countdown under it is your Date hold: 24 hours of ' +
-      'review time before those dates are released again. You can send your government ID right here — step 2 of ' +
-      'the stay — so the Admin can approve without waiting.',
-    why: 'Requests with an ID attached move through review fastest.',
+      'The booking is submitted only after a screenshot is attached, and it stays Pending until the Hacienda ' +
+      'approves or rejects it. In demo mode the review desk on this website makes that decision.',
+    why: 'No screenshot, no booking. Approval is what confirms the stay.',
     continueLabel: 'Next',
   },
   {
@@ -128,9 +127,8 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     eyebrow: 'Guest tour',
     title: 'My Bookings — follow your own stay',
     body:
-      'Everything about your Booking lives here: its status as it moves Pending → Approved → Reserved, the Date hold, ' +
-      'your ID upload, and — once the Admin approves — your Payment plan choice and receipt upload. A request that ' +
-      'hasn’t been reviewed yet can also be withdrawn from here.',
+      'Everything about your Booking lives here: its status as it moves Pending → Approved, and the decision the ' +
+      'Hacienda made on your downpayment screenshot. A request that hasn’t been reviewed yet can also be withdrawn from here.',
     fallbackBody:
       'My Bookings is where your requests live once you are signed in: statuses, the Date hold, your ID upload, ' +
       'your Payment plan, and the withdraw button. Sign in as a Guest and this page fills with your own stay.',
@@ -144,10 +142,9 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     eyebrow: 'Guest tour',
     title: 'After approval: pay, upload, arrive',
     body:
-      'When the Admin approves, this card grows: choose Full Payment or a Down Payment, pay externally (GCash/bank), ' +
-      'then upload the receipt — OCR suggests the reference and amount, and the Admin verifies them. Payment verified ' +
-      'means Reserved. On your stay dates your RFID card or in-app Mobile Key opens the door — every unlock, granted ' +
-      'or denied, is logged. After check-out you can leave a star rating and a review here.',
+      'Approval is the confirmation: the Hacienda accepted the screenshot. On your stay dates your RFID card or ' +
+      'in-app Mobile Key opens the door — every unlock, granted or denied, is logged. After check-out you can leave ' +
+      'a star rating and a review here.',
     fallbackBody:
       'The life of a Booking after approval: choose a Payment plan, pay externally and upload the receipt for ' +
       'verification; a verified payment makes the stay Reserved. On stay dates an RFID card or the Mobile Key opens ' +
@@ -175,8 +172,8 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     eyebrow: 'Guest tour',
     title: 'You know your way around now',
     body:
-      'That’s the whole journey: pick a stay, request dates, send your ID, choose a Payment plan after approval, ' +
-      'upload the receipt, and arrive to an RFID or Mobile Key welcome — chat is always one tap away. ' +
+      'That’s the whole journey: pick a stay, send your details, upload the downpayment screenshot, and wait for ' +
+      'the Hacienda to approve or reject it. Chat is always one tap away. ' +
       'The “Replay tutorial” button (bottom right) brings this tour back whenever you want.',
     continueLabel: 'Finish',
   },

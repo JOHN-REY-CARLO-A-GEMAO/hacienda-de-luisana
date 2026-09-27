@@ -38,7 +38,7 @@ import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
 import { bookingsDB, type Booking } from '../../src/lib/storage'
 import { validateProofFile, PROOF_MAX_BYTES, proofObjectPath } from '../../src/lib/payments'
 import { extractReceiptFields, canAutoVerifyFromOcr, matchPaymentReference } from '../../src/lib/payments/ocr'
-import { normalizeStatus, paymentOptionsForTotal } from '../../src/lib/booking'
+import { interpretStoredStatus, normalizeStatus, paymentOptionsForTotal } from '../../src/lib/booking'
 import { checkRateLimit, LIMITS } from '../../src/lib/rateLimit'
 import { ensureConversation, sendChatMessage, subscribeMessages } from '../../src/lib/chatCloud'
 import { submitReview, getReviewForBooking } from '../../src/lib/reviewsCloud'
@@ -255,12 +255,17 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
         check_in: CHECK_IN,
         check_out: CHECK_OUT,
         uid: guestUid,
-        payment_status: 'unpaid',
+        payment_status: 'pending',
+        payment_proof_url: `payments/${guestUid}/HDL1/proof.png`,
+        amount_claimed: 4500,
+        amount_due: 4500,
       },
       guestActor,
     )
     bookingId = booking.id
     expect(booking.status).toBe('Pending')
+    expect(booking.payment_proof_url).toContain('proof.png')
+    expect(booking.payment_status).toBe('pending')
     expect(booking.hold_expires_at).toBeTruthy()
     const hours = (Date.parse(booking.hold_expires_at!) - Date.now()) / 3_600_000
     expect(hours).toBeGreaterThan(23.9)
@@ -312,9 +317,12 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     // Documents written before the removal keep working: each retired value
     // reads as the successor that means the same thing today.
     expect(normalizeStatus('KYC Submitted')).toBe('Pending')
-    expect(normalizeStatus('Approved')).toBe('Payment Pending')
+    // Approved is the confirmation again (ADR-0012). A stored Approved that
+    // never had a screenshot still reads as Payment Pending, the old successor.
+    expect(normalizeStatus('Approved')).toBe('Approved')
+    expect(interpretStoredStatus('Approved', { payment_proof_url: '', payment_status: 'unpaid' })).toBe('Payment Pending')
     expect(normalizeStatus('Confirmed')).toBe('Reserved')
-    note(11, 'Retired statuses migrate on read', 'executed', 'KYC Submitted→Pending, Approved→Payment Pending, Confirmed→Reserved')
+    note(11, 'Retired statuses migrate on read; Approved is canonical again', 'executed', 'KYC Submitted→Pending, proof-less Approved→Payment Pending, Confirmed→Reserved')
   })
 
   it('step 12 — the review decision must say why, and only the Admin may take it', async () => {
@@ -346,29 +354,30 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
       { actor: 'admin', actor_id: ADMIN_UID, actor_name: ADMIN_EMAIL_FOR_TEST },
     )
     expect(result.ok).toBe(true)
-    // Approval opens payment (KYC removed) and stops the hold countdown.
+    // Accepting the screenshot confirms the stay and stops the hold countdown.
     const approved = await cloudBookingsDB.get(bookingId)
-    expect(approved?.status).toBe('Payment Pending')
+    expect(approved?.status).toBe('Approved')
+    expect(approved?.payment_status).toBe('verified')
     expect(approved?.hold_expires_at).toBeNull()
-    note(13, 'Admin approves after the availability re-check', 'executed', `status=Payment Pending, hold stopped, re-checked against ${bookings.length} stored Booking(s)`)
+    note(13, 'Admin approves the downpayment after the availability re-check', 'executed', `status=Approved, payment verified, hold stopped, re-checked against ${bookings.length} stored Booking(s)`)
   })
 
-  it('step 14 — the Guest chooses a payment plan and the policy in force is stamped', async () => {
+  it('step 14 — the screenshot submitted with the booking is what was approved', async () => {
     const options = paymentOptionsForTotal(STAY_TOTAL, RATE)
-    const down = options.find((o) => o.plan === 'down-payment')
-    expect(down).toBeTruthy()
-    const result = await cloudBookingsDB.transition(
+    expect(options.find((o) => o.plan === 'down-payment')).toBeTruthy()
+    const after = await cloudBookingsDB.get(bookingId)
+    expect(after?.status).toBe('Approved')
+    expect(after?.payment_proof_url).toContain('proof.png')
+    expect(after?.amount_claimed).toBe(4500)
+    // A confirmed booking does not go back and choose a plan.
+    const plan = await cloudBookingsDB.transition(
       bookingId,
       { type: 'ChoosePaymentPlan', plan: 'down-payment', stayTotal: STAY_TOTAL, rate: RATE, policy: POLICY },
       guestActor,
     )
-    expect(result.ok).toBe(true)
-    const after = await cloudBookingsDB.get(bookingId)
-    expect(after?.status).toBe('Payment Pending')
-    expect(after?.policy_version).toBe(POLICY.version)
-    expect(after?.amount_due).toBe(down?.dueNow)
-    expect(after?.security_deposit).toBe(RATE.securityDeposit)
-    note(14, 'Payment plan chosen; policy version stamped on the Booking', 'executed', `status=${after?.status}, due=${after?.amount_due}, policy=${after?.policy_version}`)
+    expect(plan.ok).toBe(false)
+    expect((await cloudBookingsDB.get(bookingId))?.status).toBe('Approved')
+    note(14, 'Proof was attached before Pending; approval did not reopen a payment plan', 'executed', `status=Approved, claimed=${after?.amount_claimed}`)
   })
 
   it('step 15 — the payment proof contract matches the storage rule (5 MB, image, own uid)', () => {
@@ -404,25 +413,14 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     )
   })
 
-  it('step 17 — the Guest submits the proof and states what they sent; nothing is verified yet', async () => {
-    const result = await cloudBookingsDB.transition(
-      bookingId,
-      {
-        type: 'UploadPaymentProof',
-        payment_proof_url: `payments/${guestUid}/HDL1/proof.png`,
-        amount_claimed: 4500,
-        payment_reference: '1234567890123',
-        ocr_reference: '1234567890123',
-        ocr_amount: '4500',
-      },
-      guestActor,
-    )
-    expect(result.ok).toBe(true)
+  it('step 17 — OCR never verified the screenshot; the Admin decision in step 13 did', async () => {
+    expect(canAutoVerifyFromOcr()).toBe(false)
     const after = await cloudBookingsDB.get(bookingId)
-    expect(after?.payment_status).toBe('pending')
-    expect(after?.amount_verified).toBeUndefined()
-    expect(after?.payment_verified_by).toBeUndefined()
-    note(17, 'Proof submitted', 'executed', `payment_status=${after?.payment_status}, verified_at=${after?.payment_verified_at ?? 'unset'}`)
+    expect(after?.payment_proof_url).toContain('proof.png')
+    expect(after?.payment_status).toBe('verified')
+    expect(after?.payment_verified_by).toBe(ADMIN_UID)
+    expect(after?.status).toBe('Approved')
+    note(17, 'Screenshot required at submit; verification is the Admin’s approval', 'executed', `payment_status=${after?.payment_status}, verified_by=${after?.payment_verified_by}`)
   })
 
   it('step 18 — the Guest cannot verify their own payment, by rule text, even with a full patch', () => {
@@ -489,47 +487,78 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
   // -------------------------------------------------------------------------
 
   it('step 20 — a rejected proof with resubmission lets the Guest try again', async () => {
+    // A separate historical booking. The main stay is already Approved and
+    // must not have its proof rejected — CheckIn in step 23 depends on it.
+    const other = await cloudBookingsDB.add(
+      {
+        guest_name: 'Juan Dela Cruz',
+        phone: '0917 000 1111',
+        email: GUEST_EMAIL,
+        guests: 2,
+        special_requests: '',
+        accommodation: ACCOMMODATION,
+        check_in: '2026-11-05',
+        check_out: '2026-11-07',
+        uid: guestUid,
+        payment_proof_url: `payments/${guestUid}/HDL-other/proof.png`,
+        amount_claimed: 4500,
+        amount_due: 4500,
+      },
+      guestActor,
+    )
+    await cloudBookingsDB.update(other.id, { status: 'Payment Pending', hold_expires_at: null, payment_status: 'pending' })
     const rejected = await cloudBookingsDB.transition(
-      bookingId,
+      other.id,
       { type: 'RejectPaymentProof', reason: 'Amount unreadable', guestResubmits: true },
       { actor: 'admin', actor_id: ADMIN_UID },
     )
     expect(rejected.ok).toBe(true)
-    const mid = await cloudBookingsDB.get(bookingId)
+    const mid = await cloudBookingsDB.get(other.id)
     expect(mid?.payment_status).toBe('rejected')
     expect(mid?.payment_proof_url).toBeNull()
     const resubmit = await cloudBookingsDB.transition(
-      bookingId,
-      { type: 'UploadPaymentProof', payment_proof_url: `payments/${guestUid}/HDL-1/proof2.png`, amount_claimed: 6500, payment_reference: '1234567890123' },
+      other.id,
+      { type: 'UploadPaymentProof', payment_proof_url: `payments/${guestUid}/HDL-other/proof2.png`, amount_claimed: 6500, payment_reference: '1234567890123' },
       guestActor,
     )
     expect(resubmit.ok).toBe(true)
-    const back = await cloudBookingsDB.get(bookingId)
+    const back = await cloudBookingsDB.get(other.id)
     expect(back?.payment_status).toBe('pending')
     expect(back?.status).toBe('Payment Pending')
-    note(20, 'Rejected proof → resubmission', 'executed', `rejected (${mid?.payment_status}) → after resubmit ${back?.payment_status}, status still ${back?.status}`)
+    expect((await cloudBookingsDB.get(bookingId))?.status).toBe('Approved')
+    note(20, 'Rejected proof → resubmission on a separate booking', 'executed', `rejected (${mid?.payment_status}) → after resubmit ${back?.payment_status}; main stay still Approved`)
   })
 
-  it('step 21 — verifying less than the stay owes is refused; verifying it settles the Booking', async () => {
-    const before = await cloudBookingsDB.get(bookingId)
-    const owed = (before?.amount_due ?? 0) + (before?.security_deposit ?? 0)
-    const short = await cloudBookingsDB.transition(
-      bookingId,
-      { type: 'VerifyPayment', amount_verified: owed - 500 },
-      { actor: 'admin', actor_id: ADMIN_UID },
-    )
-    expect(short.ok).toBe(false)
-    expect(short.ok === false ? short.reason : '').toContain('covers')
-    const exact = await cloudBookingsDB.transition(
-      bookingId,
-      { type: 'VerifyPayment', amount_verified: owed },
-      { actor: 'admin', actor_id: ADMIN_UID, actor_name: ADMIN_EMAIL_FOR_TEST },
-    )
-    expect(exact.ok).toBe(true)
+  it('step 21 — the approved stay is verified, and a short downpayment cannot be approved', async () => {
     const after = await cloudBookingsDB.get(bookingId)
     expect(after?.payment_status).toBe('verified')
-    expect(after?.status).toBe('Reserved')
-    note(21, 'Admin verification', 'executed', `underpayment (${owed - 500}) refused, ${owed} verified → ${after?.status}`)
+    expect(after?.status).toBe('Approved')
+    const short = await cloudBookingsDB.add(
+      {
+        guest_name: 'Short Pay',
+        phone: '0917 000 2222',
+        email: GUEST_EMAIL,
+        guests: 2,
+        special_requests: '',
+        accommodation: ACCOMMODATION,
+        check_in: '2026-12-05',
+        check_out: '2026-12-07',
+        uid: guestUid,
+        payment_proof_url: `payments/${guestUid}/HDL-short/proof.png`,
+        amount_claimed: 1000,
+        amount_due: 4500,
+      },
+      guestActor,
+    )
+    const refused = await cloudBookingsDB.transition(
+      short.id,
+      { type: 'Approve', availability: { bookings: await cloudBookingsDB.list() } },
+      { actor: 'admin', actor_id: ADMIN_UID },
+    )
+    expect(refused.ok).toBe(false)
+    expect(refused.ok === false ? refused.reason : '').toContain('covers')
+    expect((await cloudBookingsDB.get(bookingId))?.status).toBe('Approved')
+    note(21, 'Main stay Approved and verified; a short downpayment cannot be approved', 'executed', `main=${after?.status}, short claim refused`)
   })
 
   it('step 22 — the Admin reads every Booking; a Guest reads only their own (rule text)', () => {

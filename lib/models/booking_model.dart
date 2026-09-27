@@ -48,6 +48,7 @@ extension BookingStatusX on BookingStatus {
   /// website's `normalizeStatus` accepts) into its stage.
   static BookingStatus fromString(String val) {
     switch (normalizeStatus(val)) {
+      case BookingStatuses.approved:
       case BookingStatuses.paymentPending:
       case BookingStatuses.paymentVerified:
       case BookingStatuses.reserved:
@@ -194,7 +195,11 @@ class BookingModel {
   String get nextStep {
     switch (rawStatus) {
       case BookingStatuses.pending:
-        return 'Waiting for your review — approve to open payment.';
+        return paymentProofUrl == null || paymentProofUrl!.isEmpty
+            ? 'Waiting for a downpayment screenshot before this can be approved.'
+            : 'Review the downpayment screenshot — approve or reject it.';
+      case BookingStatuses.approved:
+        return 'Approved — the downpayment was accepted. Check the Guest in on arrival.';
       case BookingStatuses.paymentPending:
         if (paymentPlan == null || paymentPlan!.isEmpty) {
           return 'Waiting for the Guest to choose a payment plan.';
@@ -267,6 +272,12 @@ class BookingModel {
     final nights = checkOut.difference(checkIn).inDays <= 0 ? 1 : checkOut.difference(checkIn).inDays;
 
     final storedStatus = (json['status'] ?? 'Pending').toString();
+    final interpreted = interpretStoredStatus(
+      storedStatus,
+      paymentStatus: json['payment_status']?.toString(),
+      paymentProofUrl:
+          (json['payment_proof_url'] ?? json['paymentProofUrl'])?.toString(),
+    );
 
     return BookingModel(
       id: docId ?? json['id'] ?? '',
@@ -279,8 +290,8 @@ class BookingModel {
       checkOutDate: checkOut,
       guestCount: (json['guestCount'] ?? json['guests'] ?? 2) as int,
       specialRequests: json['specialRequests'] ?? json['special_requests'],
-      status: BookingStatusX.fromString(storedStatus),
-      rawStatus: normalizeStatus(storedStatus),
+      status: BookingStatusX.fromString(interpreted),
+      rawStatus: interpreted,
       totalNights: json['totalNights'] ?? nights,
       totalAmount: (json['totalAmount'] ?? json['total_amount'] ?? (nights * 12000.0)).toDouble(),
       createdAt: json['createdAt'] != null

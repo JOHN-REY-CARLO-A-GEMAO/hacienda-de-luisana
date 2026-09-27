@@ -162,7 +162,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     switch (action) {
       case AdminAction.approve:
         if (await _confirm('Approve Booking',
-            'The dates are re-checked against other Bookings and the Booking opens for payment. The Guest then chooses a plan and pays.')) {
+            'Accept the downpayment screenshot? The dates are re-checked, and the Booking becomes Approved. It is not confirmed before this.')) {
           await _run(booking, action);
         }
         return;

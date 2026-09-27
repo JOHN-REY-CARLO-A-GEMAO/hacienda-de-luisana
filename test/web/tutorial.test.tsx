@@ -208,13 +208,12 @@ describe('the interactive Guest tutorial', () => {
         termsBox!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
       })
       expect(termsBox!.checked).toBe(true)
-      await page.wait('Send the Booking request')
+      await page.wait('Continue to the downpayment')
 
-      // 6. Send: the real submit button sends a real Booking (demo store).
+      // 6. Continue: the form does not create a Booking. The payment page does.
       clickTour(page, 'submit-booking')
-      await page.wait('Your request is in — watch the Date hold')
-      await page.wait(/Request Received/i)
-      expect(page.text()).toMatch(/Reference Number/i)
+      await page.wait('Upload the downpayment screenshot')
+      expect(page.text()).toMatch(/screenshot/i)
 
       // 7 → 8: My Bookings and the after-approval explanation (informational).
       click(page, /^\s*Next\s*$/i)

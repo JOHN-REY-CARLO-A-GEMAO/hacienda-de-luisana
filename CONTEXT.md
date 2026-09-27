@@ -50,8 +50,8 @@ _Avoid_: Reservation (a Booking that has been paid and reserved), inquiry, order
 The period a Guest occupies an Accommodation, from check-in to check-out.
 
 **Booking status**:
-The Booking's position in the lifecycle: Pending → Payment Pending → Payment Verified → Reserved → Checked-In → Staying → Checked-Out → Completed, with the terminal branches Rejected, Cancelled and Expired. The Admin's approval lands on Payment Pending — with Government ID KYC removed, approving a Booking *is* opening it for payment (ADR-0001).
-_Avoid_: Confirmed (retired; the paid state is Reserved), KYC Submitted / Approved (retired with Government ID KYC), "booking state"
+The Booking's position in the lifecycle: Pending → Approved → Checked-In → Staying → Checked-Out → Completed, with the terminal branches Rejected, Cancelled and Expired. A Booking is born Pending only with a downpayment screenshot attached. The Admin's approval accepts that screenshot and lands on Approved (ADR-0012). ADR-0001's "approve before any money" is reversed for new bookings. Historical documents may still sit at Payment Pending and walk Payment Verified → Reserved.
+_Avoid_: Confirmed (retired; a paid historical stay is Reserved), KYC Submitted (retired with Government ID KYC), "booking state"
 
 **Date hold**:
 The claim a Booking places on its dates. It counts down 24 hours while the Booking waits for review, and becomes firm when the Admin approves; from there only a terminal status releases the dates.
@@ -63,7 +63,7 @@ The terminal Booking status reached when a date hold runs out. Releasing the dat
 ### Money
 
 **Payment plan**:
-The Guest's promise of money for a stay: Full Payment, or a Down Payment — both plus the refundable Security deposit. Offered from the Published rates, chosen from the moment the Admin approves, and recorded on the Booking the moment it is chosen.
+The Guest's promise of money for a stay: a Down Payment, plus the refundable Security deposit when a rate card publishes one. The screenshot of that downpayment is attached before the Booking is submitted (ADR-0012). A published percent is the only figure the site may compute; if none is published, the Guest enters the amount they sent. Historical bookings may still record a plan chosen after approval.
 _Avoid_: Payment option (an option is one of the plans on offer), rate, price
 
 **Down payment**:

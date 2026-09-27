@@ -23,7 +23,7 @@ export function MobileStickyCTA() {
             data-tour="mobile-cta"
             className="flex-1 rounded-xl bg-cream-50 text-forest-900 h-11 flex items-center justify-center font-medium text-sm"
           >
-            Check Availability
+            Book a room
           </Link>
         </div>
       </div>

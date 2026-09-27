@@ -87,7 +87,7 @@ export function Hero() {
 
               <div className="mt-9 flex flex-wrap gap-3">
                 <Link to="/book" data-tour="hero-cta" className="btn bg-cream-50 text-forest-900 hover:bg-white shadow-glow">
-                  Check Availability
+                  Book a room
                 </Link>
                 <a href="#stay" className="btn-secondary">
                   Explore Hacienda

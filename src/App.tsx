@@ -7,6 +7,9 @@ import { Footer } from './components/Footer'
 import { MobileStickyCTA } from './components/MobileStickyCTA'
 import { Home } from './pages/Home'
 import { BookingPage } from './pages/BookingPage'
+import { DownpaymentPage } from './pages/DownpaymentPage'
+import { BookingStatusPage } from './pages/BookingStatusPage'
+import { ReviewDeskPage } from './pages/ReviewDeskPage'
 import { AccountPage } from './pages/AccountPage'
 import { LegalPage } from './pages/LegalPage'
 import { MessagesPage } from './pages/MessagesPage'
@@ -63,6 +66,11 @@ export default function App() {
         <Route element={<WebsiteLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/book" element={<BookingPage />} />
+          <Route path="/book/pay" element={<DownpaymentPage />} />
+          <Route path="/booking/status" element={<BookingStatusPage />} />
+          {/* Demo review desk, and the same decision for an Admin session.
+              Guests are turned away when Firebase is configured. */}
+          <Route path="/review" element={<ReviewDeskPage />} />
           <Route path="/legal" element={<LegalPage />} />
           {/* Whether this deployment reaches Firebase, and why not when it does
               not. Public and read-only: a Firebase web config is public by

@@ -15,6 +15,11 @@ const pendingBooking = (): BookingState => ({
   status: 'Pending',
   hold_expires_at: HOLD_EXPIRY,
   created_at: '2026-09-20T00:00:00.000Z',
+  payment_proof_url: 'payments/guest-1/HDL-4821/proof.jpg',
+  payment_plan: 'down-payment',
+  payment_status: 'pending',
+  amount_claimed: 15000,
+  amount_due: 15000,
 })
 
 const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' } as const
@@ -38,50 +43,15 @@ describe('applyAction — the journey from submission to a completed stay', () =
   it('moves a Booking through the whole lifecycle, one legal step at a time', () => {
     let booking = pendingBooking()
 
-    // Government ID KYC is gone (2026-09-27): approval itself opens the
-    // Booking for payment, and firms up the dates by dropping the hold.
+    // The Admin accepts the downpayment screenshot. That confirms the Booking
+    // and firms the dates by dropping the hold.
     const approval = expectOk(
       applyAction(booking, { type: 'Approve', availability: noConflicts }, { ...admin, now: NOW }),
     )
-    expect(approval.patch.status).toBe('Payment Pending')
+    expect(approval.patch.status).toBe('Approved')
+    expect(approval.patch.payment_status).toBe('verified')
     expect(approval.patch.hold_expires_at).toBeNull()
     booking = { ...booking, ...approval.patch }
-
-    const plan = expectOk(
-      applyAction(
-        booking,
-        { type: 'ChoosePaymentPlan', plan: 'full', rateCard: { nightlyRate: 10000, securityDeposit: 500 } },
-        { ...guest, now: NOW },
-      ),
-    )
-    // The plan is chosen inside Payment Pending — the status does not move.
-    expect(plan.patch.status).toBe('Payment Pending')
-    expect(plan.patch.payment_plan).toBe('full')
-    booking = { ...booking, ...plan.patch }
-
-    const proof = expectOk(
-      applyAction(
-        booking,
-        {
-          type: 'UploadPaymentProof',
-          payment_proof_url: 'gs://proofs/transfer.jpg',
-          payment_reference: '1234567890123',
-          amount_claimed: 10500,
-        },
-        { ...guest, now: NOW },
-      ),
-    )
-    booking = { ...booking, ...proof.patch }
-
-    const verification = expectOk(
-      applyAction(
-        booking,
-        { type: 'VerifyPayment', amount_verified: booking.amount_due! + booking.security_deposit! },
-        { ...admin, now: NOW },
-      ),
-    )
-    expect(verification.patch.status).toBe('Reserved')
-    booking = { ...booking, ...verification.patch }
 
     const checkIn = expectOk(applyAction(booking, { type: 'CheckIn' }, { ...system, now: NOW }))
     expect(checkIn.patch.status).toBe('Checked-In')
@@ -110,7 +80,7 @@ describe('applyAction — the journey from submission to a completed stay', () =
         booking_id: 'book-1',
         action: 'Approve',
         from_status: 'Pending',
-        to_status: 'Payment Pending',
+        to_status: 'Approved',
         actor: 'admin',
         actor_id: 'admin-1',
         actor_name: 'Ana Luisana',
@@ -120,7 +90,7 @@ describe('applyAction — the journey from submission to a completed stay', () =
 
     const plan = expectOk(
       applyAction(
-        { ...booking, ...approved.patch },
+        { ...pendingBooking(), status: 'Payment Pending', hold_expires_at: null },
         { type: 'ChoosePaymentPlan', plan: 'full', rateCard: { nightlyRate: 10000, securityDeposit: 500 } },
         { ...guest, now: NOW },
       ),
@@ -706,7 +676,7 @@ describe('applyAction — nothing happens after the hold runs out', () => {
     const approved = expectOk(
       applyAction(legacy, { type: 'Approve', availability: noConflicts }, { ...admin, now: '2027-01-01T00:00:00.000Z' }),
     )
-    expect(approved.patch.status).toBe('Payment Pending')
+    expect(approved.patch.status).toBe('Approved')
   })
 })
 

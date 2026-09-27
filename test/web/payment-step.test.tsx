@@ -77,16 +77,20 @@ async function approvedWithPlan(): Promise<Booking> {
       check_in: '2026-12-01',
       check_out: '2026-12-03',
       uid: 'guest-ocr',
-      payment_status: 'unpaid',
+      payment_status: 'pending',
+      payment_proof_url: 'payments/guest-ocr/proof.jpg',
+      amount_claimed: 4500,
+      amount_due: 4500,
       stay_total: 9000,
     },
     guest,
   )
-  await cloudBookingsDB.transition(
-    created.id,
-    { type: 'Approve', availability: { bookings: await cloudBookingsDB.list() } },
-    admin,
-  )
+  // Historical payment step: the Booking was already opened for payment.
+  await cloudBookingsDB.update(created.id, {
+    status: 'Payment Pending',
+    hold_expires_at: null,
+    payment_status: 'unpaid',
+  })
   await cloudBookingsDB.transition(
     created.id,
     {
@@ -126,16 +130,21 @@ describe('PaymentStep', () => {
         check_in: '2026-12-01',
         check_out: '2026-12-03',
         uid: 'guest-ocr',
-        payment_status: 'unpaid',
+        payment_status: 'pending',
+        payment_proof_url: 'payments/guest-ocr/proof.jpg',
+        amount_claimed: 4500,
+        amount_due: 4500,
         stay_total: 9000,
       },
       guest,
     )
-    await cloudBookingsDB.transition(
-      created.id,
-      { type: 'Approve', availability: { bookings: await cloudBookingsDB.list() } },
-      admin,
-    )
+    await cloudBookingsDB.update(created.id, {
+      status: 'Payment Pending',
+      hold_expires_at: null,
+      payment_status: 'unpaid',
+      payment_plan: undefined,
+      payment_proof_url: undefined,
+    })
     const approved = await cloudBookingsDB.get(created.id)
     if (!approved) throw new Error('the seeded Booking vanished')
 

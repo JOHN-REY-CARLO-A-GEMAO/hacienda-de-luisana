@@ -465,7 +465,7 @@ export const FAQS: FAQ[] = [
   },
   {
     q: 'How do I reserve?',
-    a: 'Send a booking request from this website. The Hacienda reviews it, and your dates are held for 24 hours while it does. Once approved, you choose a payment plan and upload your payment proof; the stay is reserved when the payment is verified. You can also book through our Airbnb or Agoda listings.',
+    a: 'Browse the rooms and book without creating an account. Fill in your stay and contact details, then upload a screenshot of your downpayment. The booking is submitted as Pending and is not confirmed until the Hacienda approves that screenshot — or rejected if they decline it. You can also book through our Airbnb or Agoda listings.',
   },
   {
     q: 'How do I get there?',

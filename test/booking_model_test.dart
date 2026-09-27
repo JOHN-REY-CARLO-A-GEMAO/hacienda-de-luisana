@@ -70,7 +70,7 @@ void main() {
   });
 
   test('nextStep tells the Admin what is waiting', () {
-    expect(BookingModel.fromJson(webDoc).nextStep, contains('Waiting for your review'));
+    expect(BookingModel.fromJson(webDoc).nextStep, contains('downpayment screenshot'));
     expect(
       BookingModel.fromJson({...webDoc, 'status': 'Payment Pending'}).nextStep,
       contains('choose a payment plan'),

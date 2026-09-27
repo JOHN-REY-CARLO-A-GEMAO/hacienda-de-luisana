@@ -66,8 +66,17 @@ const deny = (partial: Parameters<typeof request>[0], store: Store = profiles) =
 describe('auth: who is asking', () => {
   const booking = bookingDoc()
 
-  it('lets a signed-out visitor create an inquiry Booking (the public /book form)', () => {
-    expect(allow({ path: 'bookings/new-booking', method: 'create', auth: null, requestData: booking })).toBe(true)
+  it('lets a signed-out visitor create a Pending Booking once the screenshot is attached', () => {
+    expect(allow({
+      path: 'bookings/new-booking',
+      method: 'create',
+      auth: null,
+      requestData: bookingDoc({
+        payment_status: 'pending',
+        payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+        amount_claimed: 5000,
+      }),
+    })).toBe(true)
   })
 
   it('refuses a Booking created without the identity it will belong to (ADR-0004)', () => {
@@ -328,13 +337,31 @@ describe('bookings: what the Admin may change', () => {
     expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: guestPaymentPatch(), requestData: adminVerifyPatch({ status: 'Reserved' }) })).toBe(true)
   })
 
-  it('refuses to write a retired status, and lands a stored mid-KYC Booking on Payment Pending', () => {
-    // 'Approved', 'KYC Submitted' and 'Confirmed' are retired with Government
-    // ID KYC and the old vocabulary: no writer may re-create one.
+  it('refuses a retired status, and accepts Approved only when the screenshot was verified', () => {
+    // Marker-less Approved is not a confirmation. KYC Submitted stays retired.
     expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: pending, requestData: bookingDoc({ status: 'Approved' }) })).toBe(true)
     expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: pending, requestData: bookingDoc({ status: 'KYC Submitted' }) })).toBe(true)
-    // A document stored mid-KYC before the removal is approved the only way an
-    // approval exists now: by moving it to Payment Pending.
+    expect(allow({
+      path: `bookings/${BOOKING_ID}`,
+      method: 'update',
+      auth: allowlistedAdmin(),
+      resourceData: bookingDoc({
+        status: 'Pending',
+        payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+        payment_status: 'pending',
+        amount_claimed: 5000,
+      }),
+      requestData: bookingDoc({
+        status: 'Approved',
+        payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+        payment_status: 'verified',
+        amount_claimed: 5000,
+        amount_verified: 5000,
+        payment_verified_at: '2026-09-24T03:00:00.000Z',
+        payment_verified_by: ADMIN_UID,
+      }),
+    })).toBe(true)
+    // A document stored mid-KYC before the removal can still be opened for payment.
     expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: bookingDoc({ status: 'KYC Submitted' }), requestData: bookingDoc({ status: 'Payment Pending' }) })).toBe(true)
   })
 
@@ -605,11 +632,23 @@ describe('payments: proof and verification', () => {
       }),
     ).toBe(true)
     expect(
-      allow({
+      deny({
         path: 'bookings/new-booking',
         method: 'create',
         auth: anonymousGuest(),
         requestData: bookingDoc(),
+      }),
+    ).toBe(true)
+    expect(
+      allow({
+        path: 'bookings/new-booking',
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: bookingDoc({
+          payment_status: 'pending',
+          payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+          amount_claimed: 5000,
+        }),
       }),
     ).toBe(true)
   })

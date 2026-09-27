@@ -13,14 +13,17 @@
  * The canonical Booking statuses, in lifecycle order followed by the terminal
  * branches (CONTEXT.md § Booking status).
  *
- * `Confirmed` is retired: the paid state is `Reserved`.
- * `KYC Submitted` and `Approved` are retired with Government ID KYC: a Booking
- * waiting for review reads as `Pending`, and one approved before the change
- * reads as `Payment Pending` — the stage an approval now lands on.
+ * `Confirmed` is retired: a paid stay used to read as `Reserved`.
+ * `KYC Submitted` is retired with Government ID KYC.
+ * `Approved` is the confirmation the Admin writes when they accept a
+ * downpayment screenshot. A Booking is not confirmed before that decision
+ * (ADR-0012). Historical documents stored as `Approved` with no proof and no
+ * verified payment still read as `Payment Pending` — see `interpretStoredStatus`.
  */
 
 export const BOOKING_STATUSES = [
   'Pending',
+  'Approved',
   'Payment Pending',
   'Payment Verified',
   'Reserved',
@@ -41,9 +44,6 @@ const RETIRED_STATUSES: Record<string, BookingStatus> = {
   confirmed: 'Reserved',
   // Government ID KYC removed: pre-review documents read as `Pending` again.
   kycsubmitted: 'Pending',
-  // Documents approved before the KYC removal are awaiting payment, which is
-  // exactly what `Payment Pending` means.
-  approved: 'Payment Pending',
 }
 
 /** Fold a stored status string to something comparable: lowercase, no separators. */
@@ -72,6 +72,26 @@ export function normalizeStatus(stored: string | undefined | null): BookingStatu
   return RETIRED_STATUSES[folded] ?? 'Pending'
 }
 
+/**
+ * Read a stored Booking's status, including the one legacy spelling that a
+ * string alone cannot settle.
+ *
+ * Documents written as `Approved` before the downpayment-first change
+ * (ADR-0012) were waiting for payment and carried no proof. Those still read
+ * as `Payment Pending`. A Booking the Admin has accepted under the current
+ * rule carries the screenshot and `payment_status: verified`, and reads as
+ * `Approved`.
+ */
+export function interpretStoredStatus(
+  stored: string | undefined | null,
+  hints?: { payment_status?: string | null; payment_proof_url?: string | null },
+): BookingStatus {
+  const normalized = normalizeStatus(stored)
+  if (!hints || fold(stored ?? '') !== 'approved') return normalized
+  const proven = Boolean(hints.payment_proof_url?.trim()) && hints.payment_status === 'verified'
+  return proven ? 'Approved' : 'Payment Pending'
+}
+
 // ----------------------------------------------------------------------------
 // Transitions
 // ----------------------------------------------------------------------------
@@ -89,7 +109,12 @@ export function normalizeStatus(stored: string | undefined | null): BookingStatu
  * approved, the dates are firmly held and no hold expiry can release them.
  */
 const TRANSITIONS: Record<BookingStatus, readonly BookingStatus[]> = {
-  Pending: ['Payment Pending', 'Rejected', 'Cancelled', 'Expired'],
+  // The confirmation decision (ADR-0012): the Admin accepts the downpayment
+  // screenshot, or declines it. Nothing else confirms a Booking.
+  Pending: ['Approved', 'Rejected', 'Cancelled', 'Expired'],
+  // Confirmed. The stay can begin, or the Guest / Admin can withdraw it.
+  Approved: ['Checked-In', 'Cancelled'],
+  // Historical bookings that were opened for payment before ADR-0012.
   'Payment Pending': ['Payment Verified', 'Rejected', 'Cancelled'],
   'Payment Verified': ['Reserved', 'Cancelled'],
   Reserved: ['Checked-In', 'Cancelled'],

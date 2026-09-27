@@ -153,7 +153,7 @@ export function Accommodations() {
                         data-tour="accommodation-cta"
                         className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 group/btn"
                       >
-                        View Accommodation
+                        Book this room
                         <ArrowRight size={16} className="transition-transform group-hover/btn:translate-x-1" />
                       </Link>
                     </div>
@@ -166,9 +166,9 @@ export function Accommodations() {
         </div>
 
         <p className="mt-6 text-xs text-forest-700/70 max-w-2xl reveal">
-          Rates, the refundable security deposit and payment plans are in{' '}
-          <a href="#rates" className="underline underline-offset-2">Rates &amp; Fees</a>. The Hacienda confirms
-          the final quote with you before anything is reserved.
+          Rates, the refundable security deposit and the down payment are in{' '}
+          <a href="#rates" className="underline underline-offset-2">Rates &amp; Fees</a>. No account is
+          required to book. A stay is confirmed only after the Hacienda approves your downpayment screenshot.
         </p>
       </div>
     </section>

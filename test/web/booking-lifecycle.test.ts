@@ -25,6 +25,7 @@ describe('Booking status vocabulary', () => {
   it('is the canonical set from CONTEXT.md, in lifecycle order', () => {
     expect(BOOKING_STATUSES).toEqual([
       'Pending',
+      'Approved',
       'Payment Pending',
       'Payment Verified',
       'Reserved',
@@ -59,8 +60,8 @@ describe('normalizeStatus migrates stored Booking statuses on read', () => {
   it('reads retired Government ID KYC-era statuses as their successors', () => {
     expect(normalizeStatus('KYC Submitted')).toBe('Pending')
     expect(normalizeStatus('kyc_submitted')).toBe('Pending')
-    expect(normalizeStatus('Approved')).toBe('Payment Pending')
-    expect(normalizeStatus('approved')).toBe('Payment Pending')
+    expect(normalizeStatus('Approved')).toBe('Approved')
+    expect(normalizeStatus('approved')).toBe('Approved')
   })
 
   it('tolerates the casing and separators used by the Flutter guest app', () => {
@@ -77,17 +78,13 @@ describe('normalizeStatus migrates stored Booking statuses on read', () => {
   })
 })
 
-// CONTEXT.md § Booking status: Pending → Payment Pending → Payment Verified →
-// Reserved → Checked-In → Staying → Checked-Out → Completed, with the terminal
-// branches Rejected, Cancelled and Expired (Government ID KYC removed
-// 2026-09-27 — an approval lands directly on Payment Pending).
+// ADR-0012: Pending → Approved → Checked-In → Staying → Checked-Out → Completed.
+// Historical bookings still walk Payment Pending → Payment Verified → Reserved.
 describe('canTransition', () => {
   it('walks the main lifecycle one step at a time', () => {
     const mainFlow: BookingStatus[] = [
       'Pending',
-      'Payment Pending',
-      'Payment Verified',
-      'Reserved',
+      'Approved',
       'Checked-In',
       'Staying',
       'Checked-Out',
@@ -100,9 +97,10 @@ describe('canTransition', () => {
   })
 
   it('refuses to skip the approval chain: verification and arrival are their own steps', () => {
-    // ADR-0001: approval happens before any money moves — it is the one step
-    // that carries Pending into payment (and the action re-checks G2).
-    expect(canTransition('Pending', 'Payment Pending')).toBe(true)
+    // ADR-0012: the Admin accepts the downpayment screenshot, or declines it.
+    expect(canTransition('Pending', 'Approved')).toBe(true)
+    expect(canTransition('Pending', 'Payment Pending')).toBe(false)
+    expect(canTransition('Approved', 'Checked-In')).toBe(true)
     // Money is only ever trusted once the Admin has verified the proof.
     expect(canTransition('Pending', 'Payment Verified')).toBe(false)
     expect(canTransition('Pending', 'Reserved')).toBe(false)
@@ -173,6 +171,7 @@ describe('holdsDates', () => {
   it('is true for every status that still claims its dates', () => {
     for (const status of [
       'Pending',
+      'Approved',
       'Payment Pending',
       'Payment Verified',
       'Reserved',
@@ -209,6 +208,7 @@ describe('hold expiry at read time', () => {
   it('never expires a Booking the Admin has already acted on', () => {
     const longPast = '2030-01-01T00:00:00.000Z'
     for (const status of [
+      'Approved',
       'Payment Pending',
       'Reserved',
       'Checked-In',
