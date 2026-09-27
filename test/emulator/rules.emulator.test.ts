@@ -79,12 +79,13 @@ describe('authentication and roles', () => {
     await assertFails(addDoc(collection(anon.firestore(), 'bookings'), bookingDoc({ uid: '' })))
   })
 
-  it('refuses a Booking created already claiming a payment or a review decision', async () => {
+  it('refuses a Booking created already claiming a payment decision', async () => {
+    // Government ID KYC was removed 2026-09-27: the KYC-era create rows went
+    // with it (create carries no hasOnly list, an unknown key is refused later).
     const guest = anonymousGuest()
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'verified' })))
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'pending' })))
-    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ kyc_status: 'approved' })))
-    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'unpaid', kyc_status: 'required' })))
+    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'unpaid' })))
   })
 
   it('resolves the Admin from the allowlisted address in the token', async () => {
@@ -181,7 +182,6 @@ describe('bookings', () => {
   it('bounds the refund a Guest may record when they withdraw a paid Booking', async () => {
     const paid = bookingDoc({
       status: 'Reserved',
-      kyc_status: 'approved',
       payment_status: 'verified',
       amount_verified: 6500,
       payment_verified_at: new Date(),
@@ -202,12 +202,14 @@ describe('bookings', () => {
     await assertFails(updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), { refund_status: 'refunded' }))
   })
 
-  it('lets the Admin verify a payment and refuses a Booking that skips a gate', async () => {
+  it('lets the Admin approve into payment and refuses a Booking that skips a gate', async () => {
     await seed(async (db) =>
-      setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'KYC Submitted', payment_status: 'pending', kyc_status: 'submitted' })),
+      setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Pending', payment_status: 'unpaid' })),
     )
-    await assertSucceeds(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Approved' }))
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Payment Pending' }))
     await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Reserved' }))
+    // A retired status may not be written back, by anybody.
+    await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Approved' }))
   })
 
   it('records the verification the Admin makes, and refuses one nobody signed', async () => {
@@ -395,9 +397,9 @@ describe('reviews', () => {
    */
   beforeAll(async () => {
     await seed(async (db) => {
-      await setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Completed', kyc_status: 'approved' }))
-      await setDoc(doc(db.firestore(), 'bookings', 'booking-2'), bookingDoc({ uid: OTHER_GUEST_UID, status: 'Completed', kyc_status: 'approved' }))
-      await setDoc(doc(db.firestore(), 'bookings', 'booking-open'), bookingDoc({ status: 'Staying', kyc_status: 'approved' }))
+      await setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Completed' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-2'), bookingDoc({ uid: OTHER_GUEST_UID, status: 'Completed' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-open'), bookingDoc({ status: 'Staying' }))
     })
   })
 
@@ -467,10 +469,16 @@ describe('storage', () => {
   })
 
   it('refuses a non-image upload', async () => {
-    await assertFails(uploadBytes(ref(anonymousGuest().storage(), `kyc/${GUEST_UID}/${BOOKING_ID}/id.txt`), bytes, { contentType: 'text/plain' }))
+    await assertFails(uploadBytes(ref(anonymousGuest().storage(), `payments/${GUEST_UID}/${BOOKING_ID}/proof.txt`), bytes, { contentType: 'text/plain' }))
   })
 
-  it('keeps a KYC document to its owner and the Admin', async () => {
+  it('refuses the retired /kyc slot to everyone — Guest upload, Admin upload, Admin read', async () => {
+    await assertFails(uploadBytes(ref(anonymousGuest().storage(), `kyc/${GUEST_UID}/${BOOKING_ID}/id.png`), bytes, { contentType: 'image/png' }))
+    await assertFails(uploadBytes(ref(admin().storage(), `kyc/${GUEST_UID}/${BOOKING_ID}/id.png`), bytes, { contentType: 'image/png' }))
+    await assertFails(getDownloadURL(ref(admin().storage(), `kyc/${GUEST_UID}/${BOOKING_ID}/id.png`)))
+  })
+
+  it('keeps a payment proof to its owner and the Admin', async () => {
     await assertSucceeds(getDownloadURL(ref(anonymousGuest().storage(), `payments/${GUEST_UID}/${BOOKING_ID}/proof.png`)))
     await assertFails(getDownloadURL(ref(emailGuest(OTHER_GUEST_UID).storage(), `payments/${GUEST_UID}/${BOOKING_ID}/proof.png`)))
     await assertSucceeds(getDownloadURL(ref(admin().storage(), `payments/${GUEST_UID}/${BOOKING_ID}/proof.png`)))

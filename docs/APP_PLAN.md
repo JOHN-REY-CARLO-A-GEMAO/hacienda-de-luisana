@@ -1,7 +1,7 @@
 # Hacienda de LuisAna — App Plan (v2: two roles, two apps)
 
 **Status:** Implemented. Dalawang application, dalawang role — wala nang iba.  
-**Guest / Client:** Website (`src/`, React + Vite) — booking, KYC, payment proof, tracking ng sariling booking.  
+**Guest / Client:** Website (`src/`, React + Vite) — booking, payment proof (Supabase Storage, may OCR), tracking ng sariling booking.  
 **Admin:** Flutter mobile app (`lib/`, Android) — buong management ng hacienda.  
 **Decision record:** [ADR-0007](adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md).
 
@@ -18,7 +18,7 @@
 |---|---|---|
 | **App** | Website — `src/` (React 18, Vite, TypeScript, Tailwind) | Flutter mobile app — `lib/` (Android) |
 | **Sino** | Sinumang bisita; optional na account para sa "My bookings" | Ang may-ari / operator ng hacienda — **isang role lang** |
-| **Pwedeng gawin** | Tingnan ang rooms, rates, availability · mag-book · mag-upload ng ID at resibo (KYC) · pumili ng payment plan at mag-upload ng proof · i-withdraw ang sariling booking · makipag-chat sa Admin · mag-iwan ng review pagkatapos ng stay | **Lahat** ng dating Admin + Staff + Host: approve / reject, verify payment, refund, check-in → completed, rates & cancellation policy, rooms, smart lock, chat inbox, CRM, analytics |
+| **Pwedeng gawin** | Tingnan ang rooms, rates, availability · mag-book · pumili ng payment plan at mag-upload ng proof (OCR ang nag-prefill ng reference no.) · i-withdraw ang sariling booking · makipag-chat sa Admin · mag-iwan ng review pagkatapos ng stay | **Lahat** ng dating Admin + Staff + Host: approve / reject, verify payment, refund, check-in → completed, rates & cancellation policy, rooms, smart lock, chat inbox, CRM, analytics |
 | **Hindi pwede** | Walang management screen; hindi mababasa ang booking ng iba | Walang guest booking flow sa app (booking = website lang) |
 | **Auth** | Firebase Auth (email / Google) + anonymous guest identity sa booking | Firebase Auth; papasok lang kung nasa admin allowlist **o** `profiles/{uid}.role == 'admin'` |
 
@@ -37,7 +37,7 @@
                 │   role: guest                        │   role: admin
                 ▼                                      ▼
         Firebase Auth · Firestore (bookings, profiles, site_config/rates,
-        access_logs) · Storage (kyc/)
+        access_logs) · Storage (payments/) · Supabase Storage (payment-proofs)
         firestore.rules / storage.rules = dalawang role lang
 ```
 
@@ -53,10 +53,10 @@ Routes (`src/App.tsx`):
 | `/book` | Booking form → Firestore `bookings` | 24h date hold (`hold_expires_at`), anonymous guest uid, `ref_id` |
 | `/track` | Track a booking by reference | Read-only status para sa guest |
 | `/login`, `/guest/auth` | Guest sign-in / sign-up | Email / Google; Admin account → sinasabihang gamitin ang app |
-| `/account` | My bookings | Status, hold countdown, KYC upload, payment plan + proof, cancel, activity log |
+| `/account` | My bookings | Status, hold countdown, payment plan + proof (OCR), cancel, activity log |
 | `/admin/*`, `/app/*` | `AdminMoved` | Signpost lang: "Admin uses the mobile app" |
 
-Guest actions (`src/lib/booking/actions.ts`): `UploadKyc`, `ChoosePaymentPlan`, `UploadPaymentProof`, `Cancel`. Lahat ng approval / verification ay **wala** sa website.
+Guest actions (`src/lib/booking/actions.ts`): `ChoosePaymentPlan`, `UploadPaymentProof`, `Cancel`. Lahat ng approval / verification ay **wala** sa website.
 
 ---
 
@@ -67,7 +67,7 @@ Guest actions (`src/lib/booking/actions.ts`): `UploadKyc`, `ChoosePaymentPlan`, 
 | Screen | Ginagawa |
 |---|---|
 | **Dashboard** | Metrics, approaching guests, pending review count, quick actions |
-| **Bookings** → **Booking detail** | Lahat ng bookings; Approve / Reject / Reject ID / Verify payment / Reject proof / Cancel / Mark refunded / Check-in / Begin stay / Check-out / Complete / Purge KYC / Revoke key; activity log |
+| **Bookings** → **Booking detail** | Lahat ng bookings; Approve / Reject / Verify payment / Reject proof / Cancel / Mark refunded / Check-in / Begin stay / Check-out / Complete / Revoke key; activity log |
 | **Chat** | Guest conversations (`conversations`, `messages`) |
 | **Stays** | Kasalukuyang naka-stay, check-out progress |
 | **Rates** | Publish `site_config/rates`: nightly rate, security deposit, down-payment %, refund tiers — dito kinukuha ng website ang quote |
@@ -85,12 +85,12 @@ Lifecycle logic: `lib/services/booking_lifecycle.dart` (`applyAdminAction`, `fin
 ```
 bookings/{id}
   guest_name, phone, email, check_in, check_out, guests, accommodation
-  status: Pending | KYC Submitted | Approved | Payment Pending | Payment Verified |
+  status: Pending | Payment Pending | Payment Verified |
           Reserved | Checked-In | Staying | Checked-Out | Completed |
           Rejected | Cancelled | Expired
   uid, ref_id, source, created_at, hold_expires_at
-  kyc_status, kyc_id_url, kyc_receipt_url, kyc_reject_reason
-  payment_plan, payment_status, payment_proof_url, amount_claimed, amount_verified,
+  payment_plan, payment_status, payment_proof_url, paymentProofUrl, extractedRefNumber,
+  amount_claimed, amount_verified,
   stay_total, amount_due, security_deposit, balance_due
   refund_status, refund_total, refund_breakdown
   rejection_reason, cancellation_reason, policy_version, policy_effective_date
@@ -103,7 +103,7 @@ access_logs/{n}
 
 Rules (`firestore.rules`, `storage.rules`):
 
-- **Guest:** `create` booking; `read` / limited `update` ng sariling booking (`uid == request.auth.uid`); upload sa `kyc/{bookingId}/…`
+- **Guest:** `create` booking; `read` / limited `update` ng sariling booking (`uid == request.auth.uid`); upload sa `payments/{uid}/…` — bagong proofs naman ay sa Supabase `payment-proofs` bucket (ADR-0011)
 - **Admin** (`adminEmails()` allowlist o `profiles.role == 'admin'`): lahat ng iba — approve, verify, refund, rates, purge
 - Walang `staff`, walang `host`, walang `owner` sa rules
 

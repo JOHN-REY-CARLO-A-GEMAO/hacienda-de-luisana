@@ -1,5 +1,5 @@
 # PROPERTY MANAGEMENT, SMART LOCK (RFID + MOBILE KEY / ESP32) & TRACKING SYSTEM
-### Corrected Flow Chart Spec v3.0 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling; v2.1 added the implementation status (§12); **v3.0 collapses the actors to two roles — Customer (Guest) on the website, Admin on the mobile app — and removes Staff and Super Admin (ADR-0007); v3.1 removes Guest Location Tracking entirely (§4, ADR-0009)**
+### Corrected Flow Chart Spec v3.0 — fixes: refund hole, dangling ENDs, double-booking race, missing KYC, tracking consent, offline/tamper handling; v2.1 added the implementation status (§12); **v3.0 collapses the actors to two roles — Customer (Guest) on the website, Admin on the mobile app — and removes Staff and Super Admin (ADR-0007); v3.1 removes Guest Location Tracking entirely (§4, ADR-0009); v3.2 removes Government ID KYC entirely — the ID step and the KYC stages are gone, an approval opens payment directly (2026-09-27, ADR-0004 amendment)**
 
 > Paste-ready textual spec, same structure as the original export.
 > **Global Conventions (render as a legend/annotation box):**
@@ -40,19 +40,17 @@
    - [No] → Notify Customer: adjust dates/guests → back to Input
    - [Yes] → Submit Booking
 4. Sets Booking = **PENDING** → System places **24h TTL hold** on dates (G4) → Save to Central DB → Notify Admin (mobile app): "New booking for review"
-5. Upload Valid Government ID (KYC) → Sets KYC = **SUBMITTED** → Save to Central DB
+5. ~~Upload Valid Government ID (KYC)~~ *removed in v3.2 — review is the next step*
 6. **Booking Review** (Admin, in the mobile app):
    - 6a. System auto re-check: dates still free? (G2)
      - [No] → Suggest Alternative Dates → Notify Customer
        - Decision: Customer rebooks?
          - [Yes] → back to Input (step 2)
          - [No] → Sets Booking = **REJECTED** → Release Dates → Notify Customer → END
-   - 6b. Decision: ID Valid?
-     - [No] → Notify Customer: re-upload ID → Decision: Resubmit?
-       - [Yes] → back to Upload ID (step 5, within TTL)
-       - [No] → Sets Booking = **REJECTED** → Release Dates → Notify Customer → END
-     - [Yes] → Sets Booking = **APPROVED** (dates firmly held) → Notify Customer: "Proceed to payment"
-7. Decision: Payment Option?
+   - 6b. Decision: approve?
+     - [No] → Notify Customer with a reason → Sets Booking = **REJECTED** → Release Dates → Notify Customer → END
+     - [Yes] → Sets Booking = **APPROVED** (dates firmly held, hold countdown stops) → Notify Customer: "Proceed to payment"
+7. Decision: Payment Option? *(Booking is APPROVED — payment is now open; the Guest chooses the plan → PAYMENT PENDING)*
    - [50% Down Payment + Refundable Security Deposit] or [Full Payment + Refundable Security Deposit]
    - → Upload Payment Proof → Sets Payment = **PENDING**
 8. Admin Verifies Payment (mobile app)
@@ -63,9 +61,9 @@
    - [Yes] → Sets Payment = **VERIFIED** → Sets Booking = **RESERVED** → Save to Central DB → Notify Customer: "Reservation confirmed"
 10. Create Booking Tracking Record (→ Booking Tracking & Central DB)
 11. **Customer Cancellation branches** (available anytime from the dashboard):
-    - Cancel while PENDING/APPROVED (nothing verified) → Sets Booking = **CANCELLED** → Release Dates → Notify Admin → END
+    - Cancel while PENDING/APPROVED/PAYMENT PENDING (nothing verified) → Sets Booking = **CANCELLED** → Release Dates → Notify Admin → END
     - Cancel while RESERVED (money verified) → Sets Booking = **CANCELLED** → Release Dates → **Refund Initiated** (settled by the Published rates' cancellation policy stamped on the Booking: refund tier by days before check-in, deposit percentage, verified damage deduction) → Admin returns the money → Admin marks **REFUNDED** → Notify Customer → END
-12. TTL Expiry (any pending stage, 24h — G4): → Sets Booking = **EXPIRED** → Release Dates → Notify Customer & Admin → END
+12. TTL Expiry (the pre-approval stage, 24h — G4): → Sets Booking = **EXPIRED** → Release Dates → Notify Customer & Admin → END
 13. Assign Credential → proceed to CHECK-IN (Module 3)
 
 ---
@@ -129,8 +127,7 @@ security intent is the **Access log** — door events only, never position:
    - [Yes] → Admin sets Property = **AVAILABLE** in the app's Rooms screen *(dates rejoin the pool only now)*
 8. Save Cleaning, Maintenance, and Inspection Records (Central Database)
 9. Admin sets Booking = **COMPLETED** (mobile app) → Notify Customer: thank-you + deposit/deposit-refund receipt
-10. Admin purges the government ID and receipt from Storage (RA 10173) → Activity Log
-11. Reports (Analytics screen) → END *(all states final, logs written — G1 satisfied)*
+10. Reports (Analytics screen) → END *(all states final, logs written — G1 satisfied)*
 
 ---
 
@@ -140,9 +137,8 @@ security intent is the **Access log** — door events only, never position:
 2. Submit a Booking (§2) — an anonymous Guest identity is attached at submit so the Booking can be claimed only from that browser / account (ADR-0004)
 3. Sign up / sign in (Customer only) → `/account`:
    - See own Bookings, exact status, Date hold countdown, Activity log
-   - Upload government ID + receipt (KYC) → **KYC SUBMITTED**
-   - After **APPROVED**: choose Payment plan (50 % down payment or full, plus refundable Security deposit) from the Published rates → **PAYMENT PENDING**; upload Payment proof
-   - Withdraw own Booking (PENDING / KYC SUBMITTED / APPROVED / PAYMENT PENDING / RESERVED → **CANCELLED**)
+   - After the Admin's approval (no ID review stage — KYC removed in v3.2): choose Payment plan (50 % down payment or full, plus refundable Security deposit) from the Published rates → **PAYMENT PENDING**; upload Payment proof (OCR pre-fills the reference number)
+   - Withdraw own Booking (PENDING / APPROVED / PAYMENT PENDING / RESERVED → **CANCELLED**)
    - Chat with the Admin, and leave a Review after the stay
 4. (Restriction: the Customer cannot approve, verify, refund, read other Bookings, or reach any management screen. `/admin` and `/app` on the website only point at the mobile app.)
 
@@ -152,8 +148,7 @@ security intent is the **Access log** — door events only, never position:
 
 1. Admin Dashboard (after the gate in §1 step 3)
 2. Modules managed — all in one app, one role:
-   - **Bookings:** every Booking; approve / reject (availability re-checked by the system — G2); refuse an ID for resubmission
-   - **KYC / ID Verification:** view the uploaded ID and receipt; purge after the stay (RA 10173)
+   - **Bookings:** every Booking; approve / reject (availability re-checked by the system — G2)
    - **Payments & Refunds:** verify or reject Payment proof; cancel; Refund settled per the stamped policy; mark REFUNDED
    - **Stays:** CHECK-IN → STAYING → CHECKED-OUT → COMPLETED
    - **Rates & Cancellation Policy:** publish nightly rates, Security deposit, down-payment %, refund tiers (`site_config/rates`) — the website quotes from these
@@ -184,13 +179,13 @@ Section numbers 10–12 below are kept stable for cross-references from the thes
 
 ## 10. Booking Tracking Flow & Status Lifecycle *(updated)*
 
-- Tracking Data Captured: Tracking ID, Booking ID, Customer, Property, Location, Booking Date, Check-in, Check-out, KYC Status, Payment Status, Booking Status, Last Update, Updated By, History Log.
+- Tracking Data Captured: Tracking ID, Booking ID, Customer, Property, Location, Booking Date, Check-in, Check-out, Payment Status, Booking Status, Last Update, Updated By, History Log.
 - **Main lifecycle:**
 
-  `PENDING → KYC SUBMITTED → APPROVED → PAYMENT PENDING → PAYMENT VERIFIED → RESERVED → CHECKED-IN → STAYING → CHECKED-OUT → COMPLETED`
+  `PENDING → PAYMENT PENDING → PAYMENT VERIFIED → RESERVED → CHECKED-IN → STAYING → CHECKED-OUT → COMPLETED`
 
 - **Terminal branches (all release dates + notify — G1):**
-  - `REJECTED` — Admin denies ID/availability at review (no money involved)
+  - `REJECTED` — Admin denies the request at review, or for good before any money (no money involved)
   - `CANCELLED` — Customer withdraws (website) or Admin cancels (app)
     - money already verified → `REFUND INITIATED → REFUNDED` before terminal
   - `EXPIRED` — 24h TTL passed in any pending stage (G4)
@@ -207,7 +202,7 @@ Section numbers 10–12 below are kept stable for cross-references from the thes
 
 The Central Database stores and interconnects:
 
-- Users (Customers) and their **Profiles** (role: customer | admin), **ID/KYC Verification Records**
+- Users (Customers) and their **Profiles** (role: customer | admin)
 - Properties & Availability, **Date Holds (TTL)**, **Published Rates & Cancellation Policy** (`site_config/rates`)
 - Bookings, Payments, Payment Proofs, **Refunds & Security Deposits**, Booking Tracking
 - Credentials (RFID Cards/Tags, UIDs, Mobile Key Tokens), Credential Status, ESP32 Controls, Access Logs, **Offline Log Buffer**, **Lockout/Alert Events**
@@ -223,12 +218,12 @@ Where each convention lives in code, and where the build is deliberately short o
 - **G1 — no dangling ENDs.** `src/lib/booking/actions.ts` (Customer actions, website) and `lib/services/booking_lifecycle.dart` (Admin and system actions, mobile app) are the two places a Booking's state changes — the same status table and transition whitelist on both sides — and every accepted action returns the Activity log entry it owes — a transition cannot happen unlogged, and a terminal status releases the dates because `holdsDates` is false for Rejected, Cancelled, Expired and Completed. The one clause not yet built is **(3) notify the customer**: the system has no notification channel, so the Guest sees the terminal status in their own dashboard / app instead of a message arriving at them.
 - **G2 — the system enforces availability.** Overlap is re-checked at submit (the website's create path, against the stored Bookings) and at approval in the Admin app (`applyAdminAction` → `findDateConflicts` against the latest Bookings snapshot, committed statuses only — ADR-0003). ADR-0006's transactional Approve describes the web protocol; moving the app's approval write into a transaction is the open follow-up.
 - **G3 — money last.** ADR-0001: the Admin approves before any money moves, `VerifyPayment` (app) refuses less than what was asked, and `settleRefund` (`src/lib/booking/money.ts` and its Dart port) is the only path money leaves.
-- **G4 — 24h TTL.** The hold is stored data (`hold_expires_at`), and expiry is a read-time rule (ADR-0002) — no timer, no worker: a Booking that sat 24 hours reads as Expired, and Expired holds no dates. The two stages that expire are the two pre-approval ones, Pending and KYC Submitted; once the Admin approves, the hold becomes firm. The Admin app records a run-out hold as `Expired` in the system's name.
+- **G4 — 24h TTL.** The hold is stored data (`hold_expires_at`), and expiry is a read-time rule (ADR-0002) — no timer, no worker: a Booking that sat 24 hours reads as Expired, and Expired holds no dates. The only stage that expires is the pre-approval one, Pending; once the Admin approves, the hold becomes firm. The Admin app records a run-out hold as `Expired` in the system's name.
 - **G6 — no location collection (superseded by ADR-0009).** The consent gate was built, then the module was withdrawn: no client records a Guest position, `tracking_sessions` denies create / read / update to every caller, and nothing in either app displays one. The retention question is therefore moot — there is no personal location data to expire. What the module was there to protect is now covered by the **Access log** (`access_logs`: door events, granted / denied, with timestamps and the credential used) and by the per-Booking `activity` trail.
 - **G7 — every state change is logged.** Same contract as G1: `applyAction` / `applyAdminAction` owe their log entries, and `firestore.rules` keeps `bookings/{id}/activity` append-only, written in the writer's own role (`guest`, `admin`, or `system` written by the Admin app).
 - **G8 — two roles, two apps (v3.0).** `firestore.rules` knows `guest` and `admin` only (`role()`, `isAdmin()`); the website's `src/lib/auth` has the same two roles and no management pages (`/admin/*`, `/app/*` signpost to the app); the mobile app's `AuthStore.isAdmin` is the only gate and it has no Guest screens. See ADR-0007.
 - **Payment plans and the policy stamp (v2.1).** The Admin publishes figures from the app's Rates screen — the `site_config/rates` document, `FIREBASE_SETUP.md` step 6 — and `ChoosePaymentPlan` (website) quotes the stay from them (or from the recorded total, when the quote is a phone call rather than a card), stamping the policy version and effective date on the Booking at choice time. Republishing changes the terms of future choices only, never of a stay already promised; a Booking stamped with nothing refunds nothing.
-- **Charted, not yet built:** the customer notifications at every terminal path (§2, §3, §5); the credential pipeline of Module 3 (RFID / Mobile Key / ESP32) in code — the app reads and simulates `access_logs`, it does not yet drive a lock; damage reports and cleaning records as documents (§5 is recorded through the Booking's completion and the deposit settlement only); moving the full lifecycle table into `firestore.rules` (the rules enforce the terminal, KYC and payment guards today).
+- **Charted, not yet built:** the customer notifications at every terminal path (§2, §3, §5); the credential pipeline of Module 3 (RFID / Mobile Key / ESP32) in code — the app reads and simulates `access_logs`, it does not yet drive a lock; damage reports and cleaning records as documents (§5 is recorded through the Booking's completion and the deposit settlement only); moving the full lifecycle table into `firestore.rules` (the rules enforce the terminal and payment guards today).
 
 ---
 
@@ -239,8 +234,9 @@ Where each convention lives in code, and where the build is deliberately short o
 | 1 | **Refund hole closed** — booking approves *before* payment; refund pipeline for post-payment cancellations (G3) | §2 steps 6–9, 11; §10 |
 | 2 | **No dangling ENDs** — every terminal sets final status + releases dates + notifies + logs (G1) | all END paths |
 | 3 | **Double-booking race closed** — system overlap re-check at approval + 24h TTL auto-expiry (G2, G4) | §2 steps 3, 4, 6a, 12 |
-| 4 | **KYC/ID verification added** to the customer flow (was only a DB entity) | §2 steps 5–6b |
+| 4 | **KYC/ID verification added** to the customer flow (was only a DB entity) — *later reversed by v3.2, row 9* | §2 steps 5–6b |
 | 5 | **Tracking consent + retention/purge** — Data Privacy compliant (G6) — *reversed by ADR-0009: the module was removed rather than shipped* | §4; §11 |
+| 9 | **Government ID KYC removed entirely** — step 5, the ID decision and the KYC stages dropped; an approval opens payment directly (reverses row 4; 2026-09-27, ADR-0004 amendment) | header; §2; §5; §6; §7; §10; §11 |
 | 6 | **Mobile Key as co-credential** with RFID, one pipeline (G5); offline mode, failure lockout, alerting | §3 |
 | 7 | **CHECKED-IN vs STAYING defined** — trigger = first successful unlock | §3 step 6; §10 |
 | 8 | **Security deposit + damage settlement** wired into the flow | §2 step 7; §5 step 5 |

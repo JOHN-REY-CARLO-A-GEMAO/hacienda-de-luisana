@@ -1,5 +1,11 @@
 # Verification — Hacienda de LuisAna
 
+> **2026-09-27 update.** Government ID KYC was removed, payment-proof storage
+> moved to Supabase (ADR-0011) and client-side OCR (tesseract.js) was added.
+> §2's counts, §4's record, §5's workflow rows and §6 describe a re-run after
+> those changes; §3.3 and §12 keep the 2026-09-24 remediation pass exactly as
+> it happened (including its lifecycle diagram and findings).
+
 What was **executed**, on which machine, and what the results were. Written to be
 read against `docs/LIMITATIONS.md`: nothing here is marked Verified that was not
 run, and everything that could not run says so and says why.
@@ -49,12 +55,12 @@ through the web modules or rule text executed by the in-repo evaluator.
 | Suite | Command | Result |
 | --- | --- | --- |
 | Rules engine semantics | `npm run test:rules` | 28 / 28 |
-| Firestore rules (rule text executed) | `npm run test:rules` | 102 / 102 |
+| Firestore rules (rule text executed) | `npm run test:rules` | 96 / 96 |
 | Storage rules (rule text executed) | `npm run test:rules` | 21 / 21 |
-| **Rules total** | | **151 / 151** |
-| Web unit + component + integration | `npm test` | 22 files / **360 / 360** |
+| **Rules total** | | **145 / 145** |
+| Web unit + component + integration | `npm test` | 24 files / **367 / 367** |
 | End-to-end scenario (this document, §4) | `npm run test:e2e` | **39 / 39** (37 steps + reset + record printer) |
-| Production build | `npm run build` | `dist/` built, 133 modules, no type errors |
+| Production build | `npm run build` | `dist/` built, 227 modules, no type errors |
 | Flutter analyze / test / APK | `flutter …` | **not run — no SDK** (🔴 Blocked) |
 | Firebase Emulator rules suite | `npm run test:emulator` | **not run — no Java, JAR unreachable** (🔴 Blocked) |
 
@@ -194,7 +200,7 @@ on the answer any more.
 
 ### 3.4 Emulator-verified vs not — one line
 
-**Emulator-verified: nothing.** Rule-text-executed (supplemental): all 151 rules
+**Emulator-verified: nothing.** Rule-text-executed (supplemental): all 145 rules
 tests — including the 16 cases that used to record findings, now asserted
 refusals — §3.2, and steps 18, 19, 22, 24–27, 30, 31, 34–37 of the E2E record.
 Application-executed (website modules, offline adapters): steps 1–17, 20, 21, 23,
@@ -203,7 +209,8 @@ Application-executed (website modules, offline adapters): steps 1–17, 20, 21, 
 
 ## 4. P8 — the 37-step end-to-end scenario
 
-`test/e2e/final-scenario.e2e.test.ts`, run by `npm run test:e2e`. Each step
+`test/e2e/final-scenario.e2e.test.ts`, run by `npm run test:e2e` (record below
+re-run 2026-09-27, after the KYC removal). Each step
 asserts its own outcome and prints a line; `executed` = real website modules on
 their documented offline adapters, `rule-text` = the real rules file through the
 evaluator, `contract` = the ESP32 contract in `docs/SMART_LOCK.md` (no lock
@@ -211,21 +218,21 @@ firmware exists in this repository) replayed against the rules.
 
 ```
 === final end-to-end scenario: 37 steps ===
- 1 | Guest registers (email + password) and the session resolves guest                              | executed  | role=guest, status=signed-in, uid=e32af7dc…
- 2 | Registration cannot mint an Admin; the guest permission set holds no verify/approve power      | executed  | guest permissions=4, cannot verify payments
+ 1 | Guest registers (email + password) and the session resolves guest                              | executed  | role=guest, status=signed-in, uid=65477933…
+ 2 | Registration cannot mint an Admin; the guest permission set holds no verify/approve power      | executed  | guest permissions=3, cannot verify payments
  3 | No admin route exists on the website; an Admin session is sent home, not to a dashboard        | executed  | guest→/account allowed, admin→/account refused
  4 | Sign-out clears the session, sign-in restores the same identity                                | executed  | uid stable=true
  5 | Availability quote for the requested dates                                                     | executed  | available=true, conflicts=0
- 6 | Booking created                                                                                | executed  | status=Pending, hold=24.00h, ref=HDL-6166
+ 6 | Booking created                                                                                | executed  | status=Pending, hold=24.00h, ref=HDL-3027
  7 | Submit logged; the Booking is visible to its owner and to nobody else                          | executed  | activity=Submit, other guest sees 0
  8 | Double-booking the held dates is refused by the availability re-check                          | executed  | conflicts=1
- 9 | Terms acceptance carries the current version and a timestamp                                   | executed  | version=2026-09-24, re-acceptance required on version change=true
-10 | KYC file contract (5 MB, image only, own-uid path)                                             | executed  | oversized refused, PDF refused, 2 MB JPEG accepted
-11 | KYC uploaded                                                                                   | executed  | status=KYC Submitted, kyc_status=submitted
-12 | Admin refuses a blurred ID; the Guest resubmits and the Booking returns to KYC Submitted       | executed  | rejected → resubmitted
-13 | Admin approves after the availability re-check                                                 | executed  | status=Approved, re-checked against 2 stored Booking(s)
+ 9 | Terms acceptance carries the current version and a timestamp                                   | executed  | version=2026-09-27, re-acceptance required on version change=true
+10 | Guest cannot self-approve — review is the Admin’s alone                                        | executed  | refused by the actor table; status still Pending
+11 | Retired statuses migrate on read                                                               | executed  | KYC Submitted→Pending, Approved→Payment Pending, Confirmed→Reserved
+12 | Review needs a reason, and the Guest cannot be the reviewer                                    | executed  | both refusals leave the Booking Pending
+13 | Admin approves after the availability re-check                                                 | executed  | status=Payment Pending, hold stopped, re-checked against 2 stored Booking(s)
 14 | Payment plan chosen; policy version stamped on the Booking                                     | executed  | status=Payment Pending, due=4500, policy=2026-09-24
-15 | Proof file contract and object path                                                            | executed  | path=payments/e32af7dc-2710-4f53-a4c7-4de84d60eb41/HDL-1/proof.png, limit=5MB
+15 | Proof file contract and object path                                                            | executed  | path=payments/65477933-a54b-45a1-8d9d-41c320e23f05/HDL-1/proof.png, limit=5MB
 16 | Receipt text extraction fills reference + amount for confirmation only                         | executed  | clean receipt → ref=1234567890123, amount=4500.00, confidence=high; prose receipt captured "RECEIPT" (misread — text extraction is best-effort); autoVerify=false
 17 | Proof submitted                                                                                | executed  | payment_status=pending, verified_at=unset
 18 | Guest-issued verification fields are refused by firestore.rules                                | rule-text | payment_status=verified → denied (the value, not just the key); amount_verified → denied
@@ -236,18 +243,18 @@ firmware exists in this repository) replayed against the rules.
 23 | Check-in → Staying                                                                             | executed  | status=Staying
 24 | Authorized unlock                                                                              | contract  | decision=granted; access_logs create accepted by rule text
 25 | Unknown credential                                                                             | contract  | decision=denied (unknown credential); denied row accepted by rule text
-26 | Revoked credential, wrong dates, unapproved stay                                               | contract  | all denied: credential revoked; outside the stay dates; booking is Approved
+26 | Revoked credential, wrong dates, stay not Reserved                                             | contract  | all denied: credential revoked; outside the stay dates; booking is Payment Pending
 27 | Access-log tampering                                                                           | rule-text | update denied, delete denied, forged writer denied, invalid result denied
-28 | Check-out → Completed, with the whole stay on the Activity log                                 | executed  | status=Completed, activity entries=14
-29 | Guest conversation and message                                                                 | executed  | convo=local:e32af7dc-2710-4f53-a4c7-4de84d60eb41, message delivered to the guest view
+28 | Check-out → Completed, with the whole stay on the Activity log                                 | executed  | status=Completed, activity entries=11
+29 | Guest conversation and message                                                                 | executed  | convo=local:65477933-a54b-45a1-8d9d-41c320e23f05, message delivered to the guest view
 30 | Sender identity, conversation membership and the role label                                    | rule-text | own sender allowed; spoofed sender denied; a stranger posting into an unowned conversation denied; a Guest labelling a message as the Admin's denied
 31 | Admin reply                                                                                    | rule-text | admin read allowed, admin message accepted
 32 | Review eligibility                                                                             | executed  | before check-out refused, after Completed accepted
 33 | Duplicate Review                                                                               | executed  | refused with "You already reviewed this stay."
 34 | Review eligibility, ownership, shape and one-per-stay                                          | rule-text | own finished Booking + 5 stars allowed; 6 stars, another author, another Guest’s stay, an unfinished stay and a second Review all denied
 35 | Privilege escalation through the Booking document                                              | rule-text | Approve denied, identity swap denied, delete of another guest’s booking denied
-36 | Tracker collection and KYC storage slot                                                        | rule-text | tracking_sessions read/create denied for guest and Admin; uploading into another guest’s KYC slot denied
-37 | Cross-user document access                                                                     | rule-text | other guest’s KYC read denied, Admin read allowed, guest rates write denied, own payment proof write allowed
+36 | Tracker collection and the retired KYC storage slot                                            | rule-text | tracking_sessions read/create denied for guest and Admin; the /kyc slot refuses uploads for everyone
+37 | Cross-user document access                                                                     | rule-text | ID reads denied for guests and Admin alike (slot removed), guest rates write denied, own payment proof write allowed
 ```
 
 The Booking reference, the uid and the conversation id are generated per run.
@@ -265,10 +272,10 @@ out of this repository.
 | Workflow | Status | Evidence |
 | --- | --- | --- |
 | Registration | ⚠️ Partial | Steps 1–4 executed on the local adapter; Firebase Auth path not executed (no credentials/emulator); no role can be minted but guest |
-| Booking | ⚠️ Partial | Steps 5–8, 11–13, 20, 21, 23, 28 executed end-to-end locally (Pending → KYC → Approved → Payment → Reserved → Staying → Completed, 14 Activity entries); cloud writes unexecuted |
+| Booking | ⚠️ Partial | Steps 5–8, 10–14, 20, 21, 23, 28 executed end-to-end locally (Pending → review → Payment Pending → Reserved → Staying → Completed, 11 Activity entries); cloud writes unexecuted |
 | Terms | ⚠️ Partial | Versioned text + acceptance helpers verified (step 9); the checkbox is UI-only — acceptance is **not persisted** and `terms_version` / `terms_accepted_at` are never written |
 | Payment | ⚠️ Partial | Steps 14–17, 20, 21 executed; verification fields protected by rule text; **Finding 1** lets a Guest forge `payment_status` |
-| OCR | ❌ Missing (as a pipeline) / ✅ never auto-verifies | Regex text extraction only (step 16 — and it mis-captures on prose); no image→text engine; `canAutoVerifyFromOcr()` returns `false` |
+| OCR | ⚠️ Partial / ✅ never auto-verifies | Client-side image OCR (tesseract.js) pre-fills an editable reference from the chosen screenshot; regex extraction behind it (step 16 — and it mis-captures on prose); `canAutoVerifyFromOcr()` returns `false` |
 | Admin verification | ⚠️ Partial | Lifecycle rules for verify/reject/approve executed (steps 12, 13, 20, 21); Flutter screens not run |
 | Chat | ⚠️ Partial | Steps 29–31 executed locally + rule text; Findings 4 and 6 |
 | Rating | ⚠️ Partial | Steps 32–34 executed (eligibility, duplicate, shape); rule-level eligibility is app-only (Finding 5) |
@@ -277,15 +284,22 @@ out of this repository.
 
 ## 6. P4 — OCR / payment extraction
 
-Kept as-is, documented, **not** marked complete:
+Implemented as a client-side pipeline (2026-09-27), documented, and still
+**a hint only**:
 
-- What exists: `src/lib/payments/ocr.ts` — regex extraction of a reference and an
-  amount from **text** (`extractReceiptFields`), a filename fallback, and
-  `matchPaymentReference` for the duplicate/amount check. The upload screen runs
-  it on text files only and pre-fills fields the Guest must confirm.
-- What does not exist: any image→text engine, any cloud OCR call, any sidecar
-  upload. Step 16 shows the extraction mis-capturing "RECEIPT" as a reference on
-  prose — exactly why the output is a hint.
+- What exists: `src/lib/payments/ocr.ts` — `runReceiptOcr` runs tesseract.js in
+  the browser when the Guest picks the screenshot (busy indicator shown, worker
+  fetched on first use), `extractReferenceNumber` pulls the 10–13 digit GCash /
+  Maya / bank reference (14–16 digit card numbers refused) and pre-fills the
+  editable reference input, `extractReceiptFields` keeps the regex path for text
+  files (step 16), and `matchPaymentReference` does the duplicate/amount check.
+  The chosen reference travels to the Booking as `extractedRefNumber` next to
+  `paymentProofUrl`.
+- What does not exist: any cloud OCR call or sidecar upload — the engine and its
+  language data load in the Guest's browser, and nothing is sent anywhere.
+- Step 16 still shows the extraction mis-capturing "RECEIPT" as a reference on
+  prose — exactly why the output is a hint the Guest can (and must be able to)
+  edit.
 - Hard rule intact: `canAutoVerifyFromOcr()` returns `false`; extraction can
   never set `payment_status`. Admin verification is the only path to `verified`.
 - If a real OCR engine is added, the required pipeline is: receipt image →
@@ -391,7 +405,7 @@ in Git).
 | # | Requirement | Status | Basis |
 | --- | --- | --- | --- |
 | 1 | Guest registration, roles, no self-promotion | ⚠️ Partial | steps 1–4 executed (local adapter); Firebase Auth path unexecuted |
-| 2 | Booking lifecycle with logged transitions | ⚠️ Partial | executed locally: Pending → KYC → Approved → Payment Pending → Reserved → Staying → Completed, 14 entries; cloud writes unexecuted |
+| 2 | Booking lifecycle with logged transitions | ⚠️ Partial | executed locally: Pending → review → Payment Pending → Reserved → Staying → Completed, 11 entries; cloud writes unexecuted |
 | 3 | Terms accepted and recorded | ⚠️ Partial | versioning helpers verified; acceptance not persisted |
 | 4 | Payment submission and verification | ⚠️ Partial | steps 14–17, 20, 21; §3.3 #1, #2 and the two audit extras fixed and regression-tested; rules still supplemental-only, not emulator-verified |
 | 5 | OCR integration | ❌ Missing | regex text extraction only; no engine, no server pipeline |
