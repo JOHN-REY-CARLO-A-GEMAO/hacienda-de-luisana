@@ -372,13 +372,24 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
     }
 
     case 'UploadPaymentProof': {
+      // A Payment proof is submitted whole or not at all. The photo, the
+      // reference read off it and the amount it claims are all the Admin has to
+      // go on — the Admin's Verify Payment acts on this Booking and can see
+      // nothing the Guest did not put here — so a half-submitted Payment proof
+      // is refused rather than stored as a photo and a hope. The rule lives in
+      // the lifecycle, not in the form that happens to ask for these three.
       if (!action.payment_proof_url.trim()) return refuse('Payment proof has to be attached before it can be verified.')
+      const reference = action.payment_reference?.trim() ?? ''
+      if (!reference) return refuse('Enter the payment reference number from the Payment proof.')
+      if (!action.amount_claimed || !(action.amount_claimed > 0)) {
+        return refuse('Enter the amount the Payment proof claims, so the Admin has something to check it against.')
+      }
       patch.payment_proof_url = action.payment_proof_url
       patch.paymentProofUrl = action.paymentProofUrl ?? action.payment_proof_url
       if (action.extractedRefNumber) patch.extractedRefNumber = action.extractedRefNumber
       patch.payment_status = 'pending'
-      if (action.amount_claimed !== undefined) patch.amount_claimed = action.amount_claimed
-      if (action.payment_reference) patch.payment_reference = action.payment_reference
+      patch.amount_claimed = action.amount_claimed
+      patch.payment_reference = reference
       if (action.ocr_reference) patch.ocr_reference = action.ocr_reference
       if (action.ocr_amount) patch.ocr_amount = action.ocr_amount
       if (booking.payment_reject_reason) patch.payment_reject_reason = null

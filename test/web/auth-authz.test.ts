@@ -46,7 +46,7 @@ async function atStage(stage: 'Pending' | 'Payment Pending' | 'Reserved' | 'Chec
   await expectAccepted(booking.id, { type: 'ChoosePaymentPlan', plan: 'full', rateCard }, guest)
   if (stage === 'Payment Pending') return booking.id
 
-  await expectAccepted(booking.id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/1.jpg', amount_claimed: 30500 }, guest)
+  await expectAccepted(booking.id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/1.jpg', payment_reference: '1234567890123', amount_claimed: 30500 }, guest)
   await expectAccepted(booking.id, { type: 'VerifyPayment', amount_verified: 30500 }, admin)
   if (stage === 'Reserved') return booking.id
 
@@ -103,7 +103,7 @@ describe('what a Guest may do through the API', () => {
 
   it('cannot mark its own payment verified, whatever amount it claims', async () => {
     const id = await atStage('Payment Pending')
-    await expectAccepted(id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/2.jpg', amount_claimed: 30500 }, guest)
+    await expectAccepted(id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/2.jpg', payment_reference: '1234567890123', amount_claimed: 30500 }, guest)
 
     const selfVerified = await cloudBookingsDB.transition(id, { type: 'VerifyPayment', amount_verified: 30500 }, guest)
 
@@ -145,7 +145,7 @@ describe('what the Admin may do through the API', () => {
 
   it('verifies a payment, which is what makes a Booking Reserved', async () => {
     const id = await atStage('Payment Pending')
-    await expectAccepted(id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/4.jpg', amount_claimed: 30500 }, guest)
+    await expectAccepted(id, { type: 'UploadPaymentProof', payment_proof_url: 'gs://proofs/4.jpg', payment_reference: '1234567890123', amount_claimed: 30500 }, guest)
 
     await expectAccepted(id, { type: 'VerifyPayment', amount_verified: 30500 }, admin)
 

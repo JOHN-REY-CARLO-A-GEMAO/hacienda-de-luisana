@@ -60,7 +60,7 @@ describe('payment history the Admin reads', () => {
 
     const proof = applyAction(
       { ...booking, ...chosen.patch },
-      { type: 'UploadPaymentProof', payment_proof_url: 'https://x/proof.jpg', amount_claimed: 19000 },
+      { type: 'UploadPaymentProof', payment_proof_url: 'https://x/proof.jpg', payment_reference: '1234567890123', amount_claimed: 19000 },
       guest,
     )
     expect(proof.ok).toBe(true)

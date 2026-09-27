@@ -57,7 +57,7 @@ const everyAction = (state: BookingState): BookingAction[] => [
     rate: { securityDeposit: 2000, downPaymentPercent: 50 },
     policy: { version: '2026-09-24', effectiveDate: '2026-09-24' },
   },
-  { type: 'UploadPaymentProof', payment_proof_url: 'payments/x/1/proof2.jpg', amount_claimed: 6500 },
+  { type: 'UploadPaymentProof', payment_proof_url: 'payments/x/1/proof2.jpg', payment_reference: '1234567890123', amount_claimed: 6500 },
   { type: 'VerifyPayment', amount_verified: 6500 },
   { type: 'RejectPaymentProof', reason: 'unreadable', guestResubmits: true },
   { type: 'Cancel', reason: 'changed plans' },

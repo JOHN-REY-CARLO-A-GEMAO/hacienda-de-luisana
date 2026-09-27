@@ -360,7 +360,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                 />
               </label>
               <label className="block">
-                <span className="block text-xs font-medium text-forest-900">Amount you sent (₱, optional)</span>
+                <span className="block text-xs font-medium text-forest-900">Amount you sent (₱)</span>
                 <input
                   value={amountClaimed}
                   onChange={(e) => setAmountClaimed(e.target.value)}
