@@ -2,15 +2,50 @@
 // Hacienda de LuisAna — Site Configuration
 // -----------------------------------------------------------------------------
 // This file is the single source of truth for editable business content.
-// The Admin can update prices, contact info, images, amenities, FAQs, and nearby
-// attractions here without touching component code.
+// The Admin can update contact info, images, amenities, FAQs, house rules,
+// fees and nearby attractions here without touching component code.
 //
-// Fields marked with "PLACEHOLDER" should be verified and updated by the Admin.
+// Every guest-facing fact in this file is either (a) the Hacienda's own
+// published statement or (b) attributed to the guest who said it. Nothing is
+// a placeholder: a field the Hacienda has not confirmed is left out and the
+// component renders without it, rather than shipping "Add X" to a visitor.
+//
+// Sources checked on 2026-09-26 (refresh the figures when you revisit them):
+//   [A] The Hacienda's Airbnb listing — host-written description, house rules
+//       and Airbnb's own rating summary. See LISTINGS.airbnb.
+//   [B] The Hacienda's Agoda listing. See LISTINGS.agoda.
+//   [C] The Hacienda's Facebook page — address and contact. See BUSINESS.
+//   [D] Guest reviews published on [A] — attributed to the guest, never
+//       presented as the Hacienda's promise.
+//   [E] Public travel guides for the Sta. Cruz → Luisiana commute, several
+//       agreeing. Used for GETTING_HERE only; no travel times or fares.
+//
+// Money: nightly rates, the Security deposit, the down-payment percentage and
+// the cancellation policy are the Admin's Published rates (`site_config/rates`,
+// see src/lib/booking/rates.ts). The website reads them live; the figures here
+// are the Hacienda's publicly listed prices for display when nothing is
+// published yet.
 // -----------------------------------------------------------------------------
 
 export type Amenity = {
   key: string
   label: string
+}
+
+/** One kind of bed in one room, as the Hacienda lists it. */
+export type BedArrangement = {
+  count: number
+  type: string   // "double bed", "single bed", "sofa bed"
+  where: string  // "Bedroom", "Living room"
+}
+
+export type SleepingArrangement = {
+  bedrooms: number
+  beds: BedArrangement[]
+  /** Left out until the Hacienda confirms it — see the note on the Main House. */
+  bathrooms?: number
+  /** Where the figures come from, shown to the guest as a footnote. */
+  source: string
 }
 
 export type Accommodation = {
@@ -21,9 +56,16 @@ export type Accommodation = {
   capacity: number
   capacityLabel: string
   availableUnits?: number
-  price?: number           // per night, PHP
-  priceLabel?: string      // e.g. "Starting from ₱1,200 / unit"
-  priceIsPlaceholder: boolean
+  /**
+   * Per night, PHP — only when the Hacienda has published the figure itself
+   * (its Airbnb listing text or its Published rates). Absent means the
+   * Hacienda quotes on request; the page says so instead of inventing one.
+   */
+  price?: number
+  priceLabel?: string      // e.g. "₱1,200 / unit / night"
+  /** Where a listed price comes from, shown next to it. */
+  priceSource?: string
+  sleeping?: SleepingArrangement
   amenities: string[]      // keys into AMENITIES
   images: string[]         // paths in /public or full URLs
   active: boolean
@@ -34,10 +76,49 @@ export type NearbyAttraction = {
   id: string
   name: string
   description: string
-  distance: string   // "Add distance"
-  travelTime: string // "Add travel time"
+  /** Town / province the attraction sits in — a verifiable fact, always shown. */
+  area: string
+  /** Optional: fill in only with a figure the Hacienda has measured itself. */
+  distance?: string
+  /** Optional: fill in only with a figure the Hacienda has timed itself. */
+  travelTime?: string
   image: string
   mapsUrl?: string
+}
+
+export type Review = {
+  name: string
+  rating: number
+  /** Verbatim — never edited or paraphrased. Long reviews are clamped in the UI, not cut. */
+  body: string
+  /** Month and year as the platform shows it, e.g. "August 2026". */
+  date: string
+  /** Where the review was published. */
+  source: 'Airbnb' | 'Agoda' | 'Facebook' | 'Google'
+}
+
+export type HouseRule = {
+  id: string
+  title: string
+  body: string
+}
+
+/** Something a guest reported in a public review — shown attributed, never as a rule. */
+export type GuestNote = {
+  id: string
+  body: string
+  /** First name + month/year of the review it comes from. */
+  from: string
+}
+
+export type Fee = {
+  id: string
+  label: string
+  /** PHP; omitted when the Hacienda has not published a figure. */
+  amount?: number
+  /** How the amount applies, when it is known — "per unit per night". */
+  unit?: string
+  note?: string
 }
 
 export type FAQ = {
@@ -86,15 +167,75 @@ export const BUSINESS = {
     directions:
       'https://www.google.com/maps/dir/?api=1&destination=14.1754304,121.519389',
   },
-  // Editable placeholders — the Admin should confirm exact policies.
+  // House rules the Hacienda publishes on its Airbnb listing [A]:
+  // "Check-in after 2:00 PM · Checkout before 12:00 PM · 10 guests maximum".
   policies: {
-    checkIn: '2:00 PM',            // placeholder — Admin editable
-    checkOut: '12:00 NN',          // placeholder — Admin editable
-    checkInPlaceholder: true,
-    checkOutPlaceholder: true,
+    checkIn: '2:00 PM',
+    checkOut: '12:00 NN',
+    maxGuests: 10,
     petFriendly: true,
     smokingAllowed: false,
   },
+}
+
+// -----------------------------------------------------------------------------
+// OFFICIAL LISTINGS — the Hacienda's own pages on booking platforms
+// -----------------------------------------------------------------------------
+// Both URLs were opened and checked on 2026-09-26; each page is titled
+// "Hacienda De LuisAna" and describes the Luisiana property. Guests who prefer
+// to pay by card can book there; they are also the only third-party pages the
+// Hacienda vouches for (see OFFICIAL_CHANNELS).
+// -----------------------------------------------------------------------------
+export const LISTINGS = {
+  airbnb: {
+    label: 'Airbnb',
+    url: 'https://www.airbnb.com/rooms/1127261595245933990',
+  },
+  agoda: {
+    label: 'Agoda',
+    url: 'https://www.agoda.com/hacienda-de-luisana/hotel/luisiana-ph.html',
+  },
+} as const
+
+// -----------------------------------------------------------------------------
+// AIRBNB RATING — a snapshot, dated, so it is refreshed rather than trusted forever
+// -----------------------------------------------------------------------------
+// Read off the Hacienda's Airbnb listing [A] on `checkedOn`: "Rated 5.0 out of
+// 5 · 9 reviews", "Guest favorite", "Hosted by Hacienda De LuisAna · Superhost
+// · 2 years hosting". The category scores are Airbnb's own breakdown.
+// The badge and the review summary render from this object; when the Admin
+// re-checks the listing, update the figures and the date together.
+// -----------------------------------------------------------------------------
+export const AIRBNB_RATING = {
+  rating: 5.0,
+  reviewCount: 9,
+  superhost: true,
+  guestFavorite: true,
+  categories: [
+    { label: 'Cleanliness', score: 4.7 },
+    { label: 'Accuracy', score: 4.9 },
+    { label: 'Check-in', score: 4.9 },
+    { label: 'Communication', score: 4.7 },
+    { label: 'Location', score: 4.9 },
+    { label: 'Value', score: 5.0 },
+  ],
+  checkedOn: '2026-09-26',
+  url: LISTINGS.airbnb.url,
+} as const
+
+// -----------------------------------------------------------------------------
+// OFFICIAL CHANNELS — the only places the Hacienda talks to guests or takes money
+// -----------------------------------------------------------------------------
+// Rendered on the booking page and in Contact. Everything listed here is
+// already verified elsewhere in this file (BUSINESS.contact, LISTINGS).
+// -----------------------------------------------------------------------------
+export const OFFICIAL_CHANNELS = {
+  headline: 'Official channels only',
+  body:
+    'Hacienda de LuisAna only communicates and accepts payments through the channels on this page: ' +
+    'the phone number, email address and Facebook page below, the payment step of your booking on this website, ' +
+    'and our listings on Airbnb and Agoda. We never ask for passwords, PINs or one-time codes. ' +
+    'If someone else asks you to pay for a stay at the Hacienda, do not send anything — message us first.',
 }
 
 // -----------------------------------------------------------------------------
@@ -159,8 +300,24 @@ export const ACCOMMODATIONS: Accommodation[] = [
       'A private countryside home designed for groups and families looking for a comfortable place to stay together.',
     capacity: 10,
     capacityLabel: 'Up to 10 guests',
-    priceIsPlaceholder: true,
-    priceLabel: 'Contact us for current rates',
+    // No nightly figure is published anywhere the website can cite (the Airbnb
+    // price only appears once dates are chosen). The Published rates document
+    // supplies it when the Admin publishes one; until then the page says
+    // "quoted on request" — it does not guess.
+    priceLabel: 'Quoted on request',
+    // [A] "Where you'll sleep": Bedroom — 2 double beds, 6 single beds;
+    // Living room — 1 sofa bed. "1 bedroom · 9 beds". The bathroom count is
+    // deliberately absent: Airbnb lists 1 bath and Agoda lists 2 bathrooms,
+    // so it waits for the Hacienda to confirm.
+    sleeping: {
+      bedrooms: 1,
+      beds: [
+        { count: 2, type: 'double beds', where: 'Bedroom' },
+        { count: 6, type: 'single beds', where: 'Bedroom' },
+        { count: 1, type: 'sofa bed', where: 'Living room' },
+      ],
+      source: "As listed on the Hacienda's Airbnb page",
+    },
     amenities: [
       'ac', 'wifi', 'kitchen', 'fridge', 'microwave',
       'kettle', 'tv', 'garden', 'parking',
@@ -188,9 +345,11 @@ export const ACCOMMODATIONS: Accommodation[] = [
     capacity: 2,
     capacityLabel: 'Up to 2 guests per unit',
     availableUnits: 2,
+    // [A] "A-Houses only (2 pax per unit) — 2 units available — ₱1,200/unit".
+    // The Hacienda's own listed figure; the Published rates override it.
     price: 1200,
-    priceLabel: 'Starting from ₱1,200 / unit',
-    priceIsPlaceholder: true,
+    priceLabel: '₱1,200 / unit / night',
+    priceSource: "Listed by the Hacienda on Airbnb",
     amenities: ['campfire', 'grill', 'garden', 'wifi', 'parking', 'pets'],
     images: [
       '/images/gmaps/img-02.jpg',
@@ -206,13 +365,17 @@ export const ACCOMMODATIONS: Accommodation[] = [
 // -----------------------------------------------------------------------------
 // NEARBY ATTRACTIONS
 // -----------------------------------------------------------------------------
+// The Hacienda names these on its Airbnb listing [A] as places to explore.
+// `area` is the town each sits in (public geography). `distance` and
+// `travelTime` are optional and empty on purpose: the Hacienda has not
+// measured them, and a guessed "45 min" is worse than none.
+// -----------------------------------------------------------------------------
 export const NEARBY: NearbyAttraction[] = [
   {
     id: 'hulugan-falls',
     name: 'Hulugan Falls',
     description: 'One of Laguna\'s most breathtaking waterfalls — a lush, towering cascade tucked in Luisiana itself.',
-    distance: 'Add distance',
-    travelTime: 'Add travel time',
+    area: 'Brgy. San Salvador, Luisiana, Laguna',
     image: '/images/nearby/hulugan.jpg',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Hulugan+Falls+Luisiana+Laguna',
   },
@@ -220,8 +383,7 @@ export const NEARBY: NearbyAttraction[] = [
     id: 'sumucab-twin-falls',
     name: 'Sumucab Twin Falls',
     description: 'Twin waterfalls hidden along a peaceful trail near Luisiana — perfect for a half-day hike.',
-    distance: 'Add distance',
-    travelTime: 'Add travel time',
+    area: 'Cavinti / Luisiana, Laguna',
     image: '/images/nearby/sumucab.jpg',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Sumucab+Twin+Falls+Luisiana',
   },
@@ -229,8 +391,7 @@ export const NEARBY: NearbyAttraction[] = [
     id: 'aliw-falls',
     name: 'Aliw Falls',
     description: 'A serene, wide-curtain waterfall with clear pools ideal for a quick dip and photos.',
-    distance: 'Add distance',
-    travelTime: 'Add travel time',
+    area: 'Luisiana, Laguna',
     image: '/images/nearby/aliw.jpg',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Aliw+Falls+Luisiana+Laguna',
   },
@@ -238,8 +399,7 @@ export const NEARBY: NearbyAttraction[] = [
     id: 'kamay-ni-hesus',
     name: 'Kamay ni Hesus',
     description: 'The famous pilgrim site in Lucban featuring a hilltop climb to a towering statue of the Ascending Christ.',
-    distance: 'Add distance',
-    travelTime: 'Add travel time',
+    area: 'Lucban, Quezon',
     image: '/images/nearby/kamay.jpg',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Kamay+ni+Hesus+Lucban',
   },
@@ -247,8 +407,7 @@ export const NEARBY: NearbyAttraction[] = [
     id: 'caliraya-lake',
     name: 'Caliraya Lake',
     description: 'A tranquil man-made lake surrounded by pines — great for kayaking, fishing, and lakeside picnics.',
-    distance: 'Add distance',
-    travelTime: 'Add travel time',
+    area: 'Lumban / Cavinti, Laguna',
     image: '/images/nearby/caliraya.jpg',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Caliraya+Lake+Laguna',
   },
@@ -256,8 +415,7 @@ export const NEARBY: NearbyAttraction[] = [
     id: 'cavinti-cave',
     name: 'Cavinti Underground Cave',
     description: 'An adventurous underground river-cave system for spelunking and rappelling enthusiasts.',
-    distance: 'Add distance',
-    travelTime: 'Add travel time',
+    area: 'Cavinti, Laguna',
     image: '/images/nearby/cavinti.jpg',
     mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Cavinti+Underground+River+Cave',
   },
@@ -266,29 +424,53 @@ export const NEARBY: NearbyAttraction[] = [
 // -----------------------------------------------------------------------------
 // FAQs
 // -----------------------------------------------------------------------------
+// Every answer states only what the Hacienda itself publishes [A] or what this
+// website does. Money questions point at the Rates section, which reads the
+// Published rates live.
+// -----------------------------------------------------------------------------
 export const FAQS: FAQ[] = [
   {
     q: 'How many guests can stay?',
-    a: 'The main house is designed for groups of up to approximately 10 guests. Confirm final capacity with the Hacienda before booking.',
+    a: `The Main House takes up to ${BUSINESS.policies.maxGuests} guests. Each House A camping unit sleeps 2, and there are 2 units.`,
   },
-  { q: 'Are pets allowed?', a: 'Yes, pets are welcome, subject to the property\'s rules and applicable cleaning charges.' },
+  {
+    q: 'Are pets allowed?',
+    a: 'Yes. Pets are welcome for an additional ₱300 cleaning and sanitizing fee — see Rates & Fees. Mention your pet in the special requests when you book.',
+  },
   { q: 'Is parking available?', a: 'Yes, free parking is available on-site.' },
-  { q: 'Is Wi-Fi available?', a: 'Yes.' },
-  { q: 'Can we cook?', a: 'Yes. Cooking facilities are available.' },
+  { q: 'Is Wi-Fi available?', a: 'Yes, Wi-Fi is free for guests.' },
+  {
+    q: 'Can we cook?',
+    a: 'Yes. Use of the gas stove, kitchen utensils and the ihawan (grill) is free, and the Main House has a refrigerator, microwave and electric kettle.',
+  },
   {
     q: 'Can we have a small gathering?',
-    a: 'The property is suitable for small gatherings, but guests should confirm event arrangements with the Hacienda beforehand.',
+    a: 'The Hacienda hosts family bonding, small events, church camping and team building. Tell us about your gathering in the special requests so the arrangements can be confirmed with you beforehand.',
   },
-  { q: 'Do you offer camping?', a: 'Yes. House A camping units are available subject to availability.' },
+  {
+    q: 'Do you offer camping?',
+    a: 'Yes. There are 2 House A camping units, each for up to 2 guests. They can be booked on their own — choose the camping unit on the booking form or message us directly.',
+  },
   {
     q: 'What time is check-in?',
-    a: `Standard check-in is ${''}${BUSINESS.policies.checkIn}${BUSINESS.policies.checkInPlaceholder ? ' (please confirm with the Hacienda).' : '.'}`,
+    a: `Check-in is from ${BUSINESS.policies.checkIn}.`,
   },
   {
     q: 'What time is check-out?',
-    a: `Standard check-out is ${''}${BUSINESS.policies.checkOut}${BUSINESS.policies.checkOutPlaceholder ? ' (please confirm with the Hacienda).' : '.'}`,
+    a: `Check-out is by ${BUSINESS.policies.checkOut}.`,
   },
-  { q: 'How do I reserve?', a: 'Submit the booking inquiry form or contact Hacienda de LuisAna directly.' },
+  {
+    q: 'How much does it cost?',
+    a: 'The House A camping units are listed at ₱1,200 per unit per night. The Main House is quoted on request; the Rates & Fees section shows the current published figures, the refundable security deposit and the payment plans, and the Hacienda confirms the final quote before anything is reserved.',
+  },
+  {
+    q: 'How do I reserve?',
+    a: 'Send a booking request from this website. The Hacienda reviews it, and your dates are held for 24 hours while it does. Once approved, you choose a payment plan and upload your payment proof; the stay is reserved when the payment is verified. You can also book through our Airbnb or Agoda listings.',
+  },
+  {
+    q: 'How do I get there?',
+    a: 'The Hacienda is on the Luisiana–Lucban Road in Brgy. San Isidro, Luisiana. See Getting Here under Location for the landmark, the driving route and the commute via Sta. Cruz.',
+  },
 ]
 
 // -----------------------------------------------------------------------------
@@ -371,7 +553,213 @@ export const EXPERIENCES = [
 ]
 
 // -----------------------------------------------------------------------------
-// REVIEWS
+// REVIEWS — verbatim, from the Hacienda's Airbnb listing [A], read 2026-09-26
 // -----------------------------------------------------------------------------
-// Admin: add verified guest reviews here. Empty array shows the empty state.
-export const REVIEWS: { name: string; rating: number; body: string; date: string }[] = []
+// Rules for this list:
+//   - Copy the text exactly as published. Do not trim, fix spelling or
+//     paraphrase — a long review is clamped by the UI with "Read more".
+//   - First name as the platform shows it, month and year, the platform.
+//   - Add reviews only from the listing itself; never write one.
+// Airbnb showed 6 of the 9 reviews on the listing page; the other 3 sit behind
+// "Show all 9 reviews" and can be added the same way.
+// -----------------------------------------------------------------------------
+export const REVIEWS: Review[] = [
+  {
+    name: 'Rachel Dominique',
+    rating: 5,
+    date: 'August 2026',
+    source: 'Airbnb',
+    body:
+      'If you’re looking for a peaceful, quiet, and refreshing place to relax and spend quality time w family/friends, this is a great place to stay. The property has a huge garden where kids can safely run around and enjoy the open space.\n\n' +
+      'We also appreciated the privacy. The owner mentioned that when the main house is booked, they don’t rent out the A-houses to other guests, and vice versa.\n\n' +
+      'The road leading to the property is a narrow, single-lane road, but we were able to manage it even with three full-sized SUVs. All three vehicles also fit in the parking area. The owner’s family was very helpful in guiding us and helping us park our cars properly.\n\n' +
+      'Drinking water is available from the owner for an additional fee if you don’t bring your own. You can also request a bonfire, which was a nice option for spending time outdoors in the evening.\n\n' +
+      'One thing to keep in mind is that the house is about a 1–2 minute walk from the parking area so you need to carry your belongings a short distance.',
+  },
+  {
+    name: 'Angel',
+    rating: 5,
+    date: 'July 2026',
+    source: 'Airbnb',
+    body:
+      'Great place! Super clean and it smells really nice when we arrived. The caretaker and owner were very friendly and they even gave us free suman. Our dog also had so much fun running around their garden. We also had a great time star gazing at night while having a bonfire. 10/10 will definitely come back here.',
+  },
+  {
+    name: 'Gela',
+    rating: 5,
+    date: 'May 2026',
+    source: 'Airbnb',
+    body:
+      'Had a wonderful stay! The place was very clean, cozy, and truly felt like home. Everything was well-prepared and comfortable, which made our stay relaxing and enjoyable. Highly recommend, and would definitely stay here again!',
+  },
+  {
+    name: 'Sandro',
+    rating: 5,
+    date: 'May 2026',
+    source: 'Airbnb',
+    body:
+      "it's a great place to relax in. the environment is peaceful. the place itself has an amazing aesthetic without sacrificing elegance. 6stars if I'm not limited by the app.",
+  },
+  {
+    name: 'Jof',
+    rating: 5,
+    date: 'June 2026',
+    source: 'Airbnb',
+    body: 'The owner is friendly and the place is nice.',
+  },
+  {
+    name: 'Roserine',
+    rating: 5,
+    date: 'March 2026',
+    source: 'Airbnb',
+    body: 'Very nice cozy home',
+  },
+]
+
+// -----------------------------------------------------------------------------
+// HOUSE RULES — the Hacienda's own published terms of a stay [A]
+// -----------------------------------------------------------------------------
+// Only statements the Hacienda itself makes on its listing belong here. What
+// guests report about the place lives in GUEST_NOTES, attributed.
+// -----------------------------------------------------------------------------
+export const HOUSE_RULES: HouseRule[] = [
+  {
+    id: 'times',
+    title: 'Check-in and check-out',
+    body: `Check-in from ${BUSINESS.policies.checkIn}, check-out by ${BUSINESS.policies.checkOut}.`,
+  },
+  {
+    id: 'capacity',
+    title: 'Headcount',
+    body: `The Main House is for a maximum of ${BUSINESS.policies.maxGuests} guests. Each House A camping unit is for 2 guests, and there are 2 units.`,
+  },
+  {
+    id: 'pets',
+    title: 'Pets',
+    body: 'Pets are allowed for an additional ₱300 cleaning and sanitizing fee.',
+  },
+  {
+    id: 'claygo',
+    title: 'Clean as you go',
+    body: 'Please clean as you go — the Hacienda’s own request to every guest.',
+  },
+  {
+    id: 'kitchen',
+    title: 'Kitchen, ihawan and bonfire',
+    body: 'Free use of the gas stove, kitchen utensils, the ihawan (grill) and the bonfire pit.',
+  },
+  {
+    id: 'parking',
+    title: 'Parking',
+    body: 'Free parking on the property.',
+  },
+]
+
+// -----------------------------------------------------------------------------
+// GUEST NOTES — practical things guests said in public reviews [D]
+// -----------------------------------------------------------------------------
+// These are useful before a trip but they are a guest's account, not the
+// Hacienda's promise, and the UI labels them that way. When the Hacienda
+// confirms one, move it up into HOUSE_RULES.
+// -----------------------------------------------------------------------------
+export const GUEST_NOTES: GuestNote[] = [
+  {
+    id: 'road',
+    body: 'The road leading to the property is a narrow, single-lane road — one group managed it with three full-sized SUVs, and all three fit in the parking area.',
+    from: 'Rachel Dominique, August 2026',
+  },
+  {
+    id: 'walk',
+    body: 'The house is about a 1–2 minute walk from the parking area, so you carry your things a short distance.',
+    from: 'Rachel Dominique, August 2026',
+  },
+  {
+    id: 'water',
+    body: 'Drinking water is available from the owner for an additional fee if you don’t bring your own.',
+    from: 'Rachel Dominique, August 2026',
+  },
+  {
+    id: 'bonfire',
+    body: 'You can request a bonfire for the evening.',
+    from: 'Rachel Dominique, August 2026 · Angel, July 2026',
+  },
+  {
+    id: 'exclusive',
+    body: 'The owner told guests that when the Main House is booked, the A-houses are not rented out to other guests, and vice versa.',
+    from: 'Rachel Dominique, August 2026',
+  },
+]
+
+// -----------------------------------------------------------------------------
+// FEES — what the Hacienda publishes beyond the nightly rate [A]
+// -----------------------------------------------------------------------------
+// Nightly rates, the Security deposit and the down-payment percentage are NOT
+// here: they are the Published rates (site_config/rates) and the Rates section
+// reads them live. This block is for the fixed extras the Hacienda lists.
+// An item without `amount` is one the Hacienda offers but has not priced
+// publicly; the UI says "ask for the current price" for it.
+// -----------------------------------------------------------------------------
+export const FEES = {
+  /** Included in every stay at no extra charge — from the listing's own checklist. */
+  included: [
+    'Free Wi-Fi',
+    'Free parking',
+    'Free use of gas and stove',
+    'Free use of the ihawan (grill)',
+    'Free use of the bonfire pit',
+    'Kitchen utensils',
+    'Air-conditioning, TV, refrigerator, microwave and electric kettle (Main House)',
+  ],
+  /** Charged on top of the stay when they apply. */
+  additional: [
+    {
+      id: 'pets',
+      label: 'Pets',
+      amount: 300,
+      note: 'Cleaning and sanitizing fee. Ask whether it applies per pet or per stay when you book.',
+    },
+  ] as Fee[],
+  /** Available on request; priced by the Hacienda when you ask. */
+  optional: [
+    {
+      id: 'water',
+      label: 'Drinking water',
+      note: 'Available from the Hacienda if you don’t bring your own (as guests report) — ask for the current price.',
+    },
+  ] as Fee[],
+}
+
+// -----------------------------------------------------------------------------
+// GETTING HERE — landmark and routes, without invented travel times
+// -----------------------------------------------------------------------------
+// Landmark: the Hacienda's own "neighborhood highlights" on Airbnb [A].
+// Routes: the standard approach every public Luisiana guide describes [E];
+// the Hacienda's road is the Luisiana–Lucban Road (its own address [C]).
+// Travel times and fares are left out on purpose — they change, and the
+// Hacienda has not published any.
+// -----------------------------------------------------------------------------
+export const GETTING_HERE = {
+  landmark: {
+    title: 'Look for the landmark',
+    body:
+      'The Hacienda’s private road is in front of Alicia’s Bibingkahan and near an auto shop, off the Luisiana–Lucban Road in Brgy. San Isidro. There are stores along the main road.',
+  },
+  byCar: {
+    title: 'By car from Metro Manila',
+    steps: [
+      'Take SLEX and exit at Calamba.',
+      'Follow the national highway through Los Baños, Bay, Pila, Sta. Cruz and Pagsanjan.',
+      'Turn onto the Cavinti–Luisiana Road, continue into Luisiana, then follow the Luisiana–Lucban Road to Brgy. San Isidro.',
+      'Use the Get Directions button for turn-by-turn navigation to the pin.',
+    ],
+  },
+  byCommute: {
+    title: 'By public transport',
+    steps: [
+      'Take a bus bound for Sta. Cruz, Laguna (terminals in Cubao, Buendia/Taft and Alabang).',
+      'At Sta. Cruz town proper, ride a jeepney bound for Luisiana or Lucban — the terminal is behind Jollibee Sta. Cruz.',
+      'Tell the driver you are getting off at Brgy. San Isidro, Luisiana, near Alicia’s Bibingkahan.',
+      'If you are unsure of the stop, message the Hacienda before you set off.',
+    ],
+  },
+}

@@ -31,7 +31,7 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     title: 'Choose how you want to stay',
     body:
       'Each card is an Accommodation you can book — the private Main House for the whole barkada, or a camping unit. ' +
-      'The rates you see are placeholders until the Admin publishes the real figures; the final quote is always confirmed with you.',
+      'The rate on each card is the figure the Hacienda has published — its Published rates when there are any, otherwise its listed price — and the final quote is always confirmed with you.',
     why: 'Picking “View Accommodation” carries your choice into the Booking form for you.',
     actionHint: 'Tap “View Accommodation” on a stay card to continue.',
     await: { type: 'click' },
@@ -63,7 +63,7 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     title: 'Tell us who’s coming',
     body:
       'Set the headcount and the Accommodation here — the summary on the right follows your choices and shows the ' +
-      'estimated total at the placeholder rate. The Hacienda confirms the final figure before anything is reserved.',
+      'estimated total at the published rate. The Hacienda confirms the final figure before anything is reserved.',
     why: 'Capacity is checked against the Accommodation, so an honest headcount saves a back-and-forth later.',
     continueLabel: 'Next',
   },

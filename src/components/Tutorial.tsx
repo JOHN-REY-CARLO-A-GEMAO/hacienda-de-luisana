@@ -43,7 +43,7 @@ function ReplayButton() {
     <button
       type="button"
       onClick={tour.start}
-      className="fixed bottom-20 right-4 z-30 text-[11px] px-3 py-2 rounded-full bg-forest-900 text-cream-50 shadow-card hover:bg-forest-800 transition-colors lg:bottom-6"
+      className="fixed bottom-20 right-4 z-30 text-[11px] px-3 py-2 rounded-full bg-forest-900 text-cream-50 border border-cream-50/25 shadow-float hover:bg-forest-800 transition-colors lg:bottom-6"
     >
       Replay tutorial
     </button>

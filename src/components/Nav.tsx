@@ -5,16 +5,20 @@ import { Menu, Close } from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
 import { canOpenPage, homeForRole } from '../lib/auth'
 
-const LINKS = [
+// Scene order of the homepage. `wide` links only show from the xl breakpoint
+// so the floating bar never wraps on smaller laptops; the drawer lists all.
+const LINKS: { href: string; label: string; wide?: boolean }[] = [
   { href: '/', label: 'Home' },
   { href: '/#stay', label: 'Stay' },
   { href: '/#experience', label: 'Experience' },
-  { href: '/#gallery', label: 'Gallery' },
+  { href: '/#gallery', label: 'Gallery', wide: true },
+  { href: '/#rates', label: 'Rates' },
   { href: '/#location', label: 'Location' },
-  { href: '/#faqs', label: 'FAQs' },
+  { href: '/#reviews', label: 'Reviews' },
+  { href: '/#faqs', label: 'FAQs', wide: true },
   { href: '/#contact', label: 'Contact' },
-  { href: '/legal', label: 'Terms' },
 ]
+const DRAWER_LINKS = [...LINKS, { href: '/legal', label: 'Terms' }]
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false)
@@ -22,6 +26,9 @@ export function Nav() {
   const location = useLocation()
   const { user, role, logout } = useAuth()
   const transparent = location.pathname === '/' && !scrolled
+  // Once the visitor scrolls (or leaves the homepage) the bar detaches into a
+  // floating pill; at the top of the homepage it sits flush over the hero.
+  const floating = !transparent
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40)
@@ -35,24 +42,25 @@ export function Nav() {
   }, [location.pathname, location.hash])
 
   return (
-    <header
-      className={`fixed inset-x-0 top-0 z-40 transition-all duration-500 ${
-        transparent
-          ? 'bg-transparent'
-          : 'bg-cream-50/90 backdrop-blur-md border-b border-forest-900/5 shadow-[0_1px_0_rgba(30,49,32,0.04)]'
-      }`}
-    >
-      <div className="mx-auto max-w-7xl px-5 lg:px-8 h-16 lg:h-20 flex items-center justify-between">
+    <header className="fixed inset-x-0 top-0 z-40 pointer-events-none" data-nav={floating ? 'floating' : 'hero'}>
+      <div
+        className={`pointer-events-auto transition-all duration-500 ease-out-expo ${
+          floating
+            ? 'mx-3 mt-3 lg:mx-auto lg:max-w-6xl rounded-full bg-cream-50/90 backdrop-blur-xl border border-forest-900/10 shadow-float'
+            : 'mx-auto max-w-7xl bg-transparent border border-transparent'
+        }`}
+      >
+      <div className={`px-5 lg:px-8 flex items-center justify-between transition-all duration-500 ${floating ? 'h-14 lg:h-16 lg:px-6' : 'h-16 lg:h-20'}`}>
         <Link to="/" aria-label="Hacienda de LuisAna home">
           <Logo tone={transparent ? 'light' : 'dark'} />
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-7">
+        <nav className="hidden lg:flex items-center gap-6 xl:gap-7" aria-label="Site">
           {LINKS.map((l) => (
             <a
               key={l.href}
               href={l.href}
-              className={`text-sm font-medium transition ${
+              className={`${l.wide ? 'hidden xl:inline-flex' : 'inline-flex'} text-[13px] font-medium transition ${
                 transparent ? 'text-cream-100 hover:text-white' : 'text-forest-800 hover:text-forest-950'
               }`}
             >
@@ -101,8 +109,8 @@ export function Nav() {
             data-tour="nav-book"
             className={
               transparent
-                ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs px-4 py-2'
-                : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900 text-xs px-4 py-2'
+                ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs px-4 py-2 shadow-glow'
+                : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900 text-xs px-4 py-2 shadow-soft'
             }
           >
             Book Your Stay
@@ -120,15 +128,16 @@ export function Nav() {
           {open ? <Close size={22} /> : <Menu size={22} />}
         </button>
       </div>
+      </div>
 
       {/* Mobile drawer */}
       <div
-        className={`lg:hidden overflow-hidden transition-[max-height] duration-500 ${
+        className={`lg:hidden pointer-events-auto overflow-hidden transition-[max-height] duration-500 ${
           open ? 'max-h-[85vh]' : 'max-h-0'
-        } bg-cream-50 border-t border-forest-900/5`}
+        } ${floating ? 'mx-3 mt-2 rounded-[28px] shadow-float border border-forest-900/10' : 'border-t border-forest-900/5'} bg-cream-50`}
       >
-        <div className="px-6 py-6 flex flex-col gap-1">
-          {LINKS.map((l) => (
+        <div className="px-6 py-6 flex flex-col gap-1 overflow-y-auto max-h-[calc(85vh-1px)]">
+          {DRAWER_LINKS.map((l) => (
             <a
               key={l.href}
               href={l.href}

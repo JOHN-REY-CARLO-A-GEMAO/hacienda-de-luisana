@@ -60,11 +60,19 @@ export default {
       boxShadow: {
         soft: '0 20px 60px -30px rgba(30,49,32,0.35)',
         card: '0 12px 40px -20px rgba(30,49,32,0.25)',
+        // Depth shadows for the immersive layer
+        depth: '0 30px 80px -30px rgba(15,28,17,0.45), 0 12px 28px -18px rgba(15,28,17,0.35)',
+        float: '0 24px 60px -24px rgba(15,28,17,0.55)',
+        glow: '0 0 0 1px rgba(251,249,243,0.35), 0 18px 50px -18px rgba(251,249,243,0.55)',
       },
       transitionTimingFunction: {
         'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
       keyframes: {
+        drift: {
+          '0%, 100%': { transform: 'translate3d(0,0,0)' },
+          '50%': { transform: 'translate3d(0,-6px,0)' },
+        },
         fadeUp: {
           '0%': { opacity: '0', transform: 'translateY(24px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
@@ -82,6 +90,7 @@ export default {
         'fade-up': 'fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) both',
         'fade-in': 'fadeIn 1.2s ease both',
         'kenburns': 'kenburns 18s ease-in-out both',
+        'drift': 'drift 7s ease-in-out infinite',
       }
     },
   },

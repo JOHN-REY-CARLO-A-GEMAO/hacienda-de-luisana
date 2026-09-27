@@ -75,3 +75,6 @@ dist/
 
 # Local Firebase Android config (per-machine, never commit)
 android/app/google-services.json
+
+# Real-browser QA output (docs/qa/*.mjs) — screenshots and reports are local evidence, never committed
+docs/qa/screenshots/
