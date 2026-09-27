@@ -15,16 +15,13 @@ import type { ActionType, ActivityLogEntry, ActorKind } from './actions'
 /** What each action did, in the glossary's words. */
 const HEADLINES: Record<ActionType, string> = {
   Submit: 'Booking submitted',
-  UploadKyc: 'Government ID uploaded for KYC',
   Approve: 'Booking approved',
   Reject: 'Booking rejected',
-  RejectKyc: 'Government ID refused — the Guest can send another',
   ChoosePaymentPlan: 'Payment plan chosen',
   UploadPaymentProof: 'Payment proof uploaded',
   VerifyPayment: 'Payment proof verified — Booking Reserved',
   RejectPaymentProof: 'Payment proof rejected',
   MarkRefunded: 'Refund returned to the Guest',
-  PurgeKyc: 'Government ID and receipt purged after the stay',
   RevokeKey: 'Credential revoked by the Admin',
   Cancel: 'Booking cancelled',
   Expire: 'Date hold ran out',

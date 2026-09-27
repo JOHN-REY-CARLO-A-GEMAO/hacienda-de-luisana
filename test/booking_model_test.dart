@@ -18,9 +18,7 @@ void main() {
     'check_in': '2026-10-10',
     'check_out': '2026-10-12',
     'guests': 4,
-    'status': 'KYC Submitted',
-    'kyc_status': 'submitted',
-    'kyc_id_url': 'https://x/id.jpg',
+    'status': 'Pending',
     'hold_expires_at': '2026-10-02T00:00:00.000Z',
     'created_at': '2026-10-01T00:00:00.000Z',
     'stay_total': 12000,
@@ -31,9 +29,8 @@ void main() {
     expect(b.id, 'doc-1');
     expect(b.guestName, 'Ana Santos');
     expect(b.accommodation, 'The Main House');
-    expect(b.rawStatus, 'KYC Submitted');
+    expect(b.rawStatus, 'Pending');
     expect(b.status, BookingStatus.pending);
-    expect(b.kycStatus, 'submitted');
     expect(b.refId, 'HDL-2026-0001');
     expect(b.uid, 'guest-uid');
     expect(b.stayTotal, 12000);
@@ -41,19 +38,22 @@ void main() {
     expect(b.holdExpiresAt, DateTime.parse('2026-10-02T00:00:00.000Z'));
   });
 
-  test('stages bucket the thirteen statuses', () {
+  test('stages bucket the eleven statuses, and retired values read as successors', () {
     expect(BookingStatusX.fromString('Reserved'), BookingStatus.confirmed);
     expect(BookingStatusX.fromString('Payment Pending'), BookingStatus.confirmed);
     expect(BookingStatusX.fromString('Staying'), BookingStatus.checkedIn);
     expect(BookingStatusX.fromString('Checked-Out'), BookingStatus.completed);
     expect(BookingStatusX.fromString('Expired'), BookingStatus.cancelled);
+    // Retired vocabulary still reads as the status that means the same today.
     expect(BookingStatusX.fromString('Confirmed'), BookingStatus.confirmed);
+    expect(BookingStatusX.fromString('KYC Submitted'), BookingStatus.pending);
+    expect(BookingStatusX.fromString('Approved'), BookingStatus.confirmed);
   });
 
   test('toLifecycleDoc keeps the stored fields the rules read', () {
     final doc = BookingModel.fromJson(webDoc, 'doc-1').toLifecycleDoc();
     expect(doc['id'], 'doc-1');
-    expect(doc['status'], 'KYC Submitted');
+    expect(doc['status'], 'Pending');
     expect(doc['accommodation'], 'main-house');
     expect(doc['check_in'], '2026-10-10');
     expect(doc['hold_expires_at'], '2026-10-02T00:00:00.000Z');
@@ -61,19 +61,27 @@ void main() {
 
   test('applyPatch reflects an accepted action locally', () {
     final b = BookingModel.fromJson(webDoc, 'doc-1');
-    final after = b.applyPatch({'status': 'Approved', 'kyc_status': 'approved', 'hold_expires_at': null});
-    expect(after.rawStatus, 'Approved');
+    final after = b.applyPatch({'status': 'Payment Pending', 'hold_expires_at': null});
+    expect(after.rawStatus, 'Payment Pending');
     expect(after.status, BookingStatus.confirmed);
-    expect(after.kycStatus, 'approved');
     expect(after.holdExpiresAt, isNull);
     expect(after.guestName, 'Ana Santos');
     expect(after.id, 'doc-1');
   });
 
   test('nextStep tells the Admin what is waiting', () {
-    expect(BookingModel.fromJson(webDoc).nextStep, contains('Review the ID'));
+    expect(BookingModel.fromJson(webDoc).nextStep, contains('Waiting for your review'));
     expect(
-      BookingModel.fromJson({...webDoc, 'status': 'Payment Pending', 'payment_proof_url': 'https://x/p.jpg'}).nextStep,
+      BookingModel.fromJson({...webDoc, 'status': 'Payment Pending'}).nextStep,
+      contains('choose a payment plan'),
+    );
+    expect(
+      BookingModel.fromJson({
+        ...webDoc,
+        'status': 'Payment Pending',
+        'payment_plan': 'full',
+        'payment_proof_url': 'https://x/p.jpg',
+      }).nextStep,
       contains('Verify'),
     );
   });

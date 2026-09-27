@@ -1,7 +1,7 @@
 /**
  * The final end-to-end scenario, executed — 37 steps.
  *
- * client registration → Booking → Terms → KYC → Payment → OCR → Admin
+ * client registration → Booking → Terms → Review → Approval → Payment → OCR → Admin
  * verification → chat → Review → Smart Lock → security attacks.
  *
  * WHAT THIS FILE CAN AND CANNOT PROVE, stated up front because the difference
@@ -36,10 +36,9 @@ import { createLocalPorts } from '../../src/lib/authLocal'
 import { TERMS, recordAcceptance, isAcceptanceCurrent, LEGAL_VERSION } from '../../src/lib/legal'
 import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
 import { bookingsDB, type Booking } from '../../src/lib/storage'
-import { validateKycFile, KYC_MAX_BYTES, kycObjectPath } from '../../src/lib/kyc'
 import { validateProofFile, PROOF_MAX_BYTES, proofObjectPath } from '../../src/lib/payments'
 import { extractReceiptFields, canAutoVerifyFromOcr, matchPaymentReference } from '../../src/lib/payments/ocr'
-import { paymentOptionsForTotal } from '../../src/lib/booking'
+import { normalizeStatus, paymentOptionsForTotal } from '../../src/lib/booking'
 import { checkRateLimit, LIMITS } from '../../src/lib/rateLimit'
 import { ensureConversation, sendChatMessage, subscribeMessages } from '../../src/lib/chatCloud'
 import { submitReview, getReviewForBooking } from '../../src/lib/reviewsCloud'
@@ -111,7 +110,7 @@ const profilesForRules: Store = storeWith(
   {
     [`conversations/${CONVO_ID}`]: conversationDoc(),
     // The Booking the Review rules read: the Guest's own, and finished.
-    [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Completed', kyc_status: 'approved' }),
+    [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Completed' }),
   },
 )
 
@@ -256,7 +255,6 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
         check_in: CHECK_IN,
         check_out: CHECK_OUT,
         uid: guestUid,
-        kyc_status: 'required',
         payment_status: 'unpaid',
       },
       guestActor,
@@ -295,44 +293,45 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
   })
 
   // -------------------------------------------------------------------------
-  // C. KYC (steps 10–12)
+  // C. Review (steps 10–12) — Government ID KYC was removed 2026-09-27: the
+  // Admin's review is now the single decision between submission and payment.
   // -------------------------------------------------------------------------
 
-  it('step 10 — the ID and receipt are refused above 5 MB before any byte leaves the device', () => {
-    const big = { name: 'id.jpg', size: KYC_MAX_BYTES + 1, type: 'image/jpeg' }
-    const pdf = { name: 'id.pdf', size: 1000, type: 'application/pdf' }
-    const good = { name: 'id.jpg', size: 2 * 1024 * 1024, type: 'image/jpeg' }
-    expect(validateKycFile(big).ok).toBe(false)
-    expect(validateKycFile(pdf).ok).toBe(false)
-    expect(validateKycFile(good).ok).toBe(true)
-    expect(kycObjectPath({ uid: guestUid, bookingRefId: 'HDL-1', filename: 'id.jpg' })).toContain(`kyc/${guestUid}/`)
-    note(10, 'KYC file contract (5 MB, image only, own-uid path)', 'executed', 'oversized refused, PDF refused, 2 MB JPEG accepted')
-  })
-
-  it('step 11 — the Guest uploads the ID and the Booking moves to KYC Submitted', async () => {
-    const result = await cloudBookingsDB.transition(
+  it('step 10 — a Guest cannot review their own Booking: approval is the Admin’s alone', async () => {
+    const asGuest = await cloudBookingsDB.transition(
       bookingId,
-      { type: 'UploadKyc', kyc_id_url: `kyc/${guestUid}/HDL-1/id.jpg`, kyc_receipt_url: `kyc/${guestUid}/HDL-1/receipt.jpg` },
+      { type: 'Approve', availability: { bookings: await cloudBookingsDB.list() } },
       guestActor,
     )
-    expect(result.ok).toBe(true)
-    const after = await cloudBookingsDB.get(bookingId)
-    expect(after?.status).toBe('KYC Submitted')
-    expect(after?.kyc_status).toBe('submitted')
-    note(11, 'KYC uploaded', 'executed', `status=${after?.status}, kyc_status=${after?.kyc_status}`)
+    expect(asGuest.ok).toBe(false)
+    expect((await cloudBookingsDB.get(bookingId))?.status).toBe('Pending')
+    note(10, 'Guest cannot self-approve — review is the Admin’s alone', 'executed', 'refused by the actor table; status still Pending')
   })
 
-  it('step 12 — an Admin decides the KYC and a refused ID can be resubmitted', async () => {
-    const refused = await cloudBookingsDB.transition(bookingId, { type: 'RejectKyc', reason: 'Blurred photo' }, { actor: 'admin', actor_id: ADMIN_UID, actor_name: ADMIN_EMAIL_FOR_TEST })
-    expect(refused.ok).toBe(true)
-    expect((await cloudBookingsDB.get(bookingId))?.kyc_status).toBe('rejected')
-    const resubmit = await cloudBookingsDB.transition(
+  it('step 11 — stored KYC-era statuses read back into the current lifecycle, never as themselves', () => {
+    // Documents written before the removal keep working: each retired value
+    // reads as the successor that means the same thing today.
+    expect(normalizeStatus('KYC Submitted')).toBe('Pending')
+    expect(normalizeStatus('Approved')).toBe('Payment Pending')
+    expect(normalizeStatus('Confirmed')).toBe('Reserved')
+    note(11, 'Retired statuses migrate on read', 'executed', 'KYC Submitted→Pending, Approved→Payment Pending, Confirmed→Reserved')
+  })
+
+  it('step 12 — the review decision must say why, and only the Admin may take it', async () => {
+    const noReason = await cloudBookingsDB.transition(
       bookingId,
-      { type: 'UploadKyc', kyc_id_url: `kyc/${guestUid}/HDL-1/id-2.jpg` },
+      { type: 'Reject', reason: '   ' },
+      { actor: 'admin', actor_id: ADMIN_UID, actor_name: ADMIN_EMAIL_FOR_TEST },
+    )
+    expect(noReason.ok).toBe(false)
+    const asGuest = await cloudBookingsDB.transition(
+      bookingId,
+      { type: 'Reject', reason: 'nope' },
       guestActor,
     )
-    expect(resubmit.ok).toBe(true)
-    note(12, 'Admin refuses a blurred ID; the Guest resubmits and the Booking returns to KYC Submitted', 'executed', 'rejected → resubmitted')
+    expect(asGuest.ok).toBe(false)
+    expect((await cloudBookingsDB.get(bookingId))?.status).toBe('Pending')
+    note(12, 'Review needs a reason, and the Guest cannot be the reviewer', 'executed', 'both refusals leave the Booking Pending')
   })
 
   // -------------------------------------------------------------------------
@@ -347,8 +346,11 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
       { actor: 'admin', actor_id: ADMIN_UID, actor_name: ADMIN_EMAIL_FOR_TEST },
     )
     expect(result.ok).toBe(true)
-    expect((await cloudBookingsDB.get(bookingId))?.status).toBe('Approved')
-    note(13, 'Admin approves after the availability re-check', 'executed', `status=Approved, re-checked against ${bookings.length} stored Booking(s)`)
+    // Approval opens payment (KYC removed) and stops the hold countdown.
+    const approved = await cloudBookingsDB.get(bookingId)
+    expect(approved?.status).toBe('Payment Pending')
+    expect(approved?.hold_expires_at).toBeNull()
+    note(13, 'Admin approves after the availability re-check', 'executed', `status=Payment Pending, hold stopped, re-checked against ${bookings.length} stored Booking(s)`)
   })
 
   it('step 14 — the Guest chooses a payment plan and the policy in force is stamped', async () => {
@@ -573,9 +575,9 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     const booking = { status: 'Staying', check_in: CHECK_IN, check_out: CHECK_OUT, ref_id: 'HDL-1' }
     const revoked = doorDecision({ refId: 'HDL-1', credentialRevoked: true, today: CHECK_IN, booking })
     const outOfDates = doorDecision({ refId: 'HDL-1', credentialRevoked: false, today: '2026-11-01', booking })
-    const notStaying = doorDecision({ refId: 'HDL-1', credentialRevoked: false, today: CHECK_IN, booking: { ...booking, status: 'Approved' } })
+    const notStaying = doorDecision({ refId: 'HDL-1', credentialRevoked: false, today: CHECK_IN, booking: { ...booking, status: 'Payment Pending' } })
     expect([revoked.result, outOfDates.result, notStaying.result]).toEqual(['denied', 'denied', 'denied'])
-    note(26, 'Revoked credential, wrong dates, unapproved stay', 'contract', `all denied: ${revoked.reason}; ${outOfDates.reason}; ${notStaying.reason}`)
+    note(26, 'Revoked credential, wrong dates, stay not Reserved', 'contract', `all denied: ${revoked.reason}; ${outOfDates.reason}; ${notStaying.reason}`)
   })
 
   it('step 27 — the Access log cannot be edited or deleted by a Guest (audit integrity)', () => {
@@ -715,7 +717,7 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     })
     const earlyStay = decide(
       { path: 'reviews/booking-open', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ booking_id: 'booking-open', uid: GUEST_UID }) },
-      storeWith({}, { 'bookings/booking-open': bookingDoc({ status: 'Staying', kyc_status: 'approved' }) }),
+      storeWith({}, { 'bookings/booking-open': bookingDoc({ status: 'Staying' }) }),
     )
     // A second Review for the same stay is the same document: an update, and
     // updates are closed.
@@ -781,10 +783,10 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
       requestData: { size: 1024, contentType: 'image/jpeg' },
     })
     expect([read, create, adminRead, otherUpload]).toEqual([false, false, false, false])
-    note(36, 'Tracker collection and KYC storage slot', 'rule-text', 'tracking_sessions read/create denied for guest and Admin; uploading into another guest\u2019s KYC slot denied')
+    note(36, 'Tracker collection and the retired KYC storage slot', 'rule-text', 'tracking_sessions read/create denied for guest and Admin; the /kyc slot refuses uploads for everyone')
   })
 
-  it('step 37 — the payment and identity collections stay closed to every non-Admin path', () => {
+  it('step 37 — storage stays closed where it must: proofs to their Guest, the retired ID slot to nobody', () => {
     const kycRead = decideStorage({
       path: `kyc/${GUEST_UID}/HDL-1/id.jpg`,
       method: 'get',
@@ -810,8 +812,8 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
       auth: anonymousGuest(GUEST_UID),
       requestData: { size: 1024, contentType: 'image/png' },
     })
-    expect([kycRead, adminKycRead, ratesWrite, ownProof]).toEqual([false, true, false, true])
-    note(37, 'Cross-user document access', 'rule-text', 'other guest\u2019s KYC read denied, Admin read allowed, guest rates write denied, own payment proof write allowed')
+    expect([kycRead, adminKycRead, ratesWrite, ownProof]).toEqual([false, false, false, true])
+    note(37, 'Cross-user document access', 'rule-text', 'ID reads denied for guests and Admin alike (slot removed), guest rates write denied, own payment proof write allowed')
   })
 
   it('prints the 37-step record', () => {

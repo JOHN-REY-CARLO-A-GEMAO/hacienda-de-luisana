@@ -1,10 +1,11 @@
 /**
  * `storage.rules`, executed.
  *
- * The upload paths the applications actually use — `/kyc/{uid}/{bookingRef}/…`
- * (`src/lib/kyc/upload.ts`) and `/payments/{uid}/{bookingRef}/…`
- * (`src/lib/payments/upload.ts`), plus Admin-published site images — with the
- * size and content-type limits the rules declare.
+ * The upload paths the applications actually use — `/payments/{uid}/…` legacy
+ * proofs (`src/lib/payments/upload.ts`) and Admin-published site images — with
+ * the size and content-type limits the rules declare. The `/kyc` slot was
+ * removed with Government ID KYC (2026-09-27): what is left of it is asserted
+ * gone below.
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -53,41 +54,18 @@ describe('avatars', () => {
   })
 })
 
-describe('KYC documents: the government ID a Guest uploads', () => {
+describe('government IDs: the /kyc slot removed with KYC (2026-09-27)', () => {
   const path = `kyc/${GUEST_UID}/${BOOKING_ID}/id.jpg`
 
-  it('lets the Guest upload their own ID, as an image under 5 MB', () => {
-    expect(storage({ path, method: 'create', auth: anonymousGuest(), requestData: { ...IMAGE } })).toBe(true)
-    expect(storage({ path, method: 'create', auth: anonymousGuest(), requestData: { size: 6 * 1024 * 1024, contentType: 'image/jpeg' } })).toBe(false)
-    expect(storage({ path, method: 'create', auth: anonymousGuest(), requestData: { size: 1000, contentType: 'application/pdf' } })).toBe(false)
-  })
-
-  it('refuses a Guest uploading into another Guest\'s folder', () => {
-    expect(storage({ path: `kyc/${GUEST_UID}/${BOOKING_ID}/id.jpg`, method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: { ...IMAGE } })).toBe(false)
-  })
-
-  it('refuses a signed-out uploader', () => {
-    expect(storage({ path, method: 'create', auth: null, requestData: { ...IMAGE } })).toBe(false)
-  })
-
-  it('lets the Guest read their own ID and the Admin read it for review, and nobody else', () => {
-    expect(storage({ path, method: 'get', auth: anonymousGuest(), resourceData: {}, ...IMAGE })).toBe(true)
-    expect(storage({ path, method: 'get', auth: allowlistedAdmin(), resourceData: {}, ...IMAGE })).toBe(true)
-    expect(storage({ path, method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: {}, ...IMAGE })).toBe(false)
-    expect(storage({ path, method: 'get', auth: null, resourceData: {}, ...IMAGE })).toBe(false)
-  })
-
-  it('refuses a Guest deleting or overwriting their ID once uploaded', () => {
-    // Only the Admin's delete carries no resource; a Guest's write always has one.
-    expect(storage({ path, method: 'delete', auth: anonymousGuest(), resourceData: {}, ...IMAGE })).toBe(false)
-  })
-
-  it('lets the Admin delete the ID the Admin may purge after the stay', () => {
-    expect(storage({ path, method: 'delete', auth: allowlistedAdmin() })).toBe(true)
-  })
-
-  it('refuses the Admin overwriting an uploaded ID with new bytes', () => {
+  it('refuses every operation on the retired path — nobody reads or writes IDs', () => {
+    // The default deny below the named paths owns /kyc again: no Guest upload,
+    // no Admin review read, no purge delete. The bucket rule cannot tell an
+    // ID from any other refused path, which is exactly the point.
+    expect(storage({ path, method: 'create', auth: anonymousGuest(), requestData: { ...IMAGE } })).toBe(false)
     expect(storage({ path, method: 'create', auth: allowlistedAdmin(), requestData: { ...IMAGE } })).toBe(false)
+    expect(storage({ path, method: 'get', auth: anonymousGuest(), resourceData: {}, ...IMAGE })).toBe(false)
+    expect(storage({ path, method: 'get', auth: allowlistedAdmin(), resourceData: {}, ...IMAGE })).toBe(false)
+    expect(storage({ path, method: 'delete', auth: allowlistedAdmin() })).toBe(false)
   })
 })
 

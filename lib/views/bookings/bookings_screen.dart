@@ -43,7 +43,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   /// Bookings waiting on the Admin, not the Guest.
   static bool needsAdminAction(BookingModel b) {
     switch (b.rawStatus) {
-      case BookingStatuses.kycSubmitted:
+      case BookingStatuses.pending:
       case BookingStatuses.checkedOut:
         return true;
       case BookingStatuses.paymentPending:

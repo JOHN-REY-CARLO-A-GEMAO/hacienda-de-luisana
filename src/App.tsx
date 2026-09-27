@@ -51,7 +51,7 @@ function WebsiteLayout() {
 /**
  * The Guest website (ADR-0007). Every route here is the Guest's: the public
  * pages, booking, the Guest's own account, chat and reviews. The Admin's
- * work — reviewing Bookings, KYC, payments, stays, the smart lock, analytics —
+ * work — reviewing Bookings, payments, stays, the smart lock, analytics —
  * lives in the Flutter mobile app under `lib/`, so the old `/admin` and `/app`
  * addresses answer with a pointer to it rather than a dashboard.
  */
@@ -141,7 +141,7 @@ function AdminMoved() {
         <div className="eyebrow">Admin</div>
         <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">The Admin dashboard moved</h1>
         <p className="mt-4 text-forest-800/80 text-sm leading-relaxed">
-          Bookings, KYC review, payment verification, stays, the smart lock, chat and analytics are all in
+          Bookings, payment verification, stays, the smart lock, chat and analytics are all in
           the <strong>Hacienda de LuisAna Admin</strong> mobile app. This website is for Guests: browsing, booking,
           and following their own stay.
         </p>

@@ -156,7 +156,6 @@ describe('the hold on a submitted Booking', () => {
 
   it('does not expire a Booking the Admin has already approved', async () => {
     const booking = await cloudBookingsDB.add(request, { ...guest, now: NOW })
-    await cloudBookingsDB.transition(booking.id, { type: 'UploadKyc', kyc_id_url: 'gs://ids/1.jpg' }, { ...guest, now: NOW })
     const approved = await cloudBookingsDB.transition(
       booking.id,
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
@@ -168,8 +167,8 @@ describe('the hold on a submitted Booking', () => {
     expect((await cloudBookingsDB.materialiseExpiry(booking.id, afterExpiry)).ok).toBe(false)
 
     const stored = await cloudBookingsDB.get(booking.id)
-    expect(stored?.status).toBe('Approved')
-    // Approved means the dates are firmly held, so the countdown is over.
+    expect(stored?.status).toBe('Payment Pending')
+    // Approval means the dates are firmly held, so the countdown is over.
     expect(cloudBookingsDB.holdRemaining(stored!, afterExpiry)).toBe(0)
   })
 })

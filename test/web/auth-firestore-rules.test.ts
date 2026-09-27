@@ -162,17 +162,19 @@ describe('Bookings', () => {
   })
 
   it('keeps the Admin from un-rejecting, and from skipping the two money gates', () => {
-    // Guard lines on the Admin branch: terminals never leave, Approved only from
-    // a reviewed ID, Reserved only from Payment Pending — and a `verified`
-    // document must carry the marker saying who verified it. The full table
-    // lives in the two lifecycle modules (web and app); the money invariants are
-    // repeated here because they bind every writer, including a console.
+    // Guard lines on the Admin branch: terminals never leave, Payment Pending
+    // only from a Booking still under review (legacy KYC-era statuses included
+    // so stored documents remain actionable), Reserved only from Payment
+    // Pending — and a `verified` document must carry the marker saying who
+    // verified it. The full table lives in the two lifecycle modules (web and
+    // app); the money invariants are repeated here because they bind every
+    // writer, including a console.
     const update = allow(bookings, 'update:')
     expect(update).toContain(
       "!(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired'] && request.resource.data.status != resource.data.status)",
     )
     expect(update).toContain(
-      "!(request.resource.data.status == 'Approved' && resource.data.status != 'KYC Submitted')",
+      "!(request.resource.data.status == 'Payment Pending' && !(resource.data.status in ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending']))",
     )
     expect(update).toContain(
       "!(request.resource.data.status == 'Reserved' && resource.data.status != 'Payment Pending')",
@@ -189,9 +191,6 @@ describe('Bookings', () => {
     expect(update).toContain(
       "request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'pending']",
     )
-    expect(update).toContain(
-      "request.resource.data.get('kyc_status', 'required') in ['required', 'submitted']",
-    )
     // The verification fields are not on the self-serve key list at all.
     const guestKeys = update.slice(update.indexOf('.hasOnly(['))
     for (const field of ['amount_verified', 'payment_verified_at', 'payment_verified_by']) {
@@ -202,7 +201,6 @@ describe('Bookings', () => {
   it('refuses a Booking created already claiming a payment or review state', () => {
     const create = allow(bookings, 'create:')
     expect(create).toContain("request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'none', '']")
-    expect(create).toContain("request.resource.data.get('kyc_status', 'required') in ['required', 'submitted', '']")
   })
 
   it('have no Staff branch: completing a stay is the Admin’s, like every other move', () => {
@@ -224,10 +222,10 @@ describe('Bookings', () => {
     const update = allow(bookings, 'update:')
     expect(update).toContain("resource.data.get('uid', '') == request.auth.uid")
     expect(update).toContain(
-      "resource.data.status in ['Pending', 'KYC Submitted'] && request.resource.data.status in ['Pending', 'KYC Submitted', 'Payment Pending', 'Cancelled']",
+      "resource.data.status in ['Pending', 'KYC Submitted'] && request.resource.data.status in ['Pending', 'Cancelled']",
     )
     expect(update).toContain(
-      "resource.data.status == 'Approved' && request.resource.data.status in ['Approved', 'Payment Pending', 'Cancelled']",
+      "resource.data.status == 'Approved' && request.resource.data.status in ['Payment Pending', 'Cancelled']",
     )
     expect(update).toContain(
       "resource.data.status == 'Payment Pending' && request.resource.data.status in ['Payment Pending', 'Cancelled']",
@@ -314,26 +312,14 @@ describe('everything else', () => {
   })
 })
 
-describe('Storage, where the government IDs live', () => {
-  it('shows an ID to the Guest it belongs to and to the Admin, and to nobody else', () => {
-    const kyc = block(storageRules, 'match /kyc/{userId}/{allPaths=**}')
-    expect(allow(kyc, 'read:')).toContain('request.auth.uid == userId || isAdminEmail()')
-    expect(allow(kyc, 'write:')).toContain('request.auth.uid == userId')
-  })
-
-  it('lets the Admin delete on PurgeKyc, and delete only — a delete carries no resource', () => {
-    // The ID's purpose ended at approval, so within 30 days after the stay the
-    // Admin erases it. Storage rules have no delete verb and no way to see a
-    // check-out date; `request.resource == null` is the only tell that a write
-    // is a delete. The Admin still cannot upload or overwrite an ID — the
-    // guest-uid write gate above is the only grant that touches a real object.
-    const kyc = block(storageRules, 'match /kyc/{userId}/{allPaths=**}')
-    expect(kyc).toContain('allow write: if isAdminEmail() && request.resource == null;')
-    // The guest write gate must stay size- and type-checked, so it cannot be
-    // the rule that accidentally lets the Admin through with a payload.
-    const guestWrite = allow(kyc, 'write:')
-    expect(guestWrite).toContain('request.resource.size < 5 * 1024 * 1024')
-    expect(guestWrite).toContain("request.resource.contentType.matches('image/.*')")
+describe('Storage, where the payment proofs live', () => {
+  it('has no government ID slot any more — KYC and its rules left with it', () => {
+    expect(storageRules).not.toContain('match /kyc')
+    expect(storageRules).not.toContain('/kyc/')
+    // The ID purge (Admin deletes of ID bytes) went with the IDs; the only
+    // delete-by-null grant left is the legacy payment-proof block's.
+    const payments = block(storageRules, 'match /payments/{userId}/{allPaths=**}')
+    expect(payments).toContain('allow write: if isAdminEmail() && request.resource == null;')
   })
 
   it('shows payment proof to the Guest it belongs to and to the Admin, and to nobody else', () => {

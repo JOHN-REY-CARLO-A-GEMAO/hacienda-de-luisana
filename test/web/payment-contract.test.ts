@@ -2,7 +2,7 @@
 // lives under /payments — never in the KYC slot, so an ID review and a money
 // review can never read each other's documents — under the same limits
 // storage.rules enforces (5MB, image/*, own-uid write, Admin read).
-import { proofContentType, proofObjectPath, validateProofFile, PROOF_MAX_BYTES } from '../../src/lib/payments'
+import { proofContentType, proofObjectPath, uploadPaymentProof, validateProofFile, PROOF_MAX_BYTES } from '../../src/lib/payments'
 
 describe('proofObjectPath', () => {
   it('writes under /payments, one proof per booking reference', () => {
@@ -71,5 +71,33 @@ describe('validateProofFile', () => {
       ok: false,
       reason: 'wrong-type',
     })
+  })
+})
+
+// ADR-0011: with no Supabase keys the upload falls back to this browser —
+// the same demo-mode posture the site takes for Firebase itself.
+describe('uploadPaymentProof in demo mode (no Supabase keys)', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('keeps the screenshot in this browser and returns the storage path', async () => {
+    const file = new File(['fake-png-bytes'], 'gcash.png', { type: 'image/png' })
+    const out = await uploadPaymentProof({ file, bookingRefId: 'HDL-9' })
+
+    expect(out.ok).toBe(true)
+    if (!out.ok) return
+    // The Booking records this path (paymentProofUrl / payment_proof_url).
+    expect(out.url).toMatch(/^payments\//)
+    expect(out.url).toContain('HDL-9')
+
+    const stored = JSON.parse(localStorage.getItem('hdl:payment-proofs') ?? '{}')
+    expect(stored[out.url]).toMatch(/^data:image\/png;base64,/)
+  })
+
+  it('refuses an oversized or non-image file before anything is stored', async () => {
+    const pdf = new File(['x'], 'receipt.pdf', { type: 'application/pdf' })
+    const out = await uploadPaymentProof({ file: pdf, bookingRefId: 'HDL-9' })
+
+    expect(out.ok).toBe(false)
+    expect(localStorage.getItem('hdl:payment-proofs')).toBeNull()
   })
 })

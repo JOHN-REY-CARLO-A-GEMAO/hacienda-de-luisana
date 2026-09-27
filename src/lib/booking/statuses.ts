@@ -14,12 +14,13 @@
  * branches (CONTEXT.md § Booking status).
  *
  * `Confirmed` is retired: the paid state is `Reserved`.
+ * `KYC Submitted` and `Approved` are retired with Government ID KYC: a Booking
+ * waiting for review reads as `Pending`, and one approved before the change
+ * reads as `Payment Pending` — the stage an approval now lands on.
  */
 
 export const BOOKING_STATUSES = [
   'Pending',
-  'KYC Submitted',
-  'Approved',
   'Payment Pending',
   'Payment Verified',
   'Reserved',
@@ -38,6 +39,11 @@ export type BookingStatus = (typeof BOOKING_STATUSES)[number]
 const RETIRED_STATUSES: Record<string, BookingStatus> = {
   // Spec #9: the web `Confirmed` status is retired in favour of `Reserved`.
   confirmed: 'Reserved',
+  // Government ID KYC removed: pre-review documents read as `Pending` again.
+  kycsubmitted: 'Pending',
+  // Documents approved before the KYC removal are awaiting payment, which is
+  // exactly what `Payment Pending` means.
+  approved: 'Payment Pending',
 }
 
 /** Fold a stored status string to something comparable: lowercase, no separators. */
@@ -83,10 +89,8 @@ export function normalizeStatus(stored: string | undefined | null): BookingStatu
  * approved, the dates are firmly held and no hold expiry can release them.
  */
 const TRANSITIONS: Record<BookingStatus, readonly BookingStatus[]> = {
-  Pending: ['KYC Submitted', 'Rejected', 'Cancelled', 'Expired'],
-  'KYC Submitted': ['Approved', 'Rejected', 'Cancelled', 'Expired'],
-  Approved: ['Payment Pending', 'Rejected', 'Cancelled'],
-  'Payment Pending': ['Payment Verified', 'Cancelled'],
+  Pending: ['Payment Pending', 'Rejected', 'Cancelled', 'Expired'],
+  'Payment Pending': ['Payment Verified', 'Rejected', 'Cancelled'],
   'Payment Verified': ['Reserved', 'Cancelled'],
   Reserved: ['Checked-In', 'Cancelled'],
   'Checked-In': ['Staying'],

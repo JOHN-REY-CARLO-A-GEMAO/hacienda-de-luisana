@@ -13,7 +13,7 @@ import 'views/main_shell_screen.dart';
 /// Hacienda de LuisAna — **Admin** mobile app.
 ///
 /// One of the two applications in the system (ADR-0007): the Admin runs the
-/// whole operation from here — bookings and their lifecycle, KYC and payment
+/// whole operation from here — bookings and their lifecycle, payment
 /// review, refunds, rates, stays, guest chat, smart-lock logs, rooms,
 /// CRM and analytics. Guests never use this app; they book on the website.
 void main() async {

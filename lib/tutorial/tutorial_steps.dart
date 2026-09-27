@@ -3,7 +3,7 @@
 /// The order follows the same Booking lifecycle the Guest's web tour teaches
 /// (request → review → approval → payment → Reserved → stay → review), seen
 /// from the operator's seat. The vocabulary matches CONTEXT.md: Booking,
-/// Date hold, KYC, Payment proof, Published rates, Reserved, Credential,
+/// Date hold, Payment proof, Published rates, Reserved, Credential,
 /// Access log.
 ///
 /// Interactive steps make the Admin *use* safe controls — tabs, filters,
@@ -47,7 +47,7 @@ const List<TutorialStep> adminTutorialSteps = [
     ensureTab: 1,
     body:
         'These chips cut the list to whatever needs your hands. “Needs action” is the working '
-        'queue: IDs to review (KYC Submitted), payment proofs to verify, check-outs to settle, '
+        'queue: requests to approve, payment proofs to verify, check-outs to settle, '
         'refunds to send.',
     why: 'Approving is a promise: the approval re-check counts the dates that are actually '
         'committed, so a no-show slot never blocks a real one.',

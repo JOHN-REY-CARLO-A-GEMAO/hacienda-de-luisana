@@ -88,6 +88,8 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     payment_plan: data.payment_plan,
     payment_status: data.payment_status,
     payment_proof_url: data.payment_proof_url ?? null,
+    paymentProofUrl: data.paymentProofUrl ?? null,
+    extractedRefNumber: data.extractedRefNumber ?? null,
     payment_reject_reason: data.payment_reject_reason ?? null,
     amount_claimed: typeof data.amount_claimed === 'number' ? data.amount_claimed : undefined,
     payment_reference: data.payment_reference,
@@ -108,14 +110,13 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     // before it): nulls on read mean the Admin had published nothing.
     policy_version: data.policy_version ?? null,
     policy_effective_date: data.policy_effective_date ?? null,
-    // P3 KYC (additive — absent on web-only bookings)
+    // P3-era keys still present on documents stored before Government ID KYC
+    // was removed (2026-09-27 — recorded in ADR-0004's amendment): ref_id, uid
+    // and source are kept; the KYC fields are dropped on read rather than
+    // carried through the type.
     ref_id: data.ref_id,
     uid: data.uid,
     source: data.source,
-    kyc_status: data.kyc_status,
-    kyc_id_url: data.kyc_id_url,
-    kyc_receipt_url: data.kyc_receipt_url,
-    kyc_reject_reason: data.kyc_reject_reason,
     // Legacy live-location keys on old documents are ignored (ADR-0009).
   }
 }

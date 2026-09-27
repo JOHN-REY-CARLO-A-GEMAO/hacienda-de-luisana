@@ -1,13 +1,13 @@
 # Two roles, two apps: the Admin runs everything from the mobile app, the Guest uses the website
 
-**Status**: accepted, 2026-09-24. Supersedes the three-role model of ADR-0005 (the storage and bootstrap of a role in that ADR stand; the set of roles does not).
+**Status**: accepted, 2026-09-24; amended 2026-09-27 for the Government ID KYC removal (the role table and rules bullet below read current). Supersedes the three-role model of ADR-0005 (the storage and bootstrap of a role in that ADR stand; the set of roles does not).
 
 The system has exactly two roles and exactly two applications, and each application belongs to one role:
 
 | Role | Application | What it does |
 | --- | --- | --- |
-| **Guest** (the client) | **Website** (`src/`, React + Vite) | Reads availability and rates, submits a Booking, uploads the documents the lifecycle asks of them (government ID for KYC, Payment proof), chooses a Payment plan, follows the status of their own Bookings, withdraws one, chats with the Admin, and leaves a Review after the stay. (The optional live-location share this ADR originally listed was removed by ADR-0009.) |
-| **Admin** | **Flutter mobile app** (`lib/`) | Everything else: reviews KYC and approves or rejects, verifies or rejects Payment proof, cancels and settles Refunds, records check-in / stay / check-out / completion, purges IDs after a stay, revokes a Credential, publishes the Published rates and cancellation policy, and reads the chat inbox, Access log, rooms, CRM and analytics. (The arrival radar listed here was removed by ADR-0009.) |
+| **Guest** (the client) | **Website** (`src/`, React + Vite) | Reads availability and rates, submits a Booking, uploads the Payment proof the lifecycle asks of them, chooses a Payment plan, follows the status of their own Bookings, withdraws one, chats with the Admin, and leaves a Review after the stay. (The optional live-location share this ADR originally listed was removed by ADR-0009; the government-ID upload for KYC this row once listed was removed with KYC itself, 2026-09-27.) |
+| **Admin** | **Flutter mobile app** (`lib/`) | Everything else: approves or rejects Bookings, verifies or rejects Payment proof, cancels and settles Refunds, records check-in / stay / check-out / completion, revokes a Credential, publishes the Published rates and cancellation policy, and reads the chat inbox, Access log, rooms, CRM and analytics. (The arrival radar listed here was removed by ADR-0009; the KYC review and ID purge this row once listed were removed with KYC itself, 2026-09-27.) |
 
 There is no **Staff** role and no **Host** role. The person formerly called the Host *is* the Admin; the work formerly imagined for Staff (marking a cleaned stay complete, reading records) is done by the Admin in the same app. No role-based access control exists *among* operators because there is only one operator role.
 
@@ -28,6 +28,6 @@ There is no **Staff** role and no **Host** role. The person formerly called the 
 ## Consequences
 
 - One person, one device: if the phone is lost, so is the operator's access until they sign in elsewhere. The email + password sign-in on the app exists for exactly that; nothing about the decision needs a second role to recover.
-- The Admin's write paths in the app are checked by `firestore.rules` for the moves that must never go wrong (nothing leaves a terminal status; `Approved` needs `KYC Submitted`; `Reserved` needs `Payment Pending`). The full transition table is enforced in the app, as it is on the web for the Guest's actions.
+- The Admin's write paths in the app are checked by `firestore.rules` for the moves that must never go wrong (nothing leaves a terminal status; `Payment Pending` is written only from a Booking under review; `Reserved` needs `Payment Pending` and verified money). The full transition table is enforced in the app, as it is on the web for the Guest's actions.
 - Adding a second operator means giving a second account the Admin role (allowlist or Profile), not adding a role. If the operation ever genuinely needs a person who may read but not decide, that is the moment to reopen this ADR — not before.
 - ADR-0001 to ADR-0006 stand; where they say "the Host", read "the Admin".

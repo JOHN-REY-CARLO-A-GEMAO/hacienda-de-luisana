@@ -1,6 +1,6 @@
 # The money and audit invariants are enforced in the rule layer, not only in the apps
 
-**Status**: accepted, 2026-09-24. Resolves the six findings of the verification pass (PR #28, `docs/VERIFICATION.md` §3.3).
+**Status**: accepted, 2026-09-24; amended 2026-09-27 for the Government ID KYC removal (the `kyc_status` clauses are gone from the rules). Resolves the six findings of the verification pass (PR #28, `docs/VERIFICATION.md` §3.3).
 
 The application's lifecycle module — `src/lib/booking/` on the website,
 `lib/services/booking_lifecycle.dart` in the Admin app — remains the **single
@@ -15,10 +15,10 @@ console never loads the module:
 | Invariant | Rule |
 | --- | --- |
 | A Guest claims money, the Admin verifies it (ADR-0001) | A Guest's self-serve write may only put `payment_status` at `unpaid` or `pending`, or leave the stored value alone. `verified` is the Admin's word. |
-| A Booking is born with nothing claimed and nothing reviewed | `create` accepts `payment_status` ∈ {`unpaid`, `none`, absent} and `kyc_status` ∈ {`required`, `submitted`, absent}. |
+| A Booking is born with nothing claimed and nothing reviewed | `create` accepts `payment_status` ∈ {`unpaid`, `none`, absent}. |
 | `verified` is a claim that names its author | A document left saying `payment_status: 'verified'` must carry `amount_verified > 0`, a `payment_verified_at`, and `payment_verified_by == request.auth.uid`. A console cannot verify in another Admin's name, and a Guest cannot produce the marker at all. |
 | `Reserved` is what verified money buys | The first clause of the update rule: no writer — Guest or Admin — may leave a Booking at `Reserved` unless it says `verified`. It also refuses a write that would un-verify money a Reserved Booking stands on. |
-| Decisions are not undone by the person they were made about | A Guest's write may not move `payment_status` or `kyc_status` off an Admin-set value (`verified`, `rejected`, `approved`), and may not clear an Admin's rejection note except by attaching a fresh document in the same write. |
+| Decisions are not undone by the person they were made about | A Guest's write may not move `payment_status` off an Admin-set value (`verified`, `rejected`), and may not clear an Admin's rejection note except by attaching a fresh proof in the same write. |
 | A refund never exceeds the money that came in | A Guest withdrawing a paid Booking may record `refund_status: 'initiated'` with `refund_total ≤ amount_verified`, and a breakdown that agrees with the total. `refunded` — the money went back — is the Admin's to record. |
 | The audit log is signed by whoever wrote it | An `activity` entry must carry the writer's own role *and* uid; the one exception is the `system` entry the Admin app files when a Date hold runs out (ADR-0002), and the unauthenticated submission entry a Booking made before sign-in writes. |
 | A conversation belongs to one Guest | Reading or posting requires `guest_uid == request.auth.uid`; the Admin role is the only other door. A message must be signed by its sender (`sender_uid == auth.uid`) and labelled with the sender's real role. |

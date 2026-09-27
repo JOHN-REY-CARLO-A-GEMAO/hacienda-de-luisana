@@ -34,8 +34,6 @@ const booking = (over: Partial<BookingState> = {}): BookingState => ({
   check_out: '2026-10-07',
   guests: 2,
   status: 'Payment Pending',
-  kyc_status: 'approved',
-  kyc_id_url: 'kyc/x/1/id.jpg',
   payment_plan: 'down-payment',
   payment_status: 'pending',
   payment_proof_url: 'payments/x/1/proof.jpg',
@@ -50,10 +48,8 @@ const booking = (over: Partial<BookingState> = {}): BookingState => ({
 
 /** One action of every type the lifecycle offers, with the input it needs. */
 const everyAction = (state: BookingState): BookingAction[] => [
-  { type: 'UploadKyc', kyc_id_url: 'kyc/x/1/id-2.jpg' },
   { type: 'Approve', availability: { bookings: [] } },
   { type: 'Reject', reason: 'dates unavailable' },
-  { type: 'RejectKyc', reason: 'blurred' },
   {
     type: 'ChoosePaymentPlan',
     plan: 'down-payment',
@@ -66,7 +62,6 @@ const everyAction = (state: BookingState): BookingAction[] => [
   { type: 'RejectPaymentProof', reason: 'unreadable', guestResubmits: true },
   { type: 'Cancel', reason: 'changed plans' },
   { type: 'MarkRefunded' },
-  { type: 'PurgeKyc' },
   { type: 'RevokeKey' },
   { type: 'Expire' },
   { type: 'CheckIn' },
@@ -76,8 +71,8 @@ const everyAction = (state: BookingState): BookingAction[] => [
 ]
 
 const ACTIONS: BookingAction['type'][] = [
-  'UploadKyc', 'Approve', 'Reject', 'RejectKyc', 'ChoosePaymentPlan', 'UploadPaymentProof',
-  'VerifyPayment', 'RejectPaymentProof', 'Cancel', 'MarkRefunded', 'PurgeKyc', 'RevokeKey',
+  'Approve', 'Reject', 'ChoosePaymentPlan', 'UploadPaymentProof',
+  'VerifyPayment', 'RejectPaymentProof', 'Cancel', 'MarkRefunded', 'RevokeKey',
   'Expire', 'CheckIn', 'BeginStay', 'CheckOut', 'Complete',
 ]
 
@@ -86,7 +81,7 @@ const guestServeKeys = ((): string[] => {
   const bookings = rules.slice(rules.indexOf('match /bookings/{bookingId}'))
   const guestBranch = bookings.slice(bookings.indexOf('|| (isSignedIn()'))
   const list = guestBranch.match(/\.hasOnly\(\[([\s\S]*?)\]\)/)
-  return list ? [...list[1].matchAll(/'([a-z_]+)'/g)].map((k) => k[1]) : []
+  return list ? [...list[1].matchAll(/'([A-Za-z_]+)'/g)].map((k) => k[1]) : []
 })()
 
 /** The key list must have been found, or every comparison below is vacuous. */
@@ -105,7 +100,7 @@ describe('the rules text this suite compares against', () => {
 // ---------------------------------------------------------------------------
 
 describe('P0: a Guest can never produce a verified payment', () => {
-  const starts = ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending', 'Reserved'] as const
+  const starts = ['Pending', 'Payment Pending', 'Reserved'] as const
 
   it('never lets a guest-run action set payment_status to verified', () => {
     const offenders: string[] = []
@@ -163,7 +158,7 @@ describe('P0: a Guest can never produce a verified payment', () => {
 describe('P1: Reserved is the status verified money buys', () => {
   it('is reached by no action at all while the money is unverified', () => {
     const offenders: string[] = []
-    for (const status of ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending'] as const) {
+    for (const status of ['Pending', 'Payment Pending'] as const) {
       const state = booking({ status, payment_status: 'pending' })
       for (const action of everyAction(state)) {
         for (const actor of [guest, admin]) {
@@ -240,7 +235,7 @@ describe('P1: the submission entry is signed by the identity the Booking belongs
   it('signs every entry with the identity making the write', () => {
     const entry = (actor: string, actor_id: string) => ({
       booking_id: 'booking-9',
-      action: 'UploadKyc',
+      action: 'Approve',
       from_status: 'Pending',
       to_status: 'Pending',
       actor,

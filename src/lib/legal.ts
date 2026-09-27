@@ -1,4 +1,4 @@
-export const LEGAL_VERSION = '2026-09-24'
+export const LEGAL_VERSION = '2026-09-27'
 
 export type LegalSection = {
   id: string
@@ -12,7 +12,7 @@ export const TERMS: LegalSection[] = [
     title: 'Terms and Conditions',
     body: [
       'These Terms govern bookings at Hacienda de LuisAna in Luisiana, Laguna.',
-      'A booking is a request until the Admin reviews your identity (KYC), approves the stay, and verifies payment.',
+      'A booking is a request until the Admin approves the stay and verifies payment.',
       'You must be at least 10 years old to create an account. Guests under 18 must be accompanied by a responsible adult during the stay.',
       'You agree to provide accurate guest, contact, and payment information.',
     ],
@@ -21,9 +21,8 @@ export const TERMS: LegalSection[] = [
     id: 'privacy',
     title: 'Privacy Policy',
     body: [
-      'We store your account, booking, payment proof, KYC images, chat messages, and access logs to operate the stay.',
+      'We store your account, booking, payment proof, chat messages, and access logs to operate the stay.',
       'We do not run a live location tracker. Access logs record door events (granted/denied) with timestamps — not GPS trails.',
-      'Government IDs are used only for booking review and are purged after the stay window defined in operations policy.',
       'We do not sell personal data. Cloud Firestore is the source of truth for shared records; your browser may cache non-sensitive UI state locally.',
     ],
   },

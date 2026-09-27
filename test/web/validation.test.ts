@@ -11,7 +11,12 @@ import {
   validateStarRating,
 } from '../../src/lib/validation'
 import { paginate, sortBy } from '../../src/lib/pagination'
-import { extractReceiptFields, canAutoVerifyFromOcr, matchPaymentReference } from '../../src/lib/payments/ocr'
+import {
+  extractReceiptFields,
+  extractReferenceNumber,
+  canAutoVerifyFromOcr,
+  matchPaymentReference,
+} from '../../src/lib/payments/ocr'
 import { checkRateLimit, resetRateLimit, LIMITS } from '../../src/lib/rateLimit'
 import { LEGAL_VERSION, isAcceptanceCurrent, recordAcceptance } from '../../src/lib/legal'
 import { isActiveCategory } from '../../src/lib/categories'
@@ -80,6 +85,19 @@ describe('pagination + sort', () => {
 })
 
 describe('OCR is not verification', () => {
+  it('extracts the 10–13 digit reference GCash, Maya and bank receipts carry', () => {
+    // Labelled first — including references printed with spacing — then a
+    // bare run; anything card-shaped (14–16 digits) or absent is ''.
+    expect(extractReferenceNumber('GCash Ref No: 1234567890123 Amount: 1500')).toBe('1234567890123')
+    expect(extractReferenceNumber('Maya transaction 987654321098')).toBe('987654321098')
+    expect(extractReferenceNumber('Confirmation no. 1234 567 890123')).toBe('1234567890123')
+    // A bank reference keeps only its 10–13 digit heart; a shorter run is nothing.
+    expect(extractReferenceNumber('Bank ref: TRX-004455667788')).toBe('004455667788')
+    expect(extractReferenceNumber('Bank ref: TRX-4455')).toBe('')
+    expect(extractReferenceNumber('no digits at all')).toBe('')
+    expect(extractReferenceNumber('1234567890123456')).toBe('')
+  })
+
   it('extracts reference and amount from receipt text', () => {
     const e = extractReceiptFields('GCash Ref: 1234567890123 Amount: PHP 1500.00')
     expect(e.reference).toBe('1234567890123')

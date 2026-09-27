@@ -7,7 +7,6 @@ import { formatStayDuration, type Booking } from '../lib/storage'
 import { ACCOMMODATIONS } from '../config/site'
 import { BookingHistory } from '../components/Booking/BookingHistory'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
-import { KycUpload } from '../components/Booking/KycUpload'
 import { PaymentStep } from '../components/Booking/PaymentStep'
 import { useAuth } from '../hooks/useAuth'
 import { paginate, sortBy } from '../lib/pagination'
@@ -18,7 +17,7 @@ import { ReviewForm } from '../components/ReviewForm'
 import { ArrowRight, Calendar, Sparkle } from '../lib/icons'
 
 /** Statuses a Guest may still withdraw from themselves — the list firestore.rules allows. */
-const WITHDRAWABLE = ['Pending', 'KYC Submitted']
+const WITHDRAWABLE = ['Pending']
 
 function accommodationName(id: string) {
   return ACCOMMODATIONS.find((accommodation) => accommodation.id === id)?.name ?? id
@@ -26,7 +25,7 @@ function accommodationName(id: string) {
 
 function statusChip(status: ReturnType<typeof effectiveStatus>) {
   if (status === 'Reserved') return 'bg-emerald-100 text-emerald-800'
-  if (status === 'Pending' || status === 'KYC Submitted' || status === 'Approved') return 'bg-amber-100 text-amber-800'
+  if (status === 'Pending') return 'bg-amber-100 text-amber-800'
   if (status === 'Expired' || status === 'Rejected' || status === 'Cancelled') return 'bg-red-100 text-red-700'
   return 'bg-cream-100 text-forest-700'
 }
@@ -39,7 +38,7 @@ function statusChip(status: ReturnType<typeof effectiveStatus>) {
  * edits an id in this browser still cannot read somebody else's stay — the
  * database refuses the read before this page ever renders it.
  *
- * The two things a Guest can do here, sending an ID and withdrawing a request,
+ * The two things a Guest can do here, paying for a request and withdrawing it,
  * both go through the Booking lifecycle with the session's own actor, which is
  * what makes the Activity log say a Guest did it.
  */
@@ -116,8 +115,8 @@ export function AccountPage() {
             <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">My Bookings</h1>
             <p className="mt-3 text-sm text-forest-800/80 max-w-xl leading-relaxed">
               Signed in as <strong>{user?.email ?? user?.displayName ?? 'this browser'}</strong>. These are the requests
-              made from this account — send your government ID, watch the Date hold, and withdraw a request the Admin has
-              not reviewed yet.
+              made from this account — watch the Date hold, pay for a request the Admin approved, and withdraw a
+              request the Admin has not reviewed yet.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -189,13 +188,11 @@ export function AccountPage() {
               }}
             >
               <option value="all">All statuses</option>
-              {['Pending', 'KYC Submitted', 'Approved', 'Payment Pending', 'Reserved', 'Completed', 'Cancelled'].map(
-                (s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ),
-              )}
+              {['Pending', 'Payment Pending', 'Reserved', 'Completed', 'Cancelled'].map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
             </select>
             <select className="field text-sm" value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)}>
               <option value="created_at">Sort by created</option>
@@ -241,20 +238,7 @@ export function AccountPage() {
                     The Admin refused this request: “{booking.rejection_reason}”. Those dates are free again.
                   </p>
                 )}
-                {booking.kyc_reject_reason && (
-                  <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                    Your ID was refused: “{booking.kyc_reject_reason}”. Send another one below — your dates stay held
-                    while you do.
-                  </p>
-                )}
-
-                {can('kyc:upload') && (
-                  <div className="mt-4">
-                    <KycUpload booking={booking} />
-                  </div>
-                )}
-
-                {can('booking:update:own') && ['Approved', 'Payment Pending', 'Reserved'].includes(status) && (
+                {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
                   <div className="mt-4">
                     <PaymentStep booking={booking} />
                   </div>

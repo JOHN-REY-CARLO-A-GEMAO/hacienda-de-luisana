@@ -8,7 +8,7 @@ import 'package:hacienda_de_luisana/services/booking_lifecycle.dart';
 
 Map<String, dynamic> booking({
   String id = 'bk-1',
-  String status = 'KYC Submitted',
+  String status = 'Pending',
   String accommodation = 'main-house',
   String checkIn = '2026-10-10',
   String checkOut = '2026-10-12',
@@ -32,7 +32,10 @@ void main() {
     test('reads canonical, legacy and unknown spellings', () {
       expect(normalizeStatus('Reserved'), 'Reserved');
       expect(normalizeStatus('checked_in'), 'Checked-In');
-      expect(normalizeStatus('kyc submitted'), 'KYC Submitted');
+      expect(normalizeStatus('payment_pending'), 'Payment Pending');
+      // Retired vocabulary still reads as its successor (never as itself).
+      expect(normalizeStatus('kyc submitted'), 'Pending');
+      expect(normalizeStatus('Approved'), 'Payment Pending');
       expect(normalizeStatus('Confirmed'), 'Reserved');
       expect(normalizeStatus(null), 'Pending');
       expect(normalizeStatus('garbage'), 'Pending');
@@ -41,50 +44,55 @@ void main() {
 
   group('transitions', () {
     test('whitelist matches the website', () {
-      expect(canTransition('Pending', 'KYC Submitted'), isTrue);
-      expect(canTransition('KYC Submitted', 'Approved'), isTrue);
+      // Approval is the one step from review into payment (KYC removed).
+      expect(canTransition('Pending', 'Payment Pending'), isTrue);
       expect(canTransition('Reserved', 'Checked-In'), isTrue);
-      expect(canTransition('Pending', 'Approved'), isFalse);
+      // Money still cannot be skipped, and retired statuses never move.
+      expect(canTransition('Pending', 'Payment Verified'), isFalse);
+      expect(canTransition('Pending', 'Reserved'), isFalse);
+      expect(canTransition('Payment Pending', 'Reserved'), isFalse);
+      expect(canTransition('KYC Submitted', 'Payment Pending'), isFalse);
+      expect(canTransition('Approved', 'Rejected'), isFalse);
       expect(canTransition('Completed', 'Pending'), isFalse);
       expect(canTransition('Cancelled', 'Reserved'), isFalse);
     });
 
     test('adminActionsFor offers only what the status allows', () {
-      expect(adminActionsFor('KYC Submitted'),
-          containsAll([AdminAction.approve, AdminAction.reject, AdminAction.rejectKyc, AdminAction.cancel]));
+      expect(adminActionsFor('Pending'),
+          containsAll([AdminAction.approve, AdminAction.reject, AdminAction.cancel]));
       expect(adminActionsFor('Payment Pending'),
           containsAll([AdminAction.verifyPayment, AdminAction.rejectPaymentProof, AdminAction.cancel]));
+      expect(adminActionsFor('Payment Pending'), isNot(contains(AdminAction.approve)));
       expect(adminActionsFor('Reserved'),
           containsAll([AdminAction.checkIn, AdminAction.cancel, AdminAction.revokeKey]));
-      expect(adminActionsFor('Completed'), [AdminAction.purgeKyc]);
+      expect(adminActionsFor('Completed'), isEmpty);
       expect(adminActionsFor('Rejected'), isEmpty);
       expect(adminActionsFor('Pending'), isNot(contains(AdminAction.expire)));
     });
   });
 
   group('Approve', () {
-    test('needs a submitted ID', () {
-      final r = applyAdminAction(booking(extra: {'kyc_status': 'required'}),
+    test('is refused on a Booking that has already passed review', () {
+      final r = applyAdminAction(booking(status: 'Payment Pending'),
           AdminAction.approve, admin, now: now);
       expect(r.ok, isFalse);
-      expect(r.reason, contains('government ID'));
+      expect(r.reason, contains('Payment Pending'));
     });
 
-    test('approves, stops the hold and logs the move', () {
+    test('opens payment, stops the hold and logs the move', () {
       final r = applyAdminAction(
-        booking(extra: {'kyc_status': 'submitted', 'hold_expires_at': '2026-10-02T00:00:00Z'}),
+        booking(extra: {'hold_expires_at': '2026-10-02T00:00:00Z'}),
         AdminAction.approve,
         admin,
         now: now,
       );
       expect(r.ok, isTrue);
-      expect(r.patch['status'], 'Approved');
-      expect(r.patch['kyc_status'], 'approved');
+      expect(r.patch['status'], 'Payment Pending');
       expect(r.patch.containsKey('hold_expires_at'), isTrue);
       expect(r.patch['hold_expires_at'], isNull);
       expect(r.entry!['action'], 'Approve');
-      expect(r.entry!['from_status'], 'KYC Submitted');
-      expect(r.entry!['to_status'], 'Approved');
+      expect(r.entry!['from_status'], 'Pending');
+      expect(r.entry!['to_status'], 'Payment Pending');
       expect(r.entry!['actor'], 'admin');
       expect(r.entry!['actor_id'], 'admin-uid');
       expect(r.entry!['actor_name'], 'The Admin');
@@ -94,7 +102,7 @@ void main() {
     test('refuses when another committed Booking holds the dates', () {
       final other = booking(id: 'bk-2', status: 'Reserved', checkIn: '2026-10-11', checkOut: '2026-10-13');
       final r = applyAdminAction(
-        booking(extra: {'kyc_status': 'submitted'}),
+        booking(),
         AdminAction.approve,
         admin,
         input: ActionInput(otherBookings: [other]),
@@ -105,9 +113,9 @@ void main() {
     });
 
     test('a Booking still under review does not block approval', () {
-      final other = booking(id: 'bk-2', status: 'KYC Submitted', extra: {'hold_expires_at': '2026-10-02T00:00:00Z'});
+      final other = booking(id: 'bk-2', extra: {'hold_expires_at': '2026-10-02T00:00:00Z'});
       final r = applyAdminAction(
-        booking(extra: {'kyc_status': 'submitted'}),
+        booking(),
         AdminAction.approve,
         admin,
         input: ActionInput(otherBookings: [other]),
@@ -119,7 +127,7 @@ void main() {
     test('camping has two units', () {
       final other = booking(id: 'bk-2', status: 'Reserved', accommodation: 'house-a-camping');
       final r = applyAdminAction(
-        booking(accommodation: 'house-a-camping', extra: {'kyc_status': 'submitted'}),
+        booking(accommodation: 'house-a-camping'),
         AdminAction.approve,
         admin,
         input: ActionInput(otherBookings: [other]),
@@ -130,7 +138,7 @@ void main() {
 
     test('refuses once the Date hold ran out', () {
       final r = applyAdminAction(
-        booking(extra: {'kyc_status': 'submitted', 'hold_expires_at': '2026-09-30T00:00:00Z'}),
+        booking(extra: {'hold_expires_at': '2026-09-30T00:00:00Z'}),
         AdminAction.approve,
         admin,
         now: now,
@@ -140,8 +148,7 @@ void main() {
     });
 
     test('a pre-hold Booking (no hold recorded) can still be approved', () {
-      final r = applyAdminAction(booking(extra: {'kyc_status': 'submitted'}),
-          AdminAction.approve, admin, now: now);
+      final r = applyAdminAction(booking(), AdminAction.approve, admin, now: now);
       expect(r.ok, isTrue);
     });
   });
@@ -149,7 +156,7 @@ void main() {
   group('who may act', () {
     test('a guest cannot approve; the system cannot reject', () {
       const guest = Actor(kind: 'guest', id: 'g1');
-      expect(applyAdminAction(booking(extra: {'kyc_status': 'submitted'}), AdminAction.approve, guest, now: now).ok, isFalse);
+      expect(applyAdminAction(booking(), AdminAction.approve, guest, now: now).ok, isFalse);
       expect(applyAdminAction(booking(), AdminAction.reject, const Actor.system(), input: const ActionInput(reason: 'x'), now: now).ok, isFalse);
     });
 
@@ -168,32 +175,27 @@ void main() {
     });
   });
 
-  group('Reject / RejectKyc', () {
-    test('rejection needs a reason and marks a submitted ID rejected', () {
-      expect(applyAdminAction(booking(extra: {'kyc_status': 'submitted'}), AdminAction.reject, admin, now: now).ok, isFalse);
-      final r = applyAdminAction(booking(extra: {'kyc_status': 'submitted'}), AdminAction.reject, admin,
-          input: const ActionInput(reason: 'Blurry ID'), now: now);
+  group('Reject', () {
+    test('rejection needs a reason and records why', () {
+      expect(applyAdminAction(booking(), AdminAction.reject, admin, now: now).ok, isFalse);
+      final r = applyAdminAction(booking(), AdminAction.reject, admin,
+          input: const ActionInput(reason: 'The Guest stopped replying'), now: now);
       expect(r.ok, isTrue);
       expect(r.patch['status'], 'Rejected');
-      expect(r.patch['rejection_reason'], 'Blurry ID');
-      expect(r.patch['kyc_status'], 'rejected');
-      expect(r.entry!['reason'], 'Blurry ID');
+      expect(r.patch['rejection_reason'], 'The Guest stopped replying');
+      expect(r.entry!['reason'], 'The Guest stopped replying');
     });
 
-    test('RejectKyc keeps the Booking in KYC Submitted', () {
-      final r = applyAdminAction(
-          booking(extra: {'kyc_status': 'submitted', 'kyc_id_url': 'https://x/id.jpg'}),
-          AdminAction.rejectKyc, admin, input: const ActionInput(reason: 'Expired ID'), now: now);
+    test('a pre-money rejection also fits after approval, while money is unverified', () {
+      final r = applyAdminAction(booking(status: 'Payment Pending'), AdminAction.reject, admin,
+          input: const ActionInput(reason: 'Dates can no longer be offered'), now: now);
       expect(r.ok, isTrue);
-      expect(r.patch['status'], 'KYC Submitted');
-      expect(r.patch['kyc_status'], 'rejected');
-      expect(r.patch['kyc_reject_reason'], 'Expired ID');
+      expect(r.patch['status'], 'Rejected');
     });
   });
 
   group('VerifyPayment', () {
     final pp = booking(status: 'Payment Pending', extra: {
-      'kyc_status': 'approved',
       'payment_proof_url': 'https://x/gcash.jpg',
       'amount_due': 8500,
       'security_deposit': 1000,
@@ -249,17 +251,6 @@ void main() {
       expect(applyAdminAction(b, AdminAction.checkIn, admin, now: now).ok, isFalse);
     });
 
-    test('PurgeKyc clears both URLs only when something is there', () {
-      expect(applyAdminAction(booking(status: 'Completed'), AdminAction.purgeKyc, admin, now: now).ok, isFalse);
-      final r = applyAdminAction(
-          booking(status: 'Completed', extra: {'kyc_id_url': 'https://x/id.jpg'}),
-          AdminAction.purgeKyc, admin, now: now);
-      expect(r.ok, isTrue);
-      expect(r.patch['kyc_id_url'], isNull);
-      expect(r.patch['kyc_receipt_url'], isNull);
-      expect(r.patch['status'], 'Completed');
-    });
-
     test('RevokeKey logs without moving the Booking', () {
       final r = applyAdminAction(booking(status: 'Staying'), AdminAction.revokeKey, admin, now: now);
       expect(r.ok, isTrue);
@@ -270,7 +261,7 @@ void main() {
 
   group('Cancel and refunds', () {
     test('before money is verified there is nothing to refund', () {
-      final r = applyAdminAction(booking(status: 'Approved'), AdminAction.cancel, admin,
+      final r = applyAdminAction(booking(status: 'Payment Pending'), AdminAction.cancel, admin,
           input: const ActionInput(reason: 'Guest asked'), now: now);
       expect(r.ok, isTrue);
       expect(r.patch['status'], 'Cancelled');
@@ -360,7 +351,7 @@ void main() {
     test('effectiveStatus reads Expired once the hold ran out', () {
       final b = booking(status: 'Pending', extra: {'hold_expires_at': '2026-09-30T00:00:00Z'});
       expect(effectiveStatus(b, now), 'Expired');
-      expect(effectiveStatus(booking(status: 'Approved', extra: {'hold_expires_at': '2026-09-30T00:00:00Z'}), now), 'Approved');
+      expect(effectiveStatus(booking(status: 'Payment Pending', extra: {'hold_expires_at': '2026-09-30T00:00:00Z'}), now), 'Payment Pending');
     });
   });
 }

@@ -2,9 +2,9 @@ import '../services/booking_lifecycle.dart';
 
 /// The coarse stage a Booking is in, used for filters, tabs and KPIs.
 ///
-/// The exact lifecycle status (`Pending`, `KYC Submitted`, `Approved`, …,
+/// The exact lifecycle status (`Pending`, `Payment Pending`, …,
 /// see [BookingStatuses]) is kept on [BookingModel.rawStatus]; this enum only
-/// buckets those thirteen statuses into five stages the dashboard can chart.
+/// buckets those eleven statuses into five stages the dashboard can chart.
 enum BookingStatus {
   pending,
   confirmed,
@@ -48,7 +48,6 @@ extension BookingStatusX on BookingStatus {
   /// website's `normalizeStatus` accepts) into its stage.
   static BookingStatus fromString(String val) {
     switch (normalizeStatus(val)) {
-      case BookingStatuses.approved:
       case BookingStatuses.paymentPending:
       case BookingStatuses.paymentVerified:
       case BookingStatuses.reserved:
@@ -64,7 +63,6 @@ extension BookingStatusX on BookingStatus {
       case BookingStatuses.expired:
         return BookingStatus.cancelled;
       case BookingStatuses.pending:
-      case BookingStatuses.kycSubmitted:
       default:
         return BookingStatus.pending;
     }
@@ -93,10 +91,6 @@ class BookingModel {
   /// The Guest's Firebase uid — how the website scopes "my bookings".
   final String? uid;
   final String? source;
-  final String? kycStatus;
-  final String? kycIdUrl;
-  final String? kycReceiptUrl;
-  final String? kycRejectReason;
   final String? paymentPlan;
   final String? paymentStatus;
   final String? paymentProofUrl;
@@ -134,10 +128,6 @@ class BookingModel {
     this.refId,
     this.uid,
     this.source,
-    this.kycStatus,
-    this.kycIdUrl,
-    this.kycReceiptUrl,
-    this.kycRejectReason,
     this.paymentPlan,
     this.paymentStatus,
     this.paymentProofUrl,
@@ -204,12 +194,11 @@ class BookingModel {
   String get nextStep {
     switch (rawStatus) {
       case BookingStatuses.pending:
-        return 'Waiting for the Guest to upload a government ID.';
-      case BookingStatuses.kycSubmitted:
-        return 'Review the ID and approve or reject.';
-      case BookingStatuses.approved:
-        return 'Waiting for the Guest to choose a payment plan.';
+        return 'Waiting for your review — approve to open payment.';
       case BookingStatuses.paymentPending:
+        if (paymentPlan == null || paymentPlan!.isEmpty) {
+          return 'Waiting for the Guest to choose a payment plan.';
+        }
         return paymentProofUrl == null || paymentProofUrl!.isEmpty
             ? 'Waiting for the Guest to send payment proof.'
             : 'Verify the payment proof.';
@@ -300,10 +289,6 @@ class BookingModel {
       refId: _str(json['ref_id']),
       uid: _str(json['uid']),
       source: _str(json['source']),
-      kycStatus: _str(json['kyc_status']),
-      kycIdUrl: _str(json['kyc_id_url']),
-      kycReceiptUrl: _str(json['kyc_receipt_url']),
-      kycRejectReason: _str(json['kyc_reject_reason']),
       paymentPlan: _str(json['payment_plan']),
       paymentStatus: _str(json['payment_status']),
       paymentProofUrl: _str(json['payment_proof_url']),
@@ -381,10 +366,6 @@ class BookingModel {
       refId: refId,
       uid: uid,
       source: source,
-      kycStatus: kycStatus,
-      kycIdUrl: kycIdUrl,
-      kycReceiptUrl: kycReceiptUrl,
-      kycRejectReason: kycRejectReason,
       paymentPlan: paymentPlan,
       paymentStatus: paymentStatus,
       paymentProofUrl: paymentProofUrl,

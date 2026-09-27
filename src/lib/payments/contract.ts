@@ -4,8 +4,8 @@
 //
 // The proof is the Guest's claim that money sent outside the system (GCash /
 // bank transfer, ADR-0001) arrived. It lands under /payments — never in the
-// KYC slot, so an ID review and a money review can never read each other's
-// documents. Limits mirror storage.rules, the same way kyc/contract.ts does.
+// one address per Booking, so two Bookings can never share a document
+// slot. The size limit mirrors storage.rules.
 // ----------------------------------------------------------------------------
 
 /** storage.rules: `request.resource.size < 5 * 1024 * 1024`. */
@@ -38,7 +38,7 @@ function extOf(filename: string): string {
 /**
  * Storage address for a payment proof: `payments/{uid}/{safeRef}/proof.{ext}`.
  *
- * `safeRef` keeps `[A-Za-z0-9-]` and uppercases, the same sanitiser the KYC
+ * `safeRef` keeps `[A-Za-z0-9-]` and uppercases, the sanitiser the legacy
  * contract uses, so one Booking's uploads land in one predictable folder.
  */
 export function proofObjectPath(input: {

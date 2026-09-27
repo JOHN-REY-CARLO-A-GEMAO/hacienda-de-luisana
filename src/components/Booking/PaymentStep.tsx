@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BUSINESS } from '../../config/site'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
-import { isFirebaseConfigured } from '../../lib/firebase'
 import { ratesDB } from '../../lib/ratesDB'
 import {
   paymentOptions,
@@ -10,7 +9,7 @@ import {
   type PaymentPlan,
   type PublishedRates,
 } from '../../lib/booking'
-import { PROOF_UPLOAD_UNAVAILABLE_MESSAGE, uploadPaymentProof } from '../../lib/payments'
+import { uploadPaymentProof } from '../../lib/payments'
 import type { Booking } from '../../lib/storage'
 import { extractReceiptFields, runReceiptOcr } from '../../lib/payments/ocr'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
@@ -28,8 +27,11 @@ import { Link } from 'react-router-dom'
  * rates (`site_config/rates`); when nothing is published for this
  * Accommodation there is no price to commit to, and the choice is not offered.
  *
- * Where there is no Firebase there is no upload: a receipt is never parked in
- * a browser the Admin cannot read.
+ * The screenshot goes to Supabase Storage's `payment-proofs` bucket
+ * (ADR-0011) — in demo mode it stays in this browser, which is labelled for
+ * what it is. OCR runs right here in the browser when the file is chosen and
+ * only ever pre-fills the reference input; the Admin's verification is what
+ * moves money (ocr.ts).
  */
 export function PaymentStep({ booking }: { booking: Booking }) {
   const [rates, setRates] = useState<PublishedRates | null>(null)
@@ -38,6 +40,8 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   const [amountClaimed, setAmountClaimed] = useState('')
   const [reference, setReference] = useState('')
   const [ocrNotes, setOcrNotes] = useState<string[]>([])
+  const [ocrBusy, setOcrBusy] = useState(false)
+  const [extractedRef, setExtractedRef] = useState('')
   const [acceptPayTerms, setAcceptPayTerms] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
@@ -47,7 +51,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   useEffect(() => ratesDB.subscribe(setRates), [])
 
   const status = cloudBookingsDB.readStatus(booking)
-  if (status !== 'Approved' && status !== 'Payment Pending') {
+  if (status !== 'Payment Pending') {
     if (booking.payment_status === 'verified' && (status === 'Reserved' || status === 'Payment Verified')) {
       return (
         <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs text-emerald-900 leading-relaxed">
@@ -137,6 +141,8 @@ export function PaymentStep({ booking }: { booking: Booking }) {
         {
           type: 'UploadPaymentProof',
           payment_proof_url: uploaded.url,
+          paymentProofUrl: uploaded.url,
+          extractedRefNumber: extractedRef || undefined,
           amount_claimed: claimed,
           payment_reference: refCheck.value,
           ocr_reference: reference,
@@ -155,6 +161,9 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       setProofFile(null)
       if (fileInput.current) fileInput.current.value = ''
       setAmountClaimed('')
+      setReference('')
+      setExtractedRef('')
+      setOcrNotes([])
       setSent(true)
       setMessage({
         tone: 'good',
@@ -172,7 +181,9 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   }
 
   const owed = (booking.amount_due ?? 0) + (booking.security_deposit ?? 0)
-  const planChosen = booking.payment_plan !== undefined || status === 'Payment Pending'
+  // The Admin's approval lands on `Payment Pending`, so the plan is chosen
+  // *inside* that stage — only the stored plan says the choice has been made.
+  const planChosen = booking.payment_plan !== undefined
 
   return (
     <div className="rounded-2xl border border-forest-900/10 bg-white p-4">
@@ -180,7 +191,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
         Step 3 · Pay and send proof
       </div>
 
-      {status === 'Approved' && !planChosen && (
+      {status === 'Payment Pending' && !planChosen && (
         <>
           <p className="mt-2 text-xs text-forest-700/80 leading-relaxed">
             The Admin approved your dates. Choose how to pay — then send the money externally and upload
@@ -229,7 +240,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
         </>
       )}
 
-      {(status === 'Payment Pending' || planChosen) && (
+      {status === 'Payment Pending' && planChosen && (
         <div className="mt-3">
           {owed > 0 && (
             <p className="text-xs text-forest-900 font-medium">
@@ -268,8 +279,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
             </p>
           ) : null}
 
-          {isFirebaseConfigured ? (
-            <div className="mt-3 space-y-2">
+          <div className="mt-3 space-y-2">
               <label className="block">
                 <span className="block text-xs font-medium text-forest-900">Payment receipt</span>
                 <span className="block text-[11px] text-forest-700/70 mb-1">
@@ -282,27 +292,72 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   onChange={(e) => {
                     const file = e.target.files?.[0] ?? null
                     setProofFile(file)
+                    setExtractedRef('')
+                    setOcrNotes([])
                     if (!file) return
                     const ocrLimit = checkRateLimit(`ocr:${booking.id}`, LIMITS.ocr)
                     if (!ocrLimit.ok) {
                       setOcrNotes([ocrLimit.message])
                       return
                     }
-                    void runReceiptOcr(file).then((extracted) => {
-                      const fromName = extractReceiptFields(file.name.replace(/[_-]/g, ' '))
-                      const referenceGuess = extracted.reference || fromName.reference
-                      const amountGuess = extracted.amount || fromName.amount
-                      if (referenceGuess) setReference(referenceGuess)
-                      if (amountGuess) setAmountClaimed(amountGuess)
-                      setOcrNotes([
-                        ...extracted.notes,
-                        'Confirm or correct the fields below. OCR is not verification.',
-                      ])
-                    })
+                    void (async () => {
+                      setOcrBusy(true)
+                      try {
+                        const extracted = await runReceiptOcr(file)
+                        const fromName = extractReceiptFields(file.name.replace(/[_-]/g, ' '))
+                        const referenceGuess = extracted.reference || fromName.reference
+                        const amountGuess = extracted.amount || fromName.amount
+                        if (referenceGuess) {
+                          setReference(referenceGuess)
+                          setExtractedRef(referenceGuess)
+                        }
+                        if (amountGuess) setAmountClaimed(amountGuess)
+                        setOcrNotes([
+                          ...extracted.notes,
+                          'Confirm or correct the fields below. OCR is not verification.',
+                        ])
+                      } catch {
+                        setOcrNotes([
+                          'OCR could not run on this image. Type the reference and amount from your receipt.',
+                        ])
+                      } finally {
+                        setOcrBusy(false)
+                      }
+                    })()
                   }}
                   className="block w-full text-xs text-forest-800 file:mr-3 file:px-3 file:py-2 file:rounded-xl file:border-0 file:bg-cream-100 file:text-forest-800 file:text-xs file:font-medium hover:file:bg-cream-200 file:cursor-pointer"
                 />
                 {proofFile && <span className="block mt-1 text-[11px] text-forest-700">{proofFile.name} chosen.</span>}
+                {ocrBusy && (
+                  <span
+                    className="block mt-1 text-[11px] text-forest-700"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span className="inline-block animate-pulse">●</span> Reading your receipt —
+                    OCR runs in your browser and can take a moment…
+                  </span>
+                )}
+                {!ocrBusy && ocrNotes.length > 0 && (
+                  <span className="block mt-1 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-2 py-1.5 leading-relaxed">
+                    {ocrNotes.join(' ')}
+                  </span>
+                )}
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium text-forest-900">Reference number</span>
+                <span className="block text-[11px] text-forest-700/70 mb-1">
+                  10–13 digits from your GCash, Maya or bank receipt · OCR fills this in — correct it
+                  if it misread
+                </span>
+                <input
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="e.g. 1234567890123"
+                  className="block w-full text-xs rounded-xl border border-forest-900/15 bg-white px-3 py-2 text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-700/30"
+                />
               </label>
               <label className="block">
                 <span className="block text-xs font-medium text-forest-900">Amount you sent (₱, optional)</span>
@@ -314,6 +369,18 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   className="block w-full text-xs rounded-xl border border-forest-900/15 bg-white px-3 py-2 text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-700/30"
                 />
               </label>
+              <label className="flex items-start gap-2 text-[11px] text-forest-700 leading-relaxed cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptPayTerms}
+                  onChange={(e) => setAcceptPayTerms(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  I accept the payment and smart-lock rules (version {LEGAL_VERSION})
+                  <Link to="/legal" className="underline text-forest-800 hover:text-forest-900"> — read them</Link>.
+                </span>
+              </label>
               <button
                 onClick={() => void sendProof()}
                 disabled={busy}
@@ -321,12 +388,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
               >
                 {busy ? 'Uploading…' : sent ? 'Send another proof' : 'Send my proof'}
               </button>
-            </div>
-          ) : (
-            <p className="mt-3 text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2 leading-relaxed">
-              {PROOF_UPLOAD_UNAVAILABLE_MESSAGE}
-            </p>
-          )}
+          </div>
         </div>
       )}
 

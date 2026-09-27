@@ -21,7 +21,7 @@ Single-context repo:
 │   ├── 0001-....md
 │   └── 0002-....md
 ├── src/          ← Guest website (React/TS): landing, /book, /account, /messages
-└── lib/          ← Admin mobile app (Dart): booking lifecycle, KYC/payment review, rates, chat, locks
+└── lib/          ← Admin mobile app (Dart): booking lifecycle, payment review, rates, chat, locks
 ```
 
 ## Use the glossary's vocabulary

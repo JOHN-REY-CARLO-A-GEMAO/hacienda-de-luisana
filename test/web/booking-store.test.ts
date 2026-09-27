@@ -75,13 +75,6 @@ describe('the booking store seam', () => {
   it('moves a Booking through the lifecycle and appends every step to its history', async () => {
     const submitted = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
-    const kyc = await cloudBookingsDB.transition(
-      submitted.id,
-      { type: 'UploadKyc', kyc_id_url: 'gs://ids/maria.jpg' },
-      { ...guest, now: NOW },
-    )
-    expect(kyc.ok).toBe(true)
-
     const approval = await cloudBookingsDB.transition(
       submitted.id,
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: await cloudBookingsDB.list() } },
@@ -89,31 +82,32 @@ describe('the booking store seam', () => {
     )
     expect(approval.ok).toBe(true)
 
+    // With Government ID KYC gone, approval lands the Booking on Payment
+    // Pending and stops the hold countdown.
     const stored = await cloudBookingsDB.get(submitted.id)
-    expect(stored?.status).toBe('Approved')
-    expect(stored?.kyc_status).toBe('approved')
+    expect(stored?.status).toBe('Payment Pending')
+    expect(stored?.hold_expires_at).toBeNull()
 
     const history = await activityLogDB.list(submitted.id)
     expect(history.map((entry) => [entry.action, entry.from_status, entry.to_status])).toEqual([
       ['Submit', 'Pending', 'Pending'],
-      ['UploadKyc', 'Pending', 'KYC Submitted'],
-      ['Approve', 'KYC Submitted', 'Approved'],
+      ['Approve', 'Pending', 'Payment Pending'],
     ])
-    expect(history.map((entry) => entry.actor)).toEqual(['guest', 'guest', 'admin'])
+    expect(history.map((entry) => entry.actor)).toEqual(['guest', 'admin'])
   })
 
   it('refuses an illegal transition and changes nothing, leaving no entry behind', async () => {
     const submitted = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
-    // No KYC submitted yet, so the Admin cannot approve.
+    // Payment has not been opened yet, so nothing can be verified.
     const refused = await cloudBookingsDB.transition(
       submitted.id,
-      { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
+      { type: 'VerifyPayment', amount_verified: 10500 },
       { ...admin, now: NOW },
     )
 
     expect(refused.ok).toBe(false)
-    if (!refused.ok) expect(refused.reason).toMatch(/KYC/)
+    if (!refused.ok) expect(refused.reason).toMatch(/Payment Pending/)
 
     const stored = await cloudBookingsDB.get(submitted.id)
     expect(stored?.status).toBe('Pending')
@@ -126,15 +120,6 @@ describe('the booking store seam', () => {
       { ...request, guest_name: 'JP Santos', email: 'jp@example.com', check_in: '2026-10-03', check_out: '2026-10-06' },
       { ...guest, now: NOW },
     )
-
-    for (const booking of [first, second]) {
-      const kyc = await cloudBookingsDB.transition(
-        booking.id,
-        { type: 'UploadKyc', kyc_id_url: `gs://ids/${booking.id}.jpg` },
-        { ...guest, now: NOW },
-      )
-      expect(kyc.ok).toBe(true)
-    }
 
     // The Main House holds one Booking at a time, and the re-check reads what is
     // stored at the moment of approval — never a list captured earlier.
@@ -158,8 +143,8 @@ describe('the booking store seam', () => {
     }
 
     // The refused Booking is untouched, and a refusal is not logged as a change.
-    expect((await cloudBookingsDB.get(second.id))?.status).toBe('KYC Submitted')
-    expect((await activityLogDB.list(second.id)).map((entry) => entry.action)).toEqual(['Submit', 'UploadKyc'])
+    expect((await cloudBookingsDB.get(second.id))?.status).toBe('Pending')
+    expect((await activityLogDB.list(second.id)).map((entry) => entry.action)).toEqual(['Submit'])
   })
 
   it('approves up to every unit of a multi-unit Accommodation, and no further', async () => {
@@ -170,12 +155,6 @@ describe('the booking store seam', () => {
         { ...request, accommodation: 'house-a-camping', guest_name: guestName },
         { ...guest, now: NOW },
       )
-      const kyc = await cloudBookingsDB.transition(
-        booking.id,
-        { type: 'UploadKyc', kyc_id_url: `gs://ids/${booking.id}.jpg` },
-        { ...guest, now: NOW },
-      )
-      expect(kyc.ok).toBe(true)
       return booking
     }
 

@@ -4,7 +4,7 @@
 // ----------------------------------------------------------------------------
 // The one place a Booking's state changes. Every action is checked against the
 // legal transitions, the actor allowed to take it, and the facts it depends on
-// (KYC submitted, dates still free, money verified), and every accepted action
+// (dates still free, money verified), and every accepted action
 // returns the Activity log entries it owes — so a transition cannot happen
 // unlogged (spec #9).
 //
@@ -26,7 +26,6 @@ import { roundMoney } from './internal'
 import type { PaymentPlan } from './money'
 import type { PolicySnapshot } from './rates'
 
-export type KycStatus = 'required' | 'submitted' | 'approved' | 'rejected'
 export type PaymentStatus = 'unpaid' | 'pending' | 'verified' | 'rejected'
 export type RefundStatus = 'none' | 'initiated' | 'refunded'
 
@@ -39,16 +38,19 @@ export type BookingState = {
   check_out: string
   guests?: number
   status: BookingStatus | string
-  kyc_status?: KycStatus | string
-  kyc_id_url?: string | null
-  /** The receipt the Guest sends alongside the ID; the Admin app reviews both. */
-  kyc_receipt_url?: string | null
-  kyc_reject_reason?: string | null
   /** Why the Admin refused this Booking at review. */
   rejection_reason?: string | null
   payment_plan?: PaymentPlan
   payment_status?: PaymentStatus | string
+  /**
+   * Where the proof bytes live: a Supabase Storage path in cloud mode, a
+   * local demo-mode path otherwise (ADR-0011). Dual-written with
+   * `payment_proof_url`, which stays canonical for verification.
+   */
   payment_proof_url?: string | null
+  paymentProofUrl?: string | null
+  /** The reference number OCR read off the receipt, as extracted (never verified). */
+  extractedRefNumber?: string | null
   payment_reject_reason?: string | null
   /** What the Guest says they sent, before the Admin verifies it. */
   amount_claimed?: number
@@ -102,10 +104,8 @@ export type AvailabilityCheck = {
 }
 
 export type BookingAction =
-  | { type: 'UploadKyc'; kyc_id_url: string; kyc_receipt_url?: string }
   | { type: 'Approve'; availability: AvailabilityCheck }
   | { type: 'Reject'; reason: string }
-  | { type: 'RejectKyc'; reason: string }
   | {
       type: 'ChoosePaymentPlan'
       plan: PaymentPlan
@@ -121,6 +121,10 @@ export type BookingAction =
   | {
       type: 'UploadPaymentProof'
       payment_proof_url: string
+      /** Storage path twin of `payment_proof_url` (ADR-0011). */
+      paymentProofUrl?: string
+      /** OCR-extracted reference kept alongside the proof (never verified). */
+      extractedRefNumber?: string
       amount_claimed?: number
       payment_reference?: string
       ocr_reference?: string
@@ -135,7 +139,6 @@ export type BookingAction =
       refund?: { rateCard?: RateCard; policy?: RefundPolicy; damageDeduction?: number }
     }
   | { type: 'MarkRefunded' }
-  | { type: 'PurgeKyc' }
   | { type: 'RevokeKey' }
   | { type: 'Expire' }
   | { type: 'CheckIn' }
@@ -204,36 +207,32 @@ const ACTION_RULES: Record<
   BookingAction['type'],
   { actors: readonly ActorKind[]; from: readonly BookingStatus[]; to: BookingStatus | 'stays' }
 > = {
-  UploadKyc: { actors: ['guest'], from: ['Pending', 'KYC Submitted'], to: 'KYC Submitted' },
-  Approve: { actors: ['admin'], from: ['KYC Submitted'], to: 'Approved' },
-  Reject: { actors: ['admin'], from: ['Pending', 'KYC Submitted', 'Approved'], to: 'Rejected' },
-  // Refusing an ID asks the Guest for another one inside the remaining hold, so
-  // it records a decision rather than moving the Booking (flow §2 step 6b).
-  // Refusing the Booking outright is `Reject`, which releases the dates.
-  RejectKyc: { actors: ['admin'], from: ['KYC Submitted'], to: 'stays' },
-  ChoosePaymentPlan: { actors: ['guest'], from: ['Approved'], to: 'Payment Pending' },
+  // The Admin's review lands directly on `Payment Pending`: with Government ID
+  // KYC gone, approving a Booking *is* opening it for payment (ADR-0001 —
+  // nothing moves before the Admin has said yes).
+  Approve: { actors: ['admin'], from: ['Pending'], to: 'Payment Pending' },
+  // `Payment Pending` covers everything the pre-KYC `Approved` stage covered:
+  // an approved Booking the Guest has not paid for yet, and one whose proof is
+  // already in — rejecting either is a pre-money rejection.
+  Reject: { actors: ['admin'], from: ['Pending', 'Payment Pending'], to: 'Rejected' },
+  ChoosePaymentPlan: { actors: ['guest'], from: ['Payment Pending'], to: 'stays' },
   UploadPaymentProof: { actors: ['guest'], from: ['Payment Pending'], to: 'stays' },
   VerifyPayment: { actors: ['admin'], from: ['Payment Pending'], to: 'Reserved' },
   RejectPaymentProof: { actors: ['admin'], from: ['Payment Pending'], to: 'stays' },
   Cancel: {
     actors: ['guest', 'admin'],
-    from: ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending', 'Reserved'],
+    from: ['Pending', 'Payment Pending', 'Reserved'],
     to: 'Cancelled',
   },
   // Flow §2 step 11: the Refund pipeline ends when the money is back with the
   // Guest. The Booking stays Cancelled; the Refund is what moves.
   MarkRefunded: { actors: ['admin'], from: ['Cancelled'], to: 'stays' },
-  // The ID's purpose ended at approval, so purging erases the documents from
-  // Storage and clears the URLs, within 30 days of check-out (RA 10173). It
-  // stays available while the Guest is still staying: erasure is the data
-  // subject's right and does not wait for the door to close.
-  PurgeKyc: { actors: ['admin'], from: ['Staying', 'Checked-Out', 'Completed'], to: 'stays' },
   // An access decision, not a lifecycle move: the Admin pulls the Credential
   // from a stay that is live. The Booking does not move; the lock's allowlist
   // entry is removed on the next physical touch (first hardware generation),
   // and the log records who decided and when.
   RevokeKey: { actors: ['admin'], from: ['Reserved', 'Checked-In', 'Staying'], to: 'stays' },
-  Expire: { actors: ['system'], from: ['Pending', 'KYC Submitted'], to: 'Expired' },
+  Expire: { actors: ['system'], from: ['Pending'], to: 'Expired' },
   // The first successful Credential use on the check-in day (flow §3 step 6).
   CheckIn: { actors: ['system', 'admin'], from: ['Reserved'], to: 'Checked-In' },
   BeginStay: { actors: ['system', 'admin'], from: ['Checked-In'], to: 'Staying' },
@@ -314,22 +313,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
   let reason: string | undefined
 
   switch (action.type) {
-    case 'UploadKyc': {
-      if (!action.kyc_id_url.trim()) return refuse('A government ID has to be attached before it can be reviewed.')
-      patch.kyc_status = 'submitted'
-      patch.kyc_id_url = action.kyc_id_url
-      // Only touched when the Guest actually sent one, so resending the ID alone
-      // does not wipe a receipt that is already on file.
-      if (action.kyc_receipt_url !== undefined) patch.kyc_receipt_url = action.kyc_receipt_url
-      // A resubmission clears the Admin's rejection: the Guest fixed what was wrong.
-      if (booking.kyc_reject_reason) patch.kyc_reject_reason = null
-      break
-    }
-
     case 'Approve': {
-      if (normalizeKyc(booking.kyc_status) !== 'submitted') {
-        return refuse('The Guest has to submit a government ID (KYC) before the Admin can approve.')
-      }
       // G2: the system re-checks availability at approval, not the Admin's eyeball.
       const conflicts = findDateConflicts(booking, action.availability.bookings, {
         unitsAvailable: action.availability.unitsAvailable,
@@ -343,8 +327,7 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
           conflicts,
         )
       }
-      patch.kyc_status = 'approved'
-      // Approved means the dates are firmly held: the countdown stops here.
+      // Approval means the dates are firmly held: the countdown stops here.
       patch.hold_expires_at = null
       break
     }
@@ -353,21 +336,6 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       if (!action.reason.trim()) return refuse('A rejection has to say why, so the Guest knows what to fix.')
       reason = action.reason
       patch.rejection_reason = action.reason
-      if (normalizeKyc(booking.kyc_status) === 'submitted') {
-        patch.kyc_status = 'rejected'
-        patch.kyc_reject_reason = action.reason
-      }
-      break
-    }
-
-    case 'RejectKyc': {
-      if (!action.reason.trim()) {
-        return refuse('Say why the ID was refused — a Guest who is not told why cannot send the right one.')
-      }
-      if (!booking.kyc_id_url) return refuse('There is no government ID uploaded yet to review.')
-      reason = action.reason
-      patch.kyc_status = 'rejected'
-      patch.kyc_reject_reason = action.reason
       break
     }
 
@@ -406,6 +374,8 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
     case 'UploadPaymentProof': {
       if (!action.payment_proof_url.trim()) return refuse('Payment proof has to be attached before it can be verified.')
       patch.payment_proof_url = action.payment_proof_url
+      patch.paymentProofUrl = action.paymentProofUrl ?? action.payment_proof_url
+      if (action.extractedRefNumber) patch.extractedRefNumber = action.extractedRefNumber
       patch.payment_status = 'pending'
       if (action.amount_claimed !== undefined) patch.amount_claimed = action.amount_claimed
       if (action.payment_reference) patch.payment_reference = action.payment_reference
@@ -440,6 +410,8 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       if (action.guestResubmits) {
         // The Guest sends another proof inside the same Payment Pending stage.
         patch.payment_proof_url = null
+        patch.paymentProofUrl = null
+        patch.extractedRefNumber = null
         break
       }
       // Flow §2 step 9: no verified money yet, so there is nothing to refund.
@@ -476,19 +448,6 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       }
       reason = 'Refund returned to the Guest.'
       patch.refund_status = 'refunded'
-      break
-    }
-
-    case 'PurgeKyc': {
-      // The erasure has to be real: nothing is cleared and nothing is logged
-      // when there is nothing left to erase, so the Activity log never claims
-      // a purge that did not happen.
-      if (!booking.kyc_id_url && !booking.kyc_receipt_url) {
-        return refuse('There is no government ID or receipt left to purge on this Booking.')
-      }
-      reason = 'Government ID and receipt purged from Storage after the stay; the URLs are cleared (RA 10173).'
-      patch.kyc_id_url = null
-      patch.kyc_receipt_url = null
       break
     }
 
@@ -560,28 +519,6 @@ function normalizeRefund(status: RefundStatus | string | undefined): RefundStatu
       return 'refunded'
     default:
       return 'none'
-  }
-}
-
-/**
- * `kyc_status` as the lifecycle reads it, whatever casing the document was
- * written with. Exported so the screens show the same verdict the rules apply,
- * rather than each growing their own.
- */
-export function normalizeKycStatus(status: KycStatus | string | undefined): KycStatus {
-  return normalizeKyc(status)
-}
-
-function normalizeKyc(status: KycStatus | string | undefined): KycStatus {
-  switch ((status ?? 'required').toString().toLowerCase()) {
-    case 'submitted':
-      return 'submitted'
-    case 'approved':
-      return 'approved'
-    case 'rejected':
-      return 'rejected'
-    default:
-      return 'required'
   }
 }
 
