@@ -187,7 +187,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                     case 'status':
                       return a.rawStatus.compareTo(b.rawStatus);
                     default:
-                      return b.checkIn.compareTo(a.checkIn);
+                      return b.checkInDate.compareTo(a.checkInDate);
                   }
                 });
                 final totalPages = (filtered.length / _pageSize).ceil().clamp(1, 9999);
