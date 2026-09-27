@@ -32,7 +32,7 @@ class AuthStore extends ChangeNotifier {
   /// storage.rules and src/lib/auth/profile.ts.
   static const List<String> kAdminEmails = [
     'haciendadeluisiana@gmail.com',
-    'gemaojohnreycarloarguilles@gmail.com',
+    'gemaojohnreyarguilles@gmail.com',
   ];
 
   /// The address pre-filled on the sign-in screen.

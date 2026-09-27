@@ -57,7 +57,7 @@ service cloud.firestore {
     // AuthStore.kAdminEmails in lib/services/auth_store.dart.
     // Anonymous uids carry no email claim, so a Guest can never satisfy it.
     function adminEmails() {
-      return ['haciendadeluisiana@gmail.com', 'gemaojohnreycarloarguilles@gmail.com'];
+      return ['haciendadeluisiana@gmail.com', 'gemaojohnreyarguilles@gmail.com'];
     }
 
     function profileOf(uid) {
