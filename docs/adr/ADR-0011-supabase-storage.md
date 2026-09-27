@@ -48,9 +48,11 @@ stays Firestore. Only the **file bytes** move.
   (10–13 digit GCash / Maya / bank references, see `payments/ocr.ts`); the
   extracted value is stored on the document as `extractedRefNumber`. OCR is
   never verification — the Admin still matches reference and amount.
-- **Bucket policy is operational, not in-repo:** create a private bucket named
-  `payment-proofs` (5 MB image limit to mirror `payments/contract.ts`); the web
-  app writes with the anon key, the Admin reads through the same project.
+- **The bucket and its policies live in the repo:** `supabase/01-storage.sql`
+  creates the private bucket (`payment-proofs`, 5 MB to mirror
+  `payments/contract.ts`) and grants the web app's `anon` role write under
+  `payments/`. The Admin does **not** read with the anon key — see the
+  amendment below.
 
 ## Consequences
 
@@ -66,3 +68,25 @@ stays Firestore. Only the **file bytes** move.
   `extractedRefNumber` — in `affectedKeys`, still only from `Payment Pending`.
 - Anything downstream that wants a *URL* must sign the path at read time;
   nothing stores one, so no stored link can expire.
+
+## Amendment — the Admin read is a signed URL, not an anon read (2026-09-27)
+
+The decision above originally left the Admin reading "through the same
+project", which in practice meant reading with the `anon` key. That is not
+safe here and the ADR was wrong to leave it open:
+
+- The `anon` key ships inside the public Vite bundle, so every visitor to the
+  website has it. A `select` policy for `anon` on `payment-proofs` publishes
+  every Guest's GCash/Maya reference number and amount to anyone who loads the
+  site. A payment proof is money-adjacent personal data (RA 10173).
+- So reads are deliberately **not** granted. `supabase/01-storage.sql` grants
+  `anon` insert and update under `payments/` and no `select` in any wording;
+  `test/web/supabase-storage.test.ts` fails if one ever appears.
+- The Admin reads through the edge function
+  `supabase/functions/admin-payment-proof`: it verifies the caller's Firebase
+  ID token, requires `profiles/{uid}.role == 'admin'`, and returns a
+  60-second signed URL. It carries no sixth copy of the bootstrap email
+  allowlist, so an Admin needs a `profiles/{uid}` document (ADR-0005).
+- The function is **unrun code** — no Supabase CLI or access token in this
+  repository, nothing deployed or exercised against a real bucket. Treat it as
+  a review item, not a working feature, until it has been deployed and tested.
