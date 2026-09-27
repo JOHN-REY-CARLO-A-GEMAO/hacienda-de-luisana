@@ -50,7 +50,7 @@ export const COMMITTED_PROJECT: FirebaseConfig = {
   // list fails Google sign-in with `auth/unauthorized-domain` (docs/FIREBASE_SETUP.md).
   authDomain: 'hacienda-de-luisana.firebaseapp.com',
   projectId: 'hacienda-de-luisana',
-  // The Cloud Storage bucket uploads land in (KYC documents, payment proofs).
+  // The Cloud Storage bucket (legacy payment proofs; new uploads go to Supabase).
   storageBucket: 'hacienda-de-luisana.firebasestorage.app',
   messagingSenderId: '648433185',
   // Empty until a Web app is registered in the Firebase console. Auth, Firestore

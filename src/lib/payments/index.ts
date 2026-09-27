@@ -1,7 +1,8 @@
-// ----------------------------------------------------------------------------
+// ------------------------------------------------------------------------------
 // Payment proof uploads: the /payments contract, and the web adapter that
-// writes to Firebase Storage under the Guest's own uid.
-// ----------------------------------------------------------------------------
+// writes the file to Supabase Storage (bucket `payment-proofs`) or, in demo
+// mode, this browser (ADR-0011).
+// ------------------------------------------------------------------------------
 export {
   PROOF_IMAGE_EXTENSIONS,
   PROOF_MAX_BYTES,
@@ -13,7 +14,6 @@ export {
 } from './contract'
 
 export {
-  PROOF_UPLOAD_UNAVAILABLE_MESSAGE,
   uploadPaymentProof,
   type ProofUploadFailureReason,
   type ProofUploadOutcome,

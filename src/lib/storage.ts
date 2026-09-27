@@ -7,10 +7,9 @@
 // an adapter at that seam, so it re-exports rather than redefining it.
 // `Confirmed` is retired: a stored Confirmed Booking reads as `Reserved`.
 export type { BookingStatus } from './booking'
-export type { KycStatus } from './booking'
 
 import { normalizeStatus } from './booking'
-import type { ActivityLogEntry, BookingState, BookingStatus, KycStatus } from './booking'
+import type { ActivityLogEntry, BookingState, BookingStatus } from './booking'
 
 /**
  * A Booking as stored.
@@ -104,7 +103,6 @@ function generateSampleBookings(): Booking[] {
       status: 'Reserved',
       created_at: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
       ref_id: 'HDL-7821',
-      kyc_status: 'approved',
     },
     {
       id: 'book-sample-2',
@@ -119,7 +117,6 @@ function generateSampleBookings(): Booking[] {
       status: 'Pending',
       created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
       ref_id: 'HDL-5510',
-      kyc_status: 'submitted',
     },
     {
       id: 'book-sample-3',
@@ -134,7 +131,6 @@ function generateSampleBookings(): Booking[] {
       status: 'Pending',
       created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
       ref_id: 'HDL-3199',
-      kyc_status: 'required',
     },
     {
       id: 'book-sample-4',
@@ -149,7 +145,6 @@ function generateSampleBookings(): Booking[] {
       status: 'Completed',
       created_at: new Date(Date.now() - 1000 * 60 * 60 * 120).toISOString(),
       ref_id: 'HDL-2041',
-      kyc_status: 'approved',
     },
   ]
 }
@@ -278,4 +273,134 @@ export const bookingsDB = {
   remove(id: string) {
     writeAll(readAll().filter((b) => b.id !== id))
   },
+}
+
+// ----------------------------------------------------------------------------
+// Payment proof storage (ADR-0011): the bytes land in Supabase Storage's
+// `payment-proofs` bucket in cloud mode, and in this browser's localStorage in
+// demo mode (no VITE_SUPABASE_* keys) — the same demo-mode fallback the site
+// already uses for Firebase itself. Either way the caller records the returned
+// file path on the Booking as `paymentProofUrl` / `payment_proof_url`.
+// ----------------------------------------------------------------------------
+
+/** Why a proof could not be stored. */
+export type ProofStorageFailure = {
+  ok: false
+  message: string
+}
+
+/** The stored proof: its path inside the bucket (or local store), and where it went. */
+export type ProofStorageSuccess = {
+  ok: true
+  /** The file path to record on the Booking — `payment-proof` path, not a URL. */
+  path: string
+  /** `supabase` in cloud mode, `local` in this browser. */
+  mode: 'supabase' | 'local'
+}
+
+export type ProofStorageOutcome = ProofStorageSuccess | ProofStorageFailure
+
+/** localStorage key holding demo-mode proofs: { [path]: dataURL }. */
+const LOCAL_PROOF_KEY = 'hdl:payment-proofs'
+
+/**
+ * How long one proof upload may run before the UI stops waiting for it.
+ * A stalled connection otherwise leaves the form on "Uploading…" forever.
+ */
+const PROOF_UPLOAD_TIMEOUT_MS = 60_000
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('upload-timeout')), ms)
+    // Node/jsdom timers are objects and would keep the test process alive.
+    ;(timer as { unref?: () => void }).unref?.()
+    work.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('read-failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
+ * Uploads one downpayment screenshot to the Supabase Storage bucket
+ * `payment-proofs` under `path` and returns that same path for the Booking
+ * document. Files are validated by the caller (payments/contract).
+ *
+ * Demo mode — neither `VITE_SUPABASE_URL` nor `VITE_SUPABASE_ANON_KEY` set —
+ * keeps the file in this browser's localStorage as a data URL so the Admin-side
+ * story stays honest: nothing pretends to reach the Hacienda (see ADR-0011).
+ */
+export async function uploadPaymentProofFile(input: {
+  file: File
+  path: string
+}): Promise<ProofStorageOutcome> {
+  const { supabase, PAYMENT_PROOFS_BUCKET, isSupabaseConfigured } = await import('./supabase')
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await withTimeout(
+        supabase.storage.from(PAYMENT_PROOFS_BUCKET).upload(input.path, input.file, {
+          contentType: input.file.type || 'application/octet-stream',
+          // A re-send of the same Booking's proof replaces the old bytes rather
+          // than failing on a name collision: one proof per Booking reference.
+          upsert: true,
+        }),
+        PROOF_UPLOAD_TIMEOUT_MS,
+      )
+      if (error) {
+        console.warn('[Payments] Supabase upload failed', error)
+        return { ok: false, message: describeProofFailure(error.message, false) }
+      }
+      return { ok: true, path: input.path, mode: 'supabase' }
+    } catch (e) {
+      console.warn('[Payments] Supabase upload failed', e)
+      const stalled = e instanceof Error && e.message === 'upload-timeout'
+      return { ok: false, message: describeProofFailure(undefined, stalled) }
+    }
+  }
+
+  // Demo mode: this browser only.
+  try {
+    const dataUrl = await withTimeout(fileToDataUrl(input.file), PROOF_UPLOAD_TIMEOUT_MS)
+    const raw = window.localStorage.getItem(LOCAL_PROOF_KEY)
+    const store: Record<string, string> = raw ? JSON.parse(raw) : {}
+    store[input.path] = dataUrl
+    window.localStorage.setItem(LOCAL_PROOF_KEY, JSON.stringify(store))
+    return { ok: true, path: input.path, mode: 'local' }
+  } catch (e) {
+    console.warn('[Payments] local demo storage failed', e)
+    const quota = e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')
+    return {
+      ok: false,
+      message: quota
+        ? 'This browser is out of storage space for demo receipts. Use a smaller photo, ' +
+          'or a deployment with Supabase keys configured, and try again.'
+        : describeProofFailure(undefined, false),
+    }
+  }
+}
+
+function describeProofFailure(detail: string | undefined, stalled: boolean): string {
+  if (stalled) {
+    return 'That upload is taking too long — your connection may have stalled. Please try ' +
+      'again on a steadier connection, with a smaller photo.'
+  }
+  return detail
+    ? `That upload did not go through (${detail}). Please check your connection and try again.`
+    : 'That upload did not go through. Please check your connection and try again.'
 }

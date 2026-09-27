@@ -8,7 +8,6 @@ import { isFirebaseConfigured } from '../lib/firebase'
 import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
-import { KycUpload } from '../components/Booking/KycUpload'
 import { useAuth } from '../hooks/useAuth'
 import {
   guestCountValid,
@@ -565,13 +564,6 @@ function SuccessScreen({
           {booking && (
             <div className="mt-6 text-left">
               <HoldCountdown booking={booking} />
-            </div>
-          )}
-
-          {/* Step 2 — the ID goes with the request, not in a separate visit (#13) */}
-          {booking && (
-            <div className="mt-3 text-left">
-              <KycUpload booking={booking} />
             </div>
           )}
 

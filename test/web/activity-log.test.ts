@@ -33,11 +33,10 @@ beforeEach(() => {
 describe('the Activity log records every state change', () => {
   it('names the previous status, the new status and the reason for a change', async () => {
     const booking = await cloudBookingsDB.add(request, { ...guest, now: NOW })
-    await cloudBookingsDB.transition(booking.id, { type: 'UploadKyc', kyc_id_url: 'gs://ids/1.jpg' }, { ...guest, now: NOW })
 
     const rejected = await cloudBookingsDB.transition(
       booking.id,
-      { type: 'Reject', reason: 'Government ID expired last month' },
+      { type: 'Reject', reason: 'The Guest stopped replying — the dates go back into the pool' },
       { ...admin, now: NOW },
     )
     expect(rejected.ok).toBe(true)
@@ -45,33 +44,33 @@ describe('the Activity log records every state change', () => {
     const history = await activityLogDB.list(booking.id)
     expect(history.at(-1)).toMatchObject({
       action: 'Reject',
-      from_status: 'KYC Submitted',
+      from_status: 'Pending',
       to_status: 'Rejected',
       actor: 'admin',
       actor_id: 'admin-1',
       at: NOW,
-      reason: 'Government ID expired last month',
+      reason: 'The Guest stopped replying — the dates go back into the pool',
     })
   })
 
   it('reads back in the order things happened, even when they happened in the same instant', async () => {
     const booking = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
-    // A Guest uploading an ID and the Admin approving it inside the same
+    // The Admin approving and the Guest choosing their plan inside the same
     // millisecond is unusual but legal: the order must not depend on the clock
     // having moved on.
     for (const action of [
-      { type: 'UploadKyc', kyc_id_url: 'gs://ids/1.jpg' },
       { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
+      { type: 'ChoosePaymentPlan', plan: 'full', rateCard: { nightlyRate: 10000, securityDeposit: 500 } },
     ] as const) {
-      const actor = action.type === 'UploadKyc' ? guest : admin
+      const actor = action.type === 'Approve' ? admin : guest
       const result = await cloudBookingsDB.transition(booking.id, action, { ...actor, now: NOW })
       expect(result.ok).toBe(true)
     }
 
     const history = await activityLogDB.list(booking.id)
-    expect(history.map((entry) => entry.action)).toEqual(['Submit', 'UploadKyc', 'Approve'])
-    expect(history.map((entry) => entry.to_status)).toEqual(['Pending', 'KYC Submitted', 'Approved'])
+    expect(history.map((entry) => entry.action)).toEqual(['Submit', 'Approve', 'ChoosePaymentPlan'])
+    expect(history.map((entry) => entry.to_status)).toEqual(['Pending', 'Payment Pending', 'Payment Pending'])
 
     // The sequence is part of the record, so a reader can order it without
     // trusting two timestamps to differ.
@@ -82,9 +81,13 @@ describe('the Activity log records every state change', () => {
     const first = await cloudBookingsDB.add(request, { ...guest, now: NOW })
     const second = await cloudBookingsDB.add({ ...request, guest_name: 'JP Santos' }, { ...guest, now: NOW })
 
-    await cloudBookingsDB.transition(first.id, { type: 'UploadKyc', kyc_id_url: 'gs://ids/1.jpg' }, { ...guest, now: NOW })
+    await cloudBookingsDB.transition(
+      first.id,
+      { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } },
+      { ...admin, now: NOW },
+    )
 
-    expect((await activityLogDB.list(first.id)).map((e) => e.action)).toEqual(['Submit', 'UploadKyc'])
+    expect((await activityLogDB.list(first.id)).map((e) => e.action)).toEqual(['Submit', 'Approve'])
     expect((await activityLogDB.list(second.id)).map((e) => e.action)).toEqual(['Submit'])
   })
 
@@ -120,8 +123,8 @@ describe('describeActivity', () => {
   const entry = (over: Partial<ActivityLogEntry> = {}): ActivityLogEntry => ({
     booking_id: 'book-1',
     action: 'Approve',
-    from_status: 'KYC Submitted',
-    to_status: 'Approved',
+    from_status: 'Pending',
+    to_status: 'Payment Pending',
     actor: 'admin',
     actor_id: 'admin-1',
     actor_name: 'Ana Luisana',
@@ -134,7 +137,7 @@ describe('describeActivity', () => {
     const line = describeActivity(entry())
 
     expect(line.headline).toBe('Booking approved')
-    expect(line.change).toBe('KYC Submitted → Approved')
+    expect(line.change).toBe('Pending → Payment Pending')
     expect(line.actor).toBe('Ana Luisana (Admin)')
     expect(line.at).toBe('2026-09-20T01:00:00.000Z')
     expect(line.reason).toBeUndefined()
@@ -156,8 +159,8 @@ describe('describeActivity', () => {
     expect(describeActivity(entry({ action: 'Submit', from_status: 'Pending', to_status: 'Pending' })).headline).toBe(
       'Booking submitted',
     )
-    expect(describeActivity(entry({ action: 'UploadKyc', to_status: 'KYC Submitted' })).headline).toBe(
-      'Government ID uploaded for KYC',
+    expect(describeActivity(entry({ action: 'ChoosePaymentPlan', to_status: 'Payment Pending' })).headline).toBe(
+      'Payment plan chosen',
     )
     expect(describeActivity(entry({ action: 'Reject', to_status: 'Rejected' })).headline).toBe('Booking rejected')
     expect(describeActivity(entry({ action: 'VerifyPayment', to_status: 'Reserved' })).headline).toBe(

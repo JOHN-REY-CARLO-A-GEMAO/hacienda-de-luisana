@@ -25,8 +25,6 @@ describe('Booking status vocabulary', () => {
   it('is the canonical set from CONTEXT.md, in lifecycle order', () => {
     expect(BOOKING_STATUSES).toEqual([
       'Pending',
-      'KYC Submitted',
-      'Approved',
       'Payment Pending',
       'Payment Verified',
       'Reserved',
@@ -54,14 +52,21 @@ describe('normalizeStatus migrates stored Booking statuses on read', () => {
 
   it('reads a canonical status as itself', () => {
     expect(normalizeStatus('Pending')).toBe('Pending')
-    expect(normalizeStatus('KYC Submitted')).toBe('KYC Submitted')
+    expect(normalizeStatus('Payment Pending')).toBe('Payment Pending')
     expect(normalizeStatus('Reserved')).toBe('Reserved')
   })
 
+  it('reads retired Government ID KYC-era statuses as their successors', () => {
+    expect(normalizeStatus('KYC Submitted')).toBe('Pending')
+    expect(normalizeStatus('kyc_submitted')).toBe('Pending')
+    expect(normalizeStatus('Approved')).toBe('Payment Pending')
+    expect(normalizeStatus('approved')).toBe('Payment Pending')
+  })
+
   it('tolerates the casing and separators used by the Flutter guest app', () => {
-    expect(normalizeStatus('kyc_submitted')).toBe('KYC Submitted')
     expect(normalizeStatus('CHECKED-IN')).toBe('Checked-In')
     expect(normalizeStatus('  payment verified ')).toBe('Payment Verified')
+    expect(normalizeStatus('payment_pending')).toBe('Payment Pending')
     expect(normalizeStatus('confirmed')).toBe('Reserved')
   })
 
@@ -72,15 +77,14 @@ describe('normalizeStatus migrates stored Booking statuses on read', () => {
   })
 })
 
-// CONTEXT.md § Booking status: Pending → KYC Submitted → Approved → Payment
-// Pending → Payment Verified → Reserved → Checked-In → Staying → Checked-Out →
-// Completed, with the terminal branches Rejected, Cancelled and Expired.
+// CONTEXT.md § Booking status: Pending → Payment Pending → Payment Verified →
+// Reserved → Checked-In → Staying → Checked-Out → Completed, with the terminal
+// branches Rejected, Cancelled and Expired (Government ID KYC removed
+// 2026-09-27 — an approval lands directly on Payment Pending).
 describe('canTransition', () => {
   it('walks the main lifecycle one step at a time', () => {
     const mainFlow: BookingStatus[] = [
       'Pending',
-      'KYC Submitted',
-      'Approved',
       'Payment Pending',
       'Payment Verified',
       'Reserved',
@@ -95,26 +99,26 @@ describe('canTransition', () => {
     }
   })
 
-  it('refuses to skip the Admin review or the payment verification', () => {
-    // ADR-0001: approval happens before any money moves.
-    expect(canTransition('Pending', 'Approved')).toBe(false)
-    expect(canTransition('Pending', 'Payment Pending')).toBe(false)
-    expect(canTransition('KYC Submitted', 'Payment Pending')).toBe(false)
+  it('refuses to skip the approval chain: verification and arrival are their own steps', () => {
+    // ADR-0001: approval happens before any money moves — it is the one step
+    // that carries Pending into payment (and the action re-checks G2).
+    expect(canTransition('Pending', 'Payment Pending')).toBe(true)
     // Money is only ever trusted once the Admin has verified the proof.
-    expect(canTransition('Approved', 'Reserved')).toBe(false)
+    expect(canTransition('Pending', 'Payment Verified')).toBe(false)
+    expect(canTransition('Pending', 'Reserved')).toBe(false)
     expect(canTransition('Payment Pending', 'Reserved')).toBe(false)
     // No self-service arrival: Checked-In comes out of Reserved only.
-    expect(canTransition('Approved', 'Checked-In')).toBe(false)
+    expect(canTransition('Pending', 'Checked-In')).toBe(false)
+    expect(canTransition('Payment Pending', 'Checked-In')).toBe(false)
   })
 
   it('reaches every terminal branch from the statuses that are still live', () => {
     expect(canTransition('Pending', 'Expired')).toBe(true)
     expect(canTransition('Pending', 'Rejected')).toBe(true)
     expect(canTransition('Pending', 'Cancelled')).toBe(true)
-    expect(canTransition('KYC Submitted', 'Rejected')).toBe(true)
-    expect(canTransition('Approved', 'Rejected')).toBe(true)
-    expect(canTransition('Approved', 'Cancelled')).toBe(true)
+    expect(canTransition('Payment Pending', 'Rejected')).toBe(true)
     expect(canTransition('Payment Pending', 'Cancelled')).toBe(true)
+    expect(canTransition('Payment Verified', 'Cancelled')).toBe(true)
     expect(canTransition('Reserved', 'Cancelled')).toBe(true)
   })
 
@@ -126,7 +130,6 @@ describe('canTransition', () => {
     }
     // ADR-0002: the Date hold is the claim a Booking places on its dates *while
     // it waits for review*. Once approved, the dates are firmly held.
-    expect(canTransition('Approved', 'Expired')).toBe(false)
     expect(canTransition('Payment Pending', 'Expired')).toBe(false)
     expect(canTransition('Reserved', 'Expired')).toBe(false)
   })
@@ -170,8 +173,6 @@ describe('holdsDates', () => {
   it('is true for every status that still claims its dates', () => {
     for (const status of [
       'Pending',
-      'KYC Submitted',
-      'Approved',
       'Payment Pending',
       'Payment Verified',
       'Reserved',
@@ -203,13 +204,11 @@ describe('hold expiry at read time', () => {
   it('expires a Booking still waiting for review that carries no hold expiry at all', () => {
     // A legacy document from before holds existed must not claim dates forever.
     expect(isHoldExpired({ status: 'Pending' }, HOLD)).toBe(true)
-    expect(isHoldExpired({ status: 'KYC Submitted' }, HOLD)).toBe(true)
   })
 
   it('never expires a Booking the Admin has already acted on', () => {
     const longPast = '2030-01-01T00:00:00.000Z'
     for (const status of [
-      'Approved',
       'Payment Pending',
       'Reserved',
       'Checked-In',
@@ -298,7 +297,7 @@ describe('findDateConflicts', () => {
 
   it('excludes the Booking being re-checked, so approving a Booking never conflicts with itself', () => {
     const bookings = [
-      held('self', '2026-10-01', '2026-10-05', { status: 'KYC Submitted' }),
+      held('self', '2026-10-01', '2026-10-05', { status: 'Pending' }),
       held('other', '2026-10-03', '2026-10-06', { status: 'Reserved' }),
     ]
 
@@ -347,7 +346,7 @@ describe('findDateConflicts', () => {
     const request = { accommodation: 'main-house', check_in: '2026-10-01', check_out: '2026-10-05' }
     const bookings = [
       held('waiting', '2026-10-01', '2026-10-05', {
-        status: 'KYC Submitted',
+        status: 'Pending',
         hold_expires_at: new Date(Date.parse(HOLD) + HOUR).toISOString(),
       }),
       held('committed', '2026-10-01', '2026-10-05', { status: 'Reserved' }),

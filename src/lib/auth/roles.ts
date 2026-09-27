@@ -80,7 +80,6 @@ export const PERMISSIONS = [
   'booking:create',
   'booking:read:own',
   'booking:update:own',
-  'kyc:upload',
   // Operating the hacienda — the Admin app.
   'bookings:read:all',
   'bookings:review',
@@ -90,7 +89,6 @@ export const PERMISSIONS = [
   'refunds:mark',
   'stays:progress',
   'stays:complete',
-  'kyc:read',
   'access-logs:read',
   'access-logs:correct',
   'guest-location:read',
@@ -102,7 +100,7 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number]
 
 /** The permissions that belong to a Guest's own Booking. */
-const GUEST_PERMISSIONS: readonly Permission[] = ['booking:create', 'booking:read:own', 'booking:update:own', 'kyc:upload']
+const GUEST_PERMISSIONS: readonly Permission[] = ['booking:create', 'booking:read:own', 'booking:update:own']
 
 /**
  * What each role may do.

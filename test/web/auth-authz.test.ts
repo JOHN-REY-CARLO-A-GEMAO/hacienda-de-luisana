@@ -38,16 +38,11 @@ beforeEach(() => {
 })
 
 /** A Booking at each stage of the journey, reached the way the real one is. */
-async function atStage(stage: 'Pending' | 'KYC Submitted' | 'Approved' | 'Payment Pending' | 'Reserved' | 'Checked-Out') {
+async function atStage(stage: 'Pending' | 'Payment Pending' | 'Reserved' | 'Checked-Out') {
   const booking = await cloudBookingsDB.add(request, guest)
   if (stage === 'Pending') return booking.id
 
-  await expectAccepted(booking.id, { type: 'UploadKyc', kyc_id_url: 'gs://kyc/guest-1/id.jpg' }, guest)
-  if (stage === 'KYC Submitted') return booking.id
-
   await expectAccepted(booking.id, { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } }, admin)
-  if (stage === 'Approved') return booking.id
-
   await expectAccepted(booking.id, { type: 'ChoosePaymentPlan', plan: 'full', rateCard }, guest)
   if (stage === 'Payment Pending') return booking.id
 
@@ -68,8 +63,8 @@ async function expectAccepted(id: string, action: Parameters<typeof cloudBooking
 }
 
 describe('what a Guest may do through the API', () => {
-  it('submits a Booking, sends an ID, and withdraws before the Admin decides', async () => {
-    const id = await atStage('KYC Submitted')
+  it('submits a Booking and withdraws before the Admin decides', async () => {
+    const id = await atStage('Pending')
 
     const withdrawn = await cloudBookingsDB.transition(
       id,
@@ -82,7 +77,7 @@ describe('what a Guest may do through the API', () => {
   })
 
   it('cannot approve, verify or complete anything — not even its own Booking', async () => {
-    const id = await atStage('KYC Submitted')
+    const id = await atStage('Pending')
 
     const approve = await cloudBookingsDB.transition(
       id,
@@ -102,7 +97,7 @@ describe('what a Guest may do through the API', () => {
     expect(complete.ok).toBe(false)
 
     // Nothing moved while those were refused.
-    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'KYC Submitted' })
+    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Pending' })
     expect(await cloudBookingsDB.get(done)).toMatchObject({ status: 'Checked-Out' })
   })
 
@@ -134,8 +129,8 @@ describe('the retired Staff and Host actors', () => {
 })
 
 describe('what the Admin may do through the API', () => {
-  it('approves a Booking whose ID has been sent, and the dates hold', async () => {
-    const id = await atStage('KYC Submitted')
+  it('approves a Booking waiting for review, and the dates hold', async () => {
+    const id = await atStage('Pending')
 
     const approved = await expectAccepted(
       id,
@@ -143,8 +138,9 @@ describe('what the Admin may do through the API', () => {
       admin,
     )
 
-    expect(approved.patch.status).toBe('Approved')
-    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Approved' })
+    // The approval itself opens the Booking for payment (KYC removed).
+    expect(approved.patch.status).toBe('Payment Pending')
+    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Payment Pending' })
   })
 
   it('verifies a payment, which is what makes a Booking Reserved', async () => {
@@ -202,14 +198,13 @@ describe('who the Activity log says did it', () => {
   })
 
   it('names the Guest who withdrew', async () => {
-    const id = await atStage('KYC Submitted')
+    const id = await atStage('Pending')
 
     await expectAccepted(id, { type: 'Cancel', reason: 'Cannot make it.' }, guest)
 
     const history = await activityLogDB.list(id)
     expect(history.map((entry) => `${entry.action}:${entry.actor}`)).toEqual([
       'Submit:guest',
-      'UploadKyc:guest',
       'Cancel:guest',
     ])
   })
@@ -231,7 +226,7 @@ describe('who the Activity log says did it', () => {
 
 describe('an actor that is not one of the two roles', () => {
   it('gets nothing at all, whatever it claims to be', async () => {
-    const id = await atStage('KYC Submitted')
+    const id = await atStage('Pending')
 
     for (const actor of ['system', 'owner', 'host', 'staff', 'superuser', ''] as const) {
       const result = await cloudBookingsDB.transition(
@@ -242,7 +237,7 @@ describe('an actor that is not one of the two roles', () => {
       expect(result.ok, `${actor || 'an empty actor'} should be refused`).toBe(false)
     }
 
-    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'KYC Submitted' })
+    expect(await cloudBookingsDB.get(id)).toMatchObject({ status: 'Pending' })
   })
 
   it('still lets the system expire a hold, which is nobody’s decision', async () => {

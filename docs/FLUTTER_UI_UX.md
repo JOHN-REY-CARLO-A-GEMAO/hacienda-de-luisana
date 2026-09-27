@@ -84,7 +84,7 @@ themes for `Chip`, `Dialog`, `SnackBar`, `BottomSheet`, `Divider`,
 - **rooms_screen** / **guest_crm_screen**: `HaciendaCard`, `StatusPill` (rooms), `EmptyState`, staggered cards.
 - **analytics_screen**: staggered sections.
 - **admin_login_screen**: staggered entrance, labelled visibility toggle.
-- **booking_detail_screen** / **rates_screen** (added with ADR-0007): `HaciendaCard` sections, `StatusPill` for status / KYC / payment, `SectionHeader` for the Activity log and rate groups; dialogs use the shared `DialogTheme`.
+- **booking_detail_screen** / **rates_screen** (added with ADR-0007): `HaciendaCard` sections, `StatusPill` for status / payment, `SectionHeader` for the Activity log and rate groups; dialogs use the shared `DialogTheme`.
 
 ### Verification
 

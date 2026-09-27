@@ -49,8 +49,8 @@ describe('the two roles', () => {
 
 describe('what each role may do', () => {
   it('gives the Admin every operating permission of the hacienda', () => {
-    // The Admin operates the hacienda from the mobile app: reviews Bookings and
-    // KYC, verifies money, refunds it, records the stay, reads the Access log
+    // The Admin operates the hacienda from the mobile app: reviews Bookings,
+    // verifies money, refunds it, records the stay, reads the Access log
     // and the Guest's location, publishes rates (CONTEXT.md § People).
     for (const permission of [
       'bookings:read:all',
@@ -61,7 +61,6 @@ describe('what each role may do', () => {
       'refunds:mark',
       'stays:progress',
       'stays:complete',
-      'kyc:read',
       'access-logs:read',
       'access-logs:correct',
       'guest-location:read',
@@ -80,19 +79,16 @@ describe('what each role may do', () => {
     expect(can('admin', 'booking:create')).toBe(false)
     expect(can('admin', 'booking:read:own')).toBe(false)
     expect(can('admin', 'booking:update:own')).toBe(false)
-    expect(can('admin', 'kyc:upload')).toBe(false)
   })
 
   it('gives a Guest their own Booking and nothing of anybody else’s', () => {
     expect(can('guest', 'booking:create')).toBe(true)
     expect(can('guest', 'booking:read:own')).toBe(true)
     expect(can('guest', 'booking:update:own')).toBe(true)
-    expect(can('guest', 'kyc:upload')).toBe(true)
 
     expect(can('guest', 'bookings:read:all')).toBe(false)
     expect(can('guest', 'bookings:review')).toBe(false)
     expect(can('guest', 'payments:verify')).toBe(false)
-    expect(can('guest', 'kyc:read')).toBe(false)
     expect(can('guest', 'access-logs:read')).toBe(false)
     expect(can('guest', 'stays:complete')).toBe(false)
     expect(can('guest', 'rates:publish')).toBe(false)

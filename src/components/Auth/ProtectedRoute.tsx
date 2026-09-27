@@ -95,7 +95,7 @@ export function TurnedAway({ path, allowed }: { path: string; allowed: Role[] })
           </strong>
           .
           {isAdmin
-            ? ' Bookings, KYC review, payments, stays, the smart lock and every other management task live in the Hacienda de LuisAna Admin mobile app — open it on your phone.'
+            ? ' Bookings, payments, stays, the smart lock and every other management task live in the Hacienda de LuisAna Admin mobile app — open it on your phone.'
             : ' Roles are stored in your Profile, not chosen in this browser.'}
         </p>
         <div className="mt-8 flex flex-wrap gap-3 justify-center">

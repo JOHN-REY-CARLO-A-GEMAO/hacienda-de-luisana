@@ -78,7 +78,7 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
 - `src/lib/firestoreBookings.ts` (website):
   - Cloud-aware service: uses Firestore when configured, falls back to `localStorage` otherwise
   - Guest scope: `listMine()`, `subscribeMine()`, `add()`, and `takeAction()` for the Guest's own
-    lifecycle actions (UploadKyc, ChoosePaymentPlan, UploadPaymentProof, Cancel)
+    lifecycle actions (ChoosePaymentPlan, UploadPaymentProof, Cancel)
   - Real-time listener via `onSnapshot`
 - `lib/services/firestore_service.dart` (Admin app):
   - Streams of every Booking, `access_logs`, `rooms`, `guest_profiles`,
@@ -89,7 +89,7 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
 - `role()` resolves a request: the bootstrap email allowlist (`adminEmails()`), then `profiles/{uid}`, then `guest`
 - Anyone can `create` a Pending booking that carries a `uid` (the public booking form)
 - `bookings`: read by their own Guest and the Admin; updated by the Admin (never out of a terminal
-  status; `Approved` only from `KYC Submitted`; `Reserved` only from `Payment Pending`), and by a Guest
+  status; no retired status may be written; `Reserved` only from `Payment Pending`), and by a Guest
   only on their own document, only forward or out, and only within a fixed key list; deleted by the Admin
 - `profiles`: you may write your own, only as a Guest; the Admin may write anybody's; nobody may
   write a role that is not `guest` or `admin`; a person may edit their own name but never their own role
@@ -122,9 +122,9 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
 2. Create new project (e.g., `hacienda-de-luisana`)
 3. Enable services:
    - **Authentication**: Email/Password + Google + **Anonymous**
-     (Anonymous is required for guest KYC uploads from the website — see
-     `docs/adr/0004-*.md`. Without it, bookings are created with no guest
-     identity and the site cannot attach an ID to them.)
+     (Anonymous ties a Guest's payment-proof uploads to the identity the
+     Booking was created with — see `docs/adr/0004-*.md`. Without it, bookings
+     are created with no guest identity and uploads cannot be attached.)
    - **Firestore**: Start in production mode, choose region
    - **Storage**: Start in production mode
    - **Hosting** (optional): For deployment
@@ -305,9 +305,10 @@ code bases — `src/lib/booking/rates.ts` and `lib/services/booking_lifecycle.da
   and `AuthStore.kAdminEmails` in the Flutter app, then `firebase deploy --only firestore:rules,storage`.
 - A role is never read from the body of a request: the rules take it from the signed-in identity's own
   Profile, and the test suite asserts that `request.resource.data.role` appears nowhere else.
-- Storage Rules limit uploads to 10MB site images, 2MB avatars and 5MB KYC / payment documents; `/kyc`
-  and `/payments` are readable only by the Guest they belong to and the Admin, who may also delete them
-  (the purge after a stay).
+- Storage Rules limit uploads to 10MB site images, 2MB avatars and 5MB payment documents. The legacy
+  `/payments` path is readable only by the Guest it belongs to and the Admin, who may also delete them.
+  (Government ID KYC is gone: the `/kyc` path was removed from the rules entirely — new payment proofs
+  live in Supabase Storage's `payment-proofs` bucket, ADR-0011.)
 
 ## 📁 Files Added/Modified
 

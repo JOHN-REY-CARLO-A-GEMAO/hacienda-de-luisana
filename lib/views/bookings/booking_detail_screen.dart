@@ -15,9 +15,9 @@ import '../../widgets/hacienda_card.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/status_pill.dart';
 
-/// One Booking, end to end: who, when, the KYC documents, the money, the
-/// refund, and every lifecycle action the Admin can take from its current
-/// status — plus the append-only Activity log underneath.
+/// One Booking, end to end: who, when, the money, the refund, and every
+/// lifecycle action the Admin can take from its current status — plus the
+/// append-only Activity log underneath.
 ///
 /// The screen never decides a transition itself: it offers the actions
 /// `adminActionsFor(status)` lists and hands the choice to
@@ -162,7 +162,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     switch (action) {
       case AdminAction.approve:
         if (await _confirm('Approve Booking',
-            'The ID is reviewed and the dates are re-checked against other Bookings. The Guest is then asked to pay.')) {
+            'The dates are re-checked against other Bookings and the Booking opens for payment. The Guest then chooses a plan and pays.')) {
           await _run(booking, action);
         }
         return;
@@ -170,14 +170,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         final reason = await _askText('Reject Booking',
             'Why is this Booking refused? The Guest reads this.',
             confirm: 'Reject');
-        if (reason != null) {
-          await _run(booking, action, input: ActionInput(reason: reason));
-        }
-        return;
-      case AdminAction.rejectKyc:
-        final reason = await _askText('Refuse this ID',
-            'What is wrong with the ID? The Guest can send another.',
-            confirm: 'Refuse ID');
         if (reason != null) {
           await _run(booking, action, input: ActionInput(reason: reason));
         }
@@ -239,13 +231,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       case AdminAction.markRefunded:
         if (await _confirm('Mark refunded',
             '₱${(booking.refundTotal ?? 0).toStringAsFixed(2)} has been returned to the Guest?')) {
-          await _run(booking, action);
-        }
-        return;
-      case AdminAction.purgeKyc:
-        if (await _confirm('Purge government ID',
-            'Clears the ID and receipt URLs from this Booking (RA 10173). Delete the files in Storage as well.',
-            confirm: 'Purge', danger: true)) {
           await _run(booking, action);
         }
         return;
@@ -358,8 +343,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           _actionsCard(booking, actions, expiredButStored),
           const SizedBox(height: 12),
           _stayCard(booking, now),
-          const SizedBox(height: 12),
-          _kycCard(booking),
           const SizedBox(height: 12),
           _moneyCard(booking),
           const SizedBox(height: 16),
@@ -517,37 +500,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     );
   }
 
-  Widget _kycCard(BookingModel booking) {
-    final status = (booking.kycStatus ?? 'required').toLowerCase();
-    return HaciendaCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text('KYC — government ID',
-                    style: GoogleFonts.inter(
-                        fontSize: 13, fontWeight: FontWeight.bold)),
-              ),
-              StatusPill(label: status.toUpperCase(), color: _kycColor(status)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (booking.kycIdUrl == null && booking.kycReceiptUrl == null)
-            Text('Nothing uploaded yet.',
-                style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 12)),
-          if (booking.kycIdUrl != null)
-            _link('Open government ID', booking.kycIdUrl!),
-          if (booking.kycReceiptUrl != null)
-            _link('Open receipt', booking.kycReceiptUrl!),
-          if (booking.kycRejectReason != null)
-            _kv('Refused because', booking.kycRejectReason!),
-        ],
-      ),
-    );
-  }
-
   Widget _moneyCard(BookingModel booking) {
     String peso(double? v) => v == null ? '—' : '₱${v.toStringAsFixed(2)}';
     final paymentStatus = (booking.paymentStatus ?? 'unpaid').toLowerCase();
@@ -675,16 +627,13 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   static String _headline(String action) {
     const headlines = {
       'Submit': 'Booking submitted',
-      'UploadKyc': 'Government ID uploaded for KYC',
       'Approve': 'Booking approved',
       'Reject': 'Booking rejected',
-      'RejectKyc': 'Government ID refused — the Guest can send another',
       'ChoosePaymentPlan': 'Payment plan chosen',
       'UploadPaymentProof': 'Payment proof uploaded',
       'VerifyPayment': 'Payment proof verified — Booking Reserved',
       'RejectPaymentProof': 'Payment proof rejected',
       'MarkRefunded': 'Refund returned to the Guest',
-      'PurgeKyc': 'Government ID and receipt purged after the stay',
       'RevokeKey': 'Credential revoked by the Admin',
       'Cancel': 'Booking cancelled',
       'Expire': 'Date hold ran out',
@@ -708,11 +657,9 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
   static bool _isDanger(AdminAction a) =>
       a == AdminAction.reject ||
-      a == AdminAction.rejectKyc ||
       a == AdminAction.rejectPaymentProof ||
       a == AdminAction.cancel ||
-      a == AdminAction.revokeKey ||
-      a == AdminAction.purgeKyc;
+      a == AdminAction.revokeKey;
 
   static IconData _icon(AdminAction a) {
     switch (a) {
@@ -720,8 +667,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         return Icons.check;
       case AdminAction.reject:
         return Icons.close;
-      case AdminAction.rejectKyc:
-        return Icons.badge_outlined;
       case AdminAction.verifyPayment:
         return Icons.verified_outlined;
       case AdminAction.rejectPaymentProof:
@@ -730,8 +675,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         return Icons.cancel_outlined;
       case AdminAction.markRefunded:
         return Icons.currency_exchange;
-      case AdminAction.purgeKyc:
-        return Icons.delete_sweep_outlined;
       case AdminAction.revokeKey:
         return Icons.key_off_outlined;
       case AdminAction.expire:
@@ -750,9 +693,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   static Color _statusColor(String status) {
     switch (status) {
       case BookingStatuses.pending:
-      case BookingStatuses.kycSubmitted:
         return AppColors.statusWarning;
-      case BookingStatuses.approved:
       case BookingStatuses.paymentPending:
         return AppColors.accentGoldDark;
       case BookingStatuses.paymentVerified:
@@ -766,19 +707,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         return AppColors.textMuted;
       default:
         return AppColors.statusAlert;
-    }
-  }
-
-  static Color _kycColor(String s) {
-    switch (s) {
-      case 'approved':
-        return AppColors.statusSuccess;
-      case 'submitted':
-        return AppColors.statusWarning;
-      case 'rejected':
-        return AppColors.statusAlert;
-      default:
-        return AppColors.textMuted;
     }
   }
 

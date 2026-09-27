@@ -1,9 +1,9 @@
 # Hacienda de LuisAna — Admin app flow
 
-**Scope:** the Flutter mobile app (`lib/`) end to end — sign-in gate, navigation, the Booking lifecycle as the Admin drives it, KYC and payment review, refunds, published rates, and the backend contract it shares with the Guest website.
+**Scope:** the Flutter mobile app (`lib/`) end to end — sign-in gate, navigation, the Booking lifecycle as the Admin drives it, payment review, refunds, published rates, and the backend contract it shares with the Guest website.
 **Principle:** *One lifecycle, two sides.* The Guest takes their actions on the website (`src/lib/booking`), the Admin takes theirs here (`lib/services/booking_lifecycle.dart`), and `firestore.rules` is the arbiter both must satisfy. The app never writes a status past the rules. (ADR-0007)
 
-> **Status (Sep 2026):** implemented as described below. The former guest-prototype screens (booking form, KYC capture, digital key, simulated ESP32) were removed from `lib/`; Guests use the website.
+> **Status (Sep 2026):** implemented as described below. The former guest-prototype screens (booking form, ID capture, digital key, simulated ESP32) were removed from `lib/`; Guests use the website — and Government ID KYC itself was removed on 2026-09-27 (recorded in ADR-0004's amendment): an approval now lands directly on `Payment Pending`.
 
 ---
 
@@ -55,7 +55,7 @@ flowchart LR
 Canonical statuses (CONTEXT.md § Booking status), the same strings on both sides:
 
 ```
-Pending → KYC Submitted → Approved → Payment Pending → (Payment Verified) → Reserved
+Pending → Payment Pending → (Payment Verified) → Reserved
         → Checked-In → Staying → Checked-Out → Completed
 terminal branches: Rejected · Cancelled · Expired
 ```
@@ -63,24 +63,19 @@ terminal branches: Rejected · Cancelled · Expired
 ```mermaid
 stateDiagram-v2
     [*] --> Pending: Guest submits on the website (24 h Date hold starts)
-    Pending --> KYC_Submitted: Guest uploads ID (web)
+    Pending --> Payment_Pending: Admin approves — opens payment, dates re-checked, hold stops
+    Pending --> Rejected: Admin rejects
     Pending --> Expired: hold runs out (read-time rule, recorded by the app as system)
-    KYC_Submitted --> Approved: Admin approves (dates re-checked)
-    KYC_Submitted --> KYC_Submitted: Admin refuses the ID (Guest resends)
-    KYC_Submitted --> Rejected: Admin rejects
-    KYC_Submitted --> Expired: hold runs out
-    Approved --> Payment_Pending: Guest chooses a Payment plan (web)
-    Approved --> Rejected: Admin rejects
-    Payment_Pending --> Reserved: Admin verifies the Payment proof
     Payment_Pending --> Payment_Pending: Admin rejects proof, Guest resends
+    Payment_Pending --> Reserved: Admin verifies the Payment proof
+    Payment_Pending --> Rejected: Admin rejects before any money moves
     Payment_Pending --> Cancelled: Admin rejects proof for good (no refund)
     Reserved --> Checked_In: Admin checks in (or first Credential use)
     Checked_In --> Staying: Admin
     Staying --> Checked_Out: Admin
     Checked_Out --> Completed: Admin
     Pending --> Cancelled: Guest withdraws / Admin cancels
-    KYC_Submitted --> Cancelled: Guest withdraws / Admin cancels
-    Approved --> Cancelled: Guest withdraws / Admin cancels
+    Payment_Pending --> Cancelled: Guest withdraws / Admin cancels
     Reserved --> Cancelled: cancel → Refund settled by the published policy
 ```
 
@@ -88,8 +83,8 @@ stateDiagram-v2
 
 | Action | Actor | Where |
 | --- | --- | --- |
-| Submit, UploadKyc, ChoosePaymentPlan, UploadPaymentProof, Cancel (own) | Guest | website |
-| Approve, Reject, RejectKyc, VerifyPayment, RejectPaymentProof, Cancel (any), MarkRefunded, PurgeKyc, RevokeKey | Admin | **this app** |
+| Submit, ChoosePaymentPlan, UploadPaymentProof, Cancel (own) | Guest | website |
+| Approve, Reject, VerifyPayment, RejectPaymentProof, Cancel (any), MarkRefunded, RevokeKey | Admin | **this app** |
 | CheckIn, BeginStay, CheckOut, Complete | Admin (or system on the lock's first Credential use) | **this app** |
 | Expire | system — the app records it when it sees a hold has run out | **this app** |
 
@@ -97,12 +92,12 @@ Every accepted action writes one Activity entry (`bookings/{id}/activity/{seq}`)
 
 **Preconditions the app enforces** (`applyAdminAction` in `booking_lifecycle.dart`):
 
-- Approve needs `kyc_status == submitted`, and re-checks the dates against every other *committed* Booking for the Accommodation (ADR-0003); conflicts are named in the refusal.
-- Reject / RejectKyc / RejectPaymentProof need a reason — the Guest reads it.
+- Approve opens the Booking for payment: it lands on `Payment Pending`, stops the hold countdown, and re-checks the dates against every other *committed* Booking for the Accommodation (ADR-0003); conflicts are named in the refusal.
+- Reject / RejectPaymentProof need a reason — the Guest reads it.
 - VerifyPayment needs a Payment proof and an amount that covers `amount_due + security_deposit`; it lands on Reserved in one move.
 - Cancel from Reserved settles the Refund from the Booking's figures and the published policy (tiers by days before check-in, deposit percentage, damage deduction) and records `refund_status: initiated` with the breakdown; MarkRefunded closes it.
 - Any action on a Booking whose recorded Date hold has run out is refused: it reads as Expired.
-- Nothing leaves Completed / Rejected / Cancelled / Expired. PurgeKyc clears the ID and receipt URLs after a stay (RA 10173); RevokeKey logs a Credential revocation without moving the Booking.
+- Nothing leaves Completed / Rejected / Cancelled / Expired. RevokeKey logs a Credential revocation without moving the Booking.
 
 ---
 
@@ -113,7 +108,7 @@ Every accepted action writes one Activity entry (`bookings/{id}/activity/{seq}`)
 | **AdminLoginScreen** | Google button with the Admin address, email + password | Sign in → `requireAdmin()` | Not authorized → signed out with the reason |
 | **Dashboard** | Today's check-ins, active stays, pending requests, revenue, recent lock events | Review Bookings, open the chat inbox | Metrics at zero |
 | **Bookings** | Every Booking, newest first; filters All / Needs action / Pending / Reserved / Active Stay / Completed / Cancelled; per card: exact status, next step, Date hold countdown | Review → detail; one-tap Approve / Check in / Begin stay / Check out / Complete; call / SMS | "No bookings found" |
-| **Booking detail** | Guest, dates, notes, submission time, Date hold; KYC status + ID / receipt links + refusal reason; payment plan, totals, proof link, verified amount; refund breakdown; **the actions the current status allows**; Activity log | Every lifecycle action with its dialog (reason, amount, damage deduction, resend-or-cancel) | "Nothing to do — X is a final status"; expired-hold banner with **Record** |
+| **Booking detail** | Guest, dates, notes, submission time, Date hold; payment plan, totals, proof link, verified amount; refund breakdown; **the actions the current status allows**; Activity log | Every lifecycle action with its dialog (reason, amount, damage deduction, resend-or-cancel) | "Nothing to do — X is a final status"; expired-hold banner with **Record** |
 | **Chat** | Guest conversations from `conversations` + `messages`; reply, mark read | Reply, open the Booking | No conversations |
 | **Stays** | Stay durations, progress, days remaining | — | No stays |
 | **Analytics** | Confirmed vs projected revenue, conversion, average length of stay, duration buckets, top Accommodation | — | Zeros |
@@ -138,10 +133,12 @@ The app reads and writes the **same** Firestore documents the website does.
   "accommodation": "main-house",           // src/config/site.ts id
   "check_in": "2026-09-12", "check_out": "2026-09-14",
   "guests": 4, "special_requests": "…",
-  "status": "KYC Submitted",               // canonical string
-  "hold_expires_at": "2026-09-07T10:00:00.000Z",
-  "kyc_status": "submitted", "kyc_id_url": "https://…", "kyc_receipt_url": "https://…", "kyc_reject_reason": null,
-  "payment_plan": "down-payment", "payment_status": "pending", "payment_proof_url": "https://…",
+  "status": "Payment Pending",             // canonical string
+  "hold_expires_at": null,                 // approval stops the countdown
+  "payment_plan": "down-payment", "payment_status": "pending",
+  "payment_proof_url": "payments/{uid}/{ref}/proof.png",   // Supabase path (ADR-0011)
+  "paymentProofUrl": "payments/{uid}/{ref}/proof.png",     // twin key for the web flow
+  "extractedRefNumber": "1234567890123",   // OCR read off the receipt — a hint, never verification
   "amount_claimed": 5500, "stay_total": 11000, "amount_due": 5500, "security_deposit": 500, "balance_due": 5500,
   "amount_verified": 6000,
   "policy_version": "v2026-09", "policy_effective_date": "2026-09-01",
@@ -153,7 +150,7 @@ The app reads and writes the **same** Firestore documents the website does.
 
 | Collection | App reads | App writes | Rule |
 | --- | --- | --- | --- |
-| `bookings` | all, ordered by `created_at` | patches from `applyBookingAction`; delete | Admin: update within the terminal / KYC / payment guards; delete |
+| `bookings` | all, ordered by `created_at` | patches from `applyBookingAction`; delete | Admin: update within the terminal and payment guards; delete |
 | `bookings/{id}/activity` | oldest first | one entry per action, id = `seq` | append-only; `actor` must be the writer's role (`system` allowed for the Admin) |
 | `site_config/rates` | live | `publishRates` (validated) | public read, Admin write |
 | `access_logs` | all | simulator events | Admin read / correct |
@@ -180,6 +177,6 @@ Model mapping lives in `lib/models/booking_model.dart`: `rawStatus` keeps the ex
 
 ## 7. What is deliberately not here
 
-- No Guest screens: booking form, KYC capture, Mobile Key UI. Those belong to the website (`src/`).
+- No Guest screens: booking form, receipt upload and OCR, Mobile Key UI. Those belong to the website (`src/`).
 - No Staff or Host role, no role switcher, no team screen (ADR-0007).
 - No scheduled hold sweep: expiry is a read-time rule (ADR-0002); the app only records what it reads.

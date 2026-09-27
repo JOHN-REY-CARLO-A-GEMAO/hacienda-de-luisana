@@ -174,8 +174,8 @@ service cloud.firestore {
     // Bookings (shared by web /book, /account and the Flutter app — P2/P3)
     // ------------------------------------------------------------------
     // - CREATE stays public pending-only so a web inquiry works unauthenticated.
-    //   Extra app keys (ref_id, uid, kyc_status, kyc urls, source,
-    //   eta_share_url) are additive.
+    //   Extra app keys (ref_id, uid, source, eta_share_url, paymentProofUrl,
+    //   extractedRefNumber) are additive.
     // - READ: own (the identity attached at creation), and the Admin.
     // - UPDATE: the Admin anything within the guard-rails below; a Guest their
     //   own self-serve keys. DELETE: the Admin.
@@ -194,8 +194,7 @@ service cloud.firestore {
         // only exists once a proof has been attached, `verified` is the Admin's
         // answer, and `approved` is a decision — none of them can be true of a
         // Booking created a moment ago (ADR-0001).
-        && request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'none', '']
-        && request.resource.data.get('kyc_status', 'required') in ['required', 'submitted', ''];
+        && request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'none', ''];
 
       // Cheapest check first: a Guest reading their own Booking should not pay
       // for a Profile read to find out they are allowed.
@@ -204,16 +203,21 @@ service cloud.firestore {
       allow update: if reservedIsPaidFor() && (
         // The Admin's writes are checked at the rule layer for the moves that
         // must never go wrong: nothing leaves a terminal status, the money
-        // gates cannot be skipped — Approved needs a reviewed ID, Reserved
-        // needs verified money (the invariant above) — and a Booking can never
-        // be left saying `verified` without the marker that says who verified
-        // it. The full lifecycle table lives in
-        // lib/services/booking_lifecycle.dart (app) and src/lib/booking (web).
+        // gates cannot be skipped — Payment Pending needs the Admin's approval
+        // (from a Booking still under review), Reserved needs verified money
+        // (the invariant above) — and a Booking can never be left saying
+        // `verified` without the marker that says who verified it. The full
+        // lifecycle table lives in lib/services/booking_lifecycle.dart (app)
+        // and src/lib/booking (web).
         (isAdmin()
           && !(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
                && request.resource.data.status != resource.data.status)
-          && !(request.resource.data.status == 'Approved'
-               && resource.data.status != 'KYC Submitted')
+          // Retired statuses are read as their successors (Confirmed →
+          // Reserved, KYC Submitted → Pending, Approved → Payment Pending)
+          // and are never written again by anybody.
+          && !(request.resource.data.status in ['Confirmed', 'KYC Submitted', 'Approved'])
+          && !(request.resource.data.status == 'Payment Pending'
+               && !(resource.data.status in ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending']))
           && !(request.resource.data.status == 'Reserved'
                && resource.data.status != 'Payment Pending')
           && (request.resource.data.get('payment_status', '') != 'verified'
@@ -224,9 +228,9 @@ service cloud.firestore {
                 == resource.data.get('payment_verified_by', '')
               || request.resource.data.get('payment_verified_by', '') == request.auth.uid))
 
-        // A Guest may withdraw, upload or resend their ID and payment proof,
-        // choose a payment plan, and stamp the cancellation policy their plan
-        // was quoted under. They may never approve or verify anything
+        // A Guest may withdraw, choose a payment plan, and upload or resend
+        // a payment proof — and stamp the cancellation policy their plan was
+        // quoted under. They may never approve or verify anything
         // themselves (ADR-0001: money moves only after the Admin), and never
         // touch the identity the Booking was created with. No location key is
         // legitimate on a Booking either: live tracking was removed entirely
@@ -237,39 +241,37 @@ service cloud.firestore {
           // Forward or out, never backwards: a Guest may take their own Booking
           // to the next stage the lifecycle gives them, or withdraw it, but can
           // never write a status that un-does a decision the Admin already made.
+          // (`KYC Submitted` and `Approved` still appear as *stored* statuses on
+          // documents written before KYC was removed; they are retired on read.)
           && ((resource.data.status in ['Pending', 'KYC Submitted']
-                 && request.resource.data.status in ['Pending', 'KYC Submitted', 'Payment Pending', 'Cancelled'])
+                 && request.resource.data.status in ['Pending', 'Cancelled'])
               || (resource.data.status == 'Approved'
-                 && request.resource.data.status in ['Approved', 'Payment Pending', 'Cancelled'])
+                 && request.resource.data.status in ['Payment Pending', 'Cancelled'])
               || (resource.data.status == 'Payment Pending'
                  && request.resource.data.status in ['Payment Pending', 'Cancelled'])
               || (resource.data.status == 'Reserved'
                  && request.resource.data.status in ['Reserved', 'Cancelled']))
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['status', 'kyc_status', 'kyc_id_url', 'kyc_receipt_url', 'kyc_reject_reason',
-                      'payment_plan', 'payment_status', 'payment_proof_url', 'payment_reject_reason',
+            .hasOnly(['status',
+                      'payment_plan', 'payment_status', 'payment_proof_url', 'paymentProofUrl',
+                      'payment_reject_reason', 'extractedRefNumber',
                       'amount_claimed', 'stay_total', 'amount_due', 'security_deposit',
                       'balance_due', 'cancellation_reason', 'hold_expires_at',
                       'refund_status', 'refund_total', 'refund_breakdown',
                       'policy_version', 'policy_effective_date',
                       'payment_reference', 'ocr_reference', 'ocr_amount',
                       'terms_version', 'terms_accepted_at'])
-          // Money and identity move in one direction only, and only into the
-          // Guest's own words: `unpaid` -> `pending` by sending a proof,
-          // `required` -> `submitted` by sending an ID. `verified`, `approved`
-          // and `rejected` are the Admin's — a Guest may not claim them, and may
-          // not un-do one the Admin already wrote (a verified Booking cannot be
-          // pushed back to `pending` to submit a different proof).
+          // Money moves in one direction only, and only into the Guest's own
+          // words: `unpaid` -> `pending` by sending a proof. `verified`,
+          // `approved` and `rejected` are the Admin's — a Guest may not claim
+          // them, and may not un-do one the Admin already wrote (a verified
+          // Booking cannot be pushed back to `pending` to submit a different
+          // proof).
           && (request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'pending']
               || request.resource.data.get('payment_status', '') == resource.data.get('payment_status', ''))
-          && (request.resource.data.get('kyc_status', 'required') in ['required', 'submitted']
-              || request.resource.data.get('kyc_status', '') == resource.data.get('kyc_status', ''))
           // The Admin's notes are the Admin's words. A Guest may clear one only
-          // by attaching a fresh document in the same write — the resubmit loop
+          // by attaching a fresh proof in the same write — the resubmit loop
           // — and can never write a note of their own.
-          && (request.resource.data.get('kyc_reject_reason', '') == resource.data.get('kyc_reject_reason', '')
-              || (request.resource.data.get('kyc_reject_reason', '') == null
-                  && request.resource.data.get('kyc_id_url', '') != resource.data.get('kyc_id_url', '')))
           && (request.resource.data.get('payment_reject_reason', '') == resource.data.get('payment_reject_reason', '')
               || (request.resource.data.get('payment_reject_reason', '') == null
                   && request.resource.data.get('payment_proof_url', '') != resource.data.get('payment_proof_url', '')))

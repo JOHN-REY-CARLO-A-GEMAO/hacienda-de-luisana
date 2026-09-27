@@ -159,7 +159,10 @@ describe('bookings: ownership', () => {
 })
 
 describe('bookings: what a Guest may change', () => {
-  const booking = bookingDoc()
+  // A proof upload happens inside Payment Pending, so the stored Booking this
+  // branch is asked to change is already there (approval opens payment —
+  // Government ID KYC removed 2026-09-27).
+  const booking = bookingDoc({ status: 'Payment Pending' })
   const own = { path: `bookings/${BOOKING_ID}`, method: 'update' as const, auth: emailGuest(), resourceData: booking }
 
   it('accepts the self-serve patch the website sends when proof is uploaded', () => {
@@ -183,9 +186,9 @@ describe('bookings: what a Guest may change', () => {
     expect(deny({ ...own, requestData: guestPaymentPatch({ payment_verified_by: ADMIN_UID }) })).toBe(true)
   })
 
-  it('refuses a Guest who forges a KYC decision', () => {
+  it('refuses a Guest who tries to bring the retired KYC fields back', () => {
     expect(deny({ ...own, requestData: guestPaymentPatch({ kyc_status: 'approved' }) })).toBe(true)
-    expect(deny({ ...own, requestData: guestPaymentPatch({ kyc_status: 'rejected' }) })).toBe(true)
+    expect(deny({ ...own, requestData: guestPaymentPatch({ kyc_reject_reason: 'nope' }) })).toBe(true)
   })
 
   it('refuses a Guest who un-verifies money the Admin already verified', () => {
@@ -325,9 +328,14 @@ describe('bookings: what the Admin may change', () => {
     expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: guestPaymentPatch(), requestData: adminVerifyPatch({ status: 'Reserved' }) })).toBe(true)
   })
 
-  it('refuses a jump to Approved that skips the reviewed ID', () => {
+  it('refuses to write a retired status, and lands a stored mid-KYC Booking on Payment Pending', () => {
+    // 'Approved', 'KYC Submitted' and 'Confirmed' are retired with Government
+    // ID KYC and the old vocabulary: no writer may re-create one.
     expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: pending, requestData: bookingDoc({ status: 'Approved' }) })).toBe(true)
-    expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: bookingDoc({ status: 'KYC Submitted' }), requestData: bookingDoc({ status: 'Approved' }) })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: pending, requestData: bookingDoc({ status: 'KYC Submitted' }) })).toBe(true)
+    // A document stored mid-KYC before the removal is approved the only way an
+    // approval exists now: by moving it to Payment Pending.
+    expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: bookingDoc({ status: 'KYC Submitted' }), requestData: bookingDoc({ status: 'Payment Pending' }) })).toBe(true)
   })
 
   /**
@@ -594,14 +602,6 @@ describe('payments: proof and verification', () => {
         method: 'create',
         auth: anonymousGuest(),
         requestData: bookingDoc({ payment_status: 'pending' }),
-      }),
-    ).toBe(true)
-    expect(
-      deny({
-        path: 'bookings/new-booking',
-        method: 'create',
-        auth: anonymousGuest(),
-        requestData: bookingDoc({ kyc_status: 'approved' }),
       }),
     ).toBe(true)
     expect(

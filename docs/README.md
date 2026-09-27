@@ -46,7 +46,7 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 | | Guest | Admin |
 | --- | --- | --- |
 | Public site, `/book`, `/track` | ✅ | ✅ (reads like anyone) |
-| `/account` — own Bookings, KYC upload, payment plan, payment proof, Date hold, withdraw | ✅ | — (turned away; pointed to the app) |
+| `/account` — own Bookings, payment plan, payment proof, Date hold, withdraw | ✅ | — (turned away; pointed to the app) |
 | Review a Booking: approve / reject, refuse an ID | — | ✅ app |
 | Verify / reject Payment proof, cancel, settle and mark Refunds | — | ✅ app |
 | Check-in → Staying → Check-out → Complete, purge ID after the stay, revoke a Credential | — | ✅ app |
@@ -63,7 +63,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 
 - Responsive landing (Hero, Accommodations, Experience, Gallery, Location, Reviews, FAQ)
 - `/book` — availability check against stored Bookings (24-hour Date hold), Booking submission → Firestore (localStorage fallback in demo mode)
-- `/account` — the Guest's own Bookings: status timeline, Date hold countdown, government ID + receipt upload (KYC), Payment plan choice from the published rates, Payment proof upload, withdraw, Activity log
+- `/account` — the Guest's own Bookings: status timeline, Date hold countdown, Payment plan choice from the published rates, Payment proof upload, withdraw, Activity log
 - `/login`, `/guest/auth` — Guest sign-in / sign-up, email + password and Google, password reset, session kept across reloads
 - `/admin/*`, `/app/*` — a notice: the Admin dashboard moved to the Admin mobile app
 - Interactive guided tutorial (first visit + "Replay tutorial") — drives the real UI instead of slides; see [TUTORIAL.md](./TUTORIAL.md)
@@ -99,7 +99,7 @@ With no Firebase keys configured the site runs in **demo mode**: Guest accounts 
 - **Firebase Hosting**: `firebase deploy --only hosting` (public = `dist`)
 - **GitHub Pages**: workflow `.github/workflows/deploy.yml`
 
-Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`.
+Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (payment-proof uploads to the Supabase Storage bucket `payment-proofs`, [ADR-0011](./adr/ADR-0011-supabase-storage.md); without them proofs stay in this browser as labelled demo mode).
 
 Two switches worth knowing: `FIREBASE_ENV_STRICT=1` makes a build with no Firebase at all **fail** instead of shipping in demo mode, and `/status` on any deployment says which project it was built for and can test the connection from the browser. Which source wins, and why the committed config is not a secret, is in [FIREBASE_SETUP.md § 3c](./FIREBASE_SETUP.md).
 
@@ -122,7 +122,7 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 | Sign in | `auth/admin_login_screen.dart` | Google or email + password; any non-Admin account is signed straight back out |
 | Dashboard | `dashboard/dashboard_screen.dart` | Today's check-ins, active stays, pending requests, revenue, recent lock events, approaching-Guest banner |
 | Bookings | `bookings/bookings_screen.dart` | Every Booking, filters (Needs action / Pending / Reserved / Active / Completed / Cancelled), one-tap Approve / Check in / Begin stay / Check out / Complete |
-| Booking detail | `bookings/booking_detail_screen.dart` | KYC documents, money, refund breakdown, **every** lifecycle action (approve, reject, refuse ID, verify / reject payment proof, cancel with refund settlement, mark refunded, purge ID, revoke Credential, record expiry, stay progression), Activity log, delete |
+| Booking detail | `bookings/booking_detail_screen.dart` | money, refund breakdown, **every** lifecycle action (approve, reject, verify / reject payment proof, cancel with refund settlement, mark refunded, revoke Credential, record expiry, stay progression), Activity log, delete |
 | Stays | `stays/stay_duration_screen.dart` | Stay durations and progress |
 | Analytics | `analytics/analytics_screen.dart` | Revenue, conversion, length of stay, top Accommodation |
 | Smart lock | `smartlock/smart_lock_screen.dart` | `access_logs` audit trail + simulator |
@@ -132,7 +132,7 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 
 ### Lifecycle rules
 
-`lib/services/booking_lifecycle.dart` is a pure-Dart port of `src/lib/booking`: the thirteen canonical statuses, the transition whitelist, the Admin and system actions with their preconditions (a submitted ID before Approve, a proof and a covering amount before Verify, a re-check of the dates at approval, hold expiry read at action time), refund settlement, and `validatePublishedRates`. `FirestoreService.applyBookingAction` writes the resulting patch and the Activity entry in one batch.
+`lib/services/booking_lifecycle.dart` is a pure-Dart port of `src/lib/booking`: the eleven canonical statuses, the transition whitelist, the Admin and system actions with their preconditions (a proof and a covering amount before Verify, a re-check of the dates at approval, hold expiry read at action time), refund settlement, and `validatePublishedRates`. `FirestoreService.applyBookingAction` writes the resulting patch and the Activity entry in one batch.
 
 ### Run
 

@@ -89,8 +89,6 @@ export {
   type BookingAction,
   type BookingPatch,
   type BookingState,
-  normalizeKycStatus,
-  type KycStatus,
   type PaymentStatus,
   type RefundStatus,
 } from './actions'

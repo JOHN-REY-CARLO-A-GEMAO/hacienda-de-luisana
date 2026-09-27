@@ -23,17 +23,17 @@ The document at `profiles/{uid}` that stores a person's Role and the name the Ac
 _Avoid_: User record, account (the account is the sign-in; the Profile is the Role it carries)
 
 **Permission**:
-One named act a Role may perform: creating a Booking, reading one's own Booking, uploading KYC (Guest); reviewing a Booking, verifying Payment proof, reading the Access log, publishing rates (Admin). Pages and buttons ask for a Permission by name; `firestore.rules` enforces the same one, so hiding a control is a courtesy and never the authorization.
+One named act a Role may perform: creating a Booking, reading one's own Booking, uploading Payment proof (Guest); reviewing a Booking, verifying Payment proof, reading the Access log, publishing rates (Admin). Pages and buttons ask for a Permission by name; `firestore.rules` enforces the same one, so hiding a control is a courtesy and never the authorization.
 _Avoid_: Scope, entitlement, access level
 
 ### Applications
 
 **Website**:
-The Guest's application (`src/`): availability, the Booking form, KYC and Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app.
+The Guest's application (`src/`): availability, the Booking form, Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app.
 _Avoid_: Portal, dashboard, admin site
 
 **Admin app**:
-The Admin's application (`lib/`, Flutter, Android): every management function of the system — Booking review and lifecycle, KYC, payments, refunds, Published rates, stays, the chat inbox, Access log, rooms, CRM, analytics.
+The Admin's application (`lib/`, Flutter, Android): every management function of the system — Booking review and lifecycle, payments, refunds, Published rates, stays, the chat inbox, Access log, rooms, CRM, analytics.
 _Avoid_: Owner app, guest app, client app, staff app
 
 ### Stay
@@ -50,8 +50,8 @@ _Avoid_: Reservation (a Booking that has been paid and reserved), inquiry, order
 The period a Guest occupies an Accommodation, from check-in to check-out.
 
 **Booking status**:
-The Booking's position in the lifecycle: Pending → KYC Submitted → Approved → Payment Pending → Payment Verified → Reserved → Checked-In → Staying → Checked-Out → Completed, with the terminal branches Rejected, Cancelled and Expired.
-_Avoid_: Confirmed (retired; the paid state is Reserved), "booking state"
+The Booking's position in the lifecycle: Pending → Payment Pending → Payment Verified → Reserved → Checked-In → Staying → Checked-Out → Completed, with the terminal branches Rejected, Cancelled and Expired. The Admin's approval lands on Payment Pending — with Government ID KYC removed, approving a Booking *is* opening it for payment (ADR-0001).
+_Avoid_: Confirmed (retired; the paid state is Reserved), KYC Submitted / Approved (retired with Government ID KYC), "booking state"
 
 **Date hold**:
 The claim a Booking places on its dates. It counts down 24 hours while the Booking waits for review, and becomes firm when the Admin approves; from there only a terminal status releases the dates.
@@ -105,9 +105,9 @@ The moment the first Credential use succeeds on the check-in day; it is what mov
 
 ### Trust and records
 
-**KYC**:
-Identity verification: the government ID a Guest uploads and the Admin reviews before approving a Booking.
-_Avoid_: Verification, ID check, eKYC
+**Government ID KYC (removed)**:
+Identity verification of the Guest by government ID. Removed from the system: the lifecycle no longer has a KYC stage, no surface uploads or reviews IDs, and stored documents from that era read as `Pending` / `Payment Pending`.
+_Avoid_: Verification, ID check, eKYC (the feature no longer exists — do not reintroduce it under these names)
 
 **Guest identity**:
 The anonymous sign-in a Guest's own Booking and uploaded documents are keyed to, attached when the Booking is created. A Booking created without one cannot be claimed later — in the cloud the rules now refuse such a creation outright, so the failure is loud (ADR-0004, as amended).

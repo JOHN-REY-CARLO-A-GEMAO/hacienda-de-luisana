@@ -59,8 +59,6 @@ export const DATE_HOLD_MS = DAY_MS
  */
 const DATE_HOLDING_STATUSES: readonly BookingStatus[] = [
   'Pending',
-  'KYC Submitted',
-  'Approved',
   'Payment Pending',
   'Payment Verified',
   'Reserved',
@@ -79,7 +77,6 @@ const DATE_HOLDING_STATUSES: readonly BookingStatus[] = [
  * would make a one-unit Accommodation unapprovable forever.
  */
 const COMMITTED_STATUSES: readonly BookingStatus[] = [
-  'Approved',
   'Payment Pending',
   'Payment Verified',
   'Reserved',
@@ -90,10 +87,10 @@ const COMMITTED_STATUSES: readonly BookingStatus[] = [
 
 /**
  * The statuses whose Date hold still runs down: everything waiting for the
- * Admin's review. Once a Booking is Approved the dates are firmly held, so no
+ * Admin's review. Once a Booking is approved the dates are firmly held, so no
  * hold expiry can release them (CONTEXT.md § Date hold, flow §2 step 6b).
  */
-const EXPIRABLE_STATUSES: readonly BookingStatus[] = ['Pending', 'KYC Submitted']
+const EXPIRABLE_STATUSES: readonly BookingStatus[] = ['Pending']
 
 /** The slice of a stored Booking the availability rules need. */
 export type DateHoldFields = {

@@ -14,8 +14,32 @@ export type OcrExtract = {
 
 const REF_PATTERNS = [
   /(?:ref(?:erence)?(?:\s*(?:no\.?|number|#))?|txn|transaction|gcash\s*ref)[:\s#-]*([A-Z0-9-]{6,40})/i,
-  /\b([0-9]{10,16})\b/,
+  // GCash / Maya / bank transfer references are 10–13 digits; a 16-digit run is
+  // a card number, not a reference, and is deliberately not matched.
+  /\b([0-9]{10,13})\b/,
 ]
+
+/**
+ * Pull the 10–13 digit reference a GCash, Maya or bank transfer receipt carries
+ * out of OCR'd text (task: OCR fills the Guest's reference input).
+ *
+ * A labelled reference wins ("Ref No.", "Txn ID", "GCash ref", "confirmation
+ * no." …) — including runs printed with spacing like `1234 567 890123`, which
+ * are collapsed back to bare digits — and only then does a bare 10–13 digit run
+ * count. Anything shorter, longer or absent returns '' for the Guest to type.
+ */
+export function extractReferenceNumber(text: string): string {
+  const compact = text.replace(/\s+/g, ' ')
+  const labelled = compact.match(
+    /(?:ref(?:erence)?|txn|transaction|confirmation|trace|gcash|maya|bank)[^\n]{0,24}?(\d[\d\s-]{8,24}\d)/i,
+  )
+  if (labelled) {
+    const digits = labelled[1].replace(/[\s-]/g, '')
+    if (digits.length >= 10 && digits.length <= 13) return digits
+  }
+  const bare = compact.match(/\b(\d{10,13})\b/)
+  return bare?.[1] ?? ''
+}
 
 const AMOUNT_PATTERNS = [
   /(?:amount|total|paid|php|₱)\s*[:\-]*\s*([\d,]+(?:\.\d{1,2})?)/i,
@@ -40,6 +64,12 @@ export function extractReceiptFields(text: string): OcrExtract {
       }
     }
   }
+  if (!reference) {
+    // A labelled reference printed with spacing (`1234 567 890123`) survives
+    // only this collapse-and-check path.
+    const digits = extractReferenceNumber(compact)
+    if (digits) reference = digits
+  }
 
   let amount = ''
   for (const re of AMOUNT_PATTERNS) {
@@ -62,29 +92,41 @@ export function extractReceiptFields(text: string): OcrExtract {
   return { reference, amount, confidence, notes }
 }
 
-/** Images have no local OCR engine; guests confirm/correct the extracted fields. */
+/**
+ * Run OCR on the downpayment screenshot, client-side (task: OCR runs in the
+ * Guest's browser the moment the screenshot is chosen, before any upload).
+ *
+ * tesseract.js is imported lazily so bundling, tests and demo pages never pay
+ * for the engine — only a Guest picking an image does. Extraction is a hint for
+ * the Guest to confirm or correct in the reference input; it never verifies
+ * anything (`canAutoVerifyFromOcr` is hard-coded off).
+ */
 export async function runReceiptOcr(file: File): Promise<OcrExtract> {
   if (file.type.startsWith('text/') || file.name.endsWith('.txt')) {
     const text = await file.text()
     return extractReceiptFields(text)
   }
-  // Try reading as text in case a screenshot pipeline stored OCR sidecar text.
   try {
-    const maybe = await file.text()
-    if (maybe && /[A-Za-z0-9]{6,}/.test(maybe) && maybe.length < 20_000) {
-      const extracted = extractReceiptFields(maybe)
-      if (extracted.confidence !== 'none') return extracted
+    const { recognize } = await import('tesseract.js')
+    const { data } = await recognize(file, 'eng')
+    const text = data?.text ?? ''
+    if (text.trim()) return extractReceiptFields(text)
+    return {
+      reference: '',
+      amount: '',
+      confidence: 'none',
+      notes: ['No text found on the receipt. Enter the details yourself.'],
     }
-  } catch {
-    /* binary image */
-  }
-  return {
-    reference: '',
-    amount: '',
-    confidence: 'none',
-    notes: [
-      'OCR could not read this image automatically. Enter the reference number and amount from your receipt, then submit for Admin verification.',
-    ],
+  } catch (e) {
+    console.warn('[OCR] tesseract could not read this image', e)
+    return {
+      reference: '',
+      amount: '',
+      confidence: 'none',
+      notes: [
+        'OCR could not read this image automatically. Enter the reference number and amount from your receipt, then submit for Admin verification.',
+      ],
+    }
   }
 }
 

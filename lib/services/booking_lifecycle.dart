@@ -16,13 +16,12 @@ import 'dart:math' as math;
 
 /// The canonical Booking statuses, in lifecycle order, then the terminal
 /// branches (CONTEXT.md § Booking status). `Confirmed` is retired: the paid
-/// state is `Reserved`.
+/// state is `Reserved`. Government ID KYC is retired: `KYC Submitted` and
+/// `Approved` read as `Pending` / `Payment Pending` on stored documents.
 class BookingStatuses {
   BookingStatuses._();
 
   static const String pending = 'Pending';
-  static const String kycSubmitted = 'KYC Submitted';
-  static const String approved = 'Approved';
   static const String paymentPending = 'Payment Pending';
   static const String paymentVerified = 'Payment Verified';
   static const String reserved = 'Reserved';
@@ -36,8 +35,6 @@ class BookingStatuses {
 
   static const List<String> all = [
     pending,
-    kycSubmitted,
-    approved,
     paymentPending,
     paymentVerified,
     reserved,
@@ -53,8 +50,6 @@ class BookingStatuses {
   /// Statuses whose Booking still claims its dates.
   static const List<String> dateHolding = [
     pending,
-    kycSubmitted,
-    approved,
     paymentPending,
     paymentVerified,
     reserved,
@@ -65,7 +60,6 @@ class BookingStatuses {
 
   /// Statuses the Admin has already committed dates to.
   static const List<String> committed = [
-    approved,
     paymentPending,
     paymentVerified,
     reserved,
@@ -75,7 +69,7 @@ class BookingStatuses {
   ];
 
   /// Statuses whose 24-hour Date hold can still run out.
-  static const List<String> expirable = [pending, kycSubmitted];
+  static const List<String> expirable = [pending];
 
   static const List<String> terminal = [completed, rejected, cancelled, expired];
 }
@@ -83,10 +77,10 @@ class BookingStatuses {
 /// The legal transitions out of each status. A whitelist: anything missing is
 /// refused, so no surface can shortcut past review or payment verification.
 const Map<String, List<String>> kTransitions = {
-  'Pending': ['KYC Submitted', 'Rejected', 'Cancelled', 'Expired'],
-  'KYC Submitted': ['Approved', 'Rejected', 'Cancelled', 'Expired'],
-  'Approved': ['Payment Pending', 'Rejected', 'Cancelled'],
-  'Payment Pending': ['Payment Verified', 'Cancelled'],
+  'Pending': ['Payment Pending', 'Rejected', 'Cancelled', 'Expired'],
+  // `Rejected` from Payment Pending is the pre-money rejection the retired
+  // `Approved` stage used to offer: no money is verified before Reserved.
+  'Payment Pending': ['Payment Verified', 'Rejected', 'Cancelled'],
   'Payment Verified': ['Reserved', 'Cancelled'],
   'Reserved': ['Checked-In', 'Cancelled'],
   'Checked-In': ['Staying'],
@@ -105,6 +99,10 @@ final Map<String, String> _canonicalByFolded = {
   for (final s in BookingStatuses.all) _fold(s): s,
   // Retired: the old web `Confirmed` reads as the paid state.
   'confirmed': BookingStatuses.reserved,
+  // Retired with Government ID KYC: pre-review documents read as `Pending`,
+  // and documents approved before the change read as `Payment Pending`.
+  'kycsubmitted': BookingStatuses.pending,
+  'approved': BookingStatuses.paymentPending,
 };
 
 /// Read a stored status as a canonical one. Anything missing or unknown reads
@@ -564,17 +562,15 @@ class Actor {
   const Actor.system() : kind = 'system', id = 'system', name = null;
 }
 
-/// Every Admin/system action the app can take. Guest actions (UploadKyc,
-/// ChoosePaymentPlan, UploadPaymentProof) belong to the website.
+/// Every Admin/system action the app can take. Guest actions
+/// (ChoosePaymentPlan, UploadPaymentProof) belong to the website.
 enum AdminAction {
   approve,
   reject,
-  rejectKyc,
   verifyPayment,
   rejectPaymentProof,
   cancel,
   markRefunded,
-  purgeKyc,
   revokeKey,
   expire,
   checkIn,
@@ -591,8 +587,6 @@ extension AdminActionX on AdminAction {
         return 'Approve';
       case AdminAction.reject:
         return 'Reject';
-      case AdminAction.rejectKyc:
-        return 'RejectKyc';
       case AdminAction.verifyPayment:
         return 'VerifyPayment';
       case AdminAction.rejectPaymentProof:
@@ -601,8 +595,6 @@ extension AdminActionX on AdminAction {
         return 'Cancel';
       case AdminAction.markRefunded:
         return 'MarkRefunded';
-      case AdminAction.purgeKyc:
-        return 'PurgeKyc';
       case AdminAction.revokeKey:
         return 'RevokeKey';
       case AdminAction.expire:
@@ -624,8 +616,6 @@ extension AdminActionX on AdminAction {
         return 'Approve';
       case AdminAction.reject:
         return 'Reject';
-      case AdminAction.rejectKyc:
-        return 'Reject ID';
       case AdminAction.verifyPayment:
         return 'Verify payment';
       case AdminAction.rejectPaymentProof:
@@ -634,8 +624,6 @@ extension AdminActionX on AdminAction {
         return 'Cancel';
       case AdminAction.markRefunded:
         return 'Mark refunded';
-      case AdminAction.purgeKyc:
-        return 'Purge ID';
       case AdminAction.revokeKey:
         return 'Revoke key';
       case AdminAction.expire:
@@ -661,22 +649,19 @@ class _Rule {
 }
 
 const Map<AdminAction, _Rule> _rules = {
-  AdminAction.approve: _Rule(['admin'], ['KYC Submitted'], 'Approved'),
+  // The Admin's review lands directly on `Payment Pending`: with Government ID
+  // KYC gone, approving a Booking *is* opening it for payment (ADR-0001).
+  AdminAction.approve: _Rule(['admin'], ['Pending'], 'Payment Pending'),
   AdminAction.reject:
-      _Rule(['admin'], ['Pending', 'KYC Submitted', 'Approved'], 'Rejected'),
-  AdminAction.rejectKyc: _Rule(['admin'], ['KYC Submitted'], null),
+      _Rule(['admin'], ['Pending', 'Payment Pending'], 'Rejected'),
   AdminAction.verifyPayment: _Rule(['admin'], ['Payment Pending'], 'Reserved'),
   AdminAction.rejectPaymentProof: _Rule(['admin'], ['Payment Pending'], null),
-  AdminAction.cancel: _Rule(
-      ['guest', 'admin'],
-      ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending', 'Reserved'],
-      'Cancelled'),
+  AdminAction.cancel: _Rule(['guest', 'admin'],
+      ['Pending', 'Payment Pending', 'Reserved'], 'Cancelled'),
   AdminAction.markRefunded: _Rule(['admin'], ['Cancelled'], null),
-  AdminAction.purgeKyc:
-      _Rule(['admin'], ['Staying', 'Checked-Out', 'Completed'], null),
   AdminAction.revokeKey:
       _Rule(['admin'], ['Reserved', 'Checked-In', 'Staying'], null),
-  AdminAction.expire: _Rule(['system'], ['Pending', 'KYC Submitted'], 'Expired'),
+  AdminAction.expire: _Rule(['system'], ['Pending'], 'Expired'),
   AdminAction.checkIn: _Rule(['system', 'admin'], ['Reserved'], 'Checked-In'),
   AdminAction.beginStay: _Rule(['system', 'admin'], ['Checked-In'], 'Staying'),
   AdminAction.checkOut: _Rule(['system', 'admin'], ['Staying'], 'Checked-Out'),
@@ -741,19 +726,6 @@ class ActionResult {
 String _join(List<String> values) => values.length == 1
     ? values.first
     : '${values.sublist(0, values.length - 1).join(', ')} or ${values.last}';
-
-String _kyc(Object? raw) {
-  switch ((raw ?? 'required').toString().toLowerCase()) {
-    case 'submitted':
-      return 'submitted';
-    case 'approved':
-      return 'approved';
-    case 'rejected':
-      return 'rejected';
-    default:
-      return 'required';
-  }
-}
 
 String _refund(Object? raw) {
   switch ((raw ?? 'none').toString().toLowerCase()) {
@@ -821,10 +793,6 @@ ActionResult applyAdminAction(
 
   switch (action) {
     case AdminAction.approve:
-      if (_kyc(booking['kyc_status']) != 'submitted') {
-        return ActionResult.refused(
-            'The Guest has to submit a government ID (KYC) before the Admin can approve.');
-      }
       final accommodation = (booking['accommodation'] ?? '').toString();
       final conflicts = findDateConflicts(
         booking,
@@ -839,7 +807,7 @@ ActionResult applyAdminAction(
             'These dates are already held by another Booking, so this one cannot be approved. Offer the Guest alternative dates.',
             conflicts);
       }
-      patch['kyc_status'] = 'approved';
+      // Approval means the dates are firmly held: the countdown stops here.
       patch['hold_expires_at'] = null;
       break;
 
@@ -850,24 +818,6 @@ ActionResult applyAdminAction(
       }
       reason = input.reason!.trim();
       patch['rejection_reason'] = reason;
-      if (_kyc(booking['kyc_status']) == 'submitted') {
-        patch['kyc_status'] = 'rejected';
-        patch['kyc_reject_reason'] = reason;
-      }
-      break;
-
-    case AdminAction.rejectKyc:
-      if (_blank(input.reason)) {
-        return ActionResult.refused(
-            'Say why the ID was refused — a Guest who is not told why cannot send the right one.');
-      }
-      if (_blank(booking['kyc_id_url'])) {
-        return ActionResult.refused(
-            'There is no government ID uploaded yet to review.');
-      }
-      reason = input.reason!.trim();
-      patch['kyc_status'] = 'rejected';
-      patch['kyc_reject_reason'] = reason;
       break;
 
     case AdminAction.verifyPayment:
@@ -949,17 +899,6 @@ ActionResult applyAdminAction(
       }
       reason = 'Refund returned to the Guest.';
       patch['refund_status'] = 'refunded';
-      break;
-
-    case AdminAction.purgeKyc:
-      if (_blank(booking['kyc_id_url']) && _blank(booking['kyc_receipt_url'])) {
-        return ActionResult.refused(
-            'There is no government ID or receipt left to purge on this Booking.');
-      }
-      reason =
-          'Government ID and receipt purged from Storage after the stay; the URLs are cleared (RA 10173).';
-      patch['kyc_id_url'] = null;
-      patch['kyc_receipt_url'] = null;
       break;
 
     case AdminAction.revokeKey:
