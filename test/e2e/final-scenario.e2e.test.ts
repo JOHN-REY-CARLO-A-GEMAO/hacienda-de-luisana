@@ -1,8 +1,9 @@
 /**
- * The final end-to-end scenario, executed — 37 steps.
+ * The final end-to-end scenario, executed — 42 steps.
  *
  * client registration → Booking → Terms → Review → Approval → Payment → OCR → Admin
- * verification → chat → Review → Smart Lock → security attacks.
+ * verification → chat → Review (rating, correction, moderation, publication) →
+ * Smart Lock → security attacks.
  *
  * WHAT THIS FILE CAN AND CANNOT PROVE, stated up front because the difference
  * matters more than the pass count:
@@ -41,7 +42,15 @@ import { extractReceiptFields, canAutoVerifyFromOcr, matchPaymentReference } fro
 import { interpretStoredStatus, normalizeStatus, paymentOptionsForTotal } from '../../src/lib/booking'
 import { checkRateLimit, LIMITS } from '../../src/lib/rateLimit'
 import { ensureConversation, sendChatMessage, subscribeMessages } from '../../src/lib/chatCloud'
-import { submitReview, getReviewForBooking } from '../../src/lib/reviewsCloud'
+import {
+  getPublicReviewSummary,
+  getReviewForBooking,
+  listPublicReviews,
+  publishPublicReview,
+  submitReview,
+  unpublishPublicReview,
+  updateReview,
+} from '../../src/lib/reviewsCloud'
 import { validateStarRating } from '../../src/lib/validation'
 
 import { evaluate, type Store } from '../rules/engine'
@@ -49,6 +58,7 @@ import {
   ADMIN_UID,
   BOOKING_ID,
   CONVO_ID,
+  DEFAULT_REVIEW_TIME,
   GUEST_UID,
   OTHER_GUEST_UID,
   accessLogDoc,
@@ -58,6 +68,7 @@ import {
   conversationDoc,
   guestPaymentPatch,
   messageDoc,
+  publicReviewDoc,
   request,
   reviewDoc,
   storeWith,
@@ -734,36 +745,52 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
   })
 
   it('step 34 — a Review lives on the Booking it is about: its author’s, finished, once', () => {
-    const ok = decide({ path: `reviews/${BOOKING_ID}`, method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ uid: GUEST_UID }) })
-    const sixStars = decide({ path: `reviews/${BOOKING_ID}`, method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ uid: GUEST_UID, stars: 6 }) })
-    const impostor = decide({ path: `reviews/${BOOKING_ID}`, method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: reviewDoc({ uid: OTHER_GUEST_UID }) })
-    // Somebody else's finished Booking, and this Guest's unfinished one.
-    const strangerStay = decide({
-      path: 'reviews/booking-2',
-      method: 'create',
+    // The create stamps the edit window from the clock, so a fixture has to say
+    // the same instant the rule reads — hence the `time` on every case.
+    const at = DEFAULT_REVIEW_TIME
+    const own = (overrides: Record<string, unknown> = {}) => ({
+      path: `reviews/${BOOKING_ID}`,
+      method: 'create' as const,
       auth: anonymousGuest(GUEST_UID),
-      requestData: reviewDoc({ booking_id: 'booking-2', uid: GUEST_UID }),
+      requestData: reviewDoc({ uid: GUEST_UID, ...overrides }, at),
+      time: at,
     })
+    const ok = decide(own())
+    const sixStars = decide(own({ stars: 6 }))
+    const impostor = decide({ ...own({ uid: OTHER_GUEST_UID }), auth: anonymousGuest(OTHER_GUEST_UID) })
+    // Somebody else's finished Booking, this Guest's unfinished one, and a
+    // terminal branch — a request that ended is not a stay.
+    const strangerStay = decide({ ...own({ booking_id: 'booking-2' }), path: 'reviews/booking-2' })
     const earlyStay = decide(
-      { path: 'reviews/booking-open', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: reviewDoc({ booking_id: 'booking-open', uid: GUEST_UID }) },
+      { ...own({ booking_id: 'booking-open' }), path: 'reviews/booking-open' },
       storeWith({}, { 'bookings/booking-open': bookingDoc({ status: 'Staying' }) }),
     )
-    // A second Review for the same stay is the same document: an update, and
-    // updates are closed.
-    const secondReview = decide({
+    const cancelledStay = decide(
+      { ...own({ booking_id: 'booking-gone' }), path: 'reviews/booking-gone' },
+      storeWith({}, { 'bookings/booking-gone': bookingDoc({ status: 'Cancelled' }) }),
+    )
+    // A second Review for the same stay is a second write at an id that already
+    // holds one. Inside the window that is a correction the Guest is allowed, so
+    // the thing that is actually refused is a second document under another id —
+    // and, after the window, the correction too.
+    const filedElsewhere = decide({ ...own(), path: 'reviews/some-other-id', requestData: reviewDoc({ uid: GUEST_UID, booking_id: 'some-other-id' }, at) })
+    const afterTheWindow = decide({
       path: `reviews/${BOOKING_ID}`,
       method: 'update',
       auth: anonymousGuest(GUEST_UID),
-      resourceData: reviewDoc({ uid: GUEST_UID }),
-      requestData: reviewDoc({ uid: GUEST_UID, stars: 4 }),
+      resourceData: reviewDoc({ uid: GUEST_UID }, at),
+      requestData: reviewDoc({ uid: GUEST_UID, stars: 4 }, at),
+      time: at + 15 * 86_400_000,
     })
-    expect([ok, sixStars, impostor, strangerStay, earlyStay, secondReview]).toEqual([true, false, false, false, false, false])
+    expect([ok, sixStars, impostor, strangerStay, earlyStay, cancelledStay, filedElsewhere, afterTheWindow]).toEqual([
+      true, false, false, false, false, false, false, false,
+    ])
     expect(validateStarRating(6).ok).toBe(false)
     note(
       34,
       'Review eligibility, ownership, shape and one-per-stay',
       'rule-text',
-      'own finished Booking + 5 stars allowed; 6 stars, another author, another Guest’s stay, an unfinished stay and a second Review all denied',
+      'own finished Booking + 5 stars allowed; 6 stars, another author, another Guest’s stay, an unfinished or cancelled stay, a second document and a late correction all denied',
     )
   })
 
@@ -845,12 +872,146 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     note(37, 'Cross-user document access', 'rule-text', 'ID reads denied for guests and Admin alike (slot removed), guest rates write denied, own payment proof write allowed')
   })
 
-  it('prints the 37-step record', () => {
-    expect(record).toHaveLength(37)
+  // -------------------------------------------------------------------------
+  // I. The review, end to end (steps 38–42)
+  // -------------------------------------------------------------------------
+
+  it('step 38 — the Guest rates a finished stay, and can still change their mind', async () => {
+    const written = await submitReview({
+      bookingId: BOOKING_ID,
+      uid: GUEST_UID,
+      stars: 4,
+      text: 'Very relaxing place. We enjoyed our stay.',
+      bookingStatus: 'Completed',
+      categories: { cleanliness: 5, value: 4 },
+    })
+    expect(written.ok).toBe(true)
+    const stored = await getReviewForBooking(BOOKING_ID, GUEST_UID)
+    expect(stored?.stars).toBe(4)
+    expect(stored?.cleanliness).toBe(5)
+    expect(stored?.accommodation).toBeUndefined()
+    // It waits for the Admin, and the window is stamped, not claimed.
+    expect(stored?.status).toBe('pending')
+    expect(stored?.edit_until).toBeTruthy()
+
+    const corrected = await updateReview({
+      bookingId: BOOKING_ID,
+      uid: GUEST_UID,
+      stars: 5,
+      text: 'Very relaxing place. We enjoyed our stay — the garden is wonderful.',
+    })
+    expect(corrected.ok).toBe(true)
+    expect((await getReviewForBooking(BOOKING_ID, GUEST_UID))?.stars).toBe(5)
+    note(38, 'A Guest rates a stay', 'executed', 'written pending with categories, then corrected inside the window')
+  })
+
+  it('step 39 — the Guest cannot rate a stay that is not over, or rate one twice', async () => {
+    const early = await submitReview({ bookingId: 'booking-open', uid: GUEST_UID, stars: 5, text: 'Too soon.', bookingStatus: 'Staying' })
+    const again = await submitReview({ bookingId: BOOKING_ID, uid: GUEST_UID, stars: 1, text: 'Changed my mind.', bookingStatus: 'Completed' })
+    expect([early.ok, again.ok]).toEqual([false, false])
+    expect((await getReviewForBooking(BOOKING_ID, GUEST_UID))?.stars).toBe(5)
+    note(39, 'One review per finished stay', 'executed', 'a stay in progress refused, a second review for the same stay refused')
+  })
+
+  it('step 40 — the Admin answers and moderates; the Guest\'s words do not move', async () => {
+    const at = DEFAULT_REVIEW_TIME
+    const published = decide({
+      path: `reviews/${BOOKING_ID}`,
+      method: 'update',
+      auth: allowlistedAdmin(),
+      resourceData: reviewDoc({ status: 'pending' }, at),
+      requestData: reviewDoc({ status: 'published', published_at: '2026-10-06T02:00:00.000Z' }, at),
+      time: at,
+    })
+    const answered = decide({
+      path: `reviews/${BOOKING_ID}`,
+      method: 'update',
+      auth: allowlistedAdmin(),
+      resourceData: reviewDoc({ status: 'published' }, at),
+      requestData: reviewDoc({ status: 'published', admin_response: 'Thank you for staying with us!', admin_response_at: '2026-10-06T02:00:00.000Z', admin_response_by: ADMIN_UID }, at),
+      time: at,
+    })
+    // The one thing an Admin may not do: turn a 2-star review into a 5-star one.
+    const rewritten = decide({
+      path: `reviews/${BOOKING_ID}`,
+      method: 'update',
+      auth: allowlistedAdmin(),
+      resourceData: reviewDoc({ stars: 2, status: 'published' }, at),
+      requestData: reviewDoc({ stars: 5, status: 'published' }, at),
+      time: at,
+    })
+    const guestWroteIt = decide({
+      path: `reviews/${BOOKING_ID}`,
+      method: 'update',
+      auth: anonymousGuest(GUEST_UID),
+      resourceData: reviewDoc({ status: 'pending' }, at),
+      requestData: reviewDoc({ status: 'published' }, at),
+      time: at,
+    })
+    expect([published, answered, rewritten, guestWroteIt]).toEqual([true, true, false, false])
+    note(40, 'The Admin moderates and answers', 'rule-text', 'publish and reply allowed; rewriting the rating and a self-publish denied')
+  })
+
+  it('step 41 — the public page carries the quote and nothing that identifies the Guest', async () => {
+    const published = await publishPublicReview({
+      reviewId: BOOKING_ID,
+      stars: 5,
+      text: 'Very relaxing place. We enjoyed our stay — the garden is wonderful.',
+      displayName: 'Ana R.',
+      month: 'October 2026',
+    })
+    expect(published.ok).toBe(true)
+    const shown = await listPublicReviews()
+    expect(shown).toHaveLength(1)
+    // The public document is six fields the Admin chose, and the Guest's uid,
+    // their Booking and the Admin's private reply are not among them.
+    expect(Object.keys(shown[0]).sort()).toEqual(['display_name', 'excerpt', 'month', 'published_at', 'review_id', 'stars'])
+    expect(JSON.stringify(shown)).not.toContain(GUEST_UID)
+    expect(JSON.stringify(shown)).not.toContain('Thank you for staying')
+
+    // And a Guest cannot put one there, or read the private review.
+    const guestPublish = decide({
+      path: `public_reviews/${BOOKING_ID}`,
+      method: 'create',
+      auth: anonymousGuest(GUEST_UID),
+      requestData: publicReviewDoc({ review_id: BOOKING_ID }),
+    })
+    const privateRead = decide({
+      path: `reviews/${BOOKING_ID}`,
+      method: 'get',
+      auth: null,
+      resourceData: reviewDoc({}, DEFAULT_REVIEW_TIME),
+    })
+    const strangerRead = decide({
+      path: `reviews/${BOOKING_ID}`,
+      method: 'get',
+      auth: anonymousGuest(OTHER_GUEST_UID),
+      resourceData: reviewDoc({}, DEFAULT_REVIEW_TIME),
+    })
+    expect([guestPublish, privateRead, strangerRead]).toEqual([false, false, false])
+    note(41, 'The public page', 'executed + rule-text', 'six published fields, no uid or reply; a Guest cannot publish and a visitor cannot read the review itself')
+  })
+
+  it('step 42 — the average counts only what is on the website', async () => {
+    // One published testimonial on the page, and the review it came from.
+    const summary = await getPublicReviewSummary()
+    expect(summary.count).toBe(1)
+    expect(summary.average).toBe(5)
+    // Taking it down takes the number with it — a hidden review moves nothing a
+    // visitor can see, which is the whole point of counting only these.
+    expect((await unpublishPublicReview(BOOKING_ID)).ok).toBe(true)
+    const after = await getPublicReviewSummary()
+    expect(after.count).toBe(0)
+    expect(after.average).toBeNull()
+    note(42, 'The average rating', 'executed', '5.0 from one published testimonial, and nothing at all once it is withdrawn')
+  })
+
+  it('prints the 42-step record', () => {
+    expect(record).toHaveLength(42)
     const width = Math.max(...record.map((r) => r.title.length))
     const lines = record.map(
       (r) => `${String(r.step).padStart(2)} | ${r.title.padEnd(width)} | ${r.kind.padEnd(9)} | ${r.result}`,
     )
-    console.info(`\n=== final end-to-end scenario: 37 steps ===\n${lines.join('\n')}\n`)
+    console.info(`\n=== final end-to-end scenario: 42 steps ===\n${lines.join('\n')}\n`)
   })
 })

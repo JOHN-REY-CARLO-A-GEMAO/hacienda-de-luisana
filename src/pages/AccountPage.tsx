@@ -14,6 +14,7 @@ import { caseInsensitiveIncludes } from '../lib/pagination'
 import { validateSearch } from '../lib/validation'
 import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
+import { isReviewableStatus } from '../lib/reviewPolicy'
 import { ArrowRight, Calendar, Sparkle } from '../lib/icons'
 
 /** Statuses a Guest may still withdraw from themselves — the list firestore.rules allows. */
@@ -247,7 +248,14 @@ export function AccountPage() {
                 <BookingHistory bookingId={booking.id} />
 
                 {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
-                  <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
+                  <div data-testid="review-entry">
+                    {isReviewableStatus(status) && (
+                      <p className="mt-4 text-sm text-forest-800">
+                        <strong className="font-medium">Your stay is complete!</strong> How was your stay?
+                      </p>
+                    )}
+                    <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
+                  </div>
                 )}
 
                 <div className="mt-4 flex flex-wrap items-center gap-3">

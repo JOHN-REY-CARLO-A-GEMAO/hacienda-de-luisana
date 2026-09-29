@@ -184,6 +184,25 @@ describe('evaluator: map and list methods', () => {
     expect(check("'image/png'.matches('.*')")).toBe(true)
   })
 
+  /**
+   * A string literal carries its escapes into the pattern.
+   *
+   * Without this, a rule written `text.matches('\\s*')` to refuse whitespace
+   * hands RE2 a doubled backslash — an escaped literal backslash, not a
+   * whitespace class — so the pattern matches nothing and the rule allows
+   * exactly what it was written to refuse. The `reviews` text check depends on
+   * it, so it is pinned here rather than discovered there.
+   */
+  it('reads escapes inside a string literal', () => {
+    expect(check("'   '.matches('\\\\s*')")).toBe(true)
+    expect(check("'a'.matches('\\\\s*')")).toBe(false)
+    expect(check("'\\n'.matches('\\\\s*')")).toBe(true)
+    expect(check("'a\\tb'.matches('.*')")).toBe(true)
+    // A backslash that is not one of the language's escapes is kept as written,
+    // rather than silently eating the character after it.
+    expect(check("'a\\\\b'.matches('.*')")).toBe(true)
+  })
+
   it('indexes lists and maps', () => {
     expect(check("['a', 'b'][1] == 'b'")).toBe(true)
     expect(check("{'k': 'v'}['k'] == 'v'")).toBe(true)

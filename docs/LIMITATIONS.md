@@ -58,6 +58,41 @@ The version is displayed and the checkbox is required by the UI, but acceptance 
 
 If `VITE_FIREBASE_*` is unset, chat and reviews persist in **this browser only**. Rules exist for cloud; the UI writes to Firestore when configured.
 
+## Reviews
+
+- **The emulator suite did not run** (no Java), so the new `reviews`,
+  `public_reviews` and Activity-action-list cases in
+  `test/emulator/rules.emulator.test.ts` are **written, not executed**. The
+  `test/rules/` verdicts are the supplemental in-repo evaluator, never reported
+  as emulator-verified.
+- **The Dart was not compiled** (no Flutter SDK): `lib/services/review_policy.dart`,
+  `lib/models/review_model.dart`, `lib/services/review_service.dart`,
+  `lib/views/reviews/*.dart` and `test/review_policy_test.dart` are **written and
+  reviewed, not compiled**.
+- **No push notification.** The "How was your stay?" prompt is the entry point on
+  `/account`. There is no FCM infrastructure in this system and none was added for
+  a review; introducing one would be a new trust boundary, not a feature.
+- **The public average is published by the Admin.** In the cloud the website
+  reads `site_config/review_summary`, which an Admin has to write for a number to
+  appear. Nothing computes it automatically, and no Cloud Function was added.
+  In demo mode it is computed from what is published.
+- **The Admin's review search is a prefix match**, not full text: Firestore has
+  no `contains` operator without an index, so a range on `text` is used and only
+  Reviews whose words *begin* with the query are found.
+- **Reviews are never deleted by the system.** `hidden` keeps the document and
+  the decision; a purge would need a Firestore TTL policy and an Admin decision
+  about how long a Guest's words are kept. Neither is deployed.
+- **The public testimonial is an editorial act.** The Admin chooses which words
+  are quoted and under whose name. That is the point — a Guest cannot put their
+  own words in front of strangers — but it does mean the website's quotes are
+  chosen, not sampled.
+- **Two review numbers exist, deliberately.** The website's average counts only
+  published testimonials; the Admin app's counts every Review they can moderate.
+  They are different questions and the UI labels them.
+- **The curated Airbnb quotes are separate and stay that way.** They are
+  transcribed from the listing under `src/config/site.ts`'s rule that reviews
+  come only from the listing itself. On-site Reviews appear in their own block.
+
 ## Firestore rules findings — resolved, with the limits of that word
 
 The six gaps recorded by the first verification pass (Guest-forged

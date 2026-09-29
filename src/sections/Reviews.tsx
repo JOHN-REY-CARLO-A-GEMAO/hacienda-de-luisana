@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AIRBNB_RATING, REVIEWS, type Review } from '../config/site'
 import { Star, Sparkle, ArrowRight } from '../lib/icons'
 import { SceneHeader } from '../components/Scene'
+import { getPublicReviewSummary, listPublicReviews } from '../lib/reviewsCloud'
+import { STAR_LABELS, type PublicReview, type ReviewSummary } from '../lib/reviewPolicy'
 
 /** "2026-09-26" → "September 2026", for the "as of" footnote. */
 export function monthYear(iso: string): string {
@@ -72,6 +74,9 @@ export function Reviews() {
           </a>
         </div>
 
+        {/* Guests who stayed with us, rated here. */}
+        <StayReviews />
+
         {empty ? (
           <div className="reveal mt-14 rounded-[28px] border border-dashed border-forest-900/15 bg-white p-10 lg:p-14 text-center">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-forest-50 flex items-center justify-center text-forest-700 mb-5">
@@ -114,6 +119,108 @@ export function Reviews() {
         )}
       </div>
     </section>
+  )
+}
+
+/**
+ * What Guests who stayed here wrote, rated on this site.
+ *
+ * A separate block from the Airbnb quotes above, and it has to stay separate.
+ * Those are transcribed from a listing the Admin published elsewhere, each one
+ * attributed to a first name and a month, and `src/config/site.ts` says in as
+ * many words: add reviews only from the listing itself, never write one. So
+ * this is not them, and it does not sit among them pretending to be — its own
+ * heading says where these came from.
+ *
+ * What reaches a visitor is `public_reviews` (ADR-0014): six fields the Admin
+ * chose to publish, out of a Review a Guest wrote after a real stay. A Guest's
+ * uid, their Booking, and the Admin's private reply are not among them, and
+ * cannot be added to a document that collection will accept.
+ */
+function StayReviews() {
+  const [reviews, setReviews] = useState<PublicReview[] | null>(null)
+  const [summary, setSummary] = useState<ReviewSummary | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    // Two reads, and neither of them is the whole collection: the testimonials
+    // are a page, and the average is a single document the Admin publishes.
+    void Promise.all([listPublicReviews(), getPublicReviewSummary()]).then(([shown, counted]) => {
+      if (!alive) return
+      setReviews(shown)
+      setSummary(counted)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Nothing published yet: the section says nothing, rather than showing an
+  // empty frame where testimonials would be.
+  if (!reviews || reviews.length === 0) return null
+
+  return (
+    <div className="reveal mt-14" data-testid="stay-reviews">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
+            Stayed with us
+          </div>
+          <h3 className="mt-1.5 font-serif text-2xl lg:text-3xl text-forest-900">
+            Rated here, by Guests who stayed
+          </h3>
+        </div>
+        {summary?.average != null && (
+          <div className="text-right">
+            <div className="font-serif text-3xl text-forest-900 leading-none">
+              {summary.average.toFixed(1)}
+              <span className="text-olive-400 text-lg ml-1" aria-hidden="true">
+                ★
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] uppercase tracking-eyebrow text-forest-600">
+              {summary.count} review{summary.count === 1 ? '' : 's'}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {reviews.map((review) => (
+          <StayReviewCard key={review.review_id} review={review} />
+        ))}
+      </div>
+
+      <p className="mt-5 text-[11px] text-forest-700/60 leading-relaxed">
+        Written by Guests after their stay, shown as they wrote it, under a first name or “Guest” at their
+        request. Reviews are published only after the Admin has read them.
+      </p>
+    </div>
+  )
+}
+
+function StayReviewCard({ review }: { review: PublicReview }) {
+  return (
+    <article
+      className="bg-white rounded-2xl border border-forest-900/5 shadow-card p-6 flex flex-col"
+      data-testid="stay-review"
+    >
+      <div
+        className="flex gap-0.5 text-olive-400"
+        role="img"
+        aria-label={`${review.stars} out of 5 stars — ${STAR_LABELS[review.stars - 1]}`}
+      >
+        {Array.from({ length: 5 }).map((_, s) => (
+          <Star key={s} size={14} className={s < review.stars ? '' : 'opacity-25'} />
+        ))}
+      </div>
+      <blockquote className="mt-3 text-sm text-forest-800/85 leading-relaxed flex-1">
+        “{review.excerpt}”
+      </blockquote>
+      <div className="mt-4 pt-3 border-t border-forest-900/5 text-xs text-forest-700">
+        <span className="font-medium text-forest-900">{review.display_name}</span> · {review.month}
+      </div>
+    </article>
   )
 }
 

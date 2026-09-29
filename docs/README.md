@@ -48,6 +48,8 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 | Public site, `/book` | ✅ | ✅ (reads like anyone) |
 | `/account` — own Bookings, payment plan, payment proof, Date hold, withdraw | ✅ | — (turned away; pointed to the app) |
 | `/messages` — chat with the Admin, and 📍 Share Live Location (15/30/60 min) | ✅ | ✅ app inbox |
+| Rate a finished stay, and change your mind for 14 days | ✅ (at `/account`) | — |
+| Read, answer, moderate and publish Reviews | — | ✅ app ([ADR-0014](./adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md)) |
 | Review a Booking: approve / reject, refuse an ID | — | ✅ app |
 | Verify / reject Payment proof, cancel, settle and mark Refunds | — | ✅ app |
 | Check-in → Staying → Check-out → Complete, purge ID after the stay, revoke a Credential | — | ✅ app |
@@ -153,7 +155,8 @@ Android: see [ANDROID.md](./ANDROID.md). Without a configured Firebase app the s
 
 - [CONTEXT.md](../CONTEXT.md) — glossary
 - [MESSAGING.md](./MESSAGING.md) — the Guest ↔ Admin conversation: data model, the 1,000-character limit, cursor pagination, retention, and live location
-- [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md); live location is [0013](./adr/0013-live-location-as-a-stream.md)
+- [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md); live location is [0013](./adr/0013-live-location-as-a-stream.md); reviews and the public testimonial are [0014](./adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md)
+- [docs/REVIEWS.md](./REVIEWS.md) — the Review data model, eligibility, the edit window, moderation, and what the website publishes
 - [HDL_FLOW_CORRECTED.md](./HDL_FLOW_CORRECTED.md) — the system flow (thesis chart), per module
 - [FLUTTER_FLOW.md](./FLUTTER_FLOW.md) — the Admin app's flow and screen contracts
 - [FLUTTER_UI_UX.md](./FLUTTER_UI_UX.md) — the Admin app's design system

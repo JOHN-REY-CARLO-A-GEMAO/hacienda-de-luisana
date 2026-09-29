@@ -283,10 +283,26 @@ describe('P1: a Review is stored at the Booking it is about', () => {
   })
 
   it('keeps one Review per stay: the write is a set at that id, not an append', () => {
-    // The rule closes updates, so a set at an id that already holds a Review is
-    // refused by the database — the app's duplicate check and the rule agree.
-    expect(rules).toContain('allow update: if false;')
+    // The id is the Booking's, and the create rule reads that Booking — so a
+    // second Review for the same stay is a write at an id that already exists,
+    // and the only update the rules admit is the correction window below.
     expect(rules).toContain('request.resource.data.booking_id == reviewId')
+    expect(rules).toContain('exists(bookingReviewed())')
+    // A Guest cannot delete a Review to take a rating back: hiding one is the
+    // Admin's door, and it is recorded in the Activity log.
+    expect(rules).toMatch(/match \/reviews\/\{reviewId\}[\s\S]*?allow delete: if isAdmin\(\);/)
+  })
+
+  it('lets a Guest correct their own Review, and nothing else', () => {
+    // Was `allow update: if false` (this suite, before the edit window existed).
+    // The window is narrow on purpose: the Guest moves their own words and
+    // ratings inside it, and not their status, not the Admin's reply, and not
+    // the deadline itself.
+    expect(rules).toContain('request.time < resource.data.edit_until')
+    expect(rules).toContain("'stars', 'text', 'cleanliness', 'accommodation'")
+    // And the create refuses a window the client chose, which is the only way a
+    // Guest could otherwise have kept editing for a year.
+    expect(rules).toContain('request.resource.data.edit_until == request.time + 1209600000')
   })
 
   it('matches the keys and actions list of every action to a known type', () => {

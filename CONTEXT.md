@@ -33,7 +33,7 @@ The Guest's application (`src/`): availability, the Booking form, Payment proof 
 _Avoid_: Portal, dashboard, admin site
 
 **Admin app**:
-The Admin's application (`lib/`, Flutter, Android): every management function of the system — Booking review and lifecycle, payments, refunds, Published rates, stays, the chat inbox, Access log, rooms, CRM, analytics.
+The Admin's application (`lib/`, Flutter, Android): every management function of the system — Booking review and lifecycle, payments, refunds, Published rates, stays, the chat inbox, Guest Reviews, Access log, rooms, CRM, analytics.
 _Avoid_: Owner app, guest app, client app, staff app
 
 ### Stay
@@ -116,6 +116,22 @@ _Avoid_: User account, login, session
 **Activity log**:
 The append-only audit record of every state change in the system, with a timestamp and the actor who made it.
 _Avoid_: Audit trail, system log, history (per-Booking history is a view over this log)
+
+**Review**:
+A Guest's words about a Stay that has finished, held at `reviews/{bookingId}` — the document id *is* the Booking id, which is what makes one Review per stay a fact of the store rather than a check a form remembers. A Review carries an overall star rating, optional written feedback, four optional category ratings, and the moderation state the Admin has put it in. It is private: the Admin and the Guest who wrote it, and nobody else. A Guest may correct their own words for **fourteen days**; after that it says what it said on the day. Only the Admin may answer it, moderate it or remove it, and the Admin may not rewrite its words — a disliked rating is hidden, which the Activity log records.
+_Avoid_: Feedback (the whole feature, not one document), Testimonial (what reaches the public page — a different thing, written by the Admin, in `public_reviews`), Rating on its own (the stars without the words), Star score, Comment.
+
+**Review eligibility**:
+The fact that a Booking reached `Checked-Out` or `Completed`. A terminal branch — Rejected, Cancelled, Expired — is a request that ended, not a stay, and there is nothing to review about it. `firestore.rules` reads the Booking behind a Review and makes this check itself, so a Guest who stayed cannot be refused by a stale screen and a Guest who did not cannot get in through a console.
+_Avoid_: Post-stay window, Review period, Waiting period.
+
+**Review status**:
+Which of `pending`, `published` or `hidden` a Review is in. Every Review arrives `pending` and waits for the Admin. `hidden` is the moderation state and it is a *state*: the Review is kept, with the decision in the Activity log, and a Guest is never silently lost because a rating was uncomfortable.
+_Avoid_: Approved (that is a Booking status), Flagged, Removed, Deleted.
+
+**Testimonial**:
+What the public website shows, held at `public_reviews/{reviewId}` — six fields (the rating, a quotation, a display name, a month, a published instant and the id it came from) that the Admin writes out of a Review. It is a separate document, not a copy with fields removed, so a Guest's uid, their Booking and the Admin's private reply have no way onto the public page. **Presence in the collection is publication**: there is no status, and the Admin withdraws a testimonial by deleting it. Distinct from the Airbnb quotes transcribed into `src/config/site.ts`, which are a Guest's words published on a platform this system does not control.
+_Avoid_: Review (the Guest's own document, private), Public review, Feedback, Quote.
 
 **Conversation**:
 The one thread between a Guest and the Admin, held at `conversations/{id}` with its messages in a `messages` subcollection. It belongs to exactly one Guest, and knowing its id is not membership. Messages are text, at most 1,000 characters, read a page at a time.

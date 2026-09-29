@@ -87,6 +87,8 @@ export {
   type ActionRefused,
   type ActionResult,
   type ActionType,
+  type ActivityActionType,
+  type ReviewActionType,
   type ActivityLogEntry,
   type Actor,
   type ActorKind,

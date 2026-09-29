@@ -7,7 +7,7 @@
  * and `lib/services/firestore_service.dart` — so a suite decision says something
  * about the app, not about an invented document.
  */
-import { ruleTimestamp, type DocData, type RuleRequest, type Store } from './engine'
+import { DEFAULT_REQUEST_TIME, ruleTimestamp, type DocData, type RuleRequest, type Store } from './engine'
 
 export const ADMIN_EMAIL = 'haciendadeluisiana@gmail.com'
 export const GUEST_UID = 'guest-uid-1'
@@ -133,12 +133,42 @@ export const locationSessionDoc = (overrides: DocData = {}): DocData => ({
   ...overrides,
 })
 
-export const reviewDoc = (overrides: DocData = {}): DocData => ({
+/**
+ * A Review as `submitReview` writes it (`src/lib/reviewsCloud.ts`).
+ *
+ * `status: 'pending'` because a Review lands waiting for the Admin, and
+ * `edit_until` is the fortnight the create stamped — which the rule recomputes
+ * from `request.time`, so a fixture that wants to be accepted says the instant
+ * it means through `at` rather than hard-coding a timestamp.
+ */
+export const reviewDoc = (overrides: DocData = {}, at: number = DEFAULT_REVIEW_TIME): DocData => ({
   booking_id: BOOKING_ID,
   uid: GUEST_UID,
   stars: 5,
   text: 'Lovely stay.',
   created_at: '2026-10-05T02:00:00.000Z',
+  status: 'pending',
+  edit_until: ruleTimestamp(at + REVIEW_EDIT_WINDOW_MS),
+  ...overrides,
+})
+
+/** The instant a Review fixture was written, so `edit_until` matches the rule. */
+export const DEFAULT_REVIEW_TIME = Date.parse('2026-10-05T02:00:00.000Z')
+
+/** Fourteen days, the window `REVIEW_EDIT_WINDOW_DAYS` describes. */
+export const REVIEW_EDIT_WINDOW_MS = 14 * 86_400_000
+
+/**
+ * A published testimonial as the Admin writes it (ADR-0014) — six fields, none
+ * of which is the Guest's uid, the Booking, or the Admin's private reply.
+ */
+export const publicReviewDoc = (overrides: DocData = {}): DocData => ({
+  review_id: BOOKING_ID,
+  stars: 5,
+  excerpt: 'Lovely stay.',
+  display_name: 'Guest',
+  month: 'October 2026',
+  published_at: '2026-10-06T02:00:00.000Z',
   ...overrides,
 })
 

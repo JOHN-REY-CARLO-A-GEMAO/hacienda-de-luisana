@@ -14,6 +14,8 @@
 
 import 'dart:math' as math;
 
+import 'review_policy.dart';
+
 /// The canonical Booking statuses, in lifecycle order, then the terminal
 /// branches (CONTEXT.md § Booking status). `Confirmed` is retired: the paid
 /// state used to be `Reserved`. `Approved` is the confirmation written when
@@ -564,6 +566,15 @@ List<RatesProblem> validatePublishedRates(Object? doc,
     policy: policy,
   );
 }
+
+/// Has this Booking reached the point where a Guest may review it?
+///
+/// A Review is about a stay that happened, so the answer is the same one
+/// `firestore.rules` gives when it reads the Booking behind a Review: the stay
+/// is `Checked-Out` or `Completed`, and a terminal branch — Rejected, Cancelled,
+/// Expired — is a request that ended rather than a stay. Mirrored from
+/// `src/lib/booking` on the website so the two never drift.
+bool isReviewableBookingStatus(String? status) => isReviewableStatus(status);
 
 // ----------------------------------------------------------------------------
 // Actions
