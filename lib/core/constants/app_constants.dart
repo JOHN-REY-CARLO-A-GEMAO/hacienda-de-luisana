@@ -17,6 +17,24 @@ class AppConstants {
   /// (`site_config/rates`).
   static const String colSiteConfig = 'site_config';
   static const String docRates = 'rates';
+  /// The Guest ↔ Admin conversation, its messages, and the live-location
+  /// consent (ADR-0013).
+  static const String colConversations = 'conversations';
+  static const String subMessages = 'messages';
+  static const String colLocationSessions = 'location_sessions';
+
+  /// The longest a chat message may be, in characters.
+  ///
+  /// The same 1,000 as `MESSAGE_MAX` in `src/lib/validation.ts` and as
+  /// `text.size() <= 1000` in `firestore.rules`. The rules are the enforcement;
+  /// this is the field.
+  static const int messageMax = 1000;
+
+  /// How many messages a thread opens with, and how many one "load earlier"
+  /// fetches. The website opens on 40 and steps back 30; the Admin reads the
+  /// same thread, so it opens on the same page.
+  static const int threadPageSize = 40;
+  static const int olderPageSize = 30;
 
   // Resort contact line (shown to the Admin as the number Guests dial)
   static const String resortPhone = '09258507707';

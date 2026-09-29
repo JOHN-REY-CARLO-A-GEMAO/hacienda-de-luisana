@@ -1,5 +1,42 @@
 # Verification — Hacienda de LuisAna
 
+> **2026-09-29 update — messaging limits, pagination, retention, live location.**
+> The Guest ↔ Admin conversation now has a 1,000-character limit enforced by
+> `firestore.rules`, cursor pagination on both apps, a retention policy with an
+> Admin-only expiry stamp, and opt-in live location as an ephemeral Realtime
+> Database stream (ADR-0013, `docs/MESSAGING.md`). What that pass ran:
+>
+> ```
+> npm test           → 36 files / 514 tests      ✅
+> npm run test:rules → 3 files / 166 tests       ✅ (engine 34, firestore 117, storage 15)
+> npm run build      → dist/ built               ✅ (tsc -b clean; the Realtime Database is a
+>                                                 lazy chunk, not in the initial bundle)
+> npm run test:e2e   → 39 tests                  ⚠️ 37 pass, 2 fail — **the same two fail on
+>                                                 a clean checkout of the parent commit**
+>                                                 (step 15, payment-proof storage contract,
+>                                                 and the record printer it throws into)
+> npm run test:emulator → not run                🔴 Blocked (no Java; JAR host unreachable)
+> flutter test / analyze  → not run              🔴 Blocked (no Flutter SDK) — so
+>                                                 `test/chat_limits_test.dart` and the four new
+>                                                 Dart files are **written and reviewed, not
+>                                                 compiled**
+> ```
+>
+> New this pass: `test/web/chat-messaging.test.ts`, `test/web/live-location.test.ts`,
+> `test/web/messages-page.test.tsx`, `test/web/realtime-database-rules.test.ts`
+> (web, 66 tests); the `location_sessions`, message-length and retention-stamp
+> suites in `test/rules/firestore-rules.test.ts`; the clock/timestamp/`hasAny`
+> semantics in `test/rules/engine.test.ts`; `test/emulator/realtime-rules.emulator.test.ts`
+> and the matching Firestore cases in `test/emulator/rules.emulator.test.ts`
+> (**written, not executed**).
+>
+> The `test/rules/engine.ts` evaluator gained `request.time`, the `timestamp` type,
+> `timestamp + int`, `timestamp - timestamp` and `keys().hasAny()` — constructs
+> `location_sessions` needs, each pinned in `engine.test.ts`. That is added
+> coverage of the real rules language, not a relaxation of an existing verdict.
+>
+> Everything below is the record of the earlier passes and is left as it happened.
+
 > **2026-09-27 update.** Government ID KYC was removed, payment-proof storage
 > moved to Supabase (ADR-0011) and client-side OCR (tesseract.js) was added.
 > §2's counts, §4's record, §5's workflow rows and §6 describe a re-run after

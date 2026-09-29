@@ -61,4 +61,12 @@ export const COMMITTED_PROJECT: FirebaseConfig = {
   appId: '',
   // Optional, and only meaningful with an `appId` above.
   measurementId: '',
+  // The Realtime Database, which carries the ephemeral live-location stream
+  // (ADR-0013). Copy the real value from Firebase console → Realtime Database
+  // if the project has never been opened there: the URL is
+  // `https://<projectId>-default-rtdb.<region>.firebasedatabase.app` on a
+  // current project and `https://<projectId>.firebaseio.com` on an older one.
+  // A build with no usable value here does not fall back to guessing one — the
+  // live-location control is disabled with a reason instead.
+  databaseURL: '',
 }

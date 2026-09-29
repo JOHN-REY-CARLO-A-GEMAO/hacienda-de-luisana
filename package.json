@@ -10,9 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
-    "emulators": "firebase emulators:start --project demo-hacienda --import ./emulator-data --export-on-exit",
+    "emulators": "firebase emulators:start --project demo-hacienda --only auth,firestore,database,storage,ui --import ./emulator-data --export-on-exit",
     "test:rules": "vitest run --config vitest.rules.config.ts",
-    "test:emulator": "firebase emulators:exec --project demo-hacienda --only auth,firestore,storage \"vitest run --config vitest.emulator.config.ts\"",
+    "test:emulator": "firebase emulators:exec --project demo-hacienda --only auth,firestore,database,storage \"vitest run --config vitest.emulator.config.ts\"",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {

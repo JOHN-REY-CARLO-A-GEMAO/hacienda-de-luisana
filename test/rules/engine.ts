@@ -39,6 +39,12 @@
  *     (which is what a query has to be safe against).
  *   - Resource limits, lexical path matching edge cases and anything requiring a
  *     running Auth/Storage emulator are out of scope.
+ *   - `request.time` is evaluated at `RuleRequest.time`, defaulting to
+ *     `DEFAULT_REQUEST_TIME` rather than the wall clock, so a case about an
+ *     expiry states the instant it means. `timestamp` values, `timestamp + int`,
+ *     `timestamp - timestamp` and `keys().hasAny([...])` are modelled; the rules
+ *     that use them (`location_sessions`) are what those cases exercise, and
+ *     `engine.test.ts` pins their semantics.
  *   It is never modified to make a failing case pass: a case this file gets
  *   wrong is a case to take to the emulator, not a case to loosen.
  */
@@ -65,11 +71,38 @@ export type MapDiff = {
 }
 /** A resolved resource path, produced by a path literal such as `/databases/$(d)/documents/x/y`. */
 export type RulePath = { readonly __rulePath: string }
+/**
+ * Firestore rules' `timestamp` type. Modelled rather than approximated, because
+ * a rule that reads the clock (`request.time`) has to compare against a real
+ * instant: `location_sessions` refuses a session whose `expires_at` is already
+ * in the past, and a stand-in would make that case untestable.
+ */
+export type RuleTimestamp = { readonly __timestamp: number }
 
 const setOf = (items: unknown[]): RuleSet => ({ __set: items })
 const isSet = (value: unknown): value is RuleSet => !!value && typeof value === 'object' && '__set' in value
 const isDiff = (value: unknown): value is MapDiff => !!value && typeof value === 'object' && '__diff' in value
 const isPath = (value: unknown): value is RulePath => !!value && typeof value === 'object' && '__rulePath' in value
+const isTimestamp = (value: unknown): value is RuleTimestamp =>
+  !!value && typeof value === 'object' && '__timestamp' in value
+
+/**
+ * A timestamp as the rules language sees it. Suites build document bodies with
+ * it (`ruleTimestamp('2026-10-01T09:00:00.000Z')`) so a stored field compares
+ * against `request.time` the way it would in the emulator.
+ */
+export function ruleTimestamp(when: string | number | Date): RuleTimestamp {
+  const ms = when instanceof Date ? when.getTime() : typeof when === 'number' ? when : Date.parse(when)
+  if (Number.isNaN(ms)) throw new RuleEvaluationError(`not a timestamp: ${String(when)}`)
+  return { __timestamp: ms }
+}
+
+/**
+ * The clock every request is evaluated at unless it names one. A fixed instant,
+ * never `Date.now()`: a suite that decides an expiry case has to be able to say
+ * which instant it means.
+ */
+export const DEFAULT_REQUEST_TIME = Date.parse('2026-09-24T00:00:00.000Z')
 
 /** A write that the rules engine is evaluating. */
 export type RequestMethod = 'get' | 'list' | 'create' | 'update' | 'delete'
@@ -92,6 +125,13 @@ export type RuleRequest = {
   size?: number
   /** Storage only: content type of the upload. */
   contentType?: string
+  /**
+   * `request.time` — when the rule is being evaluated, in epoch milliseconds.
+   * Defaults to `DEFAULT_REQUEST_TIME` so a suite is hermetic: a rule that reads
+   * the clock gets the same answer on every run, and a case about expiry says
+   * so by passing the instant it means rather than by passing on `Date.now()`.
+   */
+  time?: number
 }
 
 export type Decision = {
@@ -323,6 +363,7 @@ function requestObject(input: RuleRequest, service: string): Record<string, unkn
     auth: input.auth ? { uid: input.auth.uid, token: input.auth.token } : null,
     method: input.method,
     path: '/' + input.path,
+    time: ruleTimestamp(input.time ?? DEFAULT_REQUEST_TIME),
     resource: null,
   }
   REQUEST_OBJECTS.add(request)
@@ -671,8 +712,14 @@ function binary(op: string, left: unknown, right: unknown): unknown {
       return compare(left, right) >= 0
     case '+':
       if (typeof left === 'string' && typeof right === 'string') return left + right
+      // `timestamp + int` is a timestamp, per the rules language: the window a
+      // session may claim is written as `request.time + 3600000`.
+      if (isTimestamp(left) && typeof right === 'number' && Number.isInteger(right)) {
+        return { __timestamp: left.__timestamp + right }
+      }
       return number(left) + number(right)
     case '-':
+      if (isTimestamp(left) && isTimestamp(right)) return left.__timestamp - right.__timestamp
       return number(left) - number(right)
     case '*':
       return number(left) * number(right)
@@ -709,6 +756,8 @@ function isType(value: unknown, type: string): boolean {
       return Array.isArray(value)
     case 'map':
       return isMap(value)
+    case 'timestamp':
+      return isTimestamp(value)
     case 'set':
       return isSet(value)
     case 'null':
@@ -731,11 +780,20 @@ const number = (value: unknown): number => {
 function compare(left: unknown, right: unknown): number {
   if (typeof left === 'number' && typeof right === 'number') return left === right ? 0 : left < right ? -1 : 1
   if (typeof left === 'string' && typeof right === 'string') return left === right ? 0 : left < right ? -1 : 1
+  if (isTimestamp(left) && isTimestamp(right)) {
+    return left.__timestamp === right.__timestamp ? 0 : left.__timestamp < right.__timestamp ? -1 : 1
+  }
   throw new RuleEvaluationError(`cannot order ${describe(left)} against ${describe(right)}`)
 }
 
 const isMap = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === 'object' && !Array.isArray(value) && !isSet(value) && !isDiff(value) && !isPath(value)
+  !!value &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  !isSet(value) &&
+  !isDiff(value) &&
+  !isPath(value) &&
+  !isTimestamp(value)
 
 function describe(value: unknown): string {
   if (value === null) return 'null'
@@ -743,12 +801,14 @@ function describe(value: unknown): string {
   if (isSet(value)) return 'set'
   if (isDiff(value)) return 'map diff'
   if (isPath(value)) return 'path'
+  if (isTimestamp(value)) return 'timestamp'
   if (isMap(value)) return 'map'
   return typeof value
 }
 
 function deepEqual(left: unknown, right: unknown): boolean {
   if (left === right) return true
+  if (isTimestamp(left) && isTimestamp(right)) return left.__timestamp === right.__timestamp
   if (typeof left === 'number' && typeof right === 'number') return left === right
   if (Array.isArray(left) && Array.isArray(right)) {
     return left.length === right.length && left.every((item, index) => deepEqual(item, right[index]))
@@ -808,9 +868,9 @@ function memberGet(base: unknown, name: string, semantics: Semantics = DEFAULT_S
     return unsupported(`the document member \`.${name}\` of a get() result`)
   }
   if (typeof base === 'object' && base !== null && REQUEST_OBJECTS.has(base) && name === 'time') {
-    // The rules files here do not read the clock; a rule that did would need a
-    // real timestamp type, so refuse instead of answering with a stand-in.
-    return unsupported('request.time (the evaluation timestamp)')
+    // The evaluation instant, as a real timestamp: `location_sessions` compares
+    // a session's `expires_at` against it, so it has to order like one.
+    return (base as { time: RuleTimestamp }).time
   }
   if (isMap(base)) return mapKey(base, name, semantics)
   return unsupported(`the member \`.${name}\` of ${describe(base)}`)
@@ -849,6 +909,8 @@ function method(base: unknown, name: string, args: unknown[]): unknown {
       break
     case 'hasAll':
       return hasAll(base, args[0])
+    case 'hasAny':
+      return hasAny(base, args[0])
     case 'hasOnly':
       return hasOnly(base, args[0])
     case 'diff':
@@ -921,6 +983,17 @@ function itemsOf(value: unknown): unknown[] {
 function hasAll(base: unknown, other: unknown): boolean {
   const mine = itemsOf(base)
   return itemsOf(other).every((item) => mine.some((own) => deepEqual(own, item)))
+}
+
+/**
+ * `keys().hasAny([...])` — true when the map carries at least one of the keys.
+ * The mirror of `hasAll`, and the way a rule refuses a document that carries a
+ * field it must not (a `lat` on a `location_sessions` document, a
+ * `messages_expires_at` on a conversation a Guest is opening).
+ */
+function hasAny(base: unknown, other: unknown): boolean {
+  const mine = itemsOf(base)
+  return itemsOf(other).some((item) => mine.some((own) => deepEqual(own, item)))
 }
 
 function hasOnly(base: unknown, other: unknown): boolean {

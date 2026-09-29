@@ -117,6 +117,18 @@ _Avoid_: User account, login, session
 The append-only audit record of every state change in the system, with a timestamp and the actor who made it.
 _Avoid_: Audit trail, system log, history (per-Booking history is a view over this log)
 
-**Live location (removed)**:
-Location tracking was retired (ADR-0009). `tracking_sessions` is closed to every writer and reader, no application records or shows a Guest's position, and the vocabulary that used to describe it — Tracking consent, Tracking session, Guest location, arrival radar — has no referent in this repository. The Access log remains: it is about doors, not position.
-_Avoid_: Breadcrumb, ping, route, radar, geofence
+**Conversation**:
+The one thread between a Guest and the Admin, held at `conversations/{id}` with its messages in a `messages` subcollection. It belongs to exactly one Guest, and knowing its id is not membership. Messages are text, at most 1,000 characters, read a page at a time.
+_Avoid_: Thread (fine in the UI), inbox on the website, DM
+
+**Message page**:
+One read of a Conversation — the newest forty on opening, thirty older at a time behind a cursor. A Conversation is never read whole.
+_Avoid_: Scrollback, batch, dump
+
+**Message retention**:
+The window a finished Conversation is kept after its Booking closes — ninety days, stamped by the Admin on `messages_expires_at` and collected afterwards by a scheduled job. An active Booking's Conversation has no stamp and is kept.
+_Avoid_: Purging on completion, message cap
+
+**Live location (reinstated)**:
+A Guest choosing, from inside their Conversation, to let the Admin watch where they are for 15, 30 or 60 minutes. The Firestore side is a **Live location session** — consent metadata with no coordinate — and the position itself is ephemeral: a Realtime Database node the server deletes at the session's expiry. Reinstated by ADR-0013, which reopened what ADR-0009 withdrew; `tracking_sessions` remains closed, because a position written to Firestore is a position stored forever.
+_Avoid_: Tracking session, breadcrumb, ping, route, radar, geofence, ETA — the shape this repository has is a stream with an expiry, not a route.

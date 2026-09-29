@@ -33,7 +33,19 @@ The version is displayed and the checkbox is required by the UI, but acceptance 
 
 ## Pagination
 
-Guest bookings, chat and the `Pager` paginate **in memory after the data is loaded** (`src/lib/pagination.ts`, `MAX_PAGE_SIZE = 50`); the Admin app streams the whole Bookings collection. There is no Firestore `startAfter` cursor. Search/sort/filter currently work because the whole (uid-scoped or admin) set is loaded; a cursor migration would move search/sort to the server and needs a plan of its own. Do not add Algolia.
+**Chat is migrated; Guest bookings and the Admin's Bookings list are not.**
+
+`conversations/*/messages` now uses a real Firestore cursor on both sides — the newest 40 on open, 30 older at a time behind `startAfter` / `startAfterDocument`, one bounded listener for live replies (`docs/MESSAGING.md` § 3). Guest bookings, the Admin's Bookings collection and the shared `Pager` still paginate **in memory after the data is loaded** (`src/lib/pagination.ts`, `MAX_PAGE_SIZE = 50`), and search/sort work because the whole (uid-scoped or admin) set is loaded. Migrating those is the same shape of work and is a plan of its own. Do not add Algolia.
+
+## Live location
+
+**The map is an OpenStreetMap raster tile, not an interactive map.** `google_maps_flutter` is *not* a dependency of the Admin app: it needs a second API key, a billing account and a per-app entitlement to ship, and this feature's hard requirement is *see where a Guest is now, without storing where they were*. The panel draws the position on a tile refreshed no more than once every ten seconds and always prints the coordinates, accuracy and age beside it, so a tile that will not load costs the picture and not the information. The Guest's side has no map at all.
+
+**Realtime Database TTL is what makes a position ephemeral, and it is the client's write that sets it.** Every published fix carries `.ttl` equal to the session's `expires_at`, and the Realtime Database deletes the node at that instant. `database.rules.json` cannot validate `.ttl` (it is a server key, not readable in rules), so a client that omitted it would leave a node behind — which is why the Admin's reader also refuses any node past its window, and why the window is bounded at both ends. The canonical TTL behaviour is a Realtime Database emulator case (`test/emulator/realtime-rules.emulator.test.ts`), not something verified here.
+
+**The Admin-side role mirror needs a first run by an allowlisted Admin.** `firestore.rules` can read `profiles/{uid}.role`; Realtime Database rules cannot read Firestore, so a Profile-promoted Admin is admitted by `live_location_admins/{uid}`, which only an address on the bootstrap allowlist may write. Until an allowlisted Admin has opened the app once after deploying the database rules, a promoted Admin gets a refused read and the panel says so.
+
+**Retention has no scheduler in this repository.** `messages_expires_at` is stamped and the policy is unit-tested, but Firestore Security Rules cannot delete on a schedule and there is no `functions/` directory here. The TTL policy and the `sweepMessages` function to deploy are written out in `docs/MESSAGING.md` § 4. Until they are deployed, the stamp is a schedule with nobody on it.
 
 ## Cache and cookies
 
@@ -82,12 +94,12 @@ Things that remain **outside** the rules' reach, unchanged by the pass:
 
 ## Flutter
 
-This environment has **no Flutter SDK**. `flutter analyze`, `flutter test` and `flutter build apk` were **not executed**; the Admin app's Dart only parses cleanly (44 files). No Admin workflow has been verified on a device or emulator.
+This environment has **no Flutter SDK**. `flutter analyze`, `flutter test` and `flutter build apk` were **not executed** — including for `test/chat_limits_test.dart`, `lib/services/live_location_service.dart`, `lib/services/chat_retention.dart` and `lib/views/inbox/live_location_panel.dart`, which are written and reviewed but **unverified by a compiler**. No Admin workflow has been verified on a device or emulator.
 
 ## Guest mobile app
 
 ADR-0007: Guest = website, Admin = Flutter. A Guest-facing mobile app is **not in this repository**. If the thesis requires a Guest APK, that remains a product gap.
 
-## Live location
+## The retired tracking module
 
-Removed (ADR-0009). `tracking_sessions` denies read, create and update to every caller; the Admin keeps `delete` so a leftover session can be erased. Access logs and Booking timestamps are untouched.
+`tracking_sessions` (ADR-0009) still denies read, create and update to every caller; the Admin keeps `delete` so a leftover session from before the withdrawal can be erased. It is **not** what live location uses today — see [Live location](#live-location) above and ADR-0013. Access logs and Booking timestamps are untouched.

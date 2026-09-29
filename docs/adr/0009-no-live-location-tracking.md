@@ -1,6 +1,6 @@
 # No live location tracking: the module is removed, the Access log stays
 
-**Status**: accepted, 2026-09-24. Supersedes the Guest Location Tracking module (Flow §4, goal G6) of the architecture as originally charted.
+**Status**: accepted, 2026-09-24. **Partly superseded by [ADR-0013](./0013-live-location-as-a-stream.md) on 2026-09-29**, which reinstates live location as an opt-in, consented, ephemeral stream inside a conversation. What this record got right — that a position written to Firestore is a position stored forever, and that the Access log answers the question the operation actually asks — is the reason ADR-0013 exists in the shape it does. The `tracking_sessions` collection stays closed under both.
 
 The system does **not** collect, store, transmit or display a Guest's location — no GPS reading, no province/city ping, no distance or ETA, in either application.
 

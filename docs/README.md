@@ -45,13 +45,15 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 
 | | Guest | Admin |
 | --- | --- | --- |
-| Public site, `/book`, `/track` | ✅ | ✅ (reads like anyone) |
+| Public site, `/book` | ✅ | ✅ (reads like anyone) |
 | `/account` — own Bookings, payment plan, payment proof, Date hold, withdraw | ✅ | — (turned away; pointed to the app) |
+| `/messages` — chat with the Admin, and 📍 Share Live Location (15/30/60 min) | ✅ | ✅ app inbox |
 | Review a Booking: approve / reject, refuse an ID | — | ✅ app |
 | Verify / reject Payment proof, cancel, settle and mark Refunds | — | ✅ app |
 | Check-in → Staying → Check-out → Complete, purge ID after the stay, revoke a Credential | — | ✅ app |
 | Publish rates & cancellation policy (`site_config/rates`) | — | ✅ app |
 | Read every Booking, Access log, CRM, analytics | — | ✅ app |
+| Read a Guest's live location while they are sharing it | — | ✅ app ([ADR-0013](./adr/0013-live-location-as-a-stream.md)) |
 
 A role is **stored**, not chosen: signing up on the website makes a Guest and cannot make anything else. The Admin is recognised by the bootstrap email allowlist (`firestore.rules` `adminEmails()`, mirrored in `storage.rules`, `src/lib/auth/profile.ts` and `lib/services/auth_store.dart`) or by `profiles/{uid}.role == 'admin'`. Enforcement is `firestore.rules`; hiding a page or a button is only the courtesy half. See [ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md) (storage of a role) and [ADR-0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md) (the two roles).
 
@@ -99,7 +101,7 @@ With no Firebase keys configured the site runs in **demo mode**: Guest accounts 
 - **Firebase Hosting**: `firebase deploy --only hosting` (public = `dist`)
 - **GitHub Pages**: workflow `.github/workflows/deploy.yml`
 
-Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (payment-proof uploads to the Supabase Storage bucket `payment-proofs`, [ADR-0011](./adr/ADR-0011-supabase-storage.md); without them proofs stay in this browser as labelled demo mode).
+Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`, `VITE_FIREBASE_DATABASE_URL` (live location, [ADR-0013](./adr/0013-live-location-as-a-stream.md); without it the sharing control is disabled and says why), `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (payment-proof uploads to the Supabase Storage bucket `payment-proofs`, [ADR-0011](./adr/ADR-0011-supabase-storage.md); without them proofs stay in this browser as labelled demo mode).
 
 Two switches worth knowing: `FIREBASE_ENV_STRICT=1` makes a build with no Firebase at all **fail** instead of shipping in demo mode, and `/status` on any deployment says which project it was built for and can test the connection from the browser. Which source wins, and why the committed config is not a secret, is in [FIREBASE_SETUP.md § 3c](./FIREBASE_SETUP.md).
 
@@ -113,6 +115,7 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 
 - Flutter / Dart ≥ 3.2 — `flutter_riverpod` (data streams), `provider` (auth session), `firebase_core`, `firebase_auth`, `cloud_firestore`, `google_sign_in`, `fl_chart`, `google_fonts`, `intl`, `url_launcher`, `flutter_local_notifications`, `shared_preferences`
 - Theme (`lib/core/theme/app_theme.dart`): forest greens + gold accent, Cinzel / Cormorant Garamond / Inter
+- `firebase_database` — the ephemeral live-location stream, read only by the inbox ([ADR-0013](./adr/0013-live-location-as-a-stream.md), [MESSAGING.md](./MESSAGING.md))
 - Interactive guided tour (`lib/tutorial/`) — first launch + More → "Replay the guided tour"; drives the real screens, see [TUTORIAL.md](./TUTORIAL.md)
 
 ### Screens (`lib/views/`)
@@ -149,7 +152,8 @@ Android: see [ANDROID.md](./ANDROID.md). Without a configured Firebase app the s
 ## Documents
 
 - [CONTEXT.md](../CONTEXT.md) — glossary
-- [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md)
+- [MESSAGING.md](./MESSAGING.md) — the Guest ↔ Admin conversation: data model, the 1,000-character limit, cursor pagination, retention, and live location
+- [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md); live location is [0013](./adr/0013-live-location-as-a-stream.md)
 - [HDL_FLOW_CORRECTED.md](./HDL_FLOW_CORRECTED.md) — the system flow (thesis chart), per module
 - [FLUTTER_FLOW.md](./FLUTTER_FLOW.md) — the Admin app's flow and screen contracts
 - [FLUTTER_UI_UX.md](./FLUTTER_UI_UX.md) — the Admin app's design system

@@ -1,0 +1,86 @@
+# Live location is a stream, not a record
+
+**Status**: accepted, 2026-09-29. **Supersedes** ADR-0009 (`no live location tracking`) for the *shape and the transport* of the feature — and reverses its decision that the system does not collect, store, transmit or display a Guest's location. What ADR-0009 got right is kept and is the reason this one is written the way it is: a position written to Firestore is a position stored forever.
+
+## What changed, and what did not
+
+ADR-0009 withdrew the module for three reasons. Two of them are answered by how this feature is built; the third is answered by consent.
+
+| ADR-0009's reason | Today |
+| --- | --- |
+| *"A live position feed needs a consent record, a retention rule, an expiry, an encryption-at-rest claim and a purge path to be lawful."* | There is now a consent record (`location_sessions`), an expiry the backend enforces, and no storage to purge — the position is deleted by the server at the expiry. The feed is opt-in per share, from inside a conversation, for 15/30/60 minutes. |
+| *"The operation never depended on it."* | Still true. The Access log remains the answer to *is the Guest here*. This is a convenience for the Admin watching a thread, not a control surface. |
+| *"Dead code is a liability."* | There is no dead code. The stream, the session, the rules and the tests all run. |
+
+**Unchanged:** the Access log (`access_logs`) is still door events only. The retired `tracking_sessions` collection stays closed to every reader and writer (Admin delete only) — a leftover from before the withdrawal can still be cleared, and a stale build cannot write a position there by accident. Nothing about Bookings, payments, the lifecycle, rates, stays or the smart lock is touched.
+
+## The rule the whole design turns on
+
+> **A position is never a record.**
+
+Two stores, and a line between them:
+
+```
+conversations/{convoId}                     Firestore   the conversation
+conversations/{convoId}/messages/{id}       Firestore   the messages (≤1,000 chars, immutable)
+location_sessions/{convoId}                 Firestore   the CONSENT: who, since when, until when,
+                                                        and a 32-character secret. No coordinate.
+live_location/{convoId}/{guestUid}          RTDB        the POSITION: overwritten every few seconds,
+                                                        deleted server-side at the expiry.
+```
+
+`firestore.rules` refuses a `location_sessions` document that carries `lat`, `lng`, `latitude`, `longitude`, `position`, `fix`, `points` or `trail` — there is no shape of position the backend will store. The position goes to the Realtime Database with a `.ttl` equal to the session's own `expires_at`, so the server deletes it whether or not the tab closes, the phone dies, or the Guest never presses Stop.
+
+## Why the Realtime Database and not Firestore
+
+The audit found the project already on Firebase Auth, Firestore, Storage and (for payment proofs) Supabase Storage. No realtime transport existed beyond Firestore's `onSnapshot` listeners. Three properties decided it:
+
+1. **The data is deleted for us.** Realtime Database TTL is applied by the server on the write. Firestore has no per-document TTL you can attach to a document you *overwrite* — an overwritten Firestore document is a stored document: billed, retained, and readable by anyone the rules admit.
+2. **It is billed differently.** Firestore charges a write per fix. Watching a stationary Guest at a 3-second cadence is 20 writes a minute, 28,800 a day, for one field that keeps changing. Realtime Database bills storage and download, and a ~200-byte node held for ninety seconds costs nothing anyone notices.
+3. **It is the same vendor and the same project.** The installed `firebase` npm package already ships `firebase/database` — **no new JavaScript dependency at all**. The Flutter app adds one first-party plugin, `firebase_database`, beside `cloud_firestore` and `firebase_auth`. No second account, no second console, no second billing relationship.
+
+Supabase Realtime was the runner-up and is already a dependency of the website — but every channel there is reachable with the `anon` key, and turning that into an authenticated channel needs an Edge Function that exchanges a Firebase ID token for a Supabase session. That is new infrastructure and a new trust boundary, for a stream that Firebase already carries. Not worth it.
+
+## The secret: what binds a position to a consent
+
+`live_location_admins` and `.validate` cannot read Firestore, so they cannot check conversation membership. The design does not pretend otherwise — it moves the check to where it can be enforced:
+
+- Firestore decides **who may start a session**: `isConversationMember(sessionId)` on a document whose id *is* the conversation id. A Guest who does not own the conversation cannot create the document at all.
+- The document carries a 32-character `stream_secret`, generated by the Guest's device, immutable for the life of the document (the update rule pins it, along with `guest_uid`, `conversation_id` and `duration_minutes`).
+- The Guest's stream node carries the same secret. Realtime Database rules validate the node's *shape*, its own uid and its own conversation id, and refuse a window past the clock — but they cannot know the secret is the right one.
+- So the **Admin app** is the place the two are joined: `LiveFix.fromData` renders a node only when guest, conversation and secret all match the session Firestore authorised, and the session is still live.
+
+A node nobody can correlate to a consent is inert. A Guest cannot attach a stream to somebody else's conversation, because writing the secret requires the Firestore rule that knows the conversation is theirs.
+
+## Authorization, in one table
+
+| Actor | Writes a session | Reads a session | Writes a position | Reads a position |
+| --- | --- | --- | --- | --- |
+| The sharing Guest | ✅ in their own conversation | ✅ their own | ✅ only `live_location/{theirConvo}/{theirUid}` | ❌ (they know where they are) |
+| Another Guest | ❌ | ❌ | ❌ only their own path, which nobody reads | ❌ |
+| The Admin | ❌ (the Guest owns the session) | ✅ any conversation | ❌ | ✅ `live_location/*`, and only nodes that match a live session |
+| Signed out | ❌ | ❌ | ❌ | ❌ |
+
+A Profile-promoted Admin is recognised by the Realtime Database through `live_location_admins/{uid}`, which only an allowlisted address may write (`database.rules.json`). The allowlist is the anchor precisely because it is the one role that needs no document to exist and so cannot be locked out of itself — the same reason `firestore.rules` bootstraps it.
+
+## Expiry, enforced four times
+
+1. `firestore.rules` caps `duration_minutes` at 1..60 and refuses an `expires_at` more than an hour past `request.time`.
+2. `database.rules.json` refuses a write whose `expires_at_ms` is not in the future and not more than 90 seconds ahead.
+3. The Guest's client stops watching and ends the session on its own countdown.
+4. The server deletes the node at the `.ttl` it was written with.
+
+The Admin's reader compares `expires_at` against the clock as well, so an expired session is not drawable even in the window before the sweep lands.
+
+## What this costs, honestly
+
+- One Firestore write when a share starts, one update when it stops. **Not one write per GPS fix** — that is the whole reason for the split.
+- One RTDB write per published fix, which is a write no more than every three seconds and only after ten metres of movement.
+- One RTDB listener on the Admin's side while a panel is open, and zero when it is closed.
+- Zero long-term storage: the session document is a few hundred bytes, the position is gone within the hour.
+
+## Consequences
+
+- The Admin app gains one dependency (`firebase_database`) and one map surface built from OpenStreetMap raster tiles rather than `google_maps_flutter`, which would need a second API key and a per-app entitlement. Recorded in `docs/LIMITATIONS.md`.
+- **Deployment requirement:** the project must have the Realtime Database created, `database.rules.json` deployed (`firebase deploy --only database`), and `VITE_FIREBASE_DATABASE_URL` set on the website. Without it the share control is disabled with a stated reason — the feature refuses rather than half-working.
+- Booking lifecycle, payments, the Date hold and the Access log are untouched. A share is an act inside a conversation, not a Booking state.

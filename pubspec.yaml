@@ -16,6 +16,11 @@ dependencies:
   firebase_auth: ^4.19.0
   cloud_firestore: ^4.17.0
   firebase_messaging: ^14.8.0
+  # The ephemeral live-location stream (ADR-0013). Realtime Database rather
+  # than Firestore because the server deletes a TTL'd node for us and bills
+  # bandwidth rather than a write per GPS fix; the rules that guard it are
+  # database.rules.json.
+  firebase_database: ^4.2.0
   # Charts & Visuals
   fl_chart: ^0.67.0
   # UI, Icons, Helpers & Utilities

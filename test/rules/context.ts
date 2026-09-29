@@ -7,7 +7,7 @@
  * and `lib/services/firestore_service.dart` — so a suite decision says something
  * about the app, not about an invented document.
  */
-import type { DocData, RuleRequest, Store } from './engine'
+import { ruleTimestamp, type DocData, type RuleRequest, type Store } from './engine'
 
 export const ADMIN_EMAIL = 'haciendadeluisiana@gmail.com'
 export const GUEST_UID = 'guest-uid-1'
@@ -113,6 +113,23 @@ export const messageDoc = (uid = GUEST_UID, role = 'guest', overrides: DocData =
   sender_role: role,
   text: 'Is the Main House free on the 1st?',
   created_at: '2026-09-24T02:00:00.000Z',
+  ...overrides,
+})
+
+/**
+ * A live-location session as `startSharing` writes it
+ * (`src/lib/liveLocation.ts`): the consent, the window and the secret that
+ * binds the ephemeral stream to this document. Deliberately no coordinate —
+ * `firestore.rules` refuses a document that carries one.
+ */
+export const locationSessionDoc = (overrides: DocData = {}): DocData => ({
+  guest_uid: GUEST_UID,
+  conversation_id: CONVO_ID,
+  active: true,
+  started_at: ruleTimestamp('2026-10-01T09:00:00.000Z'),
+  expires_at: ruleTimestamp('2026-10-01T09:30:00.000Z'),
+  duration_minutes: 30,
+  stream_secret: '0123456789abcdef0123456789abcdef',
   ...overrides,
 })
 

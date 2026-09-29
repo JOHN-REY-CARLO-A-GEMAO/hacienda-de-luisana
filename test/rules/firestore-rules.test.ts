@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { evaluate, type DocData, type Store } from './engine'
+import { evaluate, ruleTimestamp, type DocData, type Store } from './engine'
 import {
   ADMIN_UID,
   BOOKING_ID,
@@ -26,6 +26,7 @@ import {
   conversationDoc,
   emailGuest,
   guestPaymentPatch,
+  locationSessionDoc,
   messageDoc,
   paidBookingDoc,
   promotedAdmin,
@@ -887,9 +888,31 @@ describe('conversations and messages', () => {
     })).toBe(true)
   })
 
-  it('refuses an empty or oversized message', () => {
+  it('refuses an empty message, and one over the 1,000-character limit', () => {
     expect(deny({ path: `conversations/${CONVO_ID}/messages/m4`, method: 'create', auth: anonymousGuest(), requestData: messageDoc(GUEST_UID, 'guest', { text: '' }) })).toBe(true)
-    expect(deny({ path: `conversations/${CONVO_ID}/messages/m5`, method: 'create', auth: anonymousGuest(), requestData: messageDoc(GUEST_UID, 'guest', { text: 'x'.repeat(2001) }) })).toBe(true)
+    expect(deny({ path: `conversations/${CONVO_ID}/messages/m5`, method: 'create', auth: anonymousGuest(), requestData: messageDoc(GUEST_UID, 'guest', { text: 'x'.repeat(1001) }) })).toBe(true)
+  })
+
+  /**
+   * The limit has to be the rule's, not the form's: a browser can be told
+   * anything, and a thread is read a page at a time, so the cost of an
+   * unbounded message is paid on every read. 1,000 is accepted, 1,001 is not.
+   */
+  it('accepts a message of exactly 1,000 characters and refuses 1,001, from either side', () => {
+    expect(allow({ path: `conversations/${CONVO_ID}/messages/m-limit`, method: 'create', auth: anonymousGuest(), requestData: messageDoc(GUEST_UID, 'guest', { text: 'x'.repeat(1000) }) })).toBe(true)
+    expect(deny({ path: `conversations/${CONVO_ID}/messages/m-over`, method: 'create', auth: anonymousGuest(), requestData: messageDoc(GUEST_UID, 'guest', { text: 'x'.repeat(1001) }) })).toBe(true)
+    // The Admin is held to the same figure: the cap is about storage, not role.
+    expect(allow({ path: `conversations/${CONVO_ID}/messages/m-admin-limit`, method: 'create', auth: allowlistedAdmin(), requestData: messageDoc(ADMIN_UID, 'admin', { text: 'x'.repeat(1000) }) })).toBe(true)
+    expect(deny({ path: `conversations/${CONVO_ID}/messages/m-admin-over`, method: 'create', auth: allowlistedAdmin(), requestData: messageDoc(ADMIN_UID, 'admin', { text: 'x'.repeat(1001) }) })).toBe(true)
+  })
+
+  it('lets the Admin stamp the retention expiry, and no Guest', () => {
+    const stamped = ruleTimestamp('2026-12-30T00:00:00.000Z')
+    expect(allow({ path: `conversations/${CONVO_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: conversationDoc(), requestData: conversationDoc({ messages_expires_at: stamped }) })).toBe(true)
+    // A Guest cannot shorten the window on a thread the hacienda is keeping…
+    expect(deny({ path: `conversations/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: conversationDoc(), requestData: conversationDoc({ messages_expires_at: stamped }) })).toBe(true)
+    // …nor open their own thread with one already on it.
+    expect(deny({ path: 'conversations/convo-new', method: 'create', auth: anonymousGuest(), requestData: conversationDoc({ messages_expires_at: stamped }) })).toBe(true)
   })
 
   it('refuses a Guest reading another Guest\'s messages', () => {
@@ -998,6 +1021,99 @@ describe('tracking_sessions: removed, and refused to everybody', () => {
   it('leaves the Admin the delete that erases a session recorded before the removal', () => {
     expect(allow({ path: `tracking_sessions/${BOOKING_ID}`, method: 'delete', auth: allowlistedAdmin(), resourceData: session })).toBe(true)
     expect(deny({ path: `tracking_sessions/${BOOKING_ID}`, method: 'delete', auth: anonymousGuest(), resourceData: session })).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Live location (ADR-0013)
+// ---------------------------------------------------------------------------
+
+describe('location_sessions: the consent, never the position', () => {
+  const live = (over: Partial<DocData> = {}) => locationSessionDoc(over)
+  const during = { time: Date.parse('2026-10-01T09:00:00.000Z') }
+
+  it('lets the Guest of the conversation open a session for themselves', () => {
+    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: live(), time: during.time })).toBe(true)
+  })
+
+  it('refuses a Guest opening a session in somebody else\'s conversation', () => {
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: locationSessionDoc({ guest_uid: OTHER_GUEST_UID }), time: during.time })).toBe(true)
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: locationSessionDoc({ guest_uid: OTHER_GUEST_UID }), time: during.time })).toBe(true)
+  })
+
+  it('refuses a session claiming to be somebody else\'s', () => {
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: live({ guest_uid: OTHER_GUEST_UID }), time: during.time })).toBe(true)
+  })
+
+  it('caps the window at an hour, whatever the client asks for', () => {
+    const hour = live({ duration_minutes: 60, expires_at: ruleTimestamp('2026-10-01T10:00:00.000Z') })
+    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: hour, time: during.time })).toBe(true)
+    const greedy = live({ duration_minutes: 60, expires_at: ruleTimestamp('2027-10-01T09:00:00.000Z') })
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: greedy, time: during.time })).toBe(true)
+    const zero = live({ duration_minutes: 0, expires_at: ruleTimestamp('2026-10-01T09:30:00.000Z') })
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: zero, time: during.time })).toBe(true)
+  })
+
+  it('refuses a session that is already over when it is written', () => {
+    const stale = live({ expires_at: ruleTimestamp('2026-10-01T08:00:00.000Z') })
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: stale, time: during.time })).toBe(true)
+  })
+
+  it('refuses a secret that is not a 32-character secret', () => {
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: live({ stream_secret: 'short' }), time: during.time })).toBe(true)
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: live({ stream_secret: 42 }), time: during.time })).toBe(true)
+  })
+
+  /**
+   * The rule the whole feature rests on. A position written here would be a
+   * position stored forever, with no TTL to sweep it — so a document carrying
+   * one is refused, in every shape the rules name.
+   */
+  it('refuses a session that smuggles a position in', () => {
+    for (const field of ['lat', 'lng', 'latitude', 'longitude', 'position', 'fix', 'points', 'trail']) {
+      expect(
+        deny({
+          path: `location_sessions/${CONVO_ID}`,
+          method: 'create',
+          auth: anonymousGuest(),
+          requestData: live({ [field]: field === 'lat' ? 14.1 : 'anything' }),
+          time: during.time,
+        }),
+      ).toBe(true)
+    }
+  })
+
+  it('lets the Admin and the sharing Guest read it, and nobody else', () => {
+    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth: allowlistedAdmin(), resourceData: live() })).toBe(true)
+    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth: anonymousGuest(), resourceData: live() })).toBe(true)
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: live() })).toBe(true)
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth: null, resourceData: live() })).toBe(true)
+    expect(deny({ path: 'location_sessions', method: 'list', auth: anonymousGuest() })).toBe(true)
+  })
+
+  it('lets the Guest end their own session, and change nothing else about it', () => {
+    const stopped = live({ active: false, expires_at: ruleTimestamp('2026-10-01T09:10:00.000Z') })
+    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: live(), requestData: stopped, time: during.time })).toBe(true)
+    // The secret, the owner and the window are what a stream is bound to.
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: live(), requestData: live({ stream_secret: 'f'.repeat(32) }), time: during.time })).toBe(true)
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: live(), requestData: live({ duration_minutes: 60, expires_at: ruleTimestamp('2026-10-01T10:00:00.000Z') }), time: during.time })).toBe(true)
+  })
+
+  it('will not let a stopped session be reopened', () => {
+    expect(deny({
+      path: `location_sessions/${CONVO_ID}`,
+      method: 'update',
+      auth: anonymousGuest(),
+      resourceData: live({ active: false, expires_at: ruleTimestamp('2026-10-01T09:10:00.000Z') }),
+      requestData: live({ active: true, expires_at: ruleTimestamp('2026-10-01T10:00:00.000Z') }),
+      time: during.time,
+    })).toBe(true)
+  })
+
+  it('lets the Admin or the owning Guest clear the document', () => {
+    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'delete', auth: allowlistedAdmin(), resourceData: live() })).toBe(true)
+    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'delete', auth: anonymousGuest(), resourceData: live() })).toBe(true)
+    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'delete', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: live() })).toBe(true)
   })
 })
 

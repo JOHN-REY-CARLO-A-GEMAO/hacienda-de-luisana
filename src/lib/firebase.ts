@@ -13,6 +13,9 @@
 // - Authentication (Email/Password + Google + Anonymous for web Guests)
 // - Firestore Database
 // - Storage
+// - Realtime Database (the ephemeral live-location stream, ADR-0013 — optional:
+//   a project with no `databaseURL` keeps the stream switched off, with a
+//   reason, rather than guessing a URL)
 // - Analytics (optional, browser only, needs an app id)
 // ----------------------------------------------------------------------------
 
@@ -20,6 +23,7 @@ import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, type Auth, GoogleAuthProvider } from 'firebase/auth'
 import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore'
 import { connectStorageEmulator, getStorage, type FirebaseStorage } from 'firebase/storage'
+import type { Database } from 'firebase/database'
 import {
   fieldReport,
   resolveFirebaseConfig,
@@ -109,11 +113,29 @@ let app: FirebaseApp | null = null
 let auth: Auth | null = null
 let db: Firestore | null = null
 let storage: FirebaseStorage | null = null
+let realtime: Database | null = null
+let realtimeAttempted = false
 let googleProvider: GoogleAuthProvider | null = null
 
 // connect*Emulator warn when called twice (HMR re-runs this module), so the
 // connection happens once per page load.
 let emulatorsConnected = false
+
+/**
+ * The host the emulators are reached on.
+ *
+ * Phones on the same Wi-Fi load the site via the laptop's LAN IP
+ * (e.g. `http://192.168.1.6:3000`), so 127.0.0.1 would point at the phone
+ * itself and refuse to connect. Use the page's own hostname so both laptop
+ * (localhost) and phone (LAN IP) reach the emulators. Requires emulators
+ * listening on LAN: `firebase emulators:start --host 0.0.0.0`
+ */
+const emulatorHost =
+  typeof window !== 'undefined' &&
+  window.location.hostname !== 'localhost' &&
+  window.location.hostname !== '127.0.0.1'
+    ? window.location.hostname
+    : '127.0.0.1'
 
 if (isFirebaseConfigured) {
   try {
@@ -128,13 +150,6 @@ if (isFirebaseConfigured) {
       // (e.g. http://192.168.1.6:3000), so 127.0.0.1 would point at the phone
       // itself and refuse to connect. Use the page's own hostname so both
       // laptop (localhost) and phone (LAN IP) reach the same emulators.
-      // Requires emulators listening on LAN: `firebase emulators:start --host 0.0.0.0`
-      const emulatorHost =
-        typeof window !== 'undefined' &&
-        window.location.hostname !== 'localhost' &&
-        window.location.hostname !== '127.0.0.1'
-          ? window.location.hostname
-          : '127.0.0.1'
       connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true })
       connectFirestoreEmulator(db, emulatorHost, 8080)
       connectStorageEmulator(storage, emulatorHost, 9199)
@@ -170,6 +185,7 @@ if (isFirebaseConfigured) {
     auth = null
     db = null
     storage = null
+    realtime = null
     googleProvider = null
   }
 } else {
@@ -178,10 +194,47 @@ if (isFirebaseConfigured) {
   auth = null
   db = null
   storage = null
+  realtime = null
   googleProvider = null
 }
 
 export { app, auth, db, storage, googleProvider, firebaseConfig }
+
+/**
+ * Does this build carry a Realtime Database URL?
+ *
+ * A build-time fact, answered without opening a connection, because that is
+ * what the sharing control needs to decide whether to offer the button at all.
+ */
+export function hasRealtimeDatabaseConfig(): boolean {
+  return isFirebaseConfigured && Boolean(resolution.config.databaseURL)
+}
+
+/**
+ * The Realtime Database, opened on first use.
+ *
+ * Loaded with a dynamic import on purpose. The database carries the ephemeral
+ * live-location stream and nothing else (ADR-0013), so a static import would
+ * add its weight to the bundle of every visitor — including the great majority
+ * who never open a conversation. One call, memoised; a failure resolves to null
+ * and the sharing control turns that into a stated refusal rather than a button
+ * that pretends to work.
+ */
+export async function ensureRealtimeDatabase(): Promise<Database | null> {
+  if (realtime) return realtime
+  if (realtimeAttempted) return null
+  realtimeAttempted = true
+  if (!hasRealtimeDatabaseConfig() || !app) return null
+  try {
+    const { getDatabase, connectDatabaseEmulator } = await import('firebase/database')
+    realtime = getDatabase(app)
+    if (isUsingEmulators) connectDatabaseEmulator(realtime, emulatorHost, 9000)
+  } catch (err) {
+    console.warn('[Firebase] Realtime Database unavailable; live location is off.', err)
+    realtime = null
+  }
+  return realtime
+}
 
 // ----------------------------------------------------------------------------
 // Helper for debugging / admin UI / the /status page
@@ -192,6 +245,8 @@ export function getFirebaseStatus() {
     configured: isReady,
     source: resolution.source,
     emulators: isUsingEmulators,
+    /** The ephemeral live-location stream's transport, or why there is none. */
+    realtimeDatabase: hasRealtimeDatabaseConfig() ? firebaseConfig.databaseURL : '',
     projectId: isReady ? firebaseConfig.projectId || 'not-set' : 'local-mode',
     authDomain: isReady ? firebaseConfig.authDomain || 'not-set' : 'local-mode',
     hasApiKey: Boolean(fieldReport(resolution, 'apiKey').value),

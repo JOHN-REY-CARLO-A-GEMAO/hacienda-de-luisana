@@ -29,7 +29,7 @@
 ```
 ┌──────────────────────────────┐      ┌──────────────────────────────┐
 │  GUEST WEBSITE  (src/)       │      │  ADMIN APP  (lib/, Flutter)  │
-│  /  /book  /track            │      │  Dashboard · Bookings        │
+│  /  /book  /messages        │      │  Dashboard · Bookings        │
 │  /messages                   │      │  Chat · Stays · More →       │
 │  /login  /guest/auth         │      │  Rates · Smart Lock ·        │
 │  /account  (My bookings)     │      │  Analytics · Rooms · CRM     │

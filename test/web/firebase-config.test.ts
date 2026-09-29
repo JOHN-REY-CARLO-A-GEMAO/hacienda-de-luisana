@@ -25,6 +25,7 @@ const EMPTY: FirebaseConfig = {
   messagingSenderId: '',
   appId: '',
   measurementId: '',
+  databaseURL: '',
 }
 
 const REAL: FirebaseConfig = {
@@ -35,6 +36,7 @@ const REAL: FirebaseConfig = {
   messagingSenderId: '648433185',
   appId: '1:648433185:web:abcdef',
   measurementId: 'G-ABCDEF',
+  databaseURL: 'https://hacienda-de-luisana-default-rtdb.firebaseio.com',
 }
 
 const FULL_ENV = {
@@ -45,6 +47,7 @@ const FULL_ENV = {
   VITE_FIREBASE_MESSAGING_SENDER_ID: REAL.messagingSenderId,
   VITE_FIREBASE_APP_ID: REAL.appId,
   VITE_FIREBASE_MEASUREMENT_ID: REAL.measurementId,
+  VITE_FIREBASE_DATABASE_URL: REAL.databaseURL,
 }
 
 describe('reading a value out of the environment', () => {
