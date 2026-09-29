@@ -388,6 +388,29 @@ describe('chat', () => {
     }))
   })
 
+  it('holds both sides to 1,000 characters', async () => {
+    await assertSucceeds(addDoc(collection(anonymousGuest().firestore(), 'conversations', CONVO_ID, 'messages'), {
+      sender_uid: GUEST_UID, sender_role: 'guest', text: 'x'.repeat(1000), created_at: new Date(),
+    }))
+    await assertFails(addDoc(collection(anonymousGuest().firestore(), 'conversations', CONVO_ID, 'messages'), {
+      sender_uid: GUEST_UID, sender_role: 'guest', text: 'x'.repeat(1001), created_at: new Date(),
+    }))
+    await assertSucceeds(addDoc(collection(admin().firestore(), 'conversations', CONVO_ID, 'messages'), {
+      sender_uid: 'admin-uid-1', sender_role: 'admin', text: 'x'.repeat(1000), created_at: new Date(),
+    }))
+    await assertFails(addDoc(collection(admin().firestore(), 'conversations', CONVO_ID, 'messages'), {
+      sender_uid: 'admin-uid-1', sender_role: 'admin', text: 'x'.repeat(1001), created_at: new Date(),
+    }))
+  })
+
+  it('lets only the Admin stamp the retention expiry on a conversation', async () => {
+    const expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'conversations', CONVO_ID), { messages_expires_at: expires }))
+    await assertFails(updateDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID), { messages_expires_at: expires }))
+    // A Guest's own write is still fine — the four fields the inbox needs.
+    await assertSucceeds(updateDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID), { unread_admin: 1 }))
+  })
+
   it('refuses a message into a conversation that does not exist', async () => {
     await assertFails(addDoc(collection(anonymousGuest().firestore(), 'conversations', 'no-such-conversation', 'messages'), {
       sender_uid: GUEST_UID,
@@ -461,6 +484,41 @@ describe('smart lock and the retired tracker', () => {
     await assertFails(setDoc(doc(admin().firestore(), path), session))
     await assertFails(getDoc(doc(admin().firestore(), path)))
     await assertFails(getDocs(admin().firestore().collection('tracking_sessions')))
+  })
+
+  it('keeps a consent in location_sessions, and a coordinate out of it', async () => {
+    const session = {
+      guest_uid: GUEST_UID,
+      conversation_id: CONVO_ID,
+      active: true,
+      started_at: new Date(),
+      expires_at: new Date(Date.now() + 30 * 60 * 1000),
+      duration_minutes: 30,
+      stream_secret: 'a'.repeat(32),
+    }
+    await assertSucceeds(setDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), session))
+    // The same Guest, in their own conversation, and the Admin, can read it.
+    await assertSucceeds(getDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID)))
+    await assertSucceeds(getDoc(doc(admin().firestore(), 'location_sessions', CONVO_ID)))
+    // Nobody else can.
+    await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'location_sessions', CONVO_ID)))
+    // A Guest cannot open one in a conversation that is not theirs…
+    await assertFails(setDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'location_sessions', CONVO_ID), {
+      ...session, guest_uid: OTHER_GUEST_UID,
+    }))
+    // …cannot smuggle a position into it…
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), { ...session, lat: 14.1 }))
+    // …and cannot buy more than an hour.
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), {
+      ...session, duration_minutes: 60, expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    }))
+    // Ending the session is allowed; moving its secret is not.
+    await assertSucceeds(updateDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), {
+      active: false, expires_at: new Date(),
+    }))
+    await assertFails(updateDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), {
+      stream_secret: 'b'.repeat(32),
+    }))
   })
 
   it('leaves the Admin the delete that purges an old session', async () => {

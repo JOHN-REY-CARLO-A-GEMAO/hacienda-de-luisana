@@ -402,18 +402,19 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Guest live-location sessions — one document per Booking (doc id = the
-    // booking id), written by the traveller's own device: the web /track share
-    // button and the Flutter one-tap pickup.
-    // REMOVED (ADR-0009): the live-location module was withdrawn — no client
-    // records, reads or displays a Guest position any more. The collection stays
-    // closed rather than dropped so a document left over from the retired
-    // feature can be cleared, and so a stale build cannot write here by
-    // accident:
+    // The retired tracking module's collection (ADR-0009). Superseded for
+    // *reading and writing a position* by ADR-0013, which puts live location in
+    // the conversation instead — but this collection stays closed, because what
+    // ADR-0009 was right about has not changed: a position written to Firestore
+    // is a position stored forever, and the module that wrote it had no expiry
+    // anyone could enforce. A document left over from before the withdrawal can
+    // still be cleared:
     // - READ / CREATE / UPDATE: refused to every caller, the Admin included.
-    // - DELETE: the Admin only, so an orphaned session can be erased — which is
-    //   the physical erasure the module's retention rule used to describe.
-    // Door events are logged in access_logs; a position never belongs there.
+    // - DELETE: the Admin only.
+    // Live location today writes no position to Firestore at all. See
+    // `location_sessions` below for what it does keep, and database.rules.json
+    // for the stream it does not store. Door events are logged in access_logs;
+    // a position never belongs there.
     match /tracking_sessions/{sessionId} {
       allow read, create, update: if false;
       allow delete: if isAdmin();
@@ -453,10 +454,16 @@ service cloud.firestore {
     match /conversations/{convoId} {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['guest_uid', 'category', 'created_at', 'updated_at'])
-        && request.resource.data.guest_uid == request.auth.uid;
+        && request.resource.data.guest_uid == request.auth.uid
+        // A Guest may not open their own thread with an expiry already on it.
+        && !request.resource.data.keys().hasAny(['messages_expires_at']);
       allow read: if isAdmin() || isConversationMember(convoId);
       // Neither side may re-point a conversation at a different Guest: that
       // would hand one Guest's history to another.
+      //
+      // `messages_expires_at` is the retention stamp (docs/MESSAGING.md § 4):
+      // only the Admin writes it, so a Guest can neither shorten the window on a
+      // thread the hacienda is keeping nor put an expiry on a live one.
       allow update: if request.resource.data.get('guest_uid', '') == resource.data.get('guest_uid', '')
         && (isAdmin()
             || (isConversationMember(convoId)
@@ -470,6 +477,10 @@ service cloud.firestore {
         //   nobody can post as somebody else. The role label has to match what
         //   the writer actually is, so a Guest cannot mark their message as the
         //   Admin's.
+        // - LENGTH: 1,000 characters, the same figure as `MESSAGE_MAX` in
+        //   `src/lib/validation.ts`. It is written out here on purpose: a
+        //   browser can be told anything, and what a page read of a thread costs
+        //   is decided by the rule, not by the form that produced the message.
         // - READ: the Admin, and the Guest whose conversation it is.
         // - UPDATE/DELETE: nobody. Chat is a record, not a canvas.
         //
@@ -481,12 +492,80 @@ service cloud.firestore {
           && request.resource.data.sender_uid == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() < 2001
+          && request.resource.data.text.size() <= 1000
           && ((request.resource.data.sender_role == 'guest' && isConversationMember(convoId))
               || (request.resource.data.sender_role == 'admin' && isAdmin()));
         allow read: if isAdmin() || isConversationMember(convoId);
         allow update, delete: if false;
       }
+    }
+
+    // ------------------------------------------------------------------
+    // Live location — the session, not the position (ADR-0013)
+    // ------------------------------------------------------------------
+    // A Guest may share their live position from inside a conversation. What
+    // lands in Firestore is this one document, and it carries no coordinate: who
+    // is sharing, since when, until when, and the random secret that ties the
+    // ephemeral stream to this consent. The document id IS the conversation id,
+    // so `isConversationMember(sessionId)` is the membership check — the same
+    // one the messages in that conversation already answer to, and a Guest who
+    // has not opened a session here is not asked to pass a second test.
+    //
+    // The position itself never comes here. It is published to a Realtime
+    // Database node carrying a server-side TTL, which the server deletes whether
+    // or not the Guest ever presses Stop. A rule can refuse a write; it cannot
+    // schedule a deletion, so the expiry here is enforced three ways instead:
+    // the create below caps the window, the Admin's reader compares `expires_at`
+    // against the clock, and the stream's own rules refuse a write past it.
+    match /location_sessions/{sessionId} {
+      // CREATE — the Guest of *this* conversation, opening a session for
+      // themselves. The window is 1..60 minutes and is checked against the
+      // clock, so a client cannot claim a year of sharing.
+      allow create: if isConversationMember(sessionId)
+        && request.resource.data.keys().hasAll([
+             'guest_uid', 'conversation_id', 'active', 'started_at',
+             'expires_at', 'duration_minutes', 'stream_secret'])
+        && request.resource.data.guest_uid == request.auth.uid
+        && request.resource.data.conversation_id == sessionId
+        && request.resource.data.active == true
+        && request.resource.data.duration_minutes is int
+        && request.resource.data.duration_minutes >= 1
+        && request.resource.data.duration_minutes <= 60
+        && request.resource.data.stream_secret is string
+        && request.resource.data.stream_secret.size() == 32
+        && request.resource.data.started_at is timestamp
+        && request.resource.data.expires_at is timestamp
+        && request.resource.data.expires_at > request.time
+        && request.resource.data.expires_at <= request.time + 3600000
+        // The rule that keeps the feature honest: this document is metadata, and
+        // a coordinate written here would be a position stored forever. There is
+        // no shape of position this accepts.
+        && !request.resource.data.keys().hasAny([
+             'lat', 'lng', 'latitude', 'longitude', 'position', 'fix', 'points', 'trail']);
+
+      // READ — the Admin, and the Guest who is sharing, so a page reload can
+      // resume the countdown instead of starting a second session. Nobody else:
+      // a Guest is not a member of another Guest's conversation, and this rule
+      // is the only door to the metadata.
+      allow read: if isAdmin() || isConversationMember(sessionId);
+
+      // UPDATE — the same Guest ending their own session. Only `active` and
+      // `expires_at` may move, and once ended it cannot be reopened: the
+      // identity, the conversation and the secret are fixed for the life of the
+      // document, because those are what the stream is bound to.
+      allow update: if isConversationMember(sessionId)
+        && resource.data.guest_uid == request.auth.uid
+        && request.resource.data.guest_uid == resource.data.guest_uid
+        && request.resource.data.conversation_id == resource.data.conversation_id
+        && request.resource.data.stream_secret == resource.data.stream_secret
+        && request.resource.data.duration_minutes == resource.data.duration_minutes
+        && !(resource.data.active == false && request.resource.data.active == true)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['active', 'expires_at']);
+
+      // DELETE — the Admin, or the Guest clearing their own session.
+      allow delete: if isAdmin()
+        || (isConversationMember(sessionId) && resource.data.guest_uid == request.auth.uid);
     }
 
     // One Review per stay, and only the Guest who stayed may write it. The

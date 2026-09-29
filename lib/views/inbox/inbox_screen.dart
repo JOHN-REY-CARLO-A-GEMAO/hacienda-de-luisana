@@ -5,11 +5,19 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../services/auth_store.dart';
+import '../../services/chat_retention.dart';
+import '../../services/live_location_service.dart';
 import '../../tutorial/tutorial_controller.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
+import 'live_location_panel.dart';
 
 /// Guest ↔ Admin messages from `conversations/*`.
+///
+/// The message limit, the page sizes and the collection names are
+/// `AppConstants` — the same place `firestore.rules` and the website keep
+/// theirs, and the place a test can reach without compiling a screen.
+
 class InboxScreen extends StatelessWidget {
   const InboxScreen({super.key});
 
@@ -36,7 +44,7 @@ class InboxScreen extends StatelessWidget {
             )
           : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
-                  .collection('conversations')
+                  .collection(AppConstants.colConversations)
                   .orderBy('updated_at', descending: true)
                   .limit(50)
                   .snapshots(),
@@ -72,6 +80,7 @@ class InboxScreen extends StatelessWidget {
                           ? d['last_message'].toString()
                           : 'New conversation'),
                       subtitle: Text('${d['category'] ?? 'booking'} · ${d['guest_uid'] ?? ''}'),
+                      trailing: retentionLabel(d[kRetentionField] as Timestamp?),
                       onTap: () {
                         TourBus.event('open-thread');
                         Navigator.of(context).push(
@@ -87,6 +96,15 @@ class InboxScreen extends StatelessWidget {
             ),
     );
   }
+
+  /// "Kept 89 more days" / "Clearing soon" — the retention stamp, so the
+  /// Admin can see which threads are disposable without opening them.
+  static Widget? retentionLabel(Object? stamp) {
+    if (stamp is! Timestamp) return null;
+    final days = retentionDaysLeft(stamp.toDate()) ?? 0;
+    final text = days == 0 ? 'clearing soon' : 'kept $days more day${days == 1 ? '' : 's'}';
+    return Text(text, style: const TextStyle(fontSize: 11, color: AppColors.textMuted));
+  }
 }
 
 class _ThreadScreen extends StatefulWidget {
@@ -101,29 +119,84 @@ class _ThreadScreen extends StatefulWidget {
 class _ThreadScreenState extends State<_ThreadScreen> {
   final _text = TextEditingController();
 
+  /// The oldest message loaded, and whether anything older exists. Both come
+  /// from a read that happened; neither is guessed from a full collection.
+  DocumentSnapshot<Map<String, dynamic>>? _oldest;
+  bool _hasMore = false;
+  bool _loadingOlder = false;
+  bool _showLiveLocation = false;
+  LiveLocationService? _liveLocation;
+
   @override
   void dispose() {
     _text.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
-    final v = _text.text.trim();
-    if (v.isEmpty || v.length > 2000) return;
+  /// Open or close the live-location panel, and — the first time it opens —
+  /// make sure this Admin can read the stream at all.
+  ///
+  /// `firestore.rules` can read `profiles/{uid}.role`; Realtime Database rules
+  /// cannot read Firestore, so a Profile-promoted Admin is admitted through a
+  /// mirror node that only an address on the bootstrap allowlist may write.
+  /// That is `AuthStore.isAllowlisted`, not a second copy of the list.
+  void _toggleLiveLocation() {
+    setState(() => _showLiveLocation = !_showLiveLocation);
+    if (!_showLiveLocation) return;
+    final service = _liveLocation ??= LiveLocationService();
     final auth = context.read<AuthStore>();
     final uid = auth.uid;
     if (uid == null || uid.isEmpty) return;
-    await FirebaseFirestore.instance
-        .collection('conversations')
-        .doc(widget.convoId)
-        .collection('messages')
-        .add({
+    service.registerReader(uid: uid, allowlisted: AuthStore.isAllowlisted(auth.sessionEmail));
+  }
+
+  Collection<Map<String, dynamic>> get _messages =>
+      FirebaseFirestore.instance.collection(AppConstants.colConversations).doc(widget.convoId).collection(AppConstants.subMessages);
+
+  /// Fetch one older page behind the oldest message already on screen.
+  ///
+  /// A one-shot read, not a growing listener: a page that has been read is
+  /// finished with, so there is nothing for it to keep listening for. The live
+  /// listener below stays bounded to the newest page.
+  Future<void> _loadOlder() async {
+    if (_loadingOlder) return;
+    setState(() => _loadingOlder = true);
+    try {
+      Query<Map<String, dynamic>> query = _messages.orderBy('created_at', descending: true).limit(AppConstants.olderPageSize + 1);
+      final cursor = _oldest;
+      if (cursor != null) query = query.startAfterDocument(cursor);
+      final snap = await query.get();
+      final docs = snap.docs.take(AppConstants.olderPageSize).toList();
+      setState(() {
+        if (docs.isNotEmpty) _oldest = docs.last;
+        _hasMore = snap.docs.length > AppConstants.olderPageSize;
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load earlier messages: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingOlder = false);
+    }
+  }
+
+  Future<void> _send() async {
+    final v = _text.text.trim();
+    // The field stops a Guest typing past the limit; this is the same check on
+    // the Admin's side, and `firestore.rules` is the one that always holds.
+    if (v.isEmpty || v.length > AppConstants.messageMax) return;
+    final auth = context.read<AuthStore>();
+    final uid = auth.uid;
+    if (uid == null || uid.isEmpty) return;
+    await _messages.add({
       'sender_uid': uid,
       'sender_role': 'admin',
       'text': v,
       'created_at': FieldValue.serverTimestamp(),
     });
-    await FirebaseFirestore.instance.collection('conversations').doc(widget.convoId).update({
+    await FirebaseFirestore.instance.collection(AppConstants.colConversations).doc(widget.convoId).update({
       'updated_at': FieldValue.serverTimestamp(),
       'last_message': v.length > 140 ? v.substring(0, 140) : v,
       'unread_guest': 1,
@@ -134,29 +207,52 @@ class _ThreadScreenState extends State<_ThreadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Thread', style: GoogleFonts.cinzel(fontSize: 16))),
+      appBar: AppBar(
+        title: Text('Thread', style: GoogleFonts.cinzel(fontSize: 16)),
+        actions: [
+          IconButton(
+            tooltip: _showLiveLocation ? 'Close live location' : 'Live location',
+            onPressed: _toggleLiveLocation,
+            icon: Icon(_showLiveLocation ? Icons.location_off_outlined : Icons.location_on_outlined),
+          ),
+        ],
+      ),
       body: Column(
         children: [
+          if (_showLiveLocation)
+            LiveLocationPanel(
+              conversationId: widget.convoId,
+              guestUid: widget.guestUid.isEmpty ? null : widget.guestUid,
+              service: _liveLocation,
+              onClose: () => setState(() => _showLiveLocation = false),
+            ),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('conversations')
-                  .doc(widget.convoId)
-                  .collection('messages')
+              stream: _messages
                   .orderBy('created_at', descending: true)
-                  .limit(40)
+                  .limit(AppConstants.threadPageSize + 1)
                   .snapshots(),
               builder: (context, snap) {
                 final docs = snap.data?.docs ?? [];
                 if (docs.isEmpty) {
                   return const EmptyState(title: 'No messages yet', subtitle: 'Reply below.');
                 }
+                // The newest page is all this listener carries; the extra
+                // document is how it says whether an older page exists, at no
+                // extra read.
+                final page = docs.take(AppConstants.threadPageSize).toList();
+                if (_oldest == null && page.isNotEmpty) {
+                  _oldest = page.last;
+                  if (docs.length > AppConstants.threadPageSize) _hasMore = true;
+                }
+                final older = List.generate(_hasMore ? 1 : 0, (_) => _loadOlderButton());
                 return ListView.builder(
                   reverse: true,
                   padding: const EdgeInsets.all(16),
-                  itemCount: docs.length,
+                  itemCount: page.length + older.length,
                   itemBuilder: (context, i) {
-                    final m = docs[i].data();
+                    if (i >= page.length) return older[i - page.length];
+                    final m = page[i].data();
                     final admin = m['sender_role'] == 'admin';
                     return Align(
                       alignment: admin ? Alignment.centerRight : Alignment.centerLeft,
@@ -183,14 +279,35 @@ class _ThreadScreenState extends State<_ThreadScreen> {
                   child: TextField(
                     key: TourKeys.threadComposer,
                     controller: _text,
+                    maxLength: AppConstants.messageMax,
                     decoration: const InputDecoration(hintText: 'Reply'),
                   ),
                 ),
-                IconButton(onPressed: _send, icon: const Icon(Icons.send)),
+                IconButton(
+                  onPressed: _send,
+                  icon: const Icon(Icons.send),
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// The "there is more above" control. It fetches once per press and holds
+  /// no listener afterwards.
+  Widget _loadOlderButton() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Center(
+        child: TextButton.icon(
+          onPressed: _loadingOlder ? null : _loadOlder,
+          icon: _loadingOlder
+              ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.expand_less, size: 16),
+          label: Text(_loadingOlder ? 'Loading…' : 'Load earlier messages'),
+        ),
       ),
     );
   }

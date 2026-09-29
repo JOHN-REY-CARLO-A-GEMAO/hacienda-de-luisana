@@ -97,11 +97,34 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
   (`system` entries are written by the Admin app)
 - `access_logs`: created by any signed-in client, read and corrected by the Admin
 - `site_config`: public read (the website quotes rates from it), Admin write
+- `conversations/{id}/messages`: a member of that conversation or the Admin; a message
+  is 1–1,000 characters, immutable, and its `sender_role` has to match the writer
+- `conversations/{id}`: only the Admin writes `messages_expires_at` (the retention stamp)
+- `location_sessions/{conversationId}`: created only by that conversation's own Guest,
+  carrying consent metadata and **no coordinate** — a document with `lat`/`lng`/
+  `position`/`points` on it is refused — capped at a 60-minute window checked against
+  `request.time`; read by the Admin and by the sharing Guest
 - `tracking_sessions`: **closed** — no create, read or update by anybody (ADR-0009)
 - `rooms`, `guest_profiles`, `gallery` writes: Admin
 - Everything else is denied by a final catch-all
 - `test/web/auth-firestore-rules.test.ts` asserts all of the above, and that the rules and
   `src/lib/auth` keep the same bootstrap addresses
+
+**Realtime Database rules** (`database.rules.json`, ADR-0013) — the ephemeral live-location
+stream, and the only rules file that is not Firestore or Storage:
+- the root is closed; anything not named below is denied
+- `live_location/{conversationId}/{guestUid}`: a signed-in Guest may write only into
+  their own uid's path, and the node must carry exactly nine fields, a position inside
+  the Philippines, and a window that is open and no more than 90 seconds ahead
+- `live_location/*`: readable by the Admin — the bootstrap addresses in the token, or an
+  address an allowlisted Admin has written to `live_location_admins/{uid}`
+- every published fix carries a server-side `.ttl` equal to the session's `expires_at`,
+  which is what makes the position ephemeral rather than merely intended to be
+
+Deploy it with `firebase deploy --only database`, after creating the database in the
+console and setting `VITE_FIREBASE_DATABASE_URL`. Without any of those three the
+website's share control is disabled and says why. `npm run test:emulator` now starts
+the Database emulator too.
 
 **Indexes** (`firestore.indexes.json`):
 - `status + created_at`, `check_in + check_out`, `uid + created_at`

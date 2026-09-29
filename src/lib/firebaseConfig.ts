@@ -39,6 +39,7 @@ export const FIREBASE_ENV_KEYS = {
   messagingSenderId: 'VITE_FIREBASE_MESSAGING_SENDER_ID',
   appId: 'VITE_FIREBASE_APP_ID',
   measurementId: 'VITE_FIREBASE_MEASUREMENT_ID',
+  databaseURL: 'VITE_FIREBASE_DATABASE_URL',
 } as const
 
 export type FirebaseConfigField = keyof typeof FIREBASE_ENV_KEYS
@@ -63,6 +64,11 @@ export const RECOMMENDED_FIELDS: readonly FirebaseConfigField[] = [
   'appId',
   'storageBucket',
   'messagingSenderId',
+  // The Realtime Database is what carries the ephemeral live-location stream
+  // (ADR-0013). Missing it does not take the site down — Auth, Firestore and
+  // Storage do not read it — it only turns the "Share Live Location" control
+  // off, with a reason, rather than half-enabling it.
+  'databaseURL',
 ]
 
 /** Where one value came from, and whether it is usable. */

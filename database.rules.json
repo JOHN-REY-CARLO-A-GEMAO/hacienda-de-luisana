@@ -1,0 +1,29 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "live_location_admins": {
+      "$uid": {
+        ".read": false,
+        ".write": "auth != null && auth.token.email != null && auth.token.email in ['haciendadeluisiana@gmail.com', 'gemaojohnreyarguilles@gmail.com']"
+      }
+    },
+
+    "live_location": {
+      "$conversationId": {
+        ".read": "auth != null && (auth.token.email != null && auth.token.email in ['haciendadeluisiana@gmail.com', 'gemaojohnreyarguilles@gmail.com']) || root.child('live_location_admins').child(auth.uid).val() == true",
+        "$guestUid": {
+          ".write": "auth != null && auth.uid == $guestUid",
+          ".validate": "newData.hasChildren(['lat', 'lng', 'accuracy_m', 'at_ms', 'seq', 'guest_uid', 'conversation_id', 'session_secret', 'expires_at_ms']) && newData.child('guest_uid').val() == auth.uid && newData.child('conversation_id').val() == $conversationId && newData.child('lat').isNumber() && newData.child('lat').val() >= 4.0 && newData.child('lat').val() <= 21.5 && newData.child('lng').isNumber() && newData.child('lng').val() >= 116.0 && newData.child('lng').val() <= 126.5 && newData.child('accuracy_m').isNumber() && newData.child('accuracy_m').val() >= 0 && newData.child('at_ms').isNumber() && newData.child('seq').isNumber() && newData.child('seq').val() >= 0 && newData.child('session_secret').isString() && newData.child('expires_at_ms').isNumber() && newData.child('expires_at_ms').val() > now && newData.child('expires_at_ms').val() <= now + 90000"
+        }
+      }
+    },
+
+    "$other": {
+      ".read": false,
+      ".write": false,
+      ".validate": false
+    }
+  }
+}

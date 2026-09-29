@@ -9,11 +9,13 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_REQUEST_TIME,
   DEFAULT_SEMANTICS,
   RuleEvaluationError,
   UnsupportedConstructError,
   allows,
   evaluate,
+  ruleTimestamp,
   type RuleRequest,
   type Store,
 } from './engine'
@@ -84,8 +86,13 @@ describe('evaluator: literals and operators', () => {
     expect(check("'ell' in 'hello'")).toBe(true)
   })
 
-  it('handles `is` type checks', () => {
+  it('handles `is` type checks, including `timestamp`', () => {
     expect(check("'x' is string")).toBe(true)
+    // `timestamp` is a real type here, not a stand-in: `location_sessions`
+    // refuses a session whose window has already closed, and that case needs it.
+    expect(check('request.time is timestamp')).toBe(true)
+    expect(check('request.time is string')).toBe(false)
+    expect(check('request.time is int')).toBe(false)
     expect(check('1 is int')).toBe(true)
     expect(check('1.5 is float')).toBe(true)
     expect(check('1 is number')).toBe(true)
@@ -148,6 +155,15 @@ describe('evaluator: map and list methods', () => {
     expect(check("['a', 'b'].hasOnly(['a'])")).toBe(false)
     expect(check("['a', 'b'].size() == 2")).toBe(true)
     expect(check("'abc'.size() == 3")).toBe(true)
+  })
+
+  it('answers hasAny: true when the map carries one of the keys', () => {
+    expect(check("request.resource.data.keys().hasAny(['a', 'b'])", { requestData: { a: 1, b: 2 } })).toBe(true)
+    expect(check("request.resource.data.keys().hasAny(['c'])", { requestData: { a: 1, b: 2 } })).toBe(false)
+    // The mirror of hasAll, and the way a rule refuses a document carrying a
+    // field it must not (a coordinate on a `location_sessions` document).
+    expect(check("!request.resource.data.keys().hasAny(['lat'])", { requestData: { a: 1 } })).toBe(true)
+    expect(check("!request.resource.data.keys().hasAny(['lat'])", { requestData: { a: 1, lat: 14.1 } })).toBe(false)
   })
 
   it('diffs two maps and reports the affected keys', () => {
@@ -290,6 +306,69 @@ describe('evaluator: errors deny, and never silently allow', () => {
 
   it('has a default semantics object that the suites share', () => {
     expect(DEFAULT_SEMANTICS.missingKeys).toBe('error')
+  })
+})
+
+describe('evaluator: the clock, and the timestamps it is compared against', () => {
+  const T = Date.parse('2026-10-01T09:00:00.000Z')
+
+  it('is evaluated at the instant the request names, and at a fixed one by default', () => {
+    expect(check('request.time is timestamp')).toBe(true)
+    expect(
+      check("request.time == request.time", { time: T }),
+    ).toBe(true)
+    // Default is a constant, so a suite never depends on the wall clock.
+    expect(DEFAULT_REQUEST_TIME).toBe(Date.parse('2026-09-24T00:00:00.000Z'))
+  })
+
+  it('orders two instants the way `<`, `<=`, `>` and `>=` do for numbers', () => {
+    const earlier = ruleTimestamp(T - 1000)
+    const later = ruleTimestamp(T + 1000)
+    const both = { resourceData: { at: earlier }, requestData: { at: later }, time: T }
+    expect(check('resource.data.at < request.resource.data.at', both)).toBe(true)
+    expect(check('resource.data.at > request.resource.data.at', both)).toBe(false)
+    expect(check('resource.data.at <= request.resource.data.at', both)).toBe(true)
+    expect(check('request.resource.data.at >= request.time', both)).toBe(true)
+    expect(check('request.resource.data.at <= request.time', both)).toBe(false)
+  })
+
+  it('adds an int to a timestamp, which is how a window is bounded', () => {
+    // `expires_at <= request.time + 3600000` is the rule that caps a share at
+    // an hour whatever the browser asked for.
+    expect(check('request.time + 3600000 == request.time + 3600000', { time: T })).toBe(true)
+    expect(
+      check('request.time + 3600000 > request.time', {
+        requestData: { at: ruleTimestamp(T + 3_600_000) },
+        time: T,
+      }),
+    ).toBe(true)
+    expect(
+      check('request.time + 3600000 >= request.resource.data.at', {
+        requestData: { at: ruleTimestamp(T + 3_600_000) },
+        time: T,
+      }),
+    ).toBe(true)
+    expect(
+      check('request.time + 3600000 >= request.resource.data.at', {
+        requestData: { at: ruleTimestamp(T + 3_600_001) },
+        time: T,
+      }),
+    ).toBe(false)
+  })
+
+  it('subtracts one timestamp from another', () => {
+    expect(
+      check('request.resource.data.at - request.time == 60000', {
+        requestData: { at: ruleTimestamp(T + 60_000) },
+        time: T,
+      }),
+    ).toBe(true)
+  })
+
+  it('denies rather than guesses when a timestamp is ordered against a number', () => {
+    // The engine has no answer for this, so the rule errors and the statement
+    // denies — it must never quietly decide the comparison held.
+    expect(check('request.time > 5', { requestData: { a: 1 }, time: T })).toBe(false)
   })
 })
 

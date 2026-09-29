@@ -6,7 +6,16 @@ export const SEARCH_MAX_LENGTH = 80
 export const NAME_MIN = 2
 export const NAME_MAX = 80
 export const EMAIL_MAX = 120
-export const MESSAGE_MAX = 2000
+/**
+ * The longest a chat message may be, in characters.
+ *
+ * 1,000 is the storage-conscious figure: a thread is read a page at a time, so
+ * every character is paid for on every page read, and a Guest asking about
+ * dates has never needed more. The same number is enforced by
+ * `firestore.rules` (`conversations/{id}/messages` refuses a longer `text`), so
+ * this constant is the courtesy half and the rules are the enforcement.
+ */
+export const MESSAGE_MAX = 1000
 export const REVIEW_MAX = 1000
 export const REF_MAX = 40
 export const MIN_BOOKING_NIGHTS = 1

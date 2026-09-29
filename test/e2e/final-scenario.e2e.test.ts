@@ -650,11 +650,11 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
   // -------------------------------------------------------------------------
 
   it('step 29 — the Guest opens their conversation and sees only their own messages', async () => {
-    convoId = await ensureConversation(guestUid, 'booking')
+    convoId = (await ensureConversation(guestUid, 'booking')).id
     const sent = await sendChatMessage({ convoId, uid: guestUid, text: 'Hi, we are arriving around 3 PM.' })
     expect(sent.ok).toBe(true)
     const seen: string[] = []
-    const unsubscribe = subscribeMessages(convoId, guestUid, (msgs) => seen.push(...msgs.map((m) => m.text)))
+    const unsubscribe = subscribeMessages(convoId, guestUid, (page) => seen.push(...page.messages.map((m) => m.text)))
     unsubscribe()
     expect(seen).toContain('Hi, we are arriving around 3 PM.')
     note(29, 'Guest conversation and message', 'executed', `convo=${convoId}, message delivered to the guest view`)

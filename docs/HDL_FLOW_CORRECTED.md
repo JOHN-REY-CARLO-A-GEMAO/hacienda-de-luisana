@@ -90,24 +90,40 @@
 
 ---
 
-## 4. Guest Location Tracking — **REMOVED** (ADR-0009)
+## 4. Live Location Sharing — **REINSTATED as an ephemeral stream** (ADR-0013)
 
-This module no longer exists. No application records, stores, or displays a Guest's
-position, and `tracking_sessions` is closed to every read and write (see
-`firestore.rules` and `docs/DATA_STORES.md`). What remains of the module's original
-security intent is the **Access log** — door events only, never position:
+A Guest may share their live position from inside their own conversation, for 15, 30
+or 60 minutes. The module's original shape was withdrawn by ADR-0009 and is still
+withdrawn: `tracking_sessions` remains closed to every read and write (Admin delete
+only), and **no position is ever written to Firestore**. What exists now is two stores
+with a line between them — the consent in Firestore, the position in a Realtime
+Database node the server deletes at the session's expiry. ADR-0009's own reasoning
+("a position written to Firestore is a position stored forever") is the reason the
+reinstated module is shaped this way. `docs/MESSAGING.md` is the full account.
 
-1. Decision: Guest consented to location sharing? — **withdrawn with the module**; no
-   consent field is collected because nothing is collected.
-2. Customer Stay → **no location is read, sent or stored.**
-3. Input / Record (Province, City, GPS, Accuracy, Date/Time) → **removed.**
-4. Save Location History → **removed**; `tracking_sessions` create is denied by rule.
-5. Admin view of a Guest location → **removed**; `tracking_sessions` read is denied by rule.
-6. Decision: Guest Still Staying? → no longer part of any flow.
-7. Stop Location Tracking → **removed.**
-8. Retention: nothing to retain; the collection is empty and closed, so every path
-   through this module resolves to a denial in the rules and in the offline suite
-   (`test/rules/firestore-rules.test.ts`, Tracker suite).
+1. Decision: Guest consented to location sharing? → **yes, and it is recorded.**
+   `location_sessions/{conversationId}` is written by the conversation's own Guest and
+   by nobody else; `firestore.rules` refuses a document that carries a coordinate, and
+   caps the window at an hour against `request.time`.
+2. Customer Stay → a position is published only while a session is live.
+3. Input / Record (lat, lng, accuracy, at, seq) → **one node, overwritten**:
+   `live_location/{conversationId}/{guestUid}` in the Realtime Database, validated by
+   `database.rules.json` and published no more than every 3 seconds and 10 metres.
+4. Save Location History → **there is none.** No `points`, no `trail`, no append
+   anywhere in the code. The previous write is replaced, and the server deletes the
+   node at the `.ttl` the write carried.
+5. Admin view of a Guest location → **yes, in the inbox thread**, and only for a node
+   whose guest, conversation and `stream_secret` match the consented Firestore
+   session and whose window is still open. The panel is closed by default and
+   "stop viewing" releases the subscription.
+6. Decision: Guest Still Staying? → the Admin sees last-updated age and a stale
+   marker rather than being told a position is current when it is not.
+7. Stop Location Tracking → the Guest's **Stop Sharing** button, the countdown
+   reaching zero, the tab being closed, the device going offline, or the session being
+   cleared — five ways out, all ending the same way.
+8. Retention: **there is nothing to retain.** The consent is a few hundred bytes of
+   metadata; the position is deleted by the server; no history exists. The scheduled
+   job that retires old *messages* is a separate concern — see `docs/MESSAGING.md` § 4.
 9. Disable Guest Credential (RFID + Mobile Key) — **unchanged and still built**: a
    revoked Credential is refused at the door and the refusal is written to the
    Access log. See §5.
@@ -221,7 +237,7 @@ Where each convention lives in code, and where the build is deliberately short o
 - **G2 — the system enforces availability.** Overlap is re-checked at submit (the website's create path, against the stored Bookings) and at approval in the Admin app (`applyAdminAction` → `findDateConflicts` against the latest Bookings snapshot, committed statuses only — ADR-0003). ADR-0006's transactional Approve describes the web protocol; moving the app's approval write into a transaction is the open follow-up.
 - **G3 — money last.** ADR-0001: the Admin approves before any money moves, `VerifyPayment` (app) refuses less than what was asked, and `settleRefund` (`src/lib/booking/money.ts` and its Dart port) is the only path money leaves.
 - **G4 — 24h TTL.** The hold is stored data (`hold_expires_at`), and expiry is a read-time rule (ADR-0002) — no timer, no worker: a Booking that sat 24 hours reads as Expired, and Expired holds no dates. The only stage that expires is the pre-approval one, Pending; once the Admin approves, the hold becomes firm. The Admin app records a run-out hold as `Expired` in the system's name.
-- **G6 — no location collection (superseded by ADR-0009).** The consent gate was built, then the module was withdrawn: no client records a Guest position, `tracking_sessions` denies create / read / update to every caller, and nothing in either app displays one. The retention question is therefore moot — there is no personal location data to expire. What the module was there to protect is now covered by the **Access log** (`access_logs`: door events, granted / denied, with timestamps and the credential used) and by the per-Booking `activity` trail.
+- **G6 — a position is never a record (ADR-0009, then ADR-0013).** The consent gate was built; the module was withdrawn (ADR-0009) because a position written to Firestore is a position stored forever, needing a consent record, a retention rule, an expiry, an encryption claim and a purge path. It was reinstated (ADR-0013) in a shape that removes four of those five problems instead of answering them: the consent is the Firestore document, the expiry is enforced by the backend at both ends, and the *purge path is the server itself* — a Realtime Database node written with a TTL is deleted whether or not anybody remembers. `tracking_sessions` stays closed; the Access log (`access_logs`: door events, granted / denied, with timestamps and the credential used) and the per-Booking `activity` trail are untouched, and remain what actually answers "is the Guest here?". See `docs/MESSAGING.md` § 5.
 - **G7 — every state change is logged.** Same contract as G1: `applyAction` / `applyAdminAction` owe their log entries, and `firestore.rules` keeps `bookings/{id}/activity` append-only, written in the writer's own role (`guest`, `admin`, or `system` written by the Admin app).
 - **G8 — two roles, two apps (v3.0).** `firestore.rules` knows `guest` and `admin` only (`role()`, `isAdmin()`); the website's `src/lib/auth` has the same two roles and no management pages (`/admin/*`, `/app/*` signpost to the app); the mobile app's `AuthStore.isAdmin` is the only gate and it has no Guest screens. See ADR-0007.
 - **Payment plans and the policy stamp (v2.1).** The Admin publishes figures from the app's Rates screen — the `site_config/rates` document, `FIREBASE_SETUP.md` step 6 — and `ChoosePaymentPlan` (website) quotes the stay from them (or from the recorded total, when the quote is a phone call rather than a card), stamping the policy version and effective date on the Booking at choice time. Republishing changes the terms of future choices only, never of a stay already promised; a Booking stamped with nothing refunds nothing.
