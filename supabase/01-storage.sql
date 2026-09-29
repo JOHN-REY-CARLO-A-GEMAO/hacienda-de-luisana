@@ -8,8 +8,10 @@
 -- Apply with the Supabase SQL editor, or:
 --   psql "$SUPABASE_DB_URL" -f supabase/01-storage.sql
 --
--- Idempotent: every statement is `if not exists` / `drop policy if exists`, so
--- running it twice is a no-op rather than an error.
+-- Idempotent: the bucket upsert is `on conflict do update` and each policy is
+-- preceded by a `drop policy if exists`, so running it twice is a no-op rather
+-- than an error. (Postgres has no `create policy if not exists`, which is why
+-- the drop is explicit.)
 --
 -- THE SHAPE OF THE GRANT, and why it is asymmetric
 -- ------------------------------------------------
@@ -30,6 +32,11 @@
 -- `supabase/functions/admin-payment-proof`, which hands back a 60-second signed
 -- URL after checking the caller is an Admin.
 --
+-- The missing read grant has a cost that shaped the website, not just this
+-- file: Supabase refuses an upsert without one, so `upsert: true` fails on this
+-- bucket and every attempt writes its own object. That is spelled out under
+-- the update policy below, where it matters.
+--
 -- `test/web/supabase-storage.test.ts` reads this file and fails if an `anon`
 -- read policy ever appears, so that mistake cannot be made quietly.
 
@@ -39,7 +46,7 @@
 -- Private, because reads go through a signed URL and a public bucket would
 -- serve every object to anyone who can guess or list a path.
 --
--- 5 MB mirrors `PROOF_MAX_BYTES` in `src/lib/payments/contract.ts:12`, which
+-- 5 MB mirrors `PROOF_MAX_BYTES` in `src/lib/payments/contract.ts`, which
 -- exists so a Guest learns the limit from a form validation instead of from a
 -- rejected upload.
 insert into storage.buckets (id, name, public, file_size_limit)
@@ -51,8 +58,11 @@ on conflict (id) do update
 -- ----------------------------------------------------------------------------
 -- Guest writes
 -- ----------------------------------------------------------------------------
--- The address a proof lands on is built by `proofPath()` in
--- `src/lib/payments/contract.ts:50`: `payments/{uid}/{safeRef}/proof.{ext}`.
+-- The address a proof lands on is built by `proofObjectPath()` in
+-- `src/lib/payments/contract.ts`: `payments/{uid}/{safeRef}/proof-{n}.{ext}`.
+-- `n` counts upload attempts, because a proof is never overwritten — a re-send
+-- is a second object. See the update policy below for why that is forced.
+--
 -- Scoping every policy to the `payments/` first segment keeps the rules honest
 -- if the bucket ever grows a second kind of file.
 --
@@ -64,6 +74,8 @@ on conflict (id) do update
 -- Firestore under `firestore.rules`, and a forged path cannot mark a payment
 -- verified.
 
+drop policy if exists "guests upload payment proofs" on storage.objects;
+
 create policy "guests upload payment proofs"
   on storage.objects for insert to anon
   with check (
@@ -71,10 +83,26 @@ create policy "guests upload payment proofs"
     and (storage.foldername(name))[1] = 'payments'
   );
 
--- `upsert: true` in `uploadPaymentProofFile` (`src/lib/storage.ts:361`) means a
--- re-send of the same Booking's proof replaces the old bytes: one proof per
--- Booking reference, and a Guest correcting a blurry screenshot is not blocked
--- by a name collision.
+-- The website does not rely on this policy, and cannot. `upsert: true` in
+-- `uploadPaymentProofFile` is refused on this bucket: it sends
+-- `Prefer: resolution=merge-duplicates`, which evaluates THIS policy alongside
+-- the insert one, and `anon` holds no read grant here — so every upsert comes
+-- back `42501 new row violates row-level security policy`, on a first upload as
+-- much as on a re-send. That is why no Guest could complete a booking at all,
+-- and why `proofObjectPath` carries an attempt number.
+--
+-- That read gap is the security property of this file, not an oversight.
+-- Granting `anon` a `select` here is the one change that would publish every
+-- Guest's GCash receipt and reference number to the internet, because the anon
+-- key ships inside the public Vite bundle. Do not close it.
+--
+-- A re-send therefore writes a new object (`proof-2.ext`) instead of replacing
+-- the bytes. That is also what `firestore.rules` needs: a Guest may clear a
+-- `payment_reject_reason` only by attaching a *different* `payment_proof_url`,
+-- which a single fixed address could never satisfy. The rejected proof is kept
+-- as evidence rather than overwritten.
+drop policy if exists "guests replace payment proofs" on storage.objects;
+
 create policy "guests replace payment proofs"
   on storage.objects for update to anon
   using (

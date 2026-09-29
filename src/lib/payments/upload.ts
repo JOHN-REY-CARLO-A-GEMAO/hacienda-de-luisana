@@ -31,6 +31,8 @@ export type ProofUploadOutcome =
 export async function uploadPaymentProof(input: {
   file: File
   bookingRefId: string
+  /** Which upload this is for this Booking; 1 for the first. */
+  attempt?: number
 }): Promise<ProofUploadOutcome> {
   const check = validateProofFile({ name: input.file.name, size: input.file.size, type: input.file.type })
   if (!check.ok) return check
@@ -41,6 +43,7 @@ export async function uploadPaymentProof(input: {
     uid,
     bookingRefId: input.bookingRefId,
     filename: input.file.name,
+    attempt: input.attempt ?? 1,
   })
 
   const stored = await uploadPaymentProofFile({ file: input.file, path })

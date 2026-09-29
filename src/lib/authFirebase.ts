@@ -22,6 +22,7 @@ import {
   signOut,
   updateProfile,
   type User,
+  type Auth,
 } from 'firebase/auth'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db, googleProvider, isFirebaseConfigured } from './firebase'
@@ -32,9 +33,33 @@ import {
   type ProfilePort,
   type SessionUser,
 } from './auth'
+import { roleForEmail } from './auth/profile'
 
 /** Where the role of every signed-in person is stored. */
 export const PROFILES_COLLECTION = 'profiles'
+
+/**
+ * The Admin operates the hacienda from the Flutter app, never from this website
+ * (ADR-0007: one role, two applications; the website is the Guest's). So an
+ * allowlisted Admin address is refused at every door on this side, and the
+ * session is torn down rather than left half-open.
+ *
+ * This is a courtesy, not an enforcement. `firestore.rules` is the enforcement,
+ * and it cannot help here: the app and the website share one Firebase project
+ * and one rules file, and Firestore rules cannot tell a browser from a phone.
+ * What they can do is stop the *product* offering the Admin a website, so the
+ * separation is real in use rather than only on paper. Anyone who edits the
+ * bundle can still reach an Admin's data from a browser — which is why
+ * `firestore.rules` writes its invariants to hold without trusting the client.
+ */
+function refuseAdminOnWeb(firebaseAuth: Auth, user: User): void {
+  if (roleForEmail(user.email) !== 'admin') return
+  void signOut(firebaseAuth)
+  throw new AuthError(
+    'hdl/admin-uses-app',
+    'The Admin signs in on the Hacienda app, not on this website.',
+  )
+}
 
 /** Where a Firebase session came from, as the session reports it. */
 function providerOf(user: User): SessionUser['provider'] {
@@ -99,17 +124,20 @@ export function createFirebasePorts(): { auth: AuthPort; profiles: ProfilePort }
           console.warn('[Auth] could not save the display name', error)
         })
       }
+      refuseAdminOnWeb(firebaseAuth, credential.user)
       return toSessionUser(credential.user)
     },
 
     async login(credentials) {
       const credential = await signInWithEmailAndPassword(firebaseAuth, credentials.email, credentials.password)
+      refuseAdminOnWeb(firebaseAuth, credential.user)
       return toSessionUser(credential.user)
     },
 
     async loginWithGoogle() {
       if (!googleProvider) throw new AuthError('hdl/unavailable', 'Google sign-in is not configured on this project.')
       const credential = await signInWithPopup(firebaseAuth, googleProvider)
+      refuseAdminOnWeb(firebaseAuth, credential.user)
       return toSessionUser(credential.user)
     },
 

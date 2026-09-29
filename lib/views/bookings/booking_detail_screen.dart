@@ -10,6 +10,8 @@ import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
+import '../../services/payment_proof_service.dart';
+import 'payment_proof_viewer.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/section_header.dart';
@@ -33,6 +35,7 @@ class BookingDetailScreen extends ConsumerStatefulWidget {
 
 class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   bool _busy = false;
+  bool _openingProof = false;
 
   Actor _actor() {
     final auth = legacy.Provider.of<AuthStore>(context, listen: false);
@@ -552,7 +555,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           if (booking.amountVerified != null)
             _kv('Verified', peso(booking.amountVerified)),
           if (booking.paymentProofUrl != null)
-            _link('Open payment proof', booking.paymentProofUrl!),
+            _proofButton(booking),
           if (booking.paymentRejectReason != null)
             _kv('Proof rejected because', booking.paymentRejectReason!),
           if (booking.refundStatus != null && booking.refundStatus != 'none') ...[
@@ -618,12 +621,60 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         ),
       );
 
-  Widget _link(String label, String url) => Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: () => _open(url),
-          icon: const Icon(Icons.open_in_new, size: 16),
-          label: Text(label),
+  /// Open the proof as a photo.
+  ///
+  /// payment_proof_url is a Supabase storage path, not a link, and the bucket
+  /// is private, so there is nothing here to launch. The function signs a URL
+  /// that lasts 60 seconds and the viewer opens on it.
+  Future<void> _openProof(BookingModel booking) async {
+    final path = booking.paymentProofUrl;
+    if (path == null || path.isEmpty) return;
+
+    setState(() => _openingProof = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await PaymentProofService.signedUrl(path);
+    if (!mounted) return;
+    setState(() => _openingProof = false);
+
+    final failure = result.error;
+    if (failure != null) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(failure),
+        backgroundColor: AppColors.statusAlert,
+      ));
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PaymentProofViewer(url: result.url!)),
+    );
+  }
+
+  /// A real button rather than a line of text that happens to be tappable:
+  /// reading the screenshot is the step this screen exists for, and it should
+  /// look like the step it is.
+  Widget _proofButton(BookingModel booking) => Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 2),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _openingProof ? null : () => _openProof(booking),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accentGold,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            icon: _openingProof
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.black))
+                : const Icon(Icons.receipt_long, size: 18),
+            label: Text(
+              _openingProof ? 'Opening the proof...' : 'View payment proof',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
         ),
       );
 

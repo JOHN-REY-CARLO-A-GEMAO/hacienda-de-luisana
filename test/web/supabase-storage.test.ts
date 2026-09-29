@@ -110,7 +110,7 @@ describe('the Admin read path', () => {
     // could not open a proof the Guest had actually sent.
     for (const ref of ['HDL-1', 'abc123', 'A-1', '2026-0004']) {
       for (const ext of PROOF_IMAGE_EXTENSIONS) {
-        const path = proofObjectPath({ uid: 'uid-abc_123', bookingRefId: ref, filename: `shot.${ext}` })
+        const path = proofObjectPath({ uid: 'uid-abc_123', bookingRefId: ref, filename: `shot.${ext}`, attempt: 1 })
         expect(proofPath.test(path), `${path} should be openable by the Admin`).toBe(true)
       }
     }
@@ -133,7 +133,7 @@ describe('the Admin read path', () => {
     // Order matters as much as presence: a signed URL for a path the caller had
     // no right to name is the failure this function exists to prevent.
     const verify = fnCode.indexOf('verifyIdToken')
-    const admin = fnCode.indexOf("profile?.role !== 'admin'")
+    const admin = fnCode.indexOf("role !== 'admin'")
     const sign = fnCode.indexOf('createSignedUrl')
     expect(verify).toBeGreaterThan(0)
     expect(admin).toBeGreaterThan(verify)

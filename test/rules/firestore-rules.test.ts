@@ -491,8 +491,17 @@ describe('bookings/{id}/activity: the append-only record', () => {
     at: '2026-09-24T02:00:00.000Z',
   })
 
+  /**
+   * An entry as `submissionEntry` writes it — no `uid` of its own, because the
+   * app never puts one there. Both read cases below were once asserted against a
+   * hand-written `uid` on the entry, which is a shape nothing in the codebase
+   * produces: the rule read `resource.data`, so it was false in production while
+   * the test said true. `activityLogDB.append` reads the log to pick the next
+   * sequence number, so that refusal made every Guest append fall back to
+   * localStorage and left the Admin looking at an empty audit trail.
+   */
   it('lets the Guest it belongs to read the log', () => {
-    expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-1`, method: 'get', auth: emailGuest(), resourceData: { booking_id: BOOKING_ID, uid: GUEST_UID } })).toBe(true)
+    expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-1`, method: 'get', auth: emailGuest(), resourceData: entry('guest', GUEST_UID) })).toBe(true)
   })
 
   it('lets the Admin read the log', () => {
@@ -500,7 +509,27 @@ describe('bookings/{id}/activity: the append-only record', () => {
   })
 
   it('refuses another Guest the log', () => {
-    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-1`, method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: { booking_id: BOOKING_ID, uid: GUEST_UID } })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-1`, method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: entry('guest', GUEST_UID) })).toBe(true)
+  })
+
+  it('refuses the log of a Booking that has been deleted out from under it', () => {
+    expect(deny({ path: `bookings/never-existed/activity/entry-1`, method: 'get', auth: emailGuest(), resourceData: entry('guest', GUEST_UID) })).toBe(true)
+  })
+
+  /**
+   * The rule never compared the parent Booking to the writer, so a Guest who knew
+   * (or guessed) another Guest's booking id could append entries to that Booking's
+   * audit trail. The submitter's own entry is the one they may write.
+   */
+  it('lets a Guest file entries in their own Booking only', () => {
+    const otherGuestsBooking = 'booking-2'
+    const store: Store = {
+      ...profiles,
+      [`bookings/${otherGuestsBooking}`]: bookingDoc({ uid: OTHER_GUEST_UID, ref_id: otherGuestsBooking }),
+    }
+    expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-9`, method: 'create', auth: emailGuest(), requestData: entry('guest', GUEST_UID) })).toBe(true)
+    expect(allow({ path: `bookings/${otherGuestsBooking}/activity/entry-9`, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: { ...entry('guest', OTHER_GUEST_UID), booking_id: otherGuestsBooking } }, store)).toBe(true)
+    expect(deny({ path: `bookings/${otherGuestsBooking}/activity/entry-9`, method: 'create', auth: emailGuest(), requestData: { ...entry('guest', GUEST_UID), booking_id: otherGuestsBooking } }, store)).toBe(true)
   })
 
   /**

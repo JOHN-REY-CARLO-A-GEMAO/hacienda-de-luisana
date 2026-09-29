@@ -27,6 +27,20 @@ export const isSupabaseConfigured: boolean = Boolean(url && anonKey)
  *
  * Built once at module load; module consumers (helpers, tests) import `supabase`
  * rather than calling createClient themselves.
+ *
+ * No session is persisted and none is refreshed. This client exists only to put
+ * a Guest's receipt in the bucket, with the public `anon` key and no Supabase
+ * account anywhere in the product — so a session could only ever be a leftover.
+ * A leftover is not harmless: supabase-js sends a persisted token as
+ * `Authorization`, Postgres adopts its `role` claim, and the request stops
+ * arriving as `anon`. The storage policies are granted `to anon` only, so that
+ * turns into `42501 new row violates row-level security policy` against a
+ * policy that is correct in the dashboard. Writing receipts must not depend on
+ * which role the browser happens to be holding.
  */
 export const supabase: SupabaseClient | null =
-  url && anonKey ? createClient(url, anonKey) : null
+  url && anonKey
+    ? createClient(url, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      })
+    : null

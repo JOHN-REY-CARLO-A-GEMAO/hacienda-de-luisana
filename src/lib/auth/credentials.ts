@@ -35,6 +35,7 @@ export type AuthErrorCode =
   | 'hdl/forbidden'
   | 'hdl/not-configured'
   | 'hdl/unavailable'
+  | 'hdl/admin-uses-app'
   | 'hdl/unknown'
 
 const MESSAGES: Record<AuthErrorCode, string> = {
@@ -55,6 +56,7 @@ const MESSAGES: Record<AuthErrorCode, string> = {
   'hdl/forbidden': 'Your role does not allow that.',
   'hdl/not-configured': 'Firebase Auth is not configured. Check your .env.local',
   'hdl/unavailable': 'That is not available here.',
+  'hdl/admin-uses-app': 'The Admin signs in on the Hacienda app, not on this website.',
   'hdl/unknown': 'Something went wrong. Please try again.',
 }
 

@@ -1,0 +1,29 @@
+# Supabase CLI configuration for this project.
+#
+# There is one function, and it deliberately opts out of the platform's JWT
+# check. See [functions.admin-payment-proof] below.
+project_id = "xgcjjzwdkxykdosxdzhn"
+
+[functions.admin-payment-proof]
+# The Supabase gateway verifies an `Authorization: Bearer <token>` header as a
+# JWT *it* issued â€” the anon key or a service-role key. This function is not
+# called with either: the Flutter app sends the caller's **Firebase ID token**,
+# because the app has no Supabase key and must not have one. The gateway would
+# reject that token as an unknown issuer before the function ever ran, so every
+# proof would fail with a bare 401.
+#
+# Turning the check off does not open the door. It moves the door. The function
+# then authenticates for itself, and more strictly than the gateway would have:
+#
+#   1. `getAuth().verifyIdToken(token)` â€” proves the caller is who the token
+#      says, against Firebase, with the service account. A forged or expired
+#      token fails here.
+#   2. `profiles/{uid}.role == 'admin'` in Firestore â€” proves the caller is the
+#      Admin, not merely somebody with a valid account. The gateway never
+#      checked this, and could not have.
+#
+# A guest with a perfectly valid Firebase token still gets 403 from step 2.
+# Unauthenticated callers still get 401 from step 1. Nothing is served to
+# anybody but the Admin, and no proof URL is signed for anyone else.
+verify_jwt = false
+

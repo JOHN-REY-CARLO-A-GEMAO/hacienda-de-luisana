@@ -274,10 +274,23 @@ describe('the Activity log', () => {
     // public inquiry with no identity at all can only write the submission.
     expect(create).toContain("request.resource.data.actor == 'system' && isAdmin() && request.resource.data.actor_id == 'system'")
     expect(create).toContain("!isSignedIn() && request.resource.data.actor == 'guest' && request.resource.data.action == 'Submit'")
+    // ...and only into their own Booking. Nothing else in the create rule reads
+    // parent document, so without this a Guest could add entries to another
+    // Guest's audit trail by naming their booking id.
+    expect(create).toContain("request.resource.data.actor_id == request.auth.uid && isOwnBooking()")
   })
 
   it('is readable by the Guest it belongs to and the Admin', () => {
-    expect(allow(activity, 'read:')).toBe('allow read: if isOwnDoc() || isAdmin();')
+    // Read through the parent Booking, never `isOwnDoc()`: an Activity entry
+    // carries no `uid` of its own and the app writes none, so a per-document
+    // check was false for every entry that exists in production. That was not
+    // cosmetic — `activityLogDB.append` reads the log to pick the next sequence
+    // number, so every Guest append failed on the read and degraded to
+    // localStorage, and the Admin saw an empty audit trail.
+    const owner = squash(block(bookings, 'function isOwnBooking()'))
+    expect(owner).toContain('get(/databases/$(database)/documents/bookings/$(bookingId))')
+    expect(owner).toContain("data.get('uid', '') == request.auth.uid")
+    expect(allow(activity, 'read:')).toBe('allow read: if isOwnBooking() || isAdmin();')
   })
 
   it('is append-only, including for the Admin', () => {

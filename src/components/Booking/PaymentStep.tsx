@@ -12,6 +12,7 @@ import {
 import { uploadPaymentProof } from '../../lib/payments'
 import type { Booking } from '../../lib/storage'
 import { extractReceiptFields, runReceiptOcr } from '../../lib/payments/ocr'
+import { nextProofAttempt } from '../../lib/payments'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import { validateAmount, validateReference } from '../../lib/validation'
 import { LEGAL_VERSION } from '../../lib/legal'
@@ -130,7 +131,15 @@ export function PaymentStep({ booking }: { booking: Booking }) {
     setMessage(null)
     try {
       const refId = booking.ref_id || booking.id
-      const uploaded = await uploadPaymentProof({ file: proofFile, bookingRefId: refId })
+      // A re-send is a new object, not a replacement: the path has to differ
+      // from the one already recorded, both because Supabase refuses an upsert
+      // and because firestore.rules only lets a Guest clear a rejection reason
+      // by attaching a different proof.
+      const uploaded = await uploadPaymentProof({
+        file: proofFile,
+        bookingRefId: refId,
+        attempt: nextProofAttempt(booking.payment_proof_url),
+      })
       if (!uploaded.ok) {
         setMessage({ tone: 'bad', text: uploaded.message })
         return

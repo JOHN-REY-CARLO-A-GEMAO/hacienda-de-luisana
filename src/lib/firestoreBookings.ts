@@ -349,8 +349,17 @@ export const cloudBookingsDB = {
       const snap = await getDocs(q)
       return snap.docs.map((d) => mapDocToBooking(d.id, d.data()))
     } catch (e) {
-      console.warn('[Firestore] list() failed, falling back to local', e)
-      return bookingsDB.list()
+      // No fabricated data. In cloud mode this query is only authorised for an
+      // Admin (firestore.rules: `isOwnDoc() || isAdmin()`, and `isOwnDoc()` is
+      // per-document, so Firestore must refuse an unscoped read to a Guest), so for
+      // every Guest this branch used to be the only branch that ran - and it
+      // answered with whatever this browser happened to be holding. That is how a
+      // Guest was told their dates were held by a Booking no other Guest can see,
+      // including the test suite's fixtures written before vitest.config.ts was
+      // made hermetic. An empty answer is honest; a borrowed one is not. A Guest's
+      // own Bookings come from `listMine`, which the rules do allow.
+      console.warn('[Firestore] list() was refused; answering with none', e)
+      return []
     }
   },
 
@@ -548,6 +557,21 @@ export const cloudBookingsDB = {
     options: { now?: string | number | Date } = {},
   ): Promise<{ available: boolean; conflicts: HoldBearingBooking[] }> {
     const now = options.now ?? Date.now()
+
+    // In cloud mode a Guest cannot be told whether other Guests hold the dates,
+    // because the rules let them read only their own Booking and an availability
+    // check needs to see everyone else's. There is no client-side query that
+    // answers it, so this returns "no conflict" rather than inventing one - and
+    // the check is not the real gate either way. The authoritative re-check is the
+    // Admin's, run inside the approval transaction (G2, ADR-0006), which reads
+    // Firestore under a rule that can see every Booking and cannot be raced.
+    //
+    // Previously this read `list()`, which for a Guest always failed and always
+    // fell back to this browser's own store - so a Guest was refused their own
+    // dates by a Booking no other Guest can see. That is the bug the demo-mode
+    // branch below still usefully avoids.
+    if (this.isCloud) return { available: true, conflicts: [] }
+
     const bookings = await this.list()
     const conflicts = findDateConflicts(request, bookings, {
       unitsAvailable: unitsForAccommodation(request.accommodation, ACCOMMODATIONS),

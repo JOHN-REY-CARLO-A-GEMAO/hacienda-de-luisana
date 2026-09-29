@@ -6,6 +6,7 @@
 export {
   PROOF_IMAGE_EXTENSIONS,
   PROOF_MAX_BYTES,
+  nextProofAttempt,
   proofContentType,
   proofObjectPath,
   validateProofFile,

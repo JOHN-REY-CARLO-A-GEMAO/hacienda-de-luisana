@@ -22,6 +22,21 @@ class AppConstants {
   static const String resortPhone = '09258507707';
   static const String resortPhoneDisplay = '(0925) 850 7707';
   static const String resortMessengerUrl = 'https://m.me/haciendadeluisana';
+
+  /// The Supabase project the website uploads payment proofs to.
+  ///
+  /// Public by construction: the anon key ships inside the Vite bundle, so the
+  /// host is public too. No key is kept here \u2014 the app proves who it is with
+  /// its own Firebase ID token instead.
+  static const String supabaseUrl = 'https://xgcjjzwdkxykdosxdzhn.supabase.co';
+
+  /// The one function the Admin calls to read a proof (ADR-0011).
+  ///
+  /// Proofs live in a private bucket that grants non write and nothing else,
+  /// so the app cannot fetch one with a key. It asks this function, which
+  /// verifies the caller's token, requires profiles role admin, and hands back
+  /// a URL that expires in 60 seconds.
+  static const String paymentProofFunction = 'admin-payment-proof';
 }
 
 class AppColors {

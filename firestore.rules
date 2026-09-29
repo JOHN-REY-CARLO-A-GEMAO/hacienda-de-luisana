@@ -311,9 +311,27 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
 
+      // Who owns this Booking, read from the Booking itself and never from the
+      // entry: an Activity entry carries no `uid` of its own and the app writes
+      // none, so `isOwnDoc()` — which reads `resource.data` — could never be true
+      // down here, and the Guest a Booking belongs to was refused its own audit
+      // trail. `src/lib/firestoreBookings.ts` reads the log to pick the next
+      // sequence number before it appends, so that refusal was not cosmetic: every
+      // Guest append failed on the read and degraded to localStorage, leaving the
+      // Admin an empty log on every Booking a Guest had submitted. Asking the
+      // parent also settles the other half — nothing here compared the parent to
+      // the writer, so a Guest could file entries into somebody else's Booking.
+      function isOwnBooking() {
+        return isSignedIn()
+          && exists(/databases/$(database)/documents/bookings/$(bookingId))
+          && get(/databases/$(database)/documents/bookings/$(bookingId))
+               .data.get('uid', '') == request.auth.uid;
+      }
+
       // Activity log (spec #9, ticket #11): the append-only record of every
       // state change, with the actor and timestamp that made it.
-      // - CREATE: anybody who may change the Booking, naming themselves truthfully.
+      // - CREATE: the Guest it belongs to, or the Admin, each naming themselves
+      //   truthfully.
       // - READ: the Admin, and the Guest it belongs to.
       // - UPDATE/DELETE: nobody. Not the Admin. An audit record that can be
       //   edited is not an audit record (CONTEXT.md § Activity log).
@@ -327,7 +345,11 @@ service cloud.firestore {
           // is worse than no log at all.
           && request.resource.data.actor_id != ''
           && ((request.resource.data.actor == 'guest'
-               && request.resource.data.actor_id == request.auth.uid)
+               && request.resource.data.actor_id == request.auth.uid
+               // …and into their own Booking only. Without this a Guest who knew
+               // or guessed another Guest's booking id could add noise to that
+               // Booking's audit trail, since nothing else here reads the parent.
+               && isOwnBooking())
               // An Admin-signed entry names the Admin writing it.
               || (request.resource.data.actor == 'admin' && isAdmin()
                   && request.resource.data.actor_id == request.auth.uid)
@@ -342,7 +364,7 @@ service cloud.firestore {
               || (!isSignedIn()
                   && request.resource.data.actor == 'guest'
                   && request.resource.data.action == 'Submit'));
-        allow read: if isOwnDoc() || isAdmin();
+        allow read: if isOwnBooking() || isAdmin();
         allow update, delete: if false;
       }
     }

@@ -36,18 +36,51 @@ function extOf(filename: string): string {
 }
 
 /**
- * Storage address for a payment proof: `payments/{uid}/{safeRef}/proof.{ext}`.
+ * Storage address for a payment proof: `payments/{uid}/{safeRef}/proof-{n}.{ext}`.
  *
  * `safeRef` keeps `[A-Za-z0-9-]` and uppercases, the sanitiser the legacy
  * contract uses, so one Booking's uploads land in one predictable folder.
+ *
+ * `attempt` is in the address because the object is **never** overwritten. A
+ * re-send is a second object, not a replacement, for two reasons that both
+ * matter:
+ *
+ *  - Supabase refuses an upsert. `upsert: true` sends
+ *    `Prefer: resolution=merge-duplicates`, which evaluates the *update* policy
+ *    alongside the insert one, and the `anon` role has no read grant here — so
+ *    every upsert is refused with `42501 new row violates row-level security
+ *    policy`, on a first upload as much as a re-send. Opening that would mean
+ *    granting `anon` a `select` policy, which publishes every Guest's GCash
+ *    receipt to the internet (see supabase/01-storage.sql). So the bytes are
+ *    written once, to a name nobody has used.
+ *  - `firestore.rules` only lets a Guest clear a `payment_reject_reason` by
+ *    attaching a *different* `payment_proof_url` in the same write. A fixed
+ *    address cannot satisfy that, so a re-send after a rejection is refused.
+ *    A fresh address per attempt is what makes the resubmit loop work.
+ *
+ * Keeping the rejected proof also leaves the evidence: the Admin can see what
+ * was first sent and what replaced it.
  */
 export function proofObjectPath(input: {
   uid: string
   bookingRefId: string
   filename: string
+  attempt: number
 }): string {
   const safeRef = input.bookingRefId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()
-  return `payments/${input.uid}/${safeRef}/proof.${extOf(input.filename)}`
+  return `payments/${input.uid}/${safeRef}/proof-${input.attempt}.${extOf(input.filename)}`
+}
+
+/**
+ * The attempt number a further upload for this Booking should use, read off the
+ * path already recorded on it. A Booking with no proof yet starts at 1; a
+ * legacy `proof.{ext}` path also starts at 1, which still differs from what is
+ * already stored, which is what the rules require.
+ */
+export function nextProofAttempt(previousPath: string | null | undefined): number {
+  if (!previousPath) return 1
+  const last = previousPath.match(/proof-(\d+)\.[a-z0-9]+$/i)
+  return last ? Number(last[1]) + 1 : 1
 }
 
 /** Content type to declare on the object. */

@@ -376,9 +376,16 @@ export async function uploadPaymentProofFile(input: {
       const { error } = await withTimeout(
         supabase.storage.from(PAYMENT_PROOFS_BUCKET).upload(input.path, input.file, {
           contentType: input.file.type || 'application/octet-stream',
-          // A re-send of the same Booking's proof replaces the old bytes rather
-          // than failing on a name collision: one proof per Booking reference.
-          upsert: true,
+          // Deliberately not `upsert: true`. That sends
+          // `Prefer: resolution=merge-duplicates`, which evaluates the *update*
+          // policy alongside the insert one; the `anon` role has no read grant
+          // on `payment-proofs`, so every upsert is refused with
+          // `42501 new row violates row-level security policy` — on the very
+          // first upload of a Booking, not only a re-send. The way to allow it
+          // would be an `anon` select policy, which would publish every Guest's
+          // receipt. So each attempt gets its own object name instead (see
+          // `proofObjectPath`), the bytes are written once, and a re-send is a
+          // second object rather than a replacement.
         }),
         PROOF_UPLOAD_TIMEOUT_MS,
       )
