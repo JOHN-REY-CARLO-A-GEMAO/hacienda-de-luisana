@@ -8,7 +8,9 @@
 | Payment reference catalog | Cloud `payment_references` | Admin app may keep a working copy on device |
 | Access logs | Cloud `access_logs` | none |
 | Chat | Cloud `conversations` (≤1,000 chars a message, read a page at a time) | website demo cache `hdl:chat` when offline, paginated the same way |
-| Reviews | Cloud `reviews` | website demo cache `hdl:review:{bookingId}` |
+| Review | Cloud `reviews` | website demo cache `hdl:review:{bookingId}` |
+| Testimonial (public) | Cloud `public_reviews` | website demo cache `hdl:public-reviews` |
+| Public review average | Cloud `site_config/review_summary` | computed from the published testimonials |
 | UI tutorial | Cookie `hdl_tutorial_done` (SameSite=Lax, not HttpOnly — UI preference only) | same |
 | Live location — consent | Cloud Firestore `location_sessions/{convoId}` (no coordinate; ADR-0013) | none |
 | Live location — position | Cloud **Realtime Database** `live_location/{convoId}/{guestUid}`, deleted server-side at the session's expiry | none — nothing is stored on the device |

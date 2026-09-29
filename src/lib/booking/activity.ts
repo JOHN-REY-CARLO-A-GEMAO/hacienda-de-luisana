@@ -10,10 +10,25 @@
 // go through `src/lib/booking`, never through here directly.
 // ----------------------------------------------------------------------------
 
-import type { ActionType, ActivityLogEntry, ActorKind } from './actions'
+import type { ActivityActionType, ActivityLogEntry, ActorKind, ReviewActionType } from './actions'
+
+/**
+ * The names a Review's state changes carry (ADR-0014).
+ *
+ * `from_status` is `none` for the first one, because there was no Review to
+ * have a status before — which is why the renderer below leaves the arrow out
+ * for these rather than printing "none → pending".
+ */
+const REVIEW_ACTIONS: Record<ReviewActionType, string> = {
+  ReviewSubmitted: 'Review written',
+  ReviewUpdated: 'Review corrected by the Guest',
+  AdminReviewResponded: 'Admin replied to the review',
+  ReviewModerated: 'Review moderation changed',
+  ReviewPublished: 'Review published to the website',
+}
 
 /** What each action did, in the glossary's words. */
-const HEADLINES: Record<ActionType, string> = {
+const HEADLINES: Record<ActivityActionType, string> = {
   Submit: 'Booking submitted',
   Approve: 'Booking approved',
   Reject: 'Booking rejected',
@@ -30,6 +45,7 @@ const HEADLINES: Record<ActionType, string> = {
   CheckOut: 'Guest checked out',
   Complete: 'Stay completed',
   SetStatus: 'Status set directly by the Admin',
+  ...REVIEW_ACTIONS,
 }
 
 const ROLE_LABELS: Record<ActorKind, string> = {
@@ -68,7 +84,10 @@ export function describeActivity(entry: ActivityLogEntry): ActivityLine {
   const role = ROLE_LABELS[entry.actor] ?? LEGACY_ACTOR_LABELS[entry.actor] ?? entry.actor
   return {
     headline: HEADLINES[entry.action] ?? entry.action,
-    change: `${entry.from_status} → ${entry.to_status}`,
+    // A Review's statuses are moderation states, not Booking stages, and there
+    // is no "before" the first time — so these say where it ended up rather
+    // than printing an arrow out of a status that never existed.
+    change: entry.action in REVIEW_ACTIONS ? `review is ${entry.to_status}` : `${entry.from_status} → ${entry.to_status}`,
     actor: entry.actor_name ? `${entry.actor_name} (${role})` : role,
     at: entry.at,
     atLabel: formatInstant(entry.at),

@@ -1,5 +1,58 @@
 # Verification — Hacienda de LuisAna
 
+> **2026-09-29 (later) update — Guest Reviews and the public testimonial.**
+> The partial review system that was already in `firestore.rules`,
+> `src/lib/reviewsCloud.ts` and `src/components/ReviewForm.tsx` was **extended,
+> not replaced**: the document id is still the Booking id, the eligibility list
+> is still `Checked-Out` / `Completed`. What was added is the edit window, the
+> optional category ratings, the Admin's reply and moderation, the statistics,
+> the Admin Flutter screens, and a **separate** `public_reviews` collection that
+> is what the website publishes (ADR-0014, `docs/REVIEWS.md`). What that pass
+> ran:
+>
+> ```
+> npm run lint        (tsc -b)          → clean                     ✅
+> npm test            → 39 files / 602 tests  ✅ (was 36 / 514)
+> npm run test:rules  → 3 files / 191 tests  ✅ (was 3 / 166; 25 review cases)
+> npm run build       → dist/ built           ✅
+> npm run test:e2e    → 44 tests              ⚠️ 42 pass, 2 fail — the **same two** as
+>                                                     before this work (step 15, payment-proof
+>                                                     storage contract, and the record printer
+>                                                     it throws into); steps 38–42, the new
+>                                                     review flow, all pass
+> npm run test:emulator → not run             🔴 Blocked (no Java; JAR host unreachable)
+> flutter test / analyze → not run            🔴 Blocked (no Flutter SDK) — so
+>                                                     `test/review_policy_test.dart` and the new
+>                                                     Dart files are **written and reviewed,
+>                                                     not compiled**
+> ```
+>
+> New this pass: `test/web/review-policy.test.ts` (35),
+> `test/web/reviews-cloud.test.ts` (42), `test/web/review-form.test.tsx` (10), the
+> `reviews`, `public_reviews` and Activity-action-list suites in
+> `test/rules/firestore-rules.test.ts`, the matching cases in
+> `test/emulator/rules.emulator.test.ts`, `test/review_policy_test.dart`, and
+> steps 38–42 of the end-to-end scenario.
+>
+> Two changes were made to the **rules evaluator** itself, and both are
+> behaviour, not fixtures:
+>
+> - `compileRules()` — a parsed rules file can be reused across a case. The
+>   suite was spending 173 s re-parsing the same 900-line file per question; it
+>   now runs in **7 s** for 191 cases. `evaluate()` still re-parses, for a suite
+>   that rewrites the rules between cases.
+> - String-literal escapes are now read. A rule written
+>   `text.matches('\s*')` to refuse whitespace was handing RE2 a doubled
+>   backslash — a literal backslash, not a whitespace class — so the pattern
+>   matched nothing and the rule allowed exactly what it was written to refuse.
+>   The `reviews` text check depends on it, so it is pinned in
+>   `engine.test.ts` rather than discovered there.
+>
+> One gap closed while extending the Activity log: it now checks every entry's
+> `action` against the list of names the system has. A Guest could already file
+> an entry into their own Booking reading *"Payment proof verified — Booking
+> Reserved"* in their own name — a lie in the one log the Admin reads.
+
 > **2026-09-29 update — messaging limits, pagination, retention, live location.**
 > The Guest ↔ Admin conversation now has a 1,000-character limit enforced by
 > `firestore.rules`, cursor pagination on both apps, a retention policy with an

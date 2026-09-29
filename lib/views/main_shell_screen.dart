@@ -15,6 +15,7 @@ import 'dashboard/dashboard_screen.dart';
 import 'bookings/bookings_screen.dart';
 import 'inbox/inbox_screen.dart';
 import 'payments/payment_refs_screen.dart';
+import 'reviews/reviews_screen.dart';
 import 'stays/stay_duration_screen.dart';
 import 'smartlock/smart_lock_screen.dart';
 import 'analytics/analytics_screen.dart';
@@ -78,6 +79,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       AnimatedTabPage(isActive: _currentIndex == 7, child: const GuestCrmScreen()),
       AnimatedTabPage(isActive: _currentIndex == 8, child: const RatesScreen()),
       AnimatedTabPage(isActive: _currentIndex == 9, child: const PaymentRefsScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 10, child: const ReviewsScreen()),
     ];
 
     return Scaffold(
@@ -245,6 +247,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                     leading: Icon(Icons.hotel_outlined),
                     title: Text('Rooms & Accommodations'),
                     subtitle: Text('Manage status (Available/Occupied) & pricing'),
+                  ),
+                ),
+                PressableCard(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _navigateToTab(10); // Guest reviews
+                  },
+                  child: const ListTile(
+                    leading: Icon(Icons.rate_review_outlined),
+                    title: Text('Guest Reviews'),
+                    subtitle: Text('What Guests wrote after their stay — answer, moderate, publish'),
                   ),
                 ),
                 PressableCard(

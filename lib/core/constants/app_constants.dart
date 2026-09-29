@@ -23,6 +23,17 @@ class AppConstants {
   static const String subMessages = 'messages';
   static const String colLocationSessions = 'location_sessions';
 
+  /// A Guest's words about a finished stay, filed at the Booking's own id —
+  /// which is what makes "one Review per stay" something `firestore.rules`
+  /// enforces rather than something a form remembers (ADR-0014).
+  static const String colReviews = 'reviews';
+  /// What the website publishes: six fields the Admin chose out of a Review,
+  /// written from scratch, in a collection a signed-out visitor may read. Not
+  /// a copy of `reviews` with fields removed — see docs/REVIEWS.md.
+  static const String colPublicReviews = 'public_reviews';
+  /// The append-only log inside each Booking.
+  static const String subActivity = 'activity';
+
   /// The longest a chat message may be, in characters.
   ///
   /// The same 1,000 as `MESSAGE_MAX` in `src/lib/validation.ts` and as

@@ -160,12 +160,42 @@ export type BookingAction =
  */
 export type ActionType = BookingAction['type'] | 'Submit' | 'SetStatus'
 
+/**
+ * The five names a Review's state changes are recorded under (ADR-0014).
+ *
+ * They are not Booking moves — nothing about a Guest's stay changes when they
+ * write a Review — but the Activity log is the system's one append-only record
+ * of what happened to the things it holds, and a review the Admin hid with no
+ * entry anywhere is a moderation decision that happened off the record. The
+ * Booking they belong to is the `booking_id` the entry already carries, so they
+ * appear on that Booking's timeline where the rest of its history is.
+ */
+export type ReviewActionType =
+  | 'ReviewSubmitted'
+  | 'ReviewUpdated'
+  | 'AdminReviewResponded'
+  | 'ReviewModerated'
+  | 'ReviewPublished'
+
+/** Every name an Activity entry may carry, Booking moves and Review changes alike. */
+export type ActivityActionType = ActionType | ReviewActionType
+
 /** One Activity log entry. Append-only: nothing in the system edits or deletes these. */
 export type ActivityLogEntry = {
   booking_id: string
-  action: ActionType
-  from_status: BookingStatus
-  to_status: BookingStatus
+  action: ActivityActionType
+  /**
+   * The subject's status, before and after.
+   *
+   * A Booking action carries Booking statuses. A Review action carries the
+   * Review's own moderation status (`pending`, `published`, `hidden`) — the log
+   * records what changed about the thing the entry is about, and there are two
+   * kinds of thing. A review that was published reads `none → published`: there
+   * was no Review before, which is why the entry says so rather than repeating
+   * a status that did not exist yet.
+   */
+  from_status: string
+  to_status: string
   actor: ActorKind
   actor_id: string
   actor_name?: string

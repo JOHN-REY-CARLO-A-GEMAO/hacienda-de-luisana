@@ -336,8 +336,28 @@ service cloud.firestore {
       // - UPDATE/DELETE: nobody. Not the Admin. An audit record that can be
       //   edited is not an audit record (CONTEXT.md § Activity log).
       match /activity/{entryId} {
+        // The names an entry may carry. A Guest may file an entry into their
+        // own Booking and nothing more — the actor checks below already stop
+        // them signing anybody else's name, but without this list they could
+        // file one reading "Payment proof verified — Booking Reserved" in
+        // their own name, which is a lie in the one log the Admin reads. The
+        // first fifteen are the Booking lifecycle's own vocabulary
+        // (`src/lib/booking/actions.ts` and `lib/services/booking_lifecycle.dart`
+        // spell them identically); the last five are a Review's (ADR-0014).
+        function knownAction() {
+          return request.resource.data.action in [
+            'Submit', 'Approve', 'Reject', 'ChoosePaymentPlan', 'UploadPaymentProof',
+            'VerifyPayment', 'RejectPaymentProof', 'MarkRefunded', 'RevokeKey',
+            'Cancel', 'Expire', 'CheckIn', 'BeginStay', 'CheckOut', 'Complete',
+            'SetStatus',
+            'ReviewSubmitted', 'ReviewUpdated', 'AdminReviewResponded',
+            'ReviewModerated', 'ReviewPublished'
+          ];
+        }
+
         allow create: if request.resource.data.keys().hasAll(
             ['booking_id', 'action', 'from_status', 'to_status', 'actor', 'actor_id', 'at'])
+          && knownAction()
           && request.resource.data.booking_id == bookingId
           // An entry has to be written in the name of whoever is writing it —
           // both the role *and* the uid. An audit log that lets a Guest file an
@@ -568,30 +588,168 @@ service cloud.firestore {
         || (isConversationMember(sessionId) && resource.data.guest_uid == request.auth.uid);
     }
 
-    // One Review per stay, and only the Guest who stayed may write it. The
-    // document id *is* the Booking id, so the rule can read the Booking the
-    // Review claims to be about and check all three things the app checked until
-    // now: it is that Guest's Booking, the stay is over, and no second Review
-    // can be filed for it (the id already exists).
+    // A Review is a Guest's words about their own finished stay, and one stay
+    // gets one of them. The document id *is* the Booking id, so that is the
+    // shape of the store rather than a check somebody has to remember to run,
+    // and the rule can read the Booking the Review claims to be about and make
+    // the three facts the app makes as well: that it is the author's Booking,
+    // that the stay is over, and that no second Review can be filed for it.
     match /reviews/{reviewId} {
       function bookingReviewed() {
         return /databases/$(database)/documents/bookings/$(reviewId);
       }
 
+      // 1..5, or absent. Never 0: a category the Guest skipped is missing, and
+      // a zero would be read as the worst rating available rather than as no
+      // answer.
+      function rated(field) {
+        return !request.resource.data.keys().hasAny([field])
+          || (request.resource.data.get(field, 0) is int
+              && request.resource.data.get(field, 0) >= 1
+              && request.resource.data.get(field, 0) <= 5);
+      }
+
+      function categoriesOk() {
+        return rated('cleanliness') && rated('accommodation')
+            && rated('communication') && rated('value');
+      }
+
+      // The written part is optional, and if it is there it is words: not
+      // empty, not nothing but spaces, and no longer than the Guest could
+      // have typed — the same 1,000 as MESSAGE_MAX, which is the same 1,000
+      // the website's REVIEW_MAX refuses before it gets here.
+      function textOk() {
+        return !request.resource.data.keys().hasAny(['text'])
+          || (request.resource.data.get('text', '') is string
+              && request.resource.data.get('text', '').size() > 0
+              && request.resource.data.get('text', '').size() <= 1000
+              && !request.resource.data.get('text', '').matches('\\s*'));
+      }
+
+      // Exactly the keys a Guest may write. A create arriving already
+      // carrying a status, an Admin's reply or a moderation stamp is refused
+      // rather than stored and argued about afterwards.
+      function guestWritable() {
+        return request.resource.data.keys()
+                 .hasOnly(['booking_id', 'uid', 'stars', 'created_at', 'text', 'status',
+                           'cleanliness', 'accommodation', 'communication', 'value',
+                           'edit_until']);
+      }
+
       allow create: if isSignedIn()
-        && request.resource.data.keys().hasAll(['booking_id', 'uid', 'stars', 'created_at'])
+        && request.resource.data.keys()
+             .hasAll(['booking_id', 'uid', 'stars', 'created_at', 'status', 'edit_until'])
+        && guestWritable()
         && request.resource.data.booking_id == reviewId
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.stars is int
         && request.resource.data.stars >= 1
         && request.resource.data.stars <= 5
+        && textOk()
+        && categoriesOk()
+        // A Review lands `pending` and waits for the Admin. The website has
+        // always told the Guest it is "saved for Admin review", and nobody
+        // arrives on the public page already published — least of all by
+        // writing the status themselves.
+        && request.resource.data.status == 'pending'
+        // The fortnight in which the Guest may still correct it. The value is
+        // not the Guest's to pick: the rule recomputes it from the clock, so a
+        // console cannot stamp an edit window that ends next year.
+        && request.resource.data.edit_until == request.time + 1209600000
         && exists(bookingReviewed())
         && get(bookingReviewed()).data.get('uid', '') == request.auth.uid
         && get(bookingReviewed()).data.get('status', '') in ['Checked-Out', 'Completed'];
+
+      // READ — the Admin, and the Guest who wrote it. A Review is the Guest's
+      // own words about their own stay: nobody else's, and no signed-out
+      // visitor's. What the website publishes is a different document; see
+      // `public_reviews` below.
       allow read: if isAdmin()
         || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
-      // A Review is a Guest's words about their own stay: the Admin may remove
-      // one (a slur is not a review), but not rewrite it.
+
+      // UPDATE — two doors, because these are two different permissions.
+      allow update: if (
+        // The Guest correcting their own words, inside the fortnight the
+        // create stamped. Identity, status and the window itself are not among
+        // the keys that may move, so a Guest cannot reopen a hidden Review,
+        // un-hide one, or move their own deadline.
+        isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && request.time < resource.data.edit_until
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['stars', 'text', 'cleanliness', 'accommodation',
+                       'communication', 'value', 'updated_at'])
+        && request.resource.data.stars is int
+        && request.resource.data.stars >= 1
+        && request.resource.data.stars <= 5
+        && textOk()
+        && categoriesOk()
+      ) || (
+        // The Admin moderating, and answering. The Guest's words are NOT among
+        // the keys the Admin may change either: an Admin who dislikes a rating
+        // hides it — which the Activity log records — rather than rewriting it
+        // to five stars.
+        isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'published_at', 'moderated_at', 'moderated_by',
+                       'admin_response', 'admin_response_at', 'admin_response_by'])
+        && (request.resource.data.get('status', resource.data.get('status', 'pending'))
+             in ['pending', 'published', 'hidden'])
+        // A reply stamped with somebody else's uid is a reply nobody wrote, and
+        // the Activity log already refuses to be signed that way — so this
+        // collection refuses it for the same reason and by the same test.
+        && (request.resource.data.diff(resource.data).affectedKeys().hasAny(['admin_response_by'])
+            ? request.resource.data.admin_response_by == request.auth.uid
+            : true)
+        && (request.resource.data.diff(resource.data).affectedKeys().hasAny(['moderated_by'])
+            ? request.resource.data.moderated_by == request.auth.uid
+            : true)
+      );
+
+      // DELETE — the Admin, and only the Admin. A Guest does not get to take a
+      // rating back by deleting it; hiding a Review they dislike is the Admin's
+      // decision to make out loud, and it is the moderation log's entry.
+      allow delete: if isAdmin();
+    }
+
+    // What a visitor to the website reads (ADR-0014).
+    //
+    // Not a view of `reviews`, and not a copy pruned afterwards: a separate
+    // document the Admin writes, out of a Review, choosing which words go out
+    // and under whose name. The Review carries the author's uid, the Booking it
+    // is about and the Admin's private reply — and a uid is a key back to a
+    // Booking that holds a name, an email and a phone number. So this document
+    // is six named fields written from scratch and `hasOnly` says so, which is
+    // what makes the next field somebody adds safe by default: it cannot reach
+    // the public page unless it is named here.
+    //
+    // Presence here IS publication. There is no `status` field: the Admin
+    // withdraws a testimonial by deleting it, so there is no window in which a
+    // document is half-public, and a signed-out visitor can list the whole
+    // collection without having to ask whether any given document is meant to
+    // be seen — everything in here is.
+    match /public_reviews/{reviewId} {
+      function publicShape() {
+        return request.resource.data.keys()
+                 .hasOnly(['review_id', 'stars', 'excerpt', 'display_name', 'month', 'published_at'])
+          && request.resource.data.review_id == reviewId
+          && request.resource.data.stars is int
+          && request.resource.data.stars >= 1
+          && request.resource.data.stars <= 5
+          && request.resource.data.excerpt is string
+          && request.resource.data.excerpt.size() > 0
+          && request.resource.data.excerpt.size() <= 400
+          && request.resource.data.display_name is string
+          && request.resource.data.display_name.size() > 0
+          && request.resource.data.display_name.size() <= 60
+          && request.resource.data.month is string
+          && request.resource.data.month.size() > 0;
+      }
+
+      allow read: if true;
+      allow create: if isAdmin() && publicShape();
+      // Replacing a published testimonial means deleting it and writing it
+      // again: one write, one Activity entry, no half-public state in between.
       allow update: if false;
       allow delete: if isAdmin();
     }

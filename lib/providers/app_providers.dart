@@ -6,6 +6,7 @@ import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
 import '../services/firestore_service.dart';
+import '../services/review_service.dart';
 
 // Service provider
 final firestoreServiceProvider = Provider<FirestoreService>((ref) {
@@ -16,6 +17,20 @@ final firestoreServiceProvider = Provider<FirestoreService>((ref) {
   final service = FirestoreService(fs);
   ref.onDispose(() => service.dispose());
   return service;
+});
+
+/// Reviews, for the Guest Reviews screen.
+///
+/// The same construction as `FirestoreService` — a real instance when Firebase
+/// is up, null when it is not, and every method an empty page rather than a
+/// crash. A screen that cannot reach the database says so; it does not show
+/// fabricated reviews.
+final reviewServiceProvider = Provider<ReviewService>((ref) {
+  FirebaseFirestore? fs;
+  try {
+    if (Firebase.apps.isNotEmpty) fs = FirebaseFirestore.instance;
+  } catch (_) {}
+  return ReviewService(fs);
 });
 
 // Stream providers

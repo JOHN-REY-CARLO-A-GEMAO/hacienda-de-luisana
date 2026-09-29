@@ -21,7 +21,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs } from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, Timestamp } from 'firebase/firestore'
 import { ref, uploadBytes, deleteObject, getDownloadURL } from 'firebase/storage'
 
 /** `firebase emulators:exec` puts the project id in the environment. */
@@ -425,41 +425,137 @@ describe('reviews', () => {
   /**
    * The document id is the Booking id, and the rule reads that Booking: the
    * Review is the author's, and the stay is over. Everything below is that
-   * contract, settled by the emulator.
+   * contract, settled by the emulator rather than by the offline evaluator.
+   *
+   * `edit_until` is stamped by the client as `now + 14 days` and the rule
+   * recomputes it from its own clock, so a fixture computes the same value the
+   * way the app does — the alternative is a document the rule always refuses.
    */
+  const review = (overrides: Record<string, unknown> = {}) => {
+    const now = Timestamp.now()
+    return {
+      booking_id: BOOKING_ID,
+      uid: GUEST_UID,
+      stars: 5,
+      text: 'Lovely',
+      created_at: '2026-10-05T02:00:00.000Z',
+      status: 'pending',
+      edit_until: Timestamp.fromMillis(now.toMillis() + 14 * 86400000),
+      ...overrides,
+    }
+  }
+
   beforeAll(async () => {
     await seed(async (db) => {
       await setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Completed' }))
       await setDoc(doc(db.firestore(), 'bookings', 'booking-2'), bookingDoc({ uid: OTHER_GUEST_UID, status: 'Completed' }))
       await setDoc(doc(db.firestore(), 'bookings', 'booking-open'), bookingDoc({ status: 'Staying' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-cancelled'), bookingDoc({ status: 'Cancelled' }))
     })
   })
 
   it('accepts a Guest review of their own finished stay, and refuses the rest', async () => {
     const guest = emailGuest()
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 5, text: 'Lovely', created_at: new Date() }))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-2'), { booking_id: 'booking-2', uid: GUEST_UID, stars: 5, created_at: new Date() }))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), { booking_id: 'booking-open', uid: GUEST_UID, stars: 5, created_at: new Date() }))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-nope'), { booking_id: 'booking-nope', uid: GUEST_UID, stars: 5, created_at: new Date() }))
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review()))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-2'), review({ booking_id: 'booking-2' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-nope'), review({ booking_id: 'booking-nope' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-cancelled'), review({ booking_id: 'booking-cancelled' })))
   })
 
   it('refuses a star rating outside 1..5 and a review signed in somebody else\'s name', async () => {
     const guest = emailGuest()
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 6, created_at: new Date() }))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { booking_id: BOOKING_ID, uid: OTHER_GUEST_UID, stars: 5, created_at: new Date() }))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-2'), { booking_id: 'booking-2', uid: OTHER_GUEST_UID, stars: 5, created_at: new Date() }))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review({ stars: 6 })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review({ uid: OTHER_GUEST_UID })))
+    await assertFails(setDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', 'booking-2'), review({ booking_id: 'booking-2', uid: OTHER_GUEST_UID })))
+    // The two ends of the range, so a rule that refused everything would not pass.
+    await assertFails(setDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', 'booking-2'), review({ booking_id: 'booking-2', uid: OTHER_GUEST_UID, stars: 0 })))
   })
 
-  it('refuses a second review for the same stay', async () => {
+  it('refuses a review that arrives already published, or carrying the Admin\'s fields', async () => {
     const guest = emailGuest()
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { booking_id: BOOKING_ID, uid: GUEST_UID, stars: 4, text: 'Again', created_at: new Date() }))
-    await assertFails(updateDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { stars: 1 }))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', status: 'published' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', admin_response: 'thanks' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', status: 'published', edit_until: Timestamp.fromMillis(Date.now() + 10 * 365 * 86400000) })))
+  })
+
+  it('refuses feedback that is blank or past the limit, and accepts it at the limit', async () => {
+    const guest = emailGuest()
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', text: '   ' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', text: 'x'.repeat(1001) })))
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', text: 'x'.repeat(1000) })))
+  })
+
+  it('lets the Guest correct their own review, and nothing else', async () => {
+    const guest = emailGuest()
+    await assertSucceeds(updateDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { stars: 4, updated_at: new Date() }))
+    // Not theirs to move: the status, the Admin's reply, or the deadline.
+    await assertFails(updateDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { status: 'published' }))
+    await assertFails(updateDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { admin_response: 'thanks' }))
+    await assertFails(updateDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), { uid: OTHER_GUEST_UID }))
+    // Nor another Guest's.
+    await assertFails(updateDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', BOOKING_ID), { stars: 1 }))
+  })
+
+  it('refuses a Guest deleting a review, and a second one for the same stay', async () => {
+    const guest = emailGuest()
+    await assertFails(deleteDoc(doc(guest.firestore(), 'reviews', BOOKING_ID)))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review({ stars: 1 })))
+    await assertSucceeds(deleteDoc(doc(admin().firestore(), 'reviews', BOOKING_ID)))
   })
 
   it('keeps reviews private between Guests', async () => {
     await assertSucceeds(getDoc(doc(emailGuest().firestore(), 'reviews', BOOKING_ID)))
     await assertFails(getDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', BOOKING_ID)))
     await assertSucceeds(getDoc(doc(admin().firestore(), 'reviews', BOOKING_ID)))
+  })
+
+  it('gives the Admin moderation and a reply, and never the Guest\'s words', async () => {
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'reviews', BOOKING_ID), { status: 'published', published_at: new Date() }))
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'reviews', BOOKING_ID), { admin_response: 'Thank you for staying with us!', admin_response_at: new Date(), admin_response_by: 'admin-uid-1' }))
+    // The Guest's rating is not the Admin's to rewrite, only to hide.
+    await assertFails(updateDoc(doc(admin().firestore(), 'reviews', BOOKING_ID), { stars: 5, text: 'Rewritten' }))
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'reviews', BOOKING_ID), { status: 'hidden', moderated_at: new Date(), moderated_by: 'admin-uid-1' }))
+    await assertFails(updateDoc(doc(admin().firestore(), 'reviews', BOOKING_ID), { status: 'deleted' }))
+  })
+})
+
+describe('public reviews: what a signed-out visitor may read', () => {
+  const published = (overrides: Record<string, unknown> = {}) => ({
+    review_id: BOOKING_ID,
+    stars: 5,
+    excerpt: 'Lovely stay.',
+    display_name: 'Guest',
+    month: 'October 2026',
+    published_at: new Date(),
+    ...overrides,
+  })
+
+  it('is readable by anybody, and writable by the Admin only', async () => {
+    await assertSucceeds(setDoc(doc(admin().firestore(), 'public_reviews', BOOKING_ID), published()))
+    await assertFails(setDoc(doc(emailGuest().firestore(), 'public_reviews', 'b2'), published({ review_id: 'b2' })))
+    await assertFails(setDoc(doc(emailGuest().firestore(), 'public_reviews', BOOKING_ID), published()))
+  })
+
+  it('refuses a testimonial carrying anything private', async () => {
+    for (const extra of [{ uid: GUEST_UID }, { guest_uid: GUEST_UID }, { booking_id: BOOKING_ID }, { admin_response: 'private' }, { status: 'published' }, { email: 'ana@example.com' }]) {
+      await assertFails(setDoc(doc(admin().firestore(), 'public_reviews', 'b3'), published({ review_id: 'b3', ...extra })))
+    }
+  })
+
+  it('refuses an empty, oversized or unrated testimonial', async () => {
+    await assertFails(setDoc(doc(admin().firestore(), 'public_reviews', 'b4'), published({ review_id: 'b4', excerpt: '' })))
+    await assertFails(setDoc(doc(admin().firestore(), 'public_reviews', 'b5'), published({ review_id: 'b5', excerpt: 'x'.repeat(401) })))
+    await assertFails(setDoc(doc(admin().firestore(), 'public_reviews', 'b6'), published({ review_id: 'b6', display_name: 'x'.repeat(61) })))
+    await assertFails(setDoc(doc(admin().firestore(), 'public_reviews', 'b7'), published({ review_id: 'b7', stars: 0 })))
+    await assertFails(setDoc(doc(admin().firestore(), 'public_reviews', 'b8'), published({ review_id: 'b8', stars: 6 })))
+    await assertFails(setDoc(doc(admin().firestore(), 'public_reviews', 'b9'), published({ review_id: 'b10' })))
+  })
+
+  it('withdraws by deleting, never by editing', async () => {
+    await assertFails(updateDoc(doc(admin().firestore(), 'public_reviews', BOOKING_ID), { excerpt: 'Something else' }))
+    await assertSucceeds(deleteDoc(doc(admin().firestore(), 'public_reviews', BOOKING_ID)))
+    await assertFails(deleteDoc(doc(emailGuest().firestore(), 'public_reviews', BOOKING_ID)))
   })
 })
 

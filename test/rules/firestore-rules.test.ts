@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { evaluate, ruleTimestamp, type DocData, type Store } from './engine'
+import { compileRules, evaluate, ruleTimestamp, type DocData, type Store } from './engine'
 import {
   ADMIN_UID,
   BOOKING_ID,
@@ -27,10 +27,13 @@ import {
   emailGuest,
   guestPaymentPatch,
   locationSessionDoc,
+  DEFAULT_REVIEW_TIME,
   messageDoc,
   paidBookingDoc,
   promotedAdmin,
+  publicReviewDoc,
   request,
+  REVIEW_EDIT_WINDOW_MS,
   reviewDoc,
   storeWith,
 } from './context'
@@ -54,11 +57,22 @@ const profiles: Store = storeWith(
   },
 )
 
+/**
+ * The rules file, parsed once.
+ *
+ * `evaluate` re-parses on every call, which is what a suite that rewrites the
+ * rules between cases needs. This one does not, and a policy with a loop in it
+ * — twenty star ratings, ten statuses — asks a dozen questions about a file it
+ * has already read, so it compiles once and reuses the book. The book is
+ * immutable, so nothing carries from one case to the next.
+ */
+const decideRules = compileRules(rules)
+
 const allow = (partial: Parameters<typeof request>[0], store: Store = profiles) =>
-  evaluate(request(partial), rules, { store }).allow
+  decideRules(request(partial), { store }).allow
 
 const deny = (partial: Parameters<typeof request>[0], store: Store = profiles) =>
-  evaluate(request(partial), rules, { store }).allow === false
+  decideRules(request(partial), { store }).allow === false
 
 // ---------------------------------------------------------------------------
 // Authentication and roles
@@ -564,6 +578,37 @@ describe('bookings/{id}/activity: the append-only record', () => {
     expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-4`, method: 'create', auth: allowlistedAdmin(), requestData: { ...entry('admin', ADMIN_UID), booking_id: 'other-booking' } })).toBe(true)
   })
 
+  it('accepts every name the two apps write, and refuses anything else', () => {
+    // The lifecycle's own vocabulary, spelled identically by `actions.ts` and
+    // `booking_lifecycle.dart`…
+    const lifecycle = [
+      'Submit', 'Approve', 'Reject', 'ChoosePaymentPlan', 'UploadPaymentProof',
+      'VerifyPayment', 'RejectPaymentProof', 'MarkRefunded', 'RevokeKey',
+      'Cancel', 'Expire', 'CheckIn', 'BeginStay', 'CheckOut', 'Complete', 'SetStatus',
+    ]
+    // …and the five a Review adds (ADR-0014).
+    const review = ['ReviewSubmitted', 'ReviewUpdated', 'AdminReviewResponded', 'ReviewModerated', 'ReviewPublished']
+    for (const action of [...lifecycle, ...review]) {
+      expect(
+        allow({ path: `bookings/${BOOKING_ID}/activity/${action}`, method: 'create', auth: allowlistedAdmin(), requestData: { ...entry('admin', ADMIN_UID), action } }),
+        action,
+      ).toBe(true)
+    }
+  })
+
+  it('refuses an entry naming something the system has no such act for', () => {
+    // A Guest may file an entry into their own Booking and no further. The
+    // actor checks stop them signing the Admin's name; this stops them writing
+    // "Payment proof verified — Booking Reserved" in their own name, which is a
+    // lie in the one log the Admin reads.
+    for (const action of ['VerifyPaymentVerified', 'AdminApproved', 'Refunded', 'deleted', '']) {
+      expect(
+        deny({ path: `bookings/${BOOKING_ID}/activity/entry-x`, method: 'create', auth: emailGuest(), requestData: { ...entry('guest', GUEST_UID), action } }),
+        action,
+      ).toBe(true)
+    }
+  })
+
   it('never lets anybody edit or delete the record, Admin included', () => {
     const existing = entry('admin', ADMIN_UID)
     expect(deny({ path: `bookings/${BOOKING_ID}/activity/entry-1`, method: 'update', auth: allowlistedAdmin(), resourceData: existing, requestData: { ...existing, action: 'rewritten' } })).toBe(true)
@@ -733,12 +778,17 @@ describe('payment_references: the Admin catalogue', () => {
 
 describe('reviews', () => {
   // The document id is the Booking id, and the store holds that Booking as the
-  // Guest's own and finished — which is what the rule reads.
+  // Guest's own and finished — which is what the rule reads. Every case that
+  // writes a Review passes `time`, because the create stamps the edit window
+  // from the clock and the fixture has to say the same instant the rule reads.
   const path = `reviews/${BOOKING_ID}`
+  const at = DEFAULT_REVIEW_TIME
+  const /** a create as the app sends it */ create = (overrides: DocData = {}, auth = emailGuest(), time = at) =>
+    allow({ path, method: 'create', auth, requestData: reviewDoc(overrides, time), time })
 
   it('lets a Guest who stayed write a review of their own stay', () => {
-    expect(allow({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc() })).toBe(true)
-    expect(allow({ path, method: 'create', auth: anonymousGuest(), requestData: reviewDoc() })).toBe(true)
+    expect(create()).toBe(true)
+    expect(allow({ path, method: 'create', auth: anonymousGuest(), requestData: reviewDoc({}, at), time: at })).toBe(true)
   })
 
   it('lets the Guest read their own review and the Admin read any', () => {
@@ -752,21 +802,37 @@ describe('reviews', () => {
   })
 
   it('refuses a review signed in somebody else\'s name', () => {
-    expect(deny({ path, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: reviewDoc({ uid: OTHER_GUEST_UID }) })).toBe(true)
+    expect(deny({ path, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: reviewDoc({ uid: OTHER_GUEST_UID }, at), time: at })).toBe(true)
   })
 
   it('refuses a star rating outside 1..5 and a non-integer', () => {
-    expect(deny({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: 0 }) })).toBe(true)
-    expect(deny({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: 6 }) })).toBe(true)
-    expect(deny({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc({ stars: '5' }) })).toBe(true)
+    expect(create({ stars: 0 })).toBe(false)
+    expect(create({ stars: 6 })).toBe(false)
+    expect(create({ stars: '5' })).toBe(false)
+    expect(create({ stars: 4.5 })).toBe(false)
+    expect(create({ stars: -1 })).toBe(false)
+    expect(create({ stars: 999 })).toBe(false)
+    // The two ends of the range are the point of the check, so they are asked
+    // for as well: a rule that refused everything would pass the six above.
+    expect(create({ stars: 1 })).toBe(true)
+    expect(create({ stars: 5 })).toBe(true)
   })
 
   it('refuses a Guest editing or deleting a review', () => {
-    expect(deny({ path, method: 'update', auth: emailGuest(), resourceData: reviewDoc(), requestData: reviewDoc({ stars: 1 }) })).toBe(true)
+    // The Admin removes a review; the Admin does not rewrite it either.
     expect(deny({ path, method: 'delete', auth: emailGuest(), resourceData: reviewDoc() })).toBe(true)
     expect(allow({ path, method: 'delete', auth: allowlistedAdmin(), resourceData: reviewDoc() })).toBe(true)
-    // The Admin removes a review; the Admin does not rewrite it either.
-    expect(deny({ path, method: 'update', auth: allowlistedAdmin(), resourceData: reviewDoc(), requestData: reviewDoc({ stars: 1 }) })).toBe(true)
+    // An Admin rewriting the Guest's rating to five stars is refused too —
+    // hiding it is the Admin's door, rewriting it is nobody's.
+    expect(
+      deny({
+        path,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: reviewDoc({ stars: 2 }),
+        requestData: reviewDoc({ stars: 5, status: 'published' }),
+      }),
+    ).toBe(true)
   })
 
   /**
@@ -782,28 +848,270 @@ describe('reviews', () => {
         path,
         method: 'create',
         auth: emailGuest(OTHER_GUEST_UID),
-        requestData: reviewDoc({ uid: OTHER_GUEST_UID }),
+        requestData: reviewDoc({ uid: OTHER_GUEST_UID }, at),
+        time: at,
       }),
     ).toBe(true)
   })
 
-  it('refuses a review while the stay is not over', () => {
-    const early = storeWith({}, { [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Staying' }) })
-    expect(allow({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc() }, early)).toBe(false)
-    const checkedOut = storeWith({}, { [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Checked-Out' }) })
-    expect(allow({ path, method: 'create', auth: emailGuest(), requestData: reviewDoc() }, checkedOut)).toBe(true)
+  it('refuses a review while the stay is not over, and accepts it once it is', () => {
+    const forStatus = (status: string) =>
+      allow(
+        { path, method: 'create', auth: emailGuest(), requestData: reviewDoc({}, at), time: at },
+        storeWith({}, { [`bookings/${BOOKING_ID}`]: bookingDoc({ status }) }),
+      )
+    for (const status of ['Pending', 'Payment Pending', 'Approved', 'Reserved', 'Checked-In', 'Staying']) {
+      expect(forStatus(status), status).toBe(false)
+    }
+    expect(forStatus('Checked-Out')).toBe(true)
+    expect(forStatus('Completed')).toBe(true)
+    // A terminal branch is not a stay, and must never read as one.
+    for (const status of ['Rejected', 'Cancelled', 'Expired']) {
+      expect(forStatus(status), status).toBe(false)
+    }
   })
 
   it('refuses a review of a Booking that does not exist', () => {
-    expect(allow({ path: 'reviews/booking-does-not-exist', method: 'create', auth: emailGuest(), requestData: reviewDoc({ booking_id: 'booking-does-not-exist' }) })).toBe(false)
+    expect(allow({ path: 'reviews/booking-does-not-exist', method: 'create', auth: emailGuest(), requestData: reviewDoc({ booking_id: 'booking-does-not-exist' }, at), time: at })).toBe(false)
   })
 
   it('refuses a second review for the same stay: the id is the Booking, so it is already taken', () => {
-    // The document already exists, so this write is an *update* — and updates are
-    // refused to everybody but a delete.
-    expect(deny({ path, method: 'update', auth: emailGuest(), resourceData: reviewDoc(), requestData: reviewDoc({ stars: 4 }) })).toBe(true)
-    // Writing it under another id is refused because the id has to be the Booking.
-    expect(deny({ path: 'reviews/some-other-id', method: 'create', auth: emailGuest(), requestData: reviewDoc() })).toBe(true)
+    // Once a Review is there, the document id is spoken for. There is no second
+    // create to refuse — a second write at that id is an *update*, and the only
+    // update the Guest gets is the edit window. So the second review arrives as
+    // a create elsewhere, and the id is required to be the Booking it is about.
+    const filed = storeWith({}, { [`reviews/${BOOKING_ID}`]: reviewDoc({}, at) })
+    expect(
+      allow({ path, method: 'update', auth: emailGuest(), resourceData: reviewDoc({}, at), requestData: reviewDoc({ stars: 4, text: 'A second try.' }, at), time: at }, filed),
+    ).toBe(true) // …and it is the correction, not a replacement: stars move, it is the same document
+    expect(
+      deny({
+        path: 'reviews/some-other-id',
+        method: 'create',
+        auth: emailGuest(),
+        requestData: reviewDoc({ booking_id: 'some-other-id' }, at),
+        time: at,
+      }),
+    ).toBe(true)
+  })
+
+  describe('the edit window', () => {
+    const stored = reviewDoc()
+    const edit = (overrides: DocData, time: number, auth = emailGuest()) =>
+      allow({ path, method: 'update', auth, resourceData: stored, requestData: { ...stored, ...overrides }, time })
+
+    it('lets the Guest correct their own words inside the fortnight', () => {
+      expect(edit({ stars: 4 }, at + 86_400_000)).toBe(true)
+      expect(edit({ text: 'On reflection, the fan was loud.' }, at + 86_400_000)).toBe(true)
+      expect(edit({ cleanliness: 4, updated_at: 'later' }, at + 86_400_000)).toBe(true)
+    })
+
+    it('shuts on the instant the create stamped, and never reopens', () => {
+      expect(edit({ stars: 4 }, at + REVIEW_EDIT_WINDOW_MS - 1000)).toBe(true)
+      expect(edit({ stars: 4 }, at + REVIEW_EDIT_WINDOW_MS)).toBe(false)
+      expect(edit({ stars: 4 }, at + REVIEW_EDIT_WINDOW_MS + 86_400_000)).toBe(false)
+    })
+
+    it('refuses a Guest editing somebody else\'s review, however small the patch', () => {
+      expect(edit({ stars: 4 }, at + 1000, emailGuest(OTHER_GUEST_UID))).toBe(false)
+    })
+
+    it('refuses a Guest who stretches the edit window, or the words, past the rule', () => {
+      // Moving `edit_until` is not among the keys a Guest may touch.
+      expect(edit({ edit_until: ruleTimestamp(at + 10 * 365 * 86_400_000) }, at + 1000)).toBe(false)
+      expect(edit({ uid: OTHER_GUEST_UID }, at + 1000)).toBe(false)
+      expect(edit({ booking_id: 'booking-2' }, at + 1000)).toBe(false)
+      // Nor the moderation, nor a self-published review.
+      expect(edit({ status: 'published' }, at + 1000)).toBe(false)
+      expect(edit({ status: 'hidden' }, at + 1000)).toBe(false)
+      expect(edit({ admin_response: 'thanks!' }, at + 1000)).toBe(false)
+      expect(edit({ moderated_by: ADMIN_UID }, at + 1000)).toBe(false)
+    })
+
+    it('refuses a Guest who edits into something invalid', () => {
+      expect(edit({ stars: 6 }, at + 1000)).toBe(false)
+      expect(edit({ stars: 0 }, at + 1000)).toBe(false)
+      expect(edit({ text: 'x'.repeat(1001) }, at + 1000)).toBe(false)
+      expect(edit({ text: '   ' }, at + 1000)).toBe(false)
+      expect(edit({ cleanliness: 0 }, at + 1000)).toBe(false)
+      expect(edit({ cleanliness: 6 }, at + 1000)).toBe(false)
+    })
+  })
+
+  describe('what a create may carry', () => {
+    it('refuses a Review that arrives already published', () => {
+      expect(create({ status: 'published' })).toBe(false)
+      expect(create({ status: 'hidden' })).toBe(false)
+      expect(create({ status: 'pending' })).toBe(true)
+    })
+
+    it('refuses a create that smuggles in the Admin\'s fields', () => {
+      expect(create({ admin_response: 'thanks!' })).toBe(false)
+      expect(create({ admin_response_by: ADMIN_UID })).toBe(false)
+      expect(create({ moderated_at: 'now' })).toBe(false)
+      expect(create({ published_at: 'now' })).toBe(false)
+    })
+
+    it('refuses a create whose edit window the Guest chose', () => {
+      expect(create({ edit_until: ruleTimestamp(at + 10 * 365 * 86_400_000) })).toBe(false)
+      // And refuses one that omits it, which is what a client written before
+      // the window existed would send.
+      const missing = { ...reviewDoc({}, at) } as DocData
+      delete missing.edit_until
+      expect(deny({ path, method: 'create', auth: emailGuest(), requestData: missing, time: at })).toBe(true)
+    })
+
+    it('refuses a create with a missing status, which would leave moderation undefined', () => {
+      const missing = { ...reviewDoc({}, at) } as DocData
+      delete missing.status
+      expect(deny({ path, method: 'create', auth: emailGuest(), requestData: missing, time: at })).toBe(true)
+    })
+
+    it('accepts category ratings inside 1..5 and refuses a zero', () => {
+      expect(create({ cleanliness: 5, accommodation: 4, communication: 3, value: 2 })).toBe(true)
+      expect(create({ cleanliness: 0 })).toBe(false)
+      expect(create({ value: 6 })).toBe(false)
+      expect(create({ value: '4' })).toBe(false)
+    })
+
+    it('refuses written feedback that is blank or over the limit', () => {
+      expect(create({ text: '   ' })).toBe(false)
+      expect(create({ text: '' })).toBe(false)
+      expect(create({ text: 'x'.repeat(1001) })).toBe(false)
+      expect(create({ text: 'x'.repeat(1000) })).toBe(true)
+      // Absent is fine: the written part is optional.
+      const noText = { ...reviewDoc({}, at) } as DocData
+      delete noText.text
+      expect(deny({ path, method: 'create', auth: emailGuest(), requestData: noText, time: at })).toBe(false)
+    })
+  })
+
+  describe('the Admin\'s two doors', () => {
+    const stored = reviewDoc({ status: 'pending' })
+
+    it('lets the Admin publish, hide and answer', () => {
+      const write = (overrides: DocData, auth = allowlistedAdmin()) =>
+        allow({ path, method: 'update', auth, resourceData: stored, requestData: { ...stored, ...overrides } })
+      expect(write({ status: 'published', published_at: 'now' })).toBe(true)
+      expect(write({ status: 'hidden', moderated_at: 'now', moderated_by: ADMIN_UID })).toBe(true)
+      expect(write({ admin_response: 'Thank you for staying with us!', admin_response_at: 'now', admin_response_by: ADMIN_UID })).toBe(true)
+      // A Review written before moderation existed reads as `pending`, so
+      // publishing it is a single-field move.
+      expect(write({ status: 'published' })).toBe(true)
+    })
+
+    it('refuses a reply or a moderation signed with somebody else\'s uid', () => {
+      // The Activity log already refuses to be signed in another Admin's name,
+      // for the same reason this does: a record naming an author who did not
+      // author it is worse than no record.
+      const write = (overrides: DocData) =>
+        allow({ path, method: 'update', auth: allowlistedAdmin(), resourceData: stored, requestData: { ...stored, ...overrides } })
+      expect(write({ admin_response: 'We read this.', admin_response_by: ADMIN_UID })).toBe(true)
+      expect(write({ admin_response: 'We read this.', admin_response_by: 'somebody-else' })).toBe(false)
+      expect(write({ status: 'hidden', moderated_by: ADMIN_UID })).toBe(true)
+      expect(write({ status: 'hidden', moderated_by: 'somebody-else' })).toBe(false)
+      // A moderation that does not touch the stamp does not need one: a Review
+      // written before moderation existed is published with a single field.
+      expect(write({ status: 'published' })).toBe(true)
+    })
+
+    it('refuses a status that is not one of the three', () => {
+      const write = (overrides: DocData) =>
+        allow({ path, method: 'update', auth: allowlistedAdmin(), resourceData: stored, requestData: { ...stored, ...overrides } })
+      expect(write({ status: 'deleted' })).toBe(false)
+      expect(write({ status: '' })).toBe(false)
+      expect(write({ status: 'Published' })).toBe(false)
+    })
+
+    it('refuses a Guest reaching the Admin\'s door', () => {
+      expect(
+        deny({
+          path,
+          method: 'update',
+          auth: emailGuest(),
+          resourceData: stored,
+          requestData: { ...stored, status: 'published' },
+          time: at + 1000,
+        }),
+      ).toBe(true)
+    })
+
+    it('refuses another Guest reaching it', () => {
+      expect(
+        deny({
+          path,
+          method: 'update',
+          auth: emailGuest(OTHER_GUEST_UID),
+          resourceData: stored,
+          requestData: { ...stored, admin_response: 'we read this', admin_response_by: OTHER_GUEST_UID },
+          time: at + 1000,
+        }),
+      ).toBe(true)
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Public reviews — what a signed-out visitor may read (ADR-0014)
+// ---------------------------------------------------------------------------
+
+describe('public_reviews', () => {
+  const path = `public_reviews/${BOOKING_ID}`
+  const published = publicReviewDoc()
+
+  it('lets any visitor read a published testimonial, signed in or not', () => {
+    expect(allow({ path, method: 'get', auth: null, resourceData: published })).toBe(true)
+    // A list query names the collection; the service evaluates a document of
+    // it against the same rules, which is what `allow read: if true` answers.
+    expect(allow({ path: 'public_reviews', method: 'list', auth: null })).toBe(true)
+    expect(allow({ path: 'public_reviews', method: 'list', auth: emailGuest() })).toBe(true)
+    expect(allow({ path, method: 'get', auth: emailGuest(), resourceData: published })).toBe(true)
+  })
+
+  it('never lets a Guest write one', () => {
+    expect(deny({ path, method: 'create', auth: null, requestData: published })).toBe(true)
+    expect(deny({ path, method: 'create', auth: emailGuest(), requestData: published })).toBe(true)
+    expect(deny({ path, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: published })).toBe(true)
+    expect(deny({ path, method: 'delete', auth: null, resourceData: published })).toBe(true)
+  })
+
+  it('lets the Admin publish one', () => {
+    expect(allow({ path, method: 'create', auth: allowlistedAdmin(), requestData: published })).toBe(true)
+    expect(allow({ path, method: 'create', auth: promotedAdmin(), requestData: published })).toBe(true)
+  })
+
+  it('refuses a testimonial that carries anything private', () => {
+    const admin = allowlistedAdmin()
+    // A uid, a Booking id under another name, the Admin's private reply, a
+    // moderation stamp: the shape says six fields and `hasOnly` means it.
+    expect(allow({ path, method: 'create', auth: admin, requestData: { ...published, uid: GUEST_UID } })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: { ...published, guest_uid: GUEST_UID } })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: { ...published, booking_id: BOOKING_ID } })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: { ...published, admin_response: 'private' } })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: { ...published, status: 'published' } })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: { ...published, email: 'ana@example.com' } })).toBe(false)
+  })
+
+  it('refuses a testimonial that names a different review than its own id', () => {
+    expect(allow({ path, method: 'create', auth: allowlistedAdmin(), requestData: publicReviewDoc({ review_id: 'booking-2' }) })).toBe(false)
+  })
+
+  it('refuses an empty, oversized or unrated testimonial', () => {
+    const admin = allowlistedAdmin()
+    expect(allow({ path, method: 'create', auth: admin, requestData: publicReviewDoc({ excerpt: '' }) })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: publicReviewDoc({ excerpt: 'x'.repeat(401) }) })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: publicReviewDoc({ display_name: '' }) })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: publicReviewDoc({ display_name: 'x'.repeat(61) }) })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: publicReviewDoc({ month: '' }) })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: publicReviewDoc({ stars: 0 }) })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: publicReviewDoc({ stars: 6 }) })).toBe(false)
+    expect(allow({ path, method: 'create', auth: admin, requestData: publicReviewDoc({ stars: '5' }) })).toBe(false)
+  })
+
+  it('withdraws by deleting, never by editing — so nothing is ever half-public', () => {
+    expect(deny({ path, method: 'update', auth: allowlistedAdmin(), resourceData: published, requestData: { ...published, excerpt: 'something else' } })).toBe(true)
+    expect(allow({ path, method: 'delete', auth: allowlistedAdmin(), resourceData: published })).toBe(true)
+    expect(deny({ path, method: 'delete', auth: emailGuest(), resourceData: published })).toBe(true)
   })
 })
 

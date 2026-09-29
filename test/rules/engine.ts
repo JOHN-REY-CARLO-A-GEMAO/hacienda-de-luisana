@@ -392,12 +392,40 @@ export function evaluate(
   rulesText: string,
   options: { service?: string; store?: Store; semantics?: Semantics; bucket?: string } = {},
 ): Decision {
-  const service = options.service ?? 'cloud.firestore'
-  const store = options.store ?? {}
-  const semantics = options.semantics ?? DEFAULT_SEMANTICS
+  return compileRules(rulesText, options.service ?? 'cloud.firestore')(input, options)
+}
+
+export type Evaluator = (
+  input: RuleRequest,
+  options?: { store?: Store; semantics?: Semantics; bucket?: string },
+) => Decision
+
+/**
+ * Parse a rules file once and hand back an evaluator for it.
+ *
+ * `evaluate` parses on every call, because a suite that changes the rules text
+ * between cases has to. A suite that does not — which is most of
+ * `firestore-rules.test.ts`, and a case that asks a dozen questions about one
+ * policy — should compile once: the parse is the expensive half, and a test
+ * that loops over twenty star ratings was otherwise spending seconds re-reading
+ * a file it had already read. The compiled book is immutable, so sharing one
+ * across requests cannot leak state from one case into the next.
+ */
+export function compileRules(rulesText: string, service = 'cloud.firestore'): Evaluator {
   const book = new RuleBook(parseRules(rulesText))
   const roots = book.services.get(service)
   if (!roots) throw new UnsupportedConstructError(`the rules file declares no \`service ${service}\``)
+  return (input, options = {}) => evaluateCompiled(input, roots, service, options)
+}
+
+function evaluateCompiled(
+  input: RuleRequest,
+  roots: MatchRule[],
+  service: string,
+  options: { store?: Store; semantics?: Semantics; bucket?: string },
+): Decision {
+  const store = options.store ?? {}
+  const semantics = options.semantics ?? DEFAULT_SEMANTICS
 
   // Clients address `bookings/abc`, but `match` declarations in both rule
   // languages are rooted at the service's own prefix — Firestore at
@@ -1138,13 +1166,44 @@ function collectReturns(node: Node, out: Node[] = []): Node[] {
 
 function literal(node: Node): unknown {
   const raw = text(node).trim()
-  if (raw.startsWith("'") || raw.startsWith('"')) return raw.slice(1, -1)
+  if (raw.startsWith("'") || raw.startsWith('"')) return unescape(raw.slice(1, -1))
   if (raw === 'true') return true
   if (raw === 'false') return false
   if (raw === 'null') return null
   if (/^-?\d+$/.test(raw)) return Number.parseInt(raw, 10)
   if (/^-?\d*\.\d+$/.test(raw)) return Number.parseFloat(raw)
   return unsupported(`the literal \`${raw}\``)
+}
+
+/**
+ * The escapes the rules language reads inside a string literal.
+ *
+ * Not cosmetic: a rule that writes `text.matches('\\s*')` to refuse whitespace
+ * is asking RE2 for a whitespace class, and a parser that leaves the backslash
+ * doubled hands RE2 an escaped backslash instead — so the pattern silently
+ * means "a literal backslash, then some s", matches nothing, and the rule
+ * allows exactly what it was written to refuse. Only the escapes the language
+ * defines are recognised; anything else after a backslash is kept as written.
+ */
+function unescape(raw: string): string {
+  return raw.replace(/\\(.)/gs, (_match, char: string) => {
+    switch (char) {
+      case 'n':
+        return '\n'
+      case 'r':
+        return '\r'
+      case 't':
+        return '\t'
+      case '\\':
+        return '\\'
+      case "'":
+        return "'"
+      case '"':
+        return '"'
+      default:
+        return `\\${char}`
+    }
+  })
 }
 
 /** Convenience for tests: a request from a uid plus a token, with no data. */
