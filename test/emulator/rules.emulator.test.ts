@@ -22,8 +22,9 @@ import {
   type RulesTestContext,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, Timestamp } from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore'
 import { ref, uploadBytes, deleteObject, getDownloadURL } from 'firebase/storage'
+import { conversationDocId } from '../../src/lib/chatCloud'
 
 /** `firebase emulators:exec` puts the project id in the environment. */
 const PROJECT = process.env.GCLOUD_PROJECT ?? process.env.FIREBASE_PROJECT ?? 'demo-hacienda'
@@ -410,6 +411,87 @@ describe('chat', () => {
     await assertSucceeds(getDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID)))
     await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', CONVO_ID)))
     await assertSucceeds(getDoc(doc(admin().firestore(), 'conversations', CONVO_ID)))
+  })
+
+  /**
+   * Why the conversation id is derived rather than found.
+   *
+   * `ensureConversation` used to look the thread up with
+   * `query(conversations, where('guest_uid', '==', uid))`, and this is what the
+   * rules do with that: refuse it. `isConversationMember(convoId)` reads the
+   * conversation **by id**, and Firestore cannot prove a field filter satisfies
+   * it — the `convoId` wildcard is unbound on a query — so the read is denied and
+   * the chat page said "Could not open the conversation." Verified against the
+   * live project before the fix, which is how it was found.
+   *
+   * `bookings` gets away with `where('uid','==',uid)` because `isOwnDoc()` tests
+   * that very field, so the filter does satisfy the rule. Nothing here does.
+   */
+  it('refuses a query for the conversation, which is why the id is derived', async () => {
+    const guestDb = anonymousGuest().firestore()
+    let error: unknown
+    try {
+      await getDocs(query(collection(guestDb, 'conversations'), where('guest_uid', '==', GUEST_UID)))
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toBeDefined()
+    expect((error as { code?: string }).code).toBe('permission-denied')
+
+    // And the unfiltered list, which is what loosening the rule to allow the
+    // query would have granted: every Guest's threads to every Guest.
+    let listed: unknown
+    try {
+      await getDocs(collection(guestDb, 'conversations'))
+    } catch (caught) {
+      listed = caught
+    }
+    expect((listed as { code?: string }).code).toBe('permission-denied')
+  })
+
+  it('opens the derived conversation id, and finds the same thread a second time', async () => {
+    // What `ensureConversation` now does: one document read, then create if it
+    // is not there, then the same read again. No collection scan either time.
+    const id = conversationDocId(GUEST_UID, 'booking')
+    const guestDb = anonymousGuest().firestore()
+
+    expect((await getDoc(doc(guestDb, 'conversations', id))).exists()).toBe(false)
+
+    await assertSucceeds(
+      setDoc(doc(guestDb, 'conversations', id), {
+        guest_uid: GUEST_UID,
+        category: 'booking',
+        created_at: new Date(),
+        updated_at: new Date(),
+        last_message: '',
+        unread_admin: 0,
+        unread_guest: 0,
+      }),
+    )
+
+    const second = await getDoc(doc(guestDb, 'conversations', id))
+    expect(second.exists()).toBe(true)
+    expect(second.data()?.guest_uid).toBe(GUEST_UID)
+    // .and it is still nobody else's.
+    await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', id)))
+    await assertSucceeds(getDoc(doc(admin().firestore(), 'conversations', id)))
+  })
+
+  it('gives two Guests two conversations even on the same category', async () => {
+    const mine = conversationDocId(GUEST_UID, 'access')
+    const theirs = conversationDocId(OTHER_GUEST_UID, 'access')
+    expect(mine).not.toBe(theirs)
+    await assertSucceeds(
+      setDoc(doc(anonymousGuest().firestore(), 'conversations', mine), {
+        guest_uid: GUEST_UID, category: 'access',
+        created_at: new Date(), updated_at: new Date(),
+        last_message: '', unread_admin: 0, unread_guest: 0,
+      }),
+    )
+    // The other Guest's derived id is empty, and readable — because it is theirs.
+    expect((await getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', theirs))).exists()).toBe(false)
+    // .and this one is not readable by them.
+    await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', mine)))
   })
 
   it('lets the Guest send as themselves and refuses a spoofed sender', async () => {

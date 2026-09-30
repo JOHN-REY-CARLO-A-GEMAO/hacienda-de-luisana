@@ -503,7 +503,27 @@ service cloud.firestore {
         && request.resource.data.guest_uid == request.auth.uid
         // A Guest may not open their own thread with an expiry already on it.
         && !request.resource.data.keys().hasAny(['messages_expires_at']);
-      allow read: if isAdmin() || isConversationMember(convoId);
+      // READ — the Admin, and the Guest the conversation belongs to, plus one
+      // more case that is not a way in at all.
+      //
+      // A Guest opening a thread has to ask "is there one here yet?", and a
+      // `getDoc` on a document that does not exist is refused by
+      // `isConversationMember` — there is no document to be a member of. So the
+      // client could not tell "no thread yet" from "not yours", and the chat page
+      // answered "Could not open the conversation." instead of opening one.
+      //
+      // `!exists(...)` grants a read only where there is nothing to read. It
+      // reveals nothing about anybody else's data: an id that belongs to another
+      // Guest still exists, still fails membership, and is still refused. All a
+      // caller learns is that an id it invented itself is unused — which it
+      // already knew. This is the difference between "denied" and "absent", and
+      // it is what lets a thread be opened without a collection scan:
+      // `ensureConversation` used to find the thread with a `where` query, which
+      // the rules cannot prove safe for this collection, so `conversationDocId`
+      // derives the id instead.
+      allow read: if isAdmin()
+        || isConversationMember(convoId)
+        || !exists(conversationDoc(convoId));
       // Neither side may re-point a conversation at a different Guest: that
       // would hand one Guest's history to another.
       //
@@ -541,7 +561,7 @@ service cloud.firestore {
           && request.resource.data.text.size() <= 1000
           && ((request.resource.data.sender_role == 'guest' && isConversationMember(convoId))
               || (request.resource.data.sender_role == 'admin' && isAdmin()));
-        allow read: if isAdmin() || isConversationMember(convoId);
+      allow read: if isAdmin() || isConversationMember(convoId);
         allow update, delete: if false;
       }
     }

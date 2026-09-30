@@ -41,7 +41,7 @@ import {
   startAfter,
   Timestamp,
   updateDoc,
-  where,
+  getDoc,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
@@ -77,6 +77,37 @@ export type MessagePage = {
 /** How many messages the thread opens with, and the most a page may carry. */
 export const CHAT_PAGE_SIZE = 40
 export const CHAT_MAX_PAGE_SIZE = 50
+
+/**
+ * The document id a Guest's conversation for a category has to have.
+ *
+ * Derived rather than random, because `ensureConversation` used to *find* the
+ * thread with `query(conversations, where('guest_uid', '==', uid))` and the rules
+ * refuse that query. `allow read: if isAdmin() || isConversationMember(convoId)`
+ * reads the conversation **by id**, and Firestore cannot prove that a field
+ * filter satisfies it — so the query came back "Missing or insufficient
+ * permissions" and the page said "Could not open the conversation." (Verified
+ * against production: the query is denied, a `getDoc` on the same document is
+ * allowed.)
+ *
+ * The contrast is the point. `bookings` *can* be listed with `where('uid','==',uid)`
+ * because `isOwnDoc()` tests that very field, so Firestore proves the filter
+ * satisfies the rule. Nothing here does, because membership is a lookup of
+ * another document rather than a field on this one.
+ *
+ * Loosening `allow list` would make the query legal and is not an option: it would
+ * let any signed-in Guest list every conversation in the database, which is the
+ * one thing this collection exists to prevent. Deriving the id instead is one
+ * document read instead of a collection scan, and it is provable.
+ *
+ * One Guest gets one thread per inquiry category, which is what a topic picker
+ * means anyway. Threads created under the old random ids are not reachable this
+ * way any more — they remain readable by id, so nothing is lost, but they will
+ * not appear in the picker.
+ */
+export function conversationDocId(uid: string, category: string): string {
+  return `inquiry-${uid}-${category}`
+}
 
 /** The preview the Admin's inbox shows — never the whole message. */
 export const CHAT_PREVIEW_CHARS = 140
@@ -163,12 +194,18 @@ export async function ensureConversation(uid: string, category: string): Promise
   }
   if (offline()) return { id: `local:${uid}`, retentionExpiresAt: null }
 
-  const snap = await getDocs(query(conversations(), where('guest_uid', '==', uid), limit(1)))
-  if (snap.docs[0]) {
-    const expires = snap.docs[0].data().messages_expires_at?.toDate?.() ?? null
-    return { id: snap.docs[0].id, retentionExpiresAt: expires }
+  const id = conversationDocId(uid, category)
+  const ref = doc(conversations(), id)
+  const snap = await getDoc(ref)
+  if (snap.exists()) {
+    // The derived id is this Guest's alone, so a document there carrying another
+    // uid is not theirs to open — and the rules would refuse the read anyway.
+    if (snap.data().guest_uid !== uid) {
+      throw new Error('That conversation belongs to somebody else.')
+    }
+    const expires = snap.data().messages_expires_at?.toDate?.() ?? null
+    return { id, retentionExpiresAt: expires }
   }
-  const ref = doc(conversations())
   await setDoc(ref, {
     guest_uid: uid,
     category,
@@ -178,7 +215,7 @@ export async function ensureConversation(uid: string, category: string): Promise
     unread_admin: 0,
     unread_guest: 0,
   })
-  return { id: ref.id, retentionExpiresAt: null }
+  return { id, retentionExpiresAt: null }
 }
 
 // ---------------------------------------------------------------------------
