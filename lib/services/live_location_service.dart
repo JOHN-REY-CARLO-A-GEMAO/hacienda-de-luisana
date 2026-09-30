@@ -10,8 +10,13 @@
 ///      conversation's own Guest write it, and only the Admin (or that Guest)
 ///      read it.
 ///   2. `live_location/{conversationId}/{guestUid}` in the **Realtime
-///      Database** — the position itself, a node the server deletes at the
-///      session's expiry whether or not anybody is looking.
+///      Database** — the position itself, a leaf node overwritten in place on
+///      every fix. `database.rules.json` grants the Admin a read on that exact
+///      node and refuses it the moment `expires_at_ms` is in the past, so an
+///      expired position is unreadable by the server itself; the Guest's client
+///      additionally arms `onDisconnect().remove()` and removes the node on Stop.
+///      (Realtime Database has no per-node TTL on any plan, so nothing here
+///      relies on one — the rules are what enforce the window.)
 ///
 /// A node is only ever drawn when [checkFix] accepts it against the session
 /// Firestore authorised: same Guest, same conversation, same secret, not
@@ -19,10 +24,10 @@
 /// stale node left behind by a crashed tab cannot become a position on a map.
 ///
 /// What the Admin cannot do here is read a position nobody offered: there is no
-/// list to browse, no history to open, and once the window closes the node is
-/// gone and the session is marked ended. What the Admin *can* do is close the
-/// panel at any time — watching is opt-in on the Admin's side too, and a
-/// notification does not drag the Admin into anything.
+/// list to browse, no history to open, and the read is refused outright once the
+/// window closes, whether or not the node was cleaned up. What the Admin *can*
+/// do is close the panel at any time — watching is opt-in on the Admin's side
+/// too, and a notification does not drag the Admin into anything.
 library;
 
 import 'dart:async';

@@ -118,8 +118,14 @@ stream, and the only rules file that is not Firestore or Storage:
   the Philippines, and a window that is open and no more than 90 seconds ahead
 - `live_location/*`: readable by the Admin — the bootstrap addresses in the token, or an
   address an allowlisted Admin has written to `live_location_admins/{uid}`
-- every published fix carries a server-side `.ttl` equal to the session's `expires_at`,
-  which is what makes the position ephemeral rather than merely intended to be
+- the Admin's read of `live_location/{conversationId}/{guestUid}` is granted on that
+  node and **refused the moment `expires_at_ms` is in the past** — that rules check
+  is what makes a position unreadable when consent ends, and it is why there is no
+  read grant on the conversation subtree
+- there is no server-side per-node expiry in Realtime Database on any plan, and a
+  client that tries to set one (`'.ttl'`) has the write refused by the SDK before
+  it leaves the browser. Removal is `onDisconnect().remove()` plus the client's
+  own `stopSharing`; see `docs/adr/0013-live-location-as-a-stream.md`
 
 Deploy it with `firebase deploy --only database`, after creating the database in the
 console and setting `VITE_FIREBASE_DATABASE_URL`. Without any of those three the

@@ -16,8 +16,9 @@
 //                       `visibilitychange` and reopened when the tab comes back
 //   offline            publishing is paused and the state says "reconnecting";
 //                       the session is *not* silently extended
-//   window closed      the watch and the timer go with it; the server TTL is
-//                       what actually ends the stream
+//   window closed      the watch and the timer go with it; the rules refuse
+//                       the Admin a read past the window, and onDisconnect
+//                       deletes the node whether or not this code runs
 //   the window closes  the session is ended first, on `pagehide`
 //   time runs out      the countdown reaches zero and sharing stops by itself
 //
@@ -237,7 +238,10 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
       const current = sessionRef.current
       if (!current || !convoId) return
       // `sendBeacon` cannot carry a Firestore write, so the end is best-effort
-      // here and guaranteed by the node's server-side TTL regardless.
+      // here. Two things still cover the case where this never runs: the rules
+      // refuse to show anyone a position past `expires_at_ms`, and the server-side
+      // `onDisconnect` registered in startSharing deletes the node when this tab's
+      // connection goes away.
       void stopSharing({ convoId, uid: current.guest_uid, nowMs: Date.now() })
     }
     window.addEventListener('pagehide', onPageHide)

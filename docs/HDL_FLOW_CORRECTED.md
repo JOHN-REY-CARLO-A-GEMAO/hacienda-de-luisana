@@ -97,7 +97,8 @@ or 60 minutes. The module's original shape was withdrawn by ADR-0009 and is stil
 withdrawn: `tracking_sessions` remains closed to every read and write (Admin delete
 only), and **no position is ever written to Firestore**. What exists now is two stores
 with a line between them — the consent in Firestore, the position in a Realtime
-Database node the server deletes at the session's expiry. ADR-0009's own reasoning
+Database node the Admin's read is refused once the window closes, and which the
+server removes on `onDisconnect` or on Stop. ADR-0009's own reasoning
 ("a position written to Firestore is a position stored forever") is the reason the
 reinstated module is shaped this way. `docs/MESSAGING.md` is the full account.
 
@@ -110,8 +111,9 @@ reinstated module is shaped this way. `docs/MESSAGING.md` is the full account.
    `live_location/{conversationId}/{guestUid}` in the Realtime Database, validated by
    `database.rules.json` and published no more than every 3 seconds and 10 metres.
 4. Save Location History → **there is none.** No `points`, no `trail`, no append
-   anywhere in the code. The previous write is replaced, and the server deletes the
-   node at the `.ttl` the write carried.
+   anywhere in the code. The previous write is replaced, and the node is removed
+   when the Guest stops, when their connection drops (`onDisconnect`), or when the
+   Admin's read is refused by the rules because the window closed.
 5. Admin view of a Guest location → **yes, in the inbox thread**, and only for a node
    whose guest, conversation and `stream_secret` match the consented Firestore
    session and whose window is still open. The panel is closed by default and
@@ -237,7 +239,7 @@ Where each convention lives in code, and where the build is deliberately short o
 - **G2 — the system enforces availability.** Overlap is re-checked at submit (the website's create path, against the stored Bookings) and at approval in the Admin app (`applyAdminAction` → `findDateConflicts` against the latest Bookings snapshot, committed statuses only — ADR-0003). ADR-0006's transactional Approve describes the web protocol; moving the app's approval write into a transaction is the open follow-up.
 - **G3 — money last.** ADR-0001: the Admin approves before any money moves, `VerifyPayment` (app) refuses less than what was asked, and `settleRefund` (`src/lib/booking/money.ts` and its Dart port) is the only path money leaves.
 - **G4 — 24h TTL.** The hold is stored data (`hold_expires_at`), and expiry is a read-time rule (ADR-0002) — no timer, no worker: a Booking that sat 24 hours reads as Expired, and Expired holds no dates. The only stage that expires is the pre-approval one, Pending; once the Admin approves, the hold becomes firm. The Admin app records a run-out hold as `Expired` in the system's name.
-- **G6 — a position is never a record (ADR-0009, then ADR-0013).** The consent gate was built; the module was withdrawn (ADR-0009) because a position written to Firestore is a position stored forever, needing a consent record, a retention rule, an expiry, an encryption claim and a purge path. It was reinstated (ADR-0013) in a shape that removes four of those five problems instead of answering them: the consent is the Firestore document, the expiry is enforced by the backend at both ends, and the *purge path is the server itself* — a Realtime Database node written with a TTL is deleted whether or not anybody remembers. `tracking_sessions` stays closed; the Access log (`access_logs`: door events, granted / denied, with timestamps and the credential used) and the per-Booking `activity` trail are untouched, and remain what actually answers "is the Guest here?". See `docs/MESSAGING.md` § 5.
+- **G6 — a position is never a record (ADR-0009, then ADR-0013).** The consent gate was built; the module was withdrawn (ADR-0009) because a position written to Firestore is a position stored forever, needing a consent record, a retention rule, an expiry, an encryption claim and a purge path. It was reinstated (ADR-0013) in a shape that removes four of those five problems instead of answering them: the consent is the Firestore document, the expiry is enforced by the backend at both ends, and the *purge path is the rules themselves* — the Admin's read of the position is refused the moment `expires_at_ms` passes, and the node is removed on `onDisconnect` or on Stop. (ADR-0013 originally named a Realtime Database per-node TTL as the purge mechanism; no such thing exists on any plan, and the field it sent was rejected by the client SDK, so the feature had never published a position. Corrected 2026-09-30.) `tracking_sessions` stays closed; the Access log (`access_logs`: door events, granted / denied, with timestamps and the credential used) and the per-Booking `activity` trail are untouched, and remain what actually answers "is the Guest here?". See `docs/MESSAGING.md` § 5.
 - **G7 — every state change is logged.** Same contract as G1: `applyAction` / `applyAdminAction` owe their log entries, and `firestore.rules` keeps `bookings/{id}/activity` append-only, written in the writer's own role (`guest`, `admin`, or `system` written by the Admin app).
 - **G8 — two roles, two apps (v3.0).** `firestore.rules` knows `guest` and `admin` only (`role()`, `isAdmin()`); the website's `src/lib/auth` has the same two roles and no management pages (`/admin/*`, `/app/*` signpost to the app); the mobile app's `AuthStore.isAdmin` is the only gate and it has no Guest screens. See ADR-0007.
 - **Payment plans and the policy stamp (v2.1).** The Admin publishes figures from the app's Rates screen — the `site_config/rates` document, `FIREBASE_SETUP.md` step 6 — and `ChoosePaymentPlan` (website) quotes the stay from them (or from the recorded total, when the quote is a phone call rather than a card), stamping the policy version and effective date on the Booking at choice time. Republishing changes the terms of future choices only, never of a stay already promised; a Booking stamped with nothing refunds nothing.

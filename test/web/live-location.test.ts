@@ -44,6 +44,22 @@ import { LOCATION_SESSIONS_COLLECTION, LIVE_LOCATION_PATH, canShareLocation } fr
 
 const T0 = Date.parse('2026-10-01T09:00:00.000Z')
 
+/**
+ * The object literal `publishFix` hands to the Realtime Database, as source.
+ *
+ * Read as text on purpose: `publishFix` reaches the network, so a unit test
+ * cannot call it. The payload is the only place a bug like the `.ttl` key can
+ * live, and it is a literal, so the literal is what gets asserted.
+ */
+function fixPayload(): string {
+  const source = readFileSync(join(__dirname, '../../src/lib/liveLocation.ts'), 'utf8')
+  const start = source.indexOf('const payload = {')
+  const end = source.indexOf('const { set } = await import', start)
+  expect(start).toBeGreaterThan(-1)
+  expect(end).toBeGreaterThan(start)
+  return source.slice(start, end)
+}
+
 const session = (over: Partial<LocationSession> = {}): LocationSession => ({
   id: 'convo-1',
   conversation_id: 'convo-1',
@@ -237,5 +253,52 @@ describe('where each half of the feature is stored', () => {
   it('never writes to the retired tracking collection', () => {
     const rules = readFileSync(join(__dirname, '../../firestore.rules'), 'utf8')
     expect(rules).toMatch(/match \/tracking_sessions\/\{\w+\} \{\s*allow read, create, update: if false;/)
+  })
+
+  it('sends a fix the Realtime Database will actually accept', () => {
+    // The regression this whole file could not see for a release. `publishFix`
+    // used to write a `'.ttl'` field beside the nine real ones, believing the
+    // server would expire the node. Two things were wrong with that: Realtime
+    // Database has no per-node TTL on any plan, and a key containing `.` is
+    // rejected by the client SDK before the write leaves the browser — so every
+    // fix threw `contains an invalid key (.ttl)` and the feature never once
+    // published a position. Neither the rules suite (which reads the rules
+    // file) nor the emulator suite (which had never been run, because the
+    // Database emulator had never been downloaded) could see it. Only the
+    // payload can.
+    const payload = fixPayload()
+    expect(payload).not.toContain("'.ttl'")
+    expect(payload).not.toContain('expireAt')
+    // And no server-expiry API is called anywhere in the module.
+    const source = readFileSync(join(__dirname, '../../src/lib/liveLocation.ts'), 'utf8')
+    expect(source).not.toMatch(/expireAt/)
+  })
+
+  it('sends exactly the nine fields the rules validate, and no tenth', () => {
+    // Ties the client's payload to `database.rules.json`: if one side grows a
+    // field the other does not know about, one of these two assertions is the
+    // one that fails.
+    const keys = [...fixPayload().matchAll(/^\s{4}([a-z_]+):/gm)].map((m) => m[1]).sort()
+    expect(keys).toEqual([
+      'accuracy_m',
+      'at_ms',
+      'conversation_id',
+      'expires_at_ms',
+      'guest_uid',
+      'lat',
+      'lng',
+      'seq',
+      'session_secret',
+    ])
+  })
+
+  it('arms the server-side disconnect cleanup when a session opens', () => {
+    // The deletion the Guest's own device cannot be trusted to make. It is not
+    // the guarantee — the rules are — but without it an abandoned node waits in
+    // the database for the Admin's next visit.
+    const source = readFileSync(join(__dirname, '../../src/lib/liveLocation.ts'), 'utf8')
+    expect(source).toContain('onDisconnect')
+    expect(source).toMatch(/onDisconnect\(reference\)\.remove\(\)/)
+    expect(source).toContain('armDisconnectCleanup(input.convoId, input.uid)')
   })
 })

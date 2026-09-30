@@ -131,7 +131,7 @@ location_sessions/{convoId}          Firestore — the CONSENT, no coordinate
 
 live_location/{convoId}/{guestUid}   Realtime Database — the POSITION
   lat, lng, accuracy_m, at_ms, seq, guest_uid, conversation_id,
-  session_secret, expires_at_ms, .ttl
+  session_secret, expires_at_ms          (nine fields, and no tenth)
 ```
 
 ### What is persisted and what is ephemeral
@@ -139,7 +139,7 @@ live_location/{convoId}/{guestUid}   Realtime Database — the POSITION
 | | Store | Lifetime | Billed as |
 | --- | --- | --- | --- |
 | The consent (who, until when, the secret) | Firestore | until the Admin clears it | one write on start, one on stop |
-| The position | Realtime Database | until the server's `.ttl` — at most 60 minutes | storage + download, not a write per fix |
+| The position | Realtime Database | unreadable once `expires_at_ms` passes; removed on Stop or on disconnect | storage + download, not a write per fix |
 | A history of positions | **nowhere** | — | — |
 
 There is no `points`, no `trail`, no append anywhere in the code.
@@ -163,8 +163,8 @@ A device reporting a position every second therefore produces at most ~20 writes
 | Permission denied | `watchPosition` errors with `PERMISSION_DENIED` → the watch is closed, the session is ended, and the Guest is told *"Location permission was refused, so nothing is being shared."* |
 | GPS unavailable / timeout | Same, with the GPS wording. No fix is not a fix at the last known position. |
 | The tab is backgrounded | `visibilitychange` closes the watch; reopening it resumes. Browsers throttle `watchPosition` and may suspend the permission. |
-| The tab is closed | `pagehide` ends the session. The node's `.ttl` is what actually guarantees it, device or not. |
-| Network drops | The state says *"You are offline, so the position is not updating."* The session is not silently extended. |
+| The tab is closed | `pagehide` ends the session, and the server-side `onDisconnect().remove()` deletes the node whether or not that code ever runs. Past the window the read is refused regardless. |
+| Network drops | The state says *"You are offline, so the position is not updating."* The session is not silently extended, and `onDisconnect` removes the node when the server notices. |
 | The countdown reaches zero | The session ends itself and the Guest is told the time ran out. |
 | The Guest presses **Stop Sharing** | Session marked ended, node removed, watch closed, timer cleared. |
 | The device reports a position that is not a position | `shouldPublishFix` refuses it (non-numeric, or outside the world). |
@@ -191,10 +191,10 @@ Realtime Database rules cannot read Firestore, so they cannot check conversation
 
 1. `firestore.rules` caps `duration_minutes` at 1…60 and refuses an `expires_at` more than an hour past `request.time`.
 2. `database.rules.json` refuses a write outside `(now, now + 90s]`.
-3. The Guest's client stops on its own countdown.
-4. The server deletes the node at the `.ttl` it was written with.
+3. The Guest's client stops on its own countdown, and the server removes the node if the connection drops first.
+4. `database.rules.json` refuses the Admin a **read** of the node once `expires_at_ms` is in the past — the one that survives a closed tab and a dead battery.
 
-The Admin's reader compares `expires_at` against the clock as well, so an expired session is not drawable even before the sweep lands. An expired or stopped session that somehow still has a node is refused with a reason, not drawn.
+The Admin's reader compares `expires_at` against the clock as well, so an expired session is not drawable even before the read is refused. An expired or stopped session that somehow still has a node is refused with a reason, not drawn.
 
 ### Watching is opt-in on the Admin's side too
 
@@ -212,7 +212,7 @@ The map panel is closed by default. Opening it is one tap; closing it releases t
 | Chat messages | Firestore `conversations/*/messages` | until the retention sweep |
 | Retention stamp | Firestore `conversations.messages_expires_at` | until the sweep |
 | Live-location consent | Firestore `location_sessions/{convoId}` | until the Admin or the Guest clears it |
-| **Live position** | **Realtime Database** | **no — server TTL** |
+| **Live position** | **Realtime Database** | **no — unreadable past `expires_at_ms`, and removed on Stop / disconnect** |
 | **Position history** | **nowhere** | **—** |
 | Retired tracking sessions | Firestore `tracking_sessions` | closed to everyone; Admin delete only |
 

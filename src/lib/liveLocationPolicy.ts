@@ -14,8 +14,9 @@
 //
 //   **a position is never a record.** Firestore stores the session's metadata
 //   (active, started_at, expires_at, guest_uid, stream_secret) and nothing else;
-//   every coordinate goes to a Realtime Database node carrying a server-side
-//   TTL, so the server deletes it whether or not the Guest ever presses Stop.
+//   every coordinate goes to a Realtime Database leaf node that is overwritten
+//   in place, unreadable the moment `expires_at_ms` passes, and removed when the
+//   Guest stops or their connection drops.
 //
 // See docs/MESSAGING.md and docs/adr/0013-live-location-as-a-stream.md.
 // ----------------------------------------------------------------------------

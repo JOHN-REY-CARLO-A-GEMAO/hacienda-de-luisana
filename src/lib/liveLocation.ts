@@ -3,35 +3,56 @@
 //
 // What this module does, and nothing else:
 //
-//   startSharing()  one Firestore write: the session's metadata, no coordinate
-//   publishFix()    one Realtime Database write: the position, TTL'd server-side
+//   startSharing()  one Firestore write: the session's metadata, no coordinate,
+//                    then arms the server-side disconnect cleanup
+//   publishFix()    one Realtime Database write: the position, now
 //   stopSharing()   the Firestore session is closed and the stream node removed
 //
 // What it deliberately does not do: keep a history. There is no `points`, no
-// append, no trail — a position is overwritten by the next one and deleted by
-// the server when the window closes. Everything a position passes through is
-// written once and lives at most as long as the Guest chose to share.
+// append, no trail — a position is overwritten by the next one and deleted when
+// the Guest stops, when their connection drops, or when the window closes.
+// Everything a position passes through is written once and lives at most as long
+// as the Guest chose to share.
 //
 // Which store carries the stream, and why:
 //
 //   **Firebase Realtime Database**, not Firestore. The choice is made by three
 //   properties the Admin's position feed needs and Firestore does not have:
 //
-//     1. *It is deleted for us.* Every write carries a server-side TTL equal to
-//        the session's `expires_at`, so the data is gone whether or not the tab
-//        closes, the phone dies, or the Guest forgets to press Stop. Firestore
-//        has no per-document TTL you can attach to a document you overwrite —
-//        and an overwritten document is a *stored* document, billed and readable
-//        to anyone the rules admit.
+//     1. *It is overwritten, not appended.* A fix replaces the last one at the
+//        same path, so there is no trail to grow and nothing to query later.
+//        (An earlier draft of this module leaned on a server-side TTL that
+//        Realtime Database does not have on any plan — see the note below.)
 //     2. *It is charged differently.* Firestore bills a write per fix. A Guest
 //        standing still, watched at a 3-second cadence, is 20 writes a minute —
-//        28,800 a day — for one field that changes. Realtime Database bills
-//        storage and download, and a 200-byte node held for ninety seconds
-//        costs nothing anyone notices.
+//        28,800 a day — for one field that changes, and that 20,000/day budget
+//        is shared with bookings, messages and activity, so a position feed that
+//        exhausted it would stop the hacienda taking reservations. Realtime
+//        Database on the free plan has no daily operation quota at all.
 //     3. *It needs no new vendor.* The same Firebase project, the same Auth
 //        tokens, the same console, the same deployment. The web SDK already
 //        ships `firebase/database` in the installed `firebase` package, so this
 //        adds no npm dependency at all.
+//
+// How a position is actually made to disappear — the honest version
+// ------------------------------------------------------------------
+// Three mechanisms, and only the first is a guarantee:
+//
+//   1. **The rules.** The Admin's `.read` lives on the leaf node and is refused
+//      the moment `expires_at_ms` is in the past, so an expired position is
+//      unreadable by anybody, by the server, with no sweeper and no card.
+//   2. **`onDisconnect().remove()`**, registered when the session opens. The
+//      server deletes the node when the connection drops — tab closed, phone
+//      killed, network lost — which is the case the client cannot handle.
+//   3. **`stopSharing()`**, an explicit client remove, for the ordinary path.
+//
+// What is NOT true, and used to be claimed here: Realtime Database has no
+// per-node TTL, on the free plan or any other. Firestore TTL policies require
+// billing. An earlier revision of this file wrote a `'.ttl'` field on every
+// fix, which was not merely ignored — a key containing `.` is rejected by the
+// client SDK before the write leaves the browser, so every fix threw and the
+// feature never worked. Nothing in this module sends a server-expiry key, and
+// `test/web/live-location.test.ts` holds it to that.
 //
 // The split this leaves:
 //   Firestore  `location_sessions/{conversationId}` — who, since when, until
@@ -126,6 +147,9 @@ export async function startSharing(input: {
   } catch (error) {
     return { ok: false, reason: isPermissionError(error) ? 'refused' : 'unavailable' }
   }
+
+  // The session is open, so arm the server-side cleanup before any fix is sent.
+  void armDisconnectCleanup(input.convoId, input.uid)
   return { ok: true, session }
 }
 
@@ -138,13 +162,43 @@ async function streamRef(convoId: string, uid: string) {
 }
 
 /**
+ * Arm the server-side cleanup for this session's node, once, at the moment the
+ * session opens.
+ *
+ * `onDisconnect().remove()` tells the server to delete the node if this client
+ * goes away without the code ever running again — the tab closed, the phone
+ * killed, the network dropped mid-walk. It is the one deletion the Guest's own
+ * device cannot be trusted to perform.
+ *
+ * It is not the whole guarantee and does not pretend to be: the rules make an
+ * expired position unreadable whatever happens to the bytes, and that is the
+ * property the feature actually rests on. This just keeps an abandoned node from
+ * sitting in the database waiting for the Admin's next visit.
+ *
+ * Best-effort, and never fatal: a session that cannot arm this is still a valid
+ * session, and the rules already refuse to show anyone an expired position.
+ */
+export async function armDisconnectCleanup(convoId: string, uid: string): Promise<void> {
+  try {
+    const reference = await streamRef(convoId, uid)
+    if (!reference) return
+    const { onDisconnect, remove } = await import('firebase/database')
+    await onDisconnect(reference).remove()
+  } catch {
+    // No transport, or the registration was refused. The expiry rule stands.
+  }
+}
+
+/**
  * Close the session: the Firestore document is marked ended and the stream node
  * is removed.
  *
  * The removal is best-effort on purpose. If the device is offline when the
  * Guest presses Stop, the session document is still updated (Firestore queues
- * it) and the node is swept by the server TTL that was already on it — so a
- * Guest who stops sharing offline is not still being streamed.
+ * it) and the node is removed by the server when the connection drops — so a
+ * Guest who stops sharing offline is not still being streamed. The rules refuse
+ * the Admin a read past `expires_at_ms` either way, so the position is not
+ * drawable even if the node is somehow still there.
  */
 export async function stopSharing(input: { convoId: string; uid: string; nowMs: number }): Promise<void> {
   if (!db) return
@@ -162,11 +216,15 @@ export async function stopSharing(input: { convoId: string; uid: string; nowMs: 
 /**
  * Publish one position.
  *
- * The write carries `.ttl`, the Realtime Database's server-side expiry, set to
- * the session's `expires_at`: the server deletes the node at that instant even
- * if the device never comes back. Publishing past the window is refused here as
- * well as by the rules, because a refused write that throws inside a geolocation
- * callback is a crash, not a security control.
+ * The write carries nine fields and no server-expiry key. There is no such thing
+ * in Realtime Database: a key containing `.` is rejected by the client SDK
+ * before the write leaves the browser, so the earlier `'.ttl'` field made every
+ * fix throw. Expiry is enforced where it can actually be enforced — the rules
+ * refuse a read past `expires_at_ms` — and the node itself is removed by
+ * `onDisconnect`, by `stopSharing`, and by the next session overwriting it.
+ * Publishing past the window is refused here as well as by the rules, because a
+ * refused write that throws inside a geolocation callback is a crash, not a
+ * security control.
  */
 export async function publishFix(
   session: LocationSession,
@@ -187,9 +245,6 @@ export async function publishFix(
     conversation_id: session.conversation_id,
     session_secret: session.stream_secret,
     expires_at_ms: session.expires_at_ms,
-    // The server deletes the node at the session's own expiry. This is the
-    // mechanism that makes "ephemeral" true rather than aspirational.
-    '.ttl': session.expires_at_ms,
   }
   const { set } = await import('firebase/database')
   await set(reference, payload)
