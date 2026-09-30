@@ -56,33 +56,17 @@ class DefaultFirebaseOptions {
     projectId: 'hacienda-de-luisana',
     storageBucket: 'hacienda-de-luisana.firebasestorage.app',
 
-    // LIVE LOCATION IS OFF until this is filled in, and that is deliberate
-    // rather than an oversight — see ADR-0013.
+    // The ephemeral live-location stream (ADR-0013). The Admin's panel reads
+    // positions out of the Realtime Database, and `LiveLocationService.hasTransport`
+    // is false without this — before it was set, the panel said "this build has no
+    // live-location channel configured" instead of half-working.
     //
-    // The Admin's live-location panel reads the ephemeral position stream out of
-    // the Realtime Database, and `LiveLocationService.hasTransport` is false
-    // without a `databaseURL`, so the panel says "this build has no live-location
-    // channel configured" instead of half-working.
-    //
-    // Two things are needed, in this order, and neither is guessable from here:
-    //
-    //   1. The Realtime Database has to EXIST in the live project. Create it in
-    //      the Firebase console (Build -> Realtime Database). Until it does,
-    //      there is no URL to copy and a filled-in value would just fail at
-    //      runtime looking configured.
-    //   2. Its URL, of the form
-    //          https://<projectId>-default-rtdb.<region>.firebasedatabase.app
-    //      which for this project is
-    //          https://hacienda-de-luisana-default-rtdb.<region>.firebasedatabase.app
-    //      The `<region>` is whichever region the console created it in, so it is
-    //      copied from the console rather than derived. Left empty here on
-    //      purpose: a guessed region is a runtime network error dressed up as a
-    //      configured build.
-    //
-    // The same value goes in the other platform block below, and in
-    // `VITE_FIREBASE_DATABASE_URL` for the website (see `.env.example`), which is
-    // the Guest half of the same feature.
-    databaseURL: '',
+    // `us-central1` confirmed against the live instance rather than guessed: an
+    // unauthenticated read of the root returns 401 ("Permission denied"), which is
+    // what `".read": false` should produce, while the same request at another
+    // region returns 404 ("no such instance"). Keep it in step with
+    // `VITE_FIREBASE_DATABASE_URL` in `.env.local`, which is the Guest half.
+    databaseURL: 'https://hacienda-de-luisana-default-rtdb.us-central1.firebasedatabase.app',
   );
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBcz2xTehQ1CY5MyUMdw87RviknNHd5kCA',
@@ -92,9 +76,8 @@ class DefaultFirebaseOptions {
     storageBucket: 'hacienda-de-luisana.firebasestorage.app',
     iosBundleId: 'com.haciendadeluisana.app',
 
-    // The same value as the Android block, and for the same reasons. See the note
-    // there: the Realtime Database has to exist first, and `<region>` is copied
-    // from the console.
-    databaseURL: '',
+    // The same value as the Android block, and for the same reason. See the note
+    // there for how the region was confirmed.
+    databaseURL: 'https://hacienda-de-luisana-default-rtdb.us-central1.firebasedatabase.app',
   );
 }
