@@ -9,6 +9,8 @@ import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
+import '../../services/guest_conversation_lookup.dart';
+import '../inbox/inbox_screen.dart';
 import '../../tutorial/tutorial_controller.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
@@ -256,6 +258,65 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => BookingDetailScreen(bookingId: booking.id),
     ));
+  }
+
+  /// Open the conversation this Guest and the Admin already have.
+  ///
+  /// The message button used to hand the phone to the SMS app, which asks the
+  /// Admin to start a *second* conversation in a *different* app and then keep
+  /// two threads in step by hand. The conversation already lives in Firestore
+  /// and the Admin can read it, so this opens that one — the thread the Guest
+  /// sees on the website.
+  ///
+  /// A Guest who has never written leaves nothing to open, and the Admin cannot
+  /// create the thread either: `firestore.rules` makes the creator the Guest
+  /// (`guest_uid == request.auth.uid`). So that case says so instead of opening
+  /// an empty screen that could never be sent from.
+  Future<void> _openConversation(BookingModel booking) async {
+    final uid = booking.uid;
+    final name = booking.guestName;
+
+    if (uid == null || uid.isEmpty) {
+      _say('This Booking carries no Guest identity, so there is no thread to open. Ask them to write from the website first.');
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Looking for their conversation…'),
+      duration: Duration(milliseconds: 1200),
+    ));
+
+    GuestConversation? thread;
+    Object? failure;
+    try {
+      thread = await threadForBooking(uid);
+    } catch (error) {
+      failure = error;
+    }
+
+    if (!mounted) return;
+    messenger.hideCurrentSnackBar();
+    if (failure != null) {
+      _say('Could not reach the inbox: $failure');
+      return;
+    }
+    if (thread == null) {
+      _say('$name has not written to us yet. Ask them to start a conversation from the website, and it will appear here.');
+      return;
+    }
+
+    TourBus.event('open-thread');
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ThreadScreen(convoId: thread!.id, guestUid: thread!.guestUid),
+    ));
+  }
+
+  void _say(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// The one-tap step for this card, when the lifecycle offers one that
@@ -508,9 +569,8 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                   IconButton(
                     icon: const Icon(Icons.sms_outlined,
                         size: 18, color: AppColors.primaryForest),
-                    tooltip: 'Message Guest',
-                    onPressed: () => _launchUrl(
-                        'sms:${booking.guestPhone.replaceAll(' ', '')}'),
+                    tooltip: 'Open conversation',
+                    onPressed: () => _openConversation(booking),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => _openDetail(booking),

@@ -12,10 +12,10 @@ import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
 import 'live_location_panel.dart';
 
-/// Guest ↔ Admin messages from `conversations/*`.
+/// Guest â†” Admin messages from `conversations/*`.
 ///
 /// The message limit, the page sizes and the collection names are
-/// `AppConstants` — the same place `firestore.rules` and the website keep
+/// `AppConstants` â€” the same place `firestore.rules` and the website keep
 /// theirs, and the place a test can reach without compiling a screen.
 
 class InboxScreen extends StatelessWidget {
@@ -79,13 +79,13 @@ class InboxScreen extends StatelessWidget {
                       title: Text(d['last_message']?.toString().isNotEmpty == true
                           ? d['last_message'].toString()
                           : 'New conversation'),
-                      subtitle: Text('${d['category'] ?? 'booking'} · ${d['guest_uid'] ?? ''}'),
+                      subtitle: Text('${d['category'] ?? 'booking'} Â· ${d['guest_uid'] ?? ''}'),
                       trailing: retentionLabel(d[kRetentionField] as Timestamp?),
                       onTap: () {
                         TourBus.event('open-thread');
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => _ThreadScreen(convoId: docs[i].id, guestUid: d['guest_uid']?.toString() ?? ''),
+                            builder: (_) => ThreadScreen(convoId: docs[i].id, guestUid: d['guest_uid']?.toString() ?? ''),
                           ),
                         );
                       },
@@ -97,7 +97,7 @@ class InboxScreen extends StatelessWidget {
     );
   }
 
-  /// "Kept 89 more days" / "Clearing soon" — the retention stamp, so the
+  /// "Kept 89 more days" / "Clearing soon" â€” the retention stamp, so the
   /// Admin can see which threads are disposable without opening them.
   static Widget? retentionLabel(Object? stamp) {
     if (stamp is! Timestamp) return null;
@@ -107,16 +107,16 @@ class InboxScreen extends StatelessWidget {
   }
 }
 
-class _ThreadScreen extends StatefulWidget {
-  const _ThreadScreen({required this.convoId, required this.guestUid});
+class ThreadScreen extends StatefulWidget {
+  const ThreadScreen({required this.convoId, required this.guestUid});
   final String convoId;
   final String guestUid;
 
   @override
-  State<_ThreadScreen> createState() => _ThreadScreenState();
+  State<ThreadScreen> createState() => ThreadScreenState();
 }
 
-class _ThreadScreenState extends State<_ThreadScreen> {
+class ThreadScreenState extends State<ThreadScreen> {
   final _text = TextEditingController();
 
   /// The oldest message loaded, and whether anything older exists. Both come
@@ -133,7 +133,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
     super.dispose();
   }
 
-  /// Open or close the live-location panel, and — the first time it opens —
+  /// Open or close the live-location panel, and â€” the first time it opens â€”
   /// make sure this Admin can read the stream at all.
   ///
   /// `firestore.rules` can read `profiles/{uid}.role`; Realtime Database rules
@@ -150,7 +150,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
     service.registerReader(uid: uid, allowlisted: AuthStore.isAllowlisted(auth.sessionEmail));
   }
 
-  Collection<Map<String, dynamic>> get _messages =>
+  CollectionReference<Map<String, dynamic>> get _messages =>
       FirebaseFirestore.instance.collection(AppConstants.colConversations).doc(widget.convoId).collection(AppConstants.subMessages);
 
   /// Fetch one older page behind the oldest message already on screen.
@@ -306,7 +306,7 @@ class _ThreadScreenState extends State<_ThreadScreen> {
           icon: _loadingOlder
               ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.expand_less, size: 16),
-          label: Text(_loadingOlder ? 'Loading…' : 'Load earlier messages'),
+          label: Text(_loadingOlder ? 'Loadingâ€¦' : 'Load earlier messages'),
         ),
       ),
     );
