@@ -14,6 +14,10 @@ yarn-error.log*
 !.env.example
 !.firebaserc.example
 
+# Real Vercel dashboard values, written out for copying. Holds the Supabase
+# anon key, which is public by design but still not a repo file.
+vercel-env.txt
+
 # Supabase CLI local state (project ref, pooler URL, version pins)
 supabase/.temp/
 
