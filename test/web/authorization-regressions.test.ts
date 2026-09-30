@@ -301,8 +301,13 @@ describe('P1: a Review is stored at the Booking it is about', () => {
     expect(rules).toContain('request.time < resource.data.edit_until')
     expect(rules).toContain("'stars', 'text', 'cleanliness', 'accommodation'")
     // And the create refuses a window the client chose, which is the only way a
-    // Guest could otherwise have kept editing for a year.
-    expect(rules).toContain('request.resource.data.edit_until == request.time + 1209600000')
+    // Guest could otherwise have kept editing for a year. It bounds the window
+    // against the rule's own clock rather than demanding an exact value:
+    // `request.time` is the commit instant, which no client can know, so
+    // `== request.time + <ms>` was unsatisfiable — and `timestamp + int` is not
+    // an operation the runtime has at all.
+    expect(rules).toContain("request.resource.data.edit_until <= request.time + duration.value(14, 'd')")
+    expect(rules).toContain('request.resource.data.edit_until > request.time')
   })
 
   it('matches the keys and actions list of every action to a known type', () => {

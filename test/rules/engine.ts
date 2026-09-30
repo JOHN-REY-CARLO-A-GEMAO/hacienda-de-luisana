@@ -98,6 +98,44 @@ export function ruleTimestamp(when: string | number | Date): RuleTimestamp {
 }
 
 /**
+ * Firestore rules' `duration` type, built the only way the language builds one:
+ * `duration.value(1, 'h')`. Milliseconds underneath, because a duration is only
+ * ever compared against or added to a timestamp, and the wire format is already
+ * milliseconds.
+ */
+export type RuleDuration = { readonly __duration: number }
+
+const isDuration = (value: unknown): value is RuleDuration =>
+  !!value && typeof value === 'object' && '__duration' in value
+
+const DURATION_UNITS: Record<string, number> = {
+  w: 604800000,
+  d: 86400000,
+  h: 3600000,
+  m: 60000,
+  s: 1000,
+  ms: 1,
+  ns: 0.000001,
+}
+
+/** `duration.value(n, unit)`, as the rules language spells it. */
+export function durationValue(value: number, unit: string): RuleDuration {
+  const ms = DURATION_UNITS[unit]
+  if (ms === undefined) throw new RuleEvaluationError(`not a duration unit: ${unit}`)
+  return { __duration: value * ms }
+}
+
+function durationConstructor(name: string, args: unknown[]): RuleDuration {
+  if (name !== 'value') throw new RuleEvaluationError(`the duration member \`.${name}()\``)
+  const [value, unit] = args
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new RuleEvaluationError('duration.value() takes an int')
+  }
+  if (typeof unit !== 'string') throw new RuleEvaluationError('duration.value() takes a unit string')
+  return durationValue(value, unit)
+}
+
+/**
  * The clock every request is evaluated at unless it names one. A fixed instant,
  * never `Date.now()`: a suite that decides an expiry case has to be able to say
  * which instant it means.
@@ -614,10 +652,15 @@ function evalExpr(node: Node, scope: Scope): unknown {
       if (!key) unsupported('a lookup without an index')
       return indexGet(evalExpr(base, scope), evalExpr(key, scope), scope.semantics)
     }
+    case 'IdMemberFunctionCallSimpleExpression':
     case 'MemberFunctionCallSimpleExpression': {
       const [base] = expressionChildren(node)
       const name = memberName(node)
       const args = callArgs(node, scope)
+      // `duration.value(1, 'h')` — the only way the rules language builds a
+      // duration. `duration` is a type name, not a binding, so it is intercepted
+      // here rather than resolved through the scope.
+      if (text(base).trim() === 'duration') return durationConstructor(name, args)
       return method(evalExpr(base, scope), name, args)
     }
     case 'FunctionCallSimpleExpression': {
@@ -740,10 +783,17 @@ function binary(op: string, left: unknown, right: unknown): unknown {
       return compare(left, right) >= 0
     case '+':
       if (typeof left === 'string' && typeof right === 'string') return left + right
-      // `timestamp + int` is a timestamp, per the rules language: the window a
-      // session may claim is written as `request.time + 3600000`.
-      if (isTimestamp(left) && typeof right === 'number' && Number.isInteger(right)) {
-        return { __timestamp: left.__timestamp + right }
+      // `timestamp + duration` is a timestamp. `timestamp + int` is NOT: the
+      // real runtime refuses it ("Unsupported operation error. Received:
+      // timestamp + int"), and an evaluator that quietly added the two let a
+      // broken rule read as a working one — `request.time + 3600000` passed
+      // 192 offline cases while every write it guarded was denied by the
+      // emulator. Windows are written `duration.value(1, 'h')` instead.
+      if (isTimestamp(left) && isDuration(right)) {
+        return { __timestamp: left.__timestamp + right.__duration }
+      }
+      if (isTimestamp(left) || isDuration(right) || isDuration(left)) {
+        throw new RuleEvaluationError('Unsupported operation error. Received: timestamp + int. Expected: timestamp + duration.')
       }
       return number(left) + number(right)
     case '-':
@@ -786,6 +836,8 @@ function isType(value: unknown, type: string): boolean {
       return isMap(value)
     case 'timestamp':
       return isTimestamp(value)
+    case 'duration':
+      return isDuration(value)
     case 'set':
       return isSet(value)
     case 'null':
@@ -821,7 +873,8 @@ const isMap = (value: unknown): value is Record<string, unknown> =>
   !isSet(value) &&
   !isDiff(value) &&
   !isPath(value) &&
-  !isTimestamp(value)
+  !isTimestamp(value) &&
+  !isDuration(value)
 
 function describe(value: unknown): string {
   if (value === null) return 'null'
@@ -830,6 +883,7 @@ function describe(value: unknown): string {
   if (isDiff(value)) return 'map diff'
   if (isPath(value)) return 'path'
   if (isTimestamp(value)) return 'timestamp'
+  if (isDuration(value)) return 'duration'
   if (isMap(value)) return 'map'
   return typeof value
 }

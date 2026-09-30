@@ -9,12 +9,27 @@ const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' 
 const admin = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana' } as const
 const NOW = '2026-09-20T01:00:00.000Z'
 
+/**
+ * The stay these fixtures ask for, deliberately far in the future.
+ *
+ * Demo mode seeds the Main House with a Reserved booking anchored to `new Date()`
+ * (`generateSampleBookings` in src/lib/storage.ts), and `readAll()` puts those
+ * samples back whenever the store is empty — which `localStorage.clear()` makes
+ * it, every time. So a suite run without Firebase cannot have an empty store,
+ * and any fixture window near today collides with a Booking nobody wrote here.
+ * That is a wall-clock trap: these tests were written against October 2026 and
+ * started failing the day "today" reached it. 2029 is far enough out that the
+ * seed (today .. today + 5 days) cannot reach it.
+ */
+const CHECK_IN = '2029-06-01'
+const CHECK_OUT = '2029-06-04'
+
 const request = {
   guest_name: 'Maria Santos',
   phone: '0917 123 4567',
   email: 'maria@example.com',
-  check_in: '2026-10-01',
-  check_out: '2026-10-04',
+  check_in: CHECK_IN,
+  check_out: CHECK_OUT,
   guests: 4,
   accommodation: 'main-house',
   special_requests: '',
@@ -121,7 +136,7 @@ describe('the booking store seam', () => {
   it('refuses to approve a second Booking into a one-unit Accommodation the first already holds', async () => {
     const first = await cloudBookingsDB.add(request, { ...guest, now: NOW })
     const second = await cloudBookingsDB.add(
-      { ...request, guest_name: 'JP Santos', email: 'jp@example.com', check_in: '2026-10-03', check_out: '2026-10-06' },
+      { ...request, guest_name: 'JP Santos', email: 'jp@example.com', check_in: '2029-06-03', check_out: '2029-06-06' },
       { ...guest, now: NOW },
     )
 

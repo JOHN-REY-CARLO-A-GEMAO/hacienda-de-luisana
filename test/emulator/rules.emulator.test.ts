@@ -14,11 +14,12 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   assertFails,
   assertSucceeds,
   initializeTestEnvironment,
+  type RulesTestContext,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, Timestamp } from 'firebase/firestore'
@@ -46,12 +47,43 @@ afterAll(async () => {
   await env?.cleanup()
 })
 
+/**
+ * Every test starts from an empty database and an empty bucket.
+ *
+ * Without this the suite was order-dependent and had been for its whole life:
+ * there was no `clearFirestore` anywhere, and every case reused the same
+ * document ids (`booking-1`, `convo-1`). The `activity` subcollection made it
+ * worse — those rules are append-only, so a second `create` at an id an earlier
+ * test had already written is refused by design, and the test that wrote it
+ * second was blamed for a rule that was working exactly as written. Which cases
+ * failed therefore depended on execution order and timing: two identical runs
+ * reported 11 failures and then 9.
+ *
+ * This is an *ancestor* hook, so it runs after a describe's `beforeAll` and
+ * before that describe's first test — which is why no fixture is seeded in a
+ * `beforeAll`. Each describe seeds in a `beforeEach` of its own, which vitest
+ * runs after this one: clear, then lay the fixtures down again, so a test never
+ * inherits what the test before it wrote and never loses what its own rules
+ * need to exist.
+ */
+beforeEach(async () => {
+  await env.clearFirestore()
+  await env.clearStorage()
+})
+
 /** A Guest with a uid but no email claim — Firebase's anonymous sign-in. */
 const anonymousGuest = (uid = GUEST_UID) => env.authenticatedContext(uid, {})
 const emailGuest = (uid = GUEST_UID) => env.authenticatedContext(uid, { email: `guest-${uid}@example.com` })
 /** The bootstrap Admin, by the allowlisted address in the token. */
 const admin = () => env.authenticatedContext('admin-uid-1', { email: ADMIN_EMAIL })
 
+/**
+ * A Booking as ADR-0012 has it: born Pending, with the downpayment screenshot
+ * already attached and an amount claimed. The create rule requires those three
+ * keys (`firestore.rules` L197) and then their values (L207-210), so a fixture
+ * without them is a document the rules refuse to store — which is the point of
+ * the fixture being shaped like the app's.
+ */
 const bookingDoc = (overrides: Record<string, unknown> = {}) => ({
   guest_name: 'Ana Reyes',
   phone: '09171234567',
@@ -61,6 +93,9 @@ const bookingDoc = (overrides: Record<string, unknown> = {}) => ({
   guests: 2,
   accommodation: 'Main House',
   status: 'Pending',
+  payment_status: 'pending',
+  payment_proof_url: `payments/${GUEST_UID}/${BOOKING_ID}/proof.jpg`,
+  amount_claimed: 5000,
   created_at: new Date(),
   uid: GUEST_UID,
   ref_id: BOOKING_ID,
@@ -68,8 +103,46 @@ const bookingDoc = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-async function seed(work: (rulesDisabled: ReturnType<RulesTestEnvironment['authenticatedContext']>) => Promise<void>) {
-  await env.withSecurityRulesDisabled(async () => work(env.authenticatedContext('seeder', {})))
+/**
+ * Fixtures, written as the Admin with the rules switched off.
+ *
+ * The context `withSecurityRulesDisabled` hands the callback is the one bound
+ * to the emulator's `owner` token, and it must be the context the fixture
+ * writes through. Building a second context inside the callback instead — an
+ * authenticated one, as this helper used to — puts the writes back under the
+ * rules, and they are then refused for reasons that have nothing to do with the
+ * case under test: a fixture for a Profile the Admin may open, an
+ * Admin-signed Activity entry, the reference catalogue, a `tracking_sessions`
+ * row nobody may write at all. Those documents exist to be read by the rules,
+ * so a fixture that cannot write them tests nothing.
+ */
+async function seed(work: (rulesDisabled: RulesTestContext) => Promise<void>) {
+  await env.withSecurityRulesDisabled((db) => work(db))
+}
+
+/**
+ * The two documents several describes need, in one call, because they are read
+ * by the rules rather than written by them: a rule that asks who somebody is
+ * asks the parent Booking or the conversation, and `exists()` on a document
+ * this test never wrote is a false the rule will report as a policy decision.
+ */
+const convoDoc = (overrides: Record<string, unknown> = {}) => ({
+  guest_uid: GUEST_UID,
+  category: 'booking-inquiry',
+  created_at: new Date(),
+  updated_at: new Date(),
+  last_message: '',
+  unread_admin: 0,
+  unread_guest: 0,
+  ...overrides,
+})
+
+async function seedBaseline(work: (rulesDisabled: RulesTestContext) => Promise<void> = async () => {}) {
+  await seed(async (db) => {
+    await setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc())
+    await setDoc(doc(db.firestore(), 'conversations', CONVO_ID), convoDoc())
+    await work(db)
+  })
 }
 
 describe('authentication and roles', () => {
@@ -87,14 +160,18 @@ describe('authentication and roles', () => {
     // Government ID KYC was removed 2026-09-27: the KYC-era create rows went
     // with it (create carries no hasOnly list, an unknown key is refused later).
     const guest = anonymousGuest()
+    // ADR-0012: the screenshot and the claimed amount are what the create
+    // insists on, so a Booking arriving without them is refused — which is the
+    // case the fixture used to cover by accident, back when `bookingDoc()`
+    // carried neither field and `payment_status: 'pending'` was meaningless.
+    const { payment_proof_url, amount_claimed, ...noScreenshot } = bookingDoc()
+    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), noScreenshot))
+    // The three decisions that are the Admin's, never the Guest's.
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'verified' })))
-    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'pending' })))
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'unpaid' })))
-    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({
-      payment_status: 'pending',
-      payment_proof_url: 'payments/guest-uid-1/proof.jpg',
-      amount_claimed: 5000,
-    })))
+    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'rejected' })))
+    // .and the shape that is accepted: Pending, screenshot attached, amount claimed.
+    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc()))
   })
 
   it('resolves the Admin from the allowlisted address in the token', async () => {
@@ -124,8 +201,8 @@ describe('authentication and roles', () => {
 })
 
 describe('bookings', () => {
-  beforeAll(async () => {
-    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc()))
+  beforeEach(async () => {
+    await seedBaseline()
   })
 
   it('lets a Guest read their own Booking and not another Guest\'s', async () => {
@@ -134,10 +211,13 @@ describe('bookings', () => {
   })
 
   it('accepts the self-serve payment patch and refuses any status a Guest cannot reach', async () => {
+    // The proof is uploaded against a Booking the Admin has already moved to
+    // Payment Pending (ADR-0012) — the Guest never performs that move, so the
+    // patch below changes the proof, not the status.
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Payment Pending' })))
     const guest = emailGuest()
     await assertSucceeds(
       updateDoc(doc(guest.firestore(), 'bookings', BOOKING_ID), {
-        status: 'Payment Pending',
         payment_plan: 'Full Payment',
         payment_status: 'pending',
         payment_proof_url: 'https://example.test/proof.jpg',
@@ -266,6 +346,12 @@ describe('activity log', () => {
     at: new Date(),
   })
 
+  // `isOwnBooking()` reads the parent, so a Guest filing into their own Booking
+  // needs one to exist under their own uid.
+  beforeEach(async () => {
+    await seedBaseline()
+  })
+
   it('refuses any edit or delete, the Admin included', async () => {
     await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID, 'activity', 'entry-1'), entry('admin')))
     await assertSucceeds(getDoc(doc(admin().firestore(), 'bookings', BOOKING_ID, 'activity', 'entry-1')))
@@ -316,18 +402,8 @@ describe('payments and references', () => {
 })
 
 describe('chat', () => {
-  beforeAll(async () => {
-    await seed(async (db) =>
-      setDoc(doc(db.firestore(), 'conversations', CONVO_ID), {
-        guest_uid: GUEST_UID,
-        category: 'booking-inquiry',
-        created_at: new Date(),
-        updated_at: new Date(),
-        last_message: '',
-        unread_admin: 0,
-        unread_guest: 0,
-      }),
-    )
+  beforeEach(async () => {
+    await seedBaseline()
   })
 
   it('keeps a conversation to its Guest and to the Admin', async () => {
@@ -405,8 +481,13 @@ describe('chat', () => {
 
   it('lets only the Admin stamp the retention expiry on a conversation', async () => {
     const expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
-    await assertSucceeds(updateDoc(doc(admin().firestore(), 'conversations', CONVO_ID), { messages_expires_at: expires }))
+    // Neither stamping it nor moving one: `diff().affectedKeys()` sees only what
+    // actually changes, so a Guest rewriting the Admin's own value would touch
+    // no key at all and pass on the empty diff. The second case therefore moves
+    // it to a different date rather than restating the same one.
     await assertFails(updateDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID), { messages_expires_at: expires }))
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'conversations', CONVO_ID), { messages_expires_at: expires }))
+    await assertFails(updateDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID), { messages_expires_at: new Date(Date.now() + 91 * 24 * 60 * 60 * 1000) }))
     // A Guest's own write is still fine — the four fields the inbox needs.
     await assertSucceeds(updateDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID), { unread_admin: 1 }))
   })
@@ -445,18 +526,32 @@ describe('reviews', () => {
     }
   }
 
-  beforeAll(async () => {
+  /**
+   * The stays, plus the one Review the later cases go on to correct, moderate
+   * and read. Seeded per test rather than once, because five of these cases are
+   * about what may be done to a Review that already exists — and with a
+   * per-suite fixture they only passed by inheriting the Review the first case
+   * happened to leave behind.
+   *
+   * `booking-mine` is a second finished stay of the same Guest, and no Review
+   * is seeded under it: the cases that are about what a *create* may carry are
+   * pointed there, so they still exercise the create rule rather than arriving
+   * at an existing document as an update.
+   */
+  beforeEach(async () => {
     await seed(async (db) => {
       await setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({ status: 'Completed' }))
-      await setDoc(doc(db.firestore(), 'bookings', 'booking-2'), bookingDoc({ uid: OTHER_GUEST_UID, status: 'Completed' }))
-      await setDoc(doc(db.firestore(), 'bookings', 'booking-open'), bookingDoc({ status: 'Staying' }))
-      await setDoc(doc(db.firestore(), 'bookings', 'booking-cancelled'), bookingDoc({ status: 'Cancelled' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-mine'), bookingDoc({ ref_id: 'booking-mine', status: 'Completed' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-2'), bookingDoc({ ref_id: 'booking-2', uid: OTHER_GUEST_UID, status: 'Completed' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-open'), bookingDoc({ ref_id: 'booking-open', status: 'Staying' }))
+      await setDoc(doc(db.firestore(), 'bookings', 'booking-cancelled'), bookingDoc({ ref_id: 'booking-cancelled', status: 'Cancelled' }))
+      await setDoc(doc(db.firestore(), 'reviews', BOOKING_ID), review())
     })
   })
 
   it('accepts a Guest review of their own finished stay, and refuses the rest', async () => {
     const guest = emailGuest()
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review()))
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine' })))
     await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-2'), review({ booking_id: 'booking-2' })))
     await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open' })))
     await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-nope'), review({ booking_id: 'booking-nope' })))
@@ -465,25 +560,32 @@ describe('reviews', () => {
 
   it('refuses a star rating outside 1..5 and a review signed in somebody else\'s name', async () => {
     const guest = emailGuest()
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review({ stars: 6 })))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review({ uid: OTHER_GUEST_UID })))
-    await assertFails(setDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', 'booking-2'), review({ booking_id: 'booking-2', uid: OTHER_GUEST_UID })))
-    // The two ends of the range, so a rule that refused everything would not pass.
-    await assertFails(setDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', 'booking-2'), review({ booking_id: 'booking-2', uid: OTHER_GUEST_UID, stars: 0 })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine', stars: 6 })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine', uid: OTHER_GUEST_UID })))
+    // Another Guest cannot write this Guest's review, in their own name.
+    const other = emailGuest(OTHER_GUEST_UID)
+    await assertFails(setDoc(doc(other.firestore(), 'reviews', BOOKING_ID), review({ uid: OTHER_GUEST_UID })))
+    // Both ends of the range, so a rule that refused everything would not pass.
+    await assertFails(setDoc(doc(other.firestore(), 'reviews', BOOKING_ID), review({ uid: OTHER_GUEST_UID, stars: 0 })))
+    // .and the same Guest may review a stay of their own that is over, so the
+    // refusals above are about whose review it is and not about reviews.
+    await assertSucceeds(setDoc(doc(other.firestore(), 'reviews', 'booking-2'), review({ booking_id: 'booking-2', uid: OTHER_GUEST_UID })))
   })
 
   it('refuses a review that arrives already published, or carrying the Admin\'s fields', async () => {
+    // A finished stay, so each refusal below is about the field named and not
+    // about the stay gate that would have refused it anyway.
     const guest = emailGuest()
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', status: 'published' })))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', admin_response: 'thanks' })))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', status: 'published', edit_until: Timestamp.fromMillis(Date.now() + 10 * 365 * 86400000) })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine', status: 'published' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine', admin_response: 'thanks' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine', status: 'published', edit_until: Timestamp.fromMillis(Date.now() + 10 * 365 * 86400000) })))
   })
 
   it('refuses feedback that is blank or past the limit, and accepts it at the limit', async () => {
     const guest = emailGuest()
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', text: '   ' })))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', text: 'x'.repeat(1001) })))
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'reviews', 'booking-open'), review({ booking_id: 'booking-open', text: 'x'.repeat(1000) })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine', text: '   ' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine', text: 'x'.repeat(1001) })))
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine', text: 'x'.repeat(1000) })))
   })
 
   it('lets the Guest correct their own review, and nothing else', async () => {
@@ -500,7 +602,13 @@ describe('reviews', () => {
   it('refuses a Guest deleting a review, and a second one for the same stay', async () => {
     const guest = emailGuest()
     await assertFails(deleteDoc(doc(guest.firestore(), 'reviews', BOOKING_ID)))
-    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review({ stars: 1 })))
+    // A second write at the same id is a `setDoc`, which the Firestore client
+    // turns into an update — so this is the only way a Guest can try to file a
+    // second review, and what refuses it is the fortnight. `edit_until` is not
+    // among the keys a Guest may move, so a fresh window is refused on its own
+    // account rather than because two clocks happened to differ.
+    const second = Timestamp.fromMillis(Date.now() + 15 * 86400000)
+    await assertFails(setDoc(doc(guest.firestore(), 'reviews', BOOKING_ID), review({ stars: 1, edit_until: second })))
     await assertSucceeds(deleteDoc(doc(admin().firestore(), 'reviews', BOOKING_ID)))
   })
 
@@ -560,6 +668,12 @@ describe('public reviews: what a signed-out visitor may read', () => {
 })
 
 describe('smart lock and the retired tracker', () => {
+  // `isConversationMember()` reads the conversation, so the live-location cases
+  // below need one that exists and belongs to the Guest sharing.
+  beforeEach(async () => {
+    await seedBaseline()
+  })
+
   it('records a lock touch in the writer\'s own uid, and refuses a spoofed one', async () => {
     const row = { timestamp: new Date(), uid: GUEST_UID, ref_id: BOOKING_ID, result: 'granted', reason: 'mobile-key' }
     await assertSucceeds(addDoc(collection(anonymousGuest().firestore(), 'access_logs'), row))

@@ -351,28 +351,49 @@ describe('evaluator: the clock, and the timestamps it is compared against', () =
     expect(check('request.resource.data.at <= request.time', both)).toBe(false)
   })
 
-  it('adds an int to a timestamp, which is how a window is bounded', () => {
-    // `expires_at <= request.time + 3600000` is the rule that caps a share at
-    // an hour whatever the browser asked for.
-    expect(check('request.time + 3600000 == request.time + 3600000', { time: T })).toBe(true)
+  it('adds a duration to a timestamp, which is how a window is bounded', () => {
+    // `expires_at <= request.time + duration.value(1, 'h')` is the rule that
+    // caps a share at an hour whatever the browser asked for.
+    expect(check('request.time + duration.value(1, \'h\') == request.time + duration.value(1, \'h\')', { time: T })).toBe(true)
     expect(
-      check('request.time + 3600000 > request.time', {
+      check('request.time + duration.value(1, \'h\') > request.time', {
         requestData: { at: ruleTimestamp(T + 3_600_000) },
         time: T,
       }),
     ).toBe(true)
     expect(
-      check('request.time + 3600000 >= request.resource.data.at', {
+      check('request.time + duration.value(1, \'h\') >= request.resource.data.at', {
         requestData: { at: ruleTimestamp(T + 3_600_000) },
         time: T,
       }),
     ).toBe(true)
     expect(
-      check('request.time + 3600000 >= request.resource.data.at', {
+      check('request.time + duration.value(1, \'h\') >= request.resource.data.at', {
         requestData: { at: ruleTimestamp(T + 3_600_001) },
         time: T,
       }),
     ).toBe(false)
+    // Units are what the rules language says they are.
+    expect(
+      check('request.time + duration.value(14, \'d\') == request.time + duration.value(336, \'h\')', { time: T }),
+    ).toBe(true)
+  })
+
+  it('refuses to add an int to a timestamp, the way the real runtime does', () => {
+    // This evaluator used to add the two anyway. `request.time + 3600000` then
+    // read as a working rule here and as an evaluation error in the emulator, so
+    // a rule that denied every write it guarded still had 192 green cases behind
+    // it. `timestamp + int` is not in the rules language: windows are durations.
+    const decision = evaluate(
+      { path: 'docs/one', method: 'get', auth: null, resourceData: null, requestData: null, time: T },
+      fixture('request.time + 3600000 == request.time'),
+    )
+    expect(decision.allow).toBe(false)
+    expect(decision.statements[0].result).toBe('error')
+    expect(decision.statements[0].error).toMatch(/timestamp \+ int/)
+
+    // The supported spelling is a denial, not an error.
+    expect(check('request.time + duration.value(1, \'h\') == request.time', { time: T })).toBe(false)
   })
 
   it('subtracts one timestamp from another', () => {

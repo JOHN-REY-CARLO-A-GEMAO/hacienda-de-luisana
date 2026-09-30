@@ -11,12 +11,26 @@ const NOW = '2026-09-20T01:00:00.000Z'
 const HOUR = 60 * 60 * 1000
 const MINUTE = 60 * 1000
 
+/**
+ * The stay these fixtures ask for, deliberately far in the future.
+ *
+ * Demo mode seeds the Main House with a Reserved booking anchored to `new Date()`
+ * (`generateSampleBookings` in src/lib/storage.ts), and `readAll()` puts those
+ * samples back whenever the store is empty — which `localStorage.clear()` makes
+ * it, every time. So a suite run without Firebase cannot have an empty store,
+ * and a fixture window near today collides with a Booking nobody wrote here. The
+ * hold rules are about `now` against `hold_expires_at`, so the stay's own dates
+ * are free to be anywhere; 2029 is far enough out that the seed cannot reach it.
+ */
+const CHECK_IN = '2029-06-01'
+const CHECK_OUT = '2029-06-04'
+
 const request = {
   guest_name: 'Maria Santos',
   phone: '0917 123 4567',
   email: 'maria@example.com',
-  check_in: '2026-10-01',
-  check_out: '2026-10-04',
+  check_in: CHECK_IN,
+  check_out: CHECK_OUT,
   guests: 4,
   accommodation: 'main-house',
   special_requests: '',
@@ -93,7 +107,7 @@ describe('the hold on a submitted Booking', () => {
     await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
     const taken = await cloudBookingsDB.checkAvailability(
-      { accommodation: 'main-house', check_in: '2026-10-03', check_out: '2026-10-06' },
+      { accommodation: 'main-house', check_in: '2029-06-03', check_out: '2029-06-06' },
       { now: NOW },
     )
     expect(taken.available).toBe(false)
@@ -101,7 +115,7 @@ describe('the hold on a submitted Booking', () => {
 
     // A handover on the check-out day is not a clash.
     const free = await cloudBookingsDB.checkAvailability(
-      { accommodation: 'main-house', check_in: '2026-10-04', check_out: '2026-10-06' },
+      { accommodation: 'main-house', check_in: '2029-06-04', check_out: '2029-06-06' },
       { now: NOW },
     )
     expect(free.available).toBe(true)
@@ -113,7 +127,7 @@ describe('the hold on a submitted Booking', () => {
     const afterExpiry = Date.parse(NOW) + 25 * HOUR
 
     const freed = await cloudBookingsDB.checkAvailability(
-      { accommodation: 'main-house', check_in: '2026-10-01', check_out: '2026-10-04' },
+      { accommodation: 'main-house', check_in: CHECK_IN, check_out: CHECK_OUT },
       { now: afterExpiry },
     )
 

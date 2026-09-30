@@ -17,11 +17,16 @@ service firebase.storage {
     // same allowlist. If a promoted Admin (Profile
     // role 'admin', not on the allowlist) ever needs Storage, this becomes the
     // place to teach Storage about Profiles.
+    // The claim is read defensively, in the same order as tokenEmail() in
+    // firestore.rules: an anonymous token has no `email` key, and touching it
+    // is an evaluation error rather than a false.
     // Keep these addresses in sync with adminEmails() in firestore.rules,
     // BOOTSTRAP_ROLES in src/lib/auth/profile.ts and AuthStore.kAdminEmails in
     // lib/services/auth_store.dart.
     function isAdminEmail() {
       return isSignedIn()
+        && 'email' in request.auth.token
+        && request.auth.token.email != null
         && request.auth.token.email in ['haciendadeluisiana@gmail.com', 'gemaojohnreyarguilles@gmail.com'];
     }
 

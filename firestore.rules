@@ -81,12 +81,27 @@ service cloud.firestore {
         : 'guest';
     }
 
+    // The email claim, or null. An anonymous token carries no `email` key at
+    // all, and reading a missing key is an evaluation *error* in the rules
+    // runtime — not a false. Written as a bare `request.auth.token.email`, the
+    // rule below would refuse every anonymous Guest by crashing rather than by
+    // deciding, which is indistinguishable from a policy denial and cannot be
+    // asserted against. So the claim is read in the order that survives a
+    // missing one: present, then not null, then read.
+    function tokenEmail() {
+      return isSignedIn()
+        && 'email' in request.auth.token
+        && request.auth.token.email != null
+        ? request.auth.token.email
+        : null;
+    }
+
     // The role of this request, in the order src/lib/auth uses: the bootstrap
     // allowlist, then the Profile, then Guest. Somebody signed out is 'none',
     // which matches no role and therefore no rule below.
     function role() {
       return !isSignedIn() ? 'none'
-        : (request.auth.token.email in adminEmails()) ? 'admin'
+        : (tokenEmail() in adminEmails()) ? 'admin'
         : storedRole();
     }
 
@@ -305,8 +320,13 @@ service cloud.firestore {
           && request.resource.data.get('refund_total', 0) >= 0
           && request.resource.data.get('refund_total', 0)
                <= request.resource.data.get('amount_verified', resource.data.get('amount_verified', 0))
-          && request.resource.data.get('refund_breakdown', {}).get('refundTotal', request.resource.data.get('refund_total', 0))
-               == request.resource.data.get('refund_total', 0))
+          // Guarded on presence rather than defaulted: `{}` is not a map the
+          // runtime will hand back here, and asking a value that is not there
+          // for a key is an evaluation error rather than a false. A Guest who
+          // withdraws without a breakdown agrees with themselves and passes.
+          && (!request.resource.data.keys().hasAny(['refund_breakdown'])
+              || request.resource.data.refund_breakdown.get('refundTotal', request.resource.data.get('refund_total', 0))
+                   == request.resource.data.get('refund_total', 0)))
       );
 
       allow delete: if isAdmin();
@@ -454,7 +474,13 @@ service cloud.firestore {
         && request.resource.data.status in ['available', 'used', 'void']
         && request.resource.data.reference == resource.data.reference
         && request.resource.data.amount == resource.data.amount;
-      allow delete: if isAdmin() && resource.data.get('status', '') != 'used';
+      // Only a reference nothing has ever paid with may be removed. A `used`
+      // entry is evidence of which reference paid for which stay, and voiding
+      // it does not stop that being evidence — so `void` is kept as well as
+      // `used`. `!= 'used'` here would have let the Admin void a used reference
+      // and then delete the record of it, which is the one outcome the comment
+      // above this collection exists to refuse.
+      allow delete: if isAdmin() && resource.data.get('status', '') == 'available';
     }
 
     // A conversation belongs to exactly one Guest, and only that Guest (or the
@@ -556,7 +582,7 @@ service cloud.firestore {
         && request.resource.data.started_at is timestamp
         && request.resource.data.expires_at is timestamp
         && request.resource.data.expires_at > request.time
-        && request.resource.data.expires_at <= request.time + 3600000
+        && request.resource.data.expires_at <= request.time + duration.value(1, 'h')
         // The rule that keeps the feature honest: this document is metadata, and
         // a coordinate written here would be a position stored forever. There is
         // no shape of position this accepts.
@@ -653,9 +679,14 @@ service cloud.firestore {
         // writing the status themselves.
         && request.resource.data.status == 'pending'
         // The fortnight in which the Guest may still correct it. The value is
-        // not the Guest's to pick: the rule recomputes it from the clock, so a
-        // console cannot stamp an edit window that ends next year.
-        && request.resource.data.edit_until == request.time + 1209600000
+        // not the Guest's to pick: the rule bounds it against its own clock, so
+        // a console cannot stamp an edit window that ends next year. Bounded
+        // rather than equal, because `request.time` is the commit instant and
+        // no client can compute `edit_until` from it — asking for equality
+        // would make the create impossible to satisfy at all.
+        && request.resource.data.edit_until is timestamp
+        && request.resource.data.edit_until > request.time
+        && request.resource.data.edit_until <= request.time + duration.value(14, 'd')
         && exists(bookingReviewed())
         && get(bookingReviewed()).data.get('uid', '') == request.auth.uid
         && get(bookingReviewed()).data.get('status', '') in ['Checked-Out', 'Completed'];
