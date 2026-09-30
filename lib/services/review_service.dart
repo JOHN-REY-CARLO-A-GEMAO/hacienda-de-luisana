@@ -215,7 +215,7 @@ class ReviewService {
     try {
       final doc = await db.collection(AppConstants.colReviews).doc(reviewId).get();
       if (!doc.exists) return null;
-      return ReviewModel.fromDoc(doc.id, doc.data());
+      return ReviewModel.fromDoc(doc.id, doc.data() ?? {});
     } catch (error) {
       debugPrint('[reviews] fetch failed: $error');
       return null;
@@ -232,7 +232,7 @@ class ReviewService {
     try {
       final doc = await db.collection(AppConstants.colPublicReviews).doc(reviewId).get();
       if (!doc.exists) return null;
-      return PublicReviewModel.fromDoc(doc.id, doc.data());
+      return PublicReviewModel.fromDoc(doc.id, doc.data() ?? {});
     } catch (error) {
       debugPrint('[reviews] publishedTestimonial failed: $error');
       return null;

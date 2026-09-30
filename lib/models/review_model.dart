@@ -11,6 +11,8 @@
 /// complaints about them would be a way to lose them that nobody asked for.
 library;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../services/review_policy.dart';
 
 /// One Guest's words about one finished stay.

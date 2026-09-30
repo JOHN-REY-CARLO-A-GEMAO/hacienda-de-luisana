@@ -66,8 +66,14 @@ coverage/
 app.*.symbols
 app.*.map.json
 
-# Pub lock - ignored for clean repo (regenerated via `flutter pub get` / `npm install`)
-pubspec.lock
+# Pub lock — COMMITTED for the app, so a build is reproducible.
+#
+# The Flutter template ignores `pubspec.lock` because a *library* should not pin
+# its consumers' dependency versions. This is the Admin app, which pins them: with
+# the lock ignored, `flutter pub get` on a fresh machine can resolve the Firebase
+# plugins to different majors than the ones the code was fixed against, which is
+# how `Database` became `FirebaseDatabase` in the first place.
+# The Flutter template's nested-path ignore is kept below, where it belongs.
 hacienda_flutter/pubspec.lock
 
 # Misc project clutter (do not commit)

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/constants/app_constants.dart';
 import '../../models/review_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/review_policy.dart';
@@ -138,7 +139,7 @@ class _ReviewsScreenState extends ConsumerState<ReviewsScreen> {
       return EmptyState(
         icon: Icons.cloud_off_outlined,
         title: 'Reviews could not load',
-        message: _error!,
+        subtitle: _error!,
       );
     }
     if (_reviews.isEmpty) {
@@ -147,7 +148,7 @@ class _ReviewsScreenState extends ConsumerState<ReviewsScreen> {
         title: _filter.isEverything
             ? 'No reviews yet'
             : 'No reviews match that',
-        message: _filter.isEverything
+        subtitle: _filter.isEverything
             ? 'Guests can rate a stay once they have checked out. Their words appear here, and you decide what is published.'
             : 'Try a different filter — nothing here carries that rating or that state.',
       );

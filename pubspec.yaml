@@ -12,15 +12,15 @@ dependencies:
   # State Management & Service Locator
   flutter_riverpod: ^2.5.1
   # Backend & Real-time Database
-  firebase_core: ^2.30.0
-  firebase_auth: ^4.19.0
-  cloud_firestore: ^4.17.0
-  firebase_messaging: ^14.8.0
+  firebase_core: ^4.15.0
+  firebase_auth: ^6.7.0
+  cloud_firestore: ^6.10.0
+  firebase_messaging: ^16.7.0
   # The ephemeral live-location stream (ADR-0013). Realtime Database rather
   # than Firestore because the server deletes a TTL'd node for us and bills
   # bandwidth rather than a write per GPS fix; the rules that guard it are
   # database.rules.json.
-  firebase_database: ^4.2.0
+  firebase_database: ^12.6.0
   # Charts & Visuals
   fl_chart: ^0.67.0
   # UI, Icons, Helpers & Utilities
@@ -34,7 +34,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   provider: ^6.1.5+1
   google_sign_in: ^7.2.0
-  firebase_app_check: ^0.2.2+7
+  firebase_app_check: ^0.4.8
   # Local persistence — the guided tour remembers completion on-device.
   shared_preferences: ^2.3.2
 

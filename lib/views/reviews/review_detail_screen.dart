@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart' as legacy;
 
+import '../../core/constants/app_constants.dart';
 import '../../models/review_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';

@@ -210,7 +210,7 @@ class LiveFix {
 /// Small interface, one stream, one subscription. The caller closes it, and
 /// closing it is the whole of "stop viewing".
 class LiveLocationService {
-  LiveLocationService({FirebaseFirestore? firestore, Database? database})
+  LiveLocationService({FirebaseFirestore? firestore, FirebaseDatabase? database})
       : _firestore = firestore ?? FirebaseFirestore.instance,
         _database = database ?? _openDatabase();
 
@@ -220,7 +220,7 @@ class LiveLocationService {
   /// no `databaseURL`, and that is the normal case for a project that has
   /// never opened the Realtime Database. There is no stream to show then, so
   /// the answer is null and the panel says so — never a silent empty map.
-  static Database? _openDatabase() {
+  static FirebaseDatabase? _openDatabase() {
     try {
       return FirebaseDatabase.instance;
     } catch (error) {
@@ -230,7 +230,7 @@ class LiveLocationService {
   }
 
   final FirebaseFirestore _firestore;
-  final Database? _database;
+  final FirebaseDatabase? _database;
 
   /// The transport is optional in a way the rest of the SDK is not: a project
   /// with no `databaseURL` has no database, and there is then nothing to show.
@@ -313,14 +313,17 @@ class LiveLocationService {
       positionSub = db
           .ref('$kLiveLocationPath/$conversationId/$target')
           .onValue
-          .listen((snapshot) {
+          .listen((event) {
         if (closed) return;
-        if (snapshot.value == null) {
+        // `onValue` hands over a `DatabaseEvent`, which carries the snapshot
+        // rather than being one (firebase_database 12).
+        final data = event.snapshot.value;
+        if (data == null) {
           // The node is gone: the Guest stopped, or the server swept it.
           emitStop();
           return;
         }
-        final fix = LiveFix.fromData(snapshot.value, next);
+        final fix = LiveFix.fromData(data, next);
         if (fix == null) {
           emitStop();
           stop(LiveLocationStop.foreign);

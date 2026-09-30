@@ -380,6 +380,37 @@ npm run build
 # Should compile with no errors
 ```
 
+## 📱 Building the Admin app (Flutter)
+
+The app is a separate build from the website, and it needs two things the website
+does not.
+
+**1. `android/app/google-services.json`.** The Google Services Gradle plugin
+refuses to configure the project without it, and the build fails at
+`:app:processDebugGoogleServices`. It is per-project and per-machine, so it is
+gitignored — download it from Firebase console → Project settings → Your apps →
+Android app, and drop it in.
+
+Its `package_name` must equal `applicationId` in `android/app/build.gradle`, or the
+plugin reports `No matching client found for package name '…'`. The same values are
+in `lib/firebase_options.dart`, which is what the Dart side actually reads; the
+JSON mainly exists to satisfy Gradle.
+
+**2. `databaseURL`, for live location.** `lib/firebase_options.dart` carries it for
+both platform blocks, and `VITE_FIREBASE_DATABASE_URL` carries it for the website.
+Without it the feature is switched off and says so, rather than half-working
+(ADR-0013).
+
+```bash
+flutter pub get
+flutter analyze lib          # must be 0 errors
+flutter build apk --debug
+```
+
+If Gradle reports `AndroidLocationsBuildService` / `AndroidDirectoryCreator`, that
+is a stale daemon rather than a missing SDK — `flutter clean` and
+`android\gradlew.bat --stop`, then build again.
+
 ## 🛠 Troubleshooting
 
 - **A deployed site says "Demo mode"**: open `/status` on that deployment. It reports
