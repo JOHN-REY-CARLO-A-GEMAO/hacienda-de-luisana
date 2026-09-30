@@ -12,10 +12,10 @@ import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
 import 'live_location_panel.dart';
 
-/// Guest â†” Admin messages from `conversations/*`.
+/// Guest → Admin messages from `conversations/*`.
 ///
 /// The message limit, the page sizes and the collection names are
-/// `AppConstants` â€” the same place `firestore.rules` and the website keep
+/// `AppConstants` — the same place `firestore.rules` and the website keep
 /// theirs, and the place a test can reach without compiling a screen.
 
 class InboxScreen extends StatelessWidget {
@@ -79,7 +79,7 @@ class InboxScreen extends StatelessWidget {
                       title: Text(d['last_message']?.toString().isNotEmpty == true
                           ? d['last_message'].toString()
                           : 'New conversation'),
-                      subtitle: Text('${d['category'] ?? 'booking'} Â· ${d['guest_uid'] ?? ''}'),
+                      subtitle: Text('${d['category'] ?? 'booking'} · ${d['guest_uid'] ?? ''}'),
                       trailing: retentionLabel(d[kRetentionField] as Timestamp?),
                       onTap: () {
                         TourBus.event('open-thread');
@@ -97,7 +97,7 @@ class InboxScreen extends StatelessWidget {
     );
   }
 
-  /// "Kept 89 more days" / "Clearing soon" â€” the retention stamp, so the
+  /// "Kept 89 more days" / "Clearing soon" — the retention stamp, so the
   /// Admin can see which threads are disposable without opening them.
   static Widget? retentionLabel(Object? stamp) {
     if (stamp is! Timestamp) return null;
@@ -133,7 +133,7 @@ class ThreadScreenState extends State<ThreadScreen> {
     super.dispose();
   }
 
-  /// Open or close the live-location panel, and â€” the first time it opens â€”
+  /// Open or close the live-location panel, and — the first time it opens —
   /// make sure this Admin can read the stream at all.
   ///
   /// `firestore.rules` can read `profiles/{uid}.role`; Realtime Database rules
@@ -306,7 +306,7 @@ class ThreadScreenState extends State<ThreadScreen> {
           icon: _loadingOlder
               ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.expand_less, size: 16),
-          label: Text(_loadingOlder ? 'Loadingâ€¦' : 'Load earlier messages'),
+          label: Text(_loadingOlder ? 'Loading…' : 'Load earlier messages'),
         ),
       ),
     );
