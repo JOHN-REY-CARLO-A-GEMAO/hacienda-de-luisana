@@ -27,6 +27,7 @@ import type { Database } from 'firebase/database'
 import {
   fieldReport,
   resolveFirebaseConfig,
+  type FirebaseConfigField,
   type FirebaseConfigReport,
 } from './firebaseConfig'
 import { COMMITTED_PROJECT } from './firebaseDefaults'
@@ -39,8 +40,37 @@ import { COMMITTED_PROJECT } from './firebaseDefaults'
 // Pages, Firebase Hosting) may fall back to the committed project, while
 // `npm run dev` and the test run stay in demo mode until `.env.local` or the
 // emulator flag says otherwise.
+// The eight keys, named one by one.
+//
+// This used to pass `import.meta.env` whole. Vite has only one way to substitute
+// that — inline every `VITE_*` variable it can see — and on Vercel that includes
+// the system variables. The deployed bundle was shipping VITE_VERCEL_GIT_COMMIT_
+// MESSAGE, a whole commit message, to anyone who opened the JS, along with the
+// deploy id, the branch URL, and the git author's name and login.
+//
+// Written as dot accesses rather than `import.meta.env[FIREBASE_ENV_KEYS[field]]`
+// on purpose: a computed member access is not statically replaceable, so it would
+// have left the whole env object sitting in the bundle and leaked exactly as much.
+// Each dot access is replaced by that one value, and nothing else survives.
+//
+// The `Record<FirebaseConfigField, unknown>` annotation is what keeps the list
+// honest. It is the reason the eight names are repeated rather than derived: add a
+// ninth field to FIREBASE_ENV_KEYS and this stops compiling until it is listed
+// here, instead of quietly ignoring the new variable and falling back to the
+// committed defaults.
+const FIREBASE_ENV: Record<FirebaseConfigField, unknown> = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+}
+
 const resolution: FirebaseConfigReport = resolveFirebaseConfig({
-  env: import.meta.env as unknown as Record<string, unknown>,
+  env: FIREBASE_ENV,
   defaults: COMMITTED_PROJECT,
   allowDefaults: Boolean(import.meta.env.PROD),
 })
