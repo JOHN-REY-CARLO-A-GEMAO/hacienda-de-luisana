@@ -182,7 +182,12 @@ async function checkHighlightedStep(page, label, targets, { expectClickable = tr
   return g
 }
 
-const futureDate = (days) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+const futureDate = (days) => {
+  const calendar = new Date(Date.now() + 8 * 60 * 60 * 1000) // Asia/Manila
+  calendar.setUTCHours(0, 0, 0, 0)
+  calendar.setUTCDate(calendar.getUTCDate() + days)
+  return calendar.toISOString().slice(0, 10)
+}
 
 async function clearMemory(context) {
   await context.clearCookies()

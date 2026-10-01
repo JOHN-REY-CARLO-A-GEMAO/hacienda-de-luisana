@@ -26,6 +26,7 @@ import { auth, db, isFirebaseConfigured } from './firebase'
 import { activityLogStorage, bookingsDB, type Booking } from './storage'
 import { describeFirestoreFailure } from './firebaseFailure'
 import { ACCOMMODATIONS } from '../config/site'
+import { bookingPolicyDB } from './bookingPolicyDB'
 import {
   applyAction,
   approvalCouplingSet,
@@ -38,6 +39,8 @@ import {
   interpretStoredStatus,
   normalizeStatus,
   unitsForAccommodation,
+  validateMinimumBookingLeadTime,
+  type BookingDateValidation,
   DATE_HOLD_MS,
   type ActionAccepted,
   type ActionRefused,
@@ -303,9 +306,10 @@ const isCloud = isFirebaseConfigured && Boolean(db)
 /**
  * A Booking that has just been submitted, and where it actually landed.
  *
- * `storage` is not decoration. A cloud write can be refused — the rules are not
- * deployed, Anonymous sign-in is switched off, the Guest is offline — and when
- * that happens this store keeps the Booking locally so nothing typed is lost.
+ * `storage` is not decoration. A cloud write can fail when the Guest is offline
+ * or the project is unavailable; those failures keep the Booking locally so
+ * nothing typed is lost. Security refusals are NOT replayed locally: the
+ * payment page retains the draft, but creates no Booking or Activity entry.
  * The screen that says "sent" has to know which of the two happened, because
  * "sent to the Hacienda" and "saved in your browser" are different promises to
  * a Guest, and only one of them gets the Guest their dates.
@@ -444,6 +448,12 @@ export const cloudBookingsDB = {
     return unsub
   },
 
+  /** Courtesy/pre-upload guard. Only Firestore's request.time is authoritative. */
+  async validateGuestCheckIn(checkIn: string): Promise<BookingDateValidation> {
+    const days = await bookingPolicyDB.getMinimumLeadTimeDays()
+    return validateMinimumBookingLeadTime(checkIn, new Date(), days)
+  },
+
   /**
    * Submit a Booking.
    *
@@ -455,6 +465,11 @@ export const cloudBookingsDB = {
     input: Omit<Booking, 'id' | 'status' | 'created_at'>,
     actor?: Actor,
   ): Promise<SubmittedBooking> {
+    // This is the public guest creation path; actor.now/source/uid must not
+    // select the clock or grant an Admin exemption. Admin lifecycle updates
+    // are separate and do not re-apply a creation-time constraint.
+    const dates = await this.validateGuestCheckIn(input.check_in)
+    if (!dates.ok) throw Object.assign(new Error(dates.reason), { code: dates.code })
     // The submission entry is signed by the identity the Booking is being
     // attached to. The Activity rule refuses an entry whose `actor_id` is not the
     // writer's uid, and the Booking carries the uid the Guest was given when the
@@ -509,10 +524,20 @@ export const cloudBookingsDB = {
         storage: 'cloud',
       }
     } catch (e) {
-      // The write did not land: keep the Booking here so nothing the Guest typed
-      // is lost, and remember why — the success screen tells them the truth
-      // rather than promising a request that never left the device.
+      // Remember why the write did not land. Non-policy failures keep the
+      // existing labelled local fallback; a security refusal must store nothing.
       lastWriteFailure = describeFirestoreFailure(e)
+      // A security refusal is not an offline booking. In particular, server
+      // time/policy can reject a stale or manipulated client check. Never replay
+      // that rejected create into localStorage or append an Activity entry.
+      if (['permission-denied', 'unauthenticated'].includes(lastWriteFailure.code)) {
+        // Surface a changed policy / midnight boundary as the domain message,
+        // not Firebase's technical permission error. Other refusals stay generic.
+        const days = await bookingPolicyDB.getMinimumLeadTimeDays()
+        const currentDates = validateMinimumBookingLeadTime(input.check_in, new Date(), days)
+        if (!currentDates.ok) throw Object.assign(new Error(currentDates.reason), { code: currentDates.code })
+        throw new Error(`The booking could not be submitted. Check-in must be at least ${days} days from today. Please check your downpayment details and try again.`)
+      }
       console.warn(
         `[Firestore] add() failed, falling back to local. ${lastWriteFailure.advice}`,
         e,

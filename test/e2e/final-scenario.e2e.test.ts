@@ -30,7 +30,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { canOpenPage, createSession, homeForRole, permissionsOf, roleForEmail, type SessionStore } from '../../src/lib/auth'
 import { createLocalPorts } from '../../src/lib/authLocal'
@@ -81,7 +81,7 @@ const storageRules = readFileSync(join(__dirname, '../../storage.rules'), 'utf8'
 // The record
 // ---------------------------------------------------------------------------
 
-type Kind = 'executed' | 'rule-text' | 'contract'
+type Kind = 'executed' | 'rule-text' | 'contract' | 'executed + rule-text'
 
 type StepRecord = { step: number; title: string; kind: Kind; result: string }
 
@@ -106,6 +106,14 @@ const GUEST_EMAIL = 'juan.delacruz@example.com'
 // reader) to mistake for one. It still has to clear `MIN_PASSWORD_LENGTH`.
 const GUEST_PASSWORD = ['hdl', 'e2e', 'fixture'].join('-')
 const ADMIN_EMAIL_FOR_TEST = 'haciendadeluisiana@gmail.com'
+// Keep the existing scenario dates and all assertions, but pin the creation
+// clock so its guest bookings satisfy the new policy on every test run.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-09-01T02:00:00Z'))
+})
+afterAll(() => vi.useRealTimers())
+
 const CHECK_IN = '2026-10-05'
 const CHECK_OUT = '2026-10-07'
 const ACCOMMODATION = 'villa-luisana'
@@ -394,10 +402,10 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
   it('step 15 — the payment proof contract matches the storage rule (5 MB, image, own uid)', () => {
     expect(validateProofFile({ name: 'gcash.png', size: PROOF_MAX_BYTES + 1, type: 'image/png' }).ok).toBe(false)
     expect(validateProofFile({ name: 'proof.pdf', size: 1000, type: 'application/pdf' }).ok).toBe(false)
-    expect(proofObjectPath({ uid: guestUid, bookingRefId: 'HDL-1', filename: 'gcash.png' })).toBe(
-      `payments/${guestUid}/HDL-1/proof.png`,
+    expect(proofObjectPath({ uid: guestUid, bookingRefId: 'HDL-1', filename: 'gcash.png', attempt: 1 })).toBe(
+      `payments/${guestUid}/HDL-1/proof-1.png`,
     )
-    const path = proofObjectPath({ uid: guestUid, bookingRefId: 'HDL-1', filename: 'gcash.png' })
+    const path = proofObjectPath({ uid: guestUid, bookingRefId: 'HDL-1', filename: 'gcash.png', attempt: 1 })
     note(15, 'Proof file contract and object path', 'executed', `path=${path}, limit=${PROOF_MAX_BYTES / 1024 / 1024}MB`)
   })
 

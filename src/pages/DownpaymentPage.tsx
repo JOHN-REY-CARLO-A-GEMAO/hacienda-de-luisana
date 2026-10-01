@@ -89,28 +89,35 @@ export function DownpaymentPage() {
   }
 
   const submit = async () => {
-    if (!proofFile) {
-      setError('Upload a screenshot of your downpayment. The booking cannot be submitted without it.')
-      return
-    }
-    const amountCheck = validateAmount(amount)
-    if (!amountCheck.ok) {
-      setError(amountCheck.message)
-      return
-    }
-    const claimed = Number(amountCheck.value)
-    if (dueNow !== null && claimed < dueNow) {
-      setError(`The downpayment due now is ${peso(dueNow)}. The screenshot has to cover at least that amount.`)
-      return
-    }
-    const limited = checkRateLimit('booking:create', LIMITS.booking)
-    if (!limited.ok) {
-      setError(limited.message)
-      return
-    }
     setBusy(true)
     setError('')
     try {
+      // Re-check the current policy and Manila date: a draft may have been
+      // edited, or left open overnight. No proof or booking is stored first.
+      const dates = await cloudBookingsDB.validateGuestCheckIn(draft.check_in)
+      if (!dates.ok) {
+        setError(dates.reason)
+        return
+      }
+      if (!proofFile) {
+        setError('Upload a screenshot of your downpayment. The booking cannot be submitted without it.')
+        return
+      }
+      const amountCheck = validateAmount(amount)
+      if (!amountCheck.ok) {
+        setError(amountCheck.message)
+        return
+      }
+      const claimed = Number(amountCheck.value)
+      if (dueNow !== null && claimed < dueNow) {
+        setError(`The downpayment due now is ${peso(dueNow)}. The screenshot has to cover at least that amount.`)
+        return
+      }
+      const limited = checkRateLimit('booking:create', LIMITS.booking)
+      if (!limited.ok) {
+        setError(limited.message)
+        return
+      }
       const availability = await cloudBookingsDB.checkAvailability({
         accommodation: draft.accommodation,
         check_in: draft.check_in,
@@ -121,6 +128,13 @@ export function DownpaymentPage() {
         return
       }
       const uid = (await ensureGuestUid()) ?? undefined
+      // Availability/auth can take time. Check again immediately before the
+      // screenshot leaves the device (e.g. if Manila midnight passed).
+      const uploadDates = await cloudBookingsDB.validateGuestCheckIn(draft.check_in)
+      if (!uploadDates.ok) {
+        setError(uploadDates.reason)
+        return
+      }
       const provisionalRef = `HDL-${Math.floor(1000 + Math.random() * 9000)}`
       const uploaded = await uploadPaymentProof({ file: proofFile, bookingRefId: provisionalRef })
       if (!uploaded.ok) {

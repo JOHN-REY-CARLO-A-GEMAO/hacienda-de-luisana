@@ -66,7 +66,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 ### Features
 
 - Responsive landing (Hero, Accommodations, Experience, Gallery, Location, Reviews, FAQ)
-- `/book` — availability check against stored Bookings (24-hour Date hold), Booking submission → Firestore (localStorage fallback in demo mode)
+- `/book` — Guests book at least **30 days before check-in** (calendar dates in **Asia/Manila**, configurable via `site_config/booking`); native date-picker minimum plus authoritative Firestore create validation. Availability checks, 24-hour Date holds, downpayment proof and Pending → Admin review remain intact. See [BOOKING_POLICY.md](./BOOKING_POLICY.md) for configuration, enforcement, verification and deployment.
 - `/account` — the Guest's own Bookings: status timeline, Date hold countdown, Payment plan choice from the published rates, Payment proof upload, withdraw, Activity log
 - `/login`, `/guest/auth` — Guest sign-in / sign-up, email + password and Google, password reset, session kept across reloads
 - `/admin/*`, `/app/*` — a notice: the Admin dashboard moved to the Admin mobile app

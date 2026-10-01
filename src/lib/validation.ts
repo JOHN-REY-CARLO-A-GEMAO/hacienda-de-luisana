@@ -1,4 +1,5 @@
 /** Shared field validation. Used by forms and tests. Never silent-truncate. */
+import { bookingBusinessDate } from './booking'
 
 export const MIN_GUEST_AGE = 10
 export const PH_MOBILE_MAX_DIGITS = 11
@@ -135,7 +136,7 @@ export function validateStayDates(checkIn: string, checkOut: string, now = new D
   if (!inRes.ok) return { ok: false, field: 'check_in', message: inRes.message }
   const outRes = validateCalendarDate(checkOut, 'Check-out')
   if (!outRes.ok) return { ok: false, field: 'check_out', message: outRes.message }
-  const today = todayIso(now)
+  const today = bookingBusinessDate(now)
   if (checkIn < today) return { ok: false, field: 'check_in', message: 'Check-in cannot be in the past' }
   const nights = nightsBetween(checkIn, checkOut)
   if (nights == null || nights < MIN_BOOKING_NIGHTS) {

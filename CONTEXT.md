@@ -46,6 +46,9 @@ _Avoid_: Room, villa, property (the property is the whole estate)
 A Guest's request for one Accommodation over a date range, tracked from submission through to a completed stay.
 _Avoid_: Reservation (a Booking that has been paid and reserved), inquiry, order
 
+**Minimum booking lead time**:
+The calendar days a Guest must leave between creating a Booking and check-in. Hacienda de LuisAna requires Guests to create Bookings at least **30 calendar days** before the intended check-in date, using **Asia/Manila** for today. Exactly today + 30 days is allowed; today + 29 is not. The Admin-owned `site_config/booking.minimumBookingLeadTimeDays` may change the requirement; an absent setting defaults to 30. The website disables earlier dates and pre-checks before proof upload, but `firestore.rules` is the authoritative create-time enforcement using server time. Existing Bookings and Admin lifecycle/manual operations are not retroactively restricted.
+
 **Stay**:
 The period a Guest occupies an Accommodation, from check-in to check-out.
 
