@@ -1,4 +1,7 @@
 import { defineConfig } from 'vitest/config'
+import { assertIsolatedProcess } from './scripts/phase0/boundary.mjs'
+
+assertIsolatedProcess()
 
 /**
  * The offline Security Rules suite: the real `firestore.rules` and
@@ -7,7 +10,10 @@ import { defineConfig } from 'vitest/config'
  * suite, which is the canonical one.
  */
 export default defineConfig({
+  envDir: 'test/phase0/empty-env',
   test: {
+    fileParallelism: false,
+    maxWorkers: 1,
     environment: 'node',
     globals: true,
     include: ['test/rules/**/*.test.ts'],

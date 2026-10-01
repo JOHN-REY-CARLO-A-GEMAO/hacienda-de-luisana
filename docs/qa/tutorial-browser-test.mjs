@@ -18,6 +18,9 @@
 // the run that introduced this file).
 //
 // Screenshots: $TMPDIR/hdl-tour-shots/<mode>/  ·  report: $TMPDIR/hdl-tour-report-<mode>.json
+import { assertIsolatedProcess } from '../../scripts/phase0/boundary.mjs'
+assertIsolatedProcess()
+
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'

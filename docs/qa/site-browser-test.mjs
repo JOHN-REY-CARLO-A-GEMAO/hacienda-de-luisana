@@ -18,6 +18,9 @@
 // Env: BASE_URL (default http://localhost:3000), CHROMIUM_PATH (else @sparticuz/chromium,
 // else Playwright's own Chromium). Screenshots: $TMPDIR/hdl-site-shots/<mode>/;
 // report: $TMPDIR/hdl-site-report-<mode>.json. Exit code 1 on any FAIL.
+import { assertIsolatedProcess } from '../../scripts/phase0/boundary.mjs'
+assertIsolatedProcess()
+
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'

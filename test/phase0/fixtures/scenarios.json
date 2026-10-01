@@ -1,0 +1,80 @@
+{
+  "meta": { "synthetic": true, "version": 1, "now": "2026-10-01T04:00:00.000Z", "project": "demo-hacienda", "notes": "Synthetic-only. Financial variants describe inputs, not evidence of received money. Canonical rule creates use explicit far-future dates to respect the emulator server clock. No fixture is a policy decision." },
+  "identities": {
+    "anonymousGuest": { "uid": "phase0-anonymous-guest", "isAnonymous": true, "provider": "anonymous", "emailVerified": false, "role": "guest" },
+    "authenticatedGuest": { "uid": "phase0-authenticated-guest", "isAnonymous": false, "provider": "password", "email": "guest-a@phase0.example.invalid", "emailVerified": true, "role": "guest" },
+    "secondGuest": { "uid": "phase0-second-guest", "isAnonymous": false, "provider": "google.com", "email": "guest-b@phase0.example.invalid", "emailVerified": true, "role": "guest" },
+    "adminA": { "uid": "phase0-admin-a", "email": "admin-a@phase0.example.invalid", "isAnonymous": false, "emailVerified": true, "provider": "password", "role": "admin", "seedProfile": true },
+    "adminB": { "uid": "phase0-admin-b", "email": "admin-b@phase0.example.invalid", "isAnonymous": false, "emailVerified": true, "provider": "google.com", "role": "admin", "seedProfile": true },
+    "nonAdmin": { "uid": "phase0-nonadmin", "email": "nonadmin@phase0.example.invalid", "isAnonymous": false, "emailVerified": true, "provider": "password", "role": "guest" },
+    "forgedUid": { "uid": "phase0-forged-uid", "claimsBookingOwner": "phase0-anonymous-guest", "role": "guest" },
+    "unverifiedAllowlisted": { "uid": "phase0-unverified-bootstrap", "emailSource": "existing-rules-allowlist-index-0", "emailVerified": false, "provider": "password", "role": "guest", "notes": "Emulator token claims only; no registration or ownership claim of the real address." }
+  },
+  "booking": {
+    "id": "phase0-booking-a", "ref_id": "HDL-PHASE0-A", "uid": "phase0-anonymous-guest", "source": "web",
+    "guest_name": "Synthetic Guest A", "phone": "00000000000", "email": "guest-a@phase0.example.invalid", "guests": 2,
+    "accommodation": "main-house", "special_requests": "Phase 0 synthetic fixture; not an actual reservation",
+    "check_in": "2026-12-01", "check_out": "2026-12-03", "created_at": "2026-10-01T04:00:00.000Z",
+    "status": "Pending", "hold_expires_at": "2026-10-02T04:00:00.000Z", "payment_status": "pending",
+    "payment_proof_url": "payments/phase0-anonymous-guest/HDL-PHASE0-A/proof-1.png",
+    "paymentProofUrl": "payments/phase0-anonymous-guest/HDL-PHASE0-A/proof-1.png",
+    "payment_reference": "PHASE0-TRANSFER-001", "amount_claimed": 12000,
+    "stay_total": 24000, "amount_due": 12000, "security_deposit": 1500, "balance_due": 13500,
+    "amount_verified": 0, "refund_status": "none", "refund_total": 0,
+    "policy_version": "phase0-v1", "policy_effective_date": "2026-09-01"
+  },
+  "states": {
+    "new": ["Pending", "Approved", "Rejected", "Checked-In", "Staying", "Checked-Out", "Completed", "Cancelled", "Expired"],
+    "historical": ["Payment Pending", "Payment Verified", "Reserved", "Confirmed", "KYC Submitted"],
+    "newPath": ["Pending", "Approved", "Checked-In", "Staying", "Checked-Out", "Completed"],
+    "historicalPath": ["Payment Pending", "Reserved", "Checked-In", "Staying", "Checked-Out", "Completed"]
+  },
+  "money": {
+    "noPayment": { "payment_status": "unpaid", "payment_proof_url": null, "paymentProofUrl": null, "amount_claimed": 0, "amount_verified": 0 },
+    "claimedOnly": { "payment_status": "pending", "amount_claimed": 12000, "amount_verified": 0 },
+    "proofAttached": { "payment_status": "pending", "amount_claimed": 12000, "payment_proof_url": "payments/phase0-anonymous-guest/HDL-PHASE0-A/proof-1.png" },
+    "partial": { "payment_status": "pending", "amount_claimed": 3000, "amount_verified": 0, "amount_due": 12000 },
+    "tamperedPartial": { "payment_status": "pending", "amount_claimed": 1, "amount_due": 0, "amount_verified": 0 },
+    "full": { "payment_status": "verified", "amount_claimed": 25500, "amount_verified": 25500, "balance_due": 0, "payment_verified_by": "phase0-admin-a", "payment_verified_at": "2026-10-01T04:00:00.000Z" },
+    "overpayment": { "payment_status": "pending", "amount_claimed": 30000, "amount_due": 12000 },
+    "duplicateReference": { "payment_status": "pending", "amount_claimed": 12000, "payment_reference": "PHASE0-TRANSFER-001" },
+    "rejectedProof": { "payment_status": "rejected", "payment_reject_reason": "Synthetic mismatch", "amount_claimed": 12000 },
+    "refundPending": { "status": "Cancelled", "payment_status": "verified", "amount_verified": 12000, "refund_status": "initiated", "refund_total": 6000 },
+    "refundCompleted": { "status": "Cancelled", "payment_status": "verified", "amount_verified": 12000, "refund_status": "refunded", "refund_total": 6000 },
+    "refundUnresolved": { "status": "Rejected", "payment_status": "rejected", "amount_claimed": 12000, "amount_verified": 0, "refund_status": "none", "refund_total": 0, "test_received_money_unreconciled": true },
+    "outstandingBalanceAndDeposit": { "payment_status": "verified", "amount_verified": 1, "balance_due": 23999, "security_deposit": 1500 }
+  },
+  "inventory": {
+    "singleUnit": { "id": "main-house", "availableUnits": 1 },
+    "multipleUnits": { "id": "house-a-camping", "availableUnits": 2 },
+    "occupiedUnit": { "id": "phase0-unit-occupied", "accommodation": "main-house", "status": "occupied" },
+    "maintenanceUnit": { "id": "phase0-unit-maintenance", "accommodation": "house-a-camping", "status": "maintenance", "pricePerNight": 999 },
+    "consecutiveNights": [
+      { "id": "phase0-night-1", "accommodation": "house-a-camping", "check_in": "2026-12-01", "check_out": "2026-12-02", "status": "Approved" },
+      { "id": "phase0-night-2", "accommodation": "house-a-camping", "check_in": "2026-12-02", "check_out": "2026-12-03", "status": "Approved" }
+    ],
+    "overlappingNights": [
+      { "id": "phase0-overlap-1", "accommodation": "house-a-camping", "check_in": "2026-12-01", "check_out": "2026-12-03", "status": "Approved" },
+      { "id": "phase0-overlap-2", "accommodation": "house-a-camping", "check_in": "2026-12-02", "check_out": "2026-12-04", "status": "Approved" }
+    ],
+    "lastUnitRace": { "capacity": 1, "bookingIds": ["phase0-booking-a", "phase0-booking-b"], "check_in": "2026-12-01", "check_out": "2026-12-03" }
+  },
+  "evidence": {
+    "valid": { "path": "payments/phase0-anonymous-guest/HDL-PHASE0-A/proof-1.png", "exists": true, "ownerUid": "phase0-anonymous-guest", "bookingRef": "HDL-PHASE0-A", "mime": "image/png", "bytes": 32, "mode": "cloud" },
+    "missing": { "path": "payments/phase0-anonymous-guest/HDL-PHASE0-A/missing.png", "exists": false, "mode": "cloud" },
+    "foreignUid": { "path": "payments/phase0-second-guest/HDL-PHASE0-A/proof-1.png", "exists": true, "ownerUid": "phase0-second-guest", "mode": "cloud" },
+    "wrongBooking": { "path": "payments/phase0-anonymous-guest/HDL-PHASE0-B/proof-1.png", "exists": true, "bookingRef": "HDL-PHASE0-B", "mode": "cloud" },
+    "duplicate": { "path": "payments/phase0-anonymous-guest/HDL-PHASE0-A/proof-1.png", "exists": true, "payment_reference": "PHASE0-TRANSFER-001", "mode": "cloud" },
+    "localOnly": { "path": "payments/phase0-anonymous-guest/HDL-PHASE0-A/proof-1.png", "exists": false, "browserExists": true, "mode": "local" },
+    "cloudOnly": { "path": "payments/phase0-anonymous-guest/HDL-PHASE0-A/proof-2.png", "exists": true, "browserExists": false, "mode": "cloud" },
+    "invalidFile": { "name": "phase0.pdf", "type": "application/pdf", "size": 32 },
+    "tooLarge": { "name": "phase0.png", "type": "image/png", "size": 5242880 }
+  },
+  "policy": {
+    "rateCard": { "nightlyRate": 12000, "securityDeposit": 1500, "downPaymentPercent": 50 },
+    "historical": { "version": "phase0-v1", "refundPercent": 100, "depositRefundPercent": 100 },
+    "changedSameVersion": { "version": "phase0-v1", "refundPercent": 0, "depositRefundPercent": 100 }
+  },
+  "location": { "conversationId": "phase0-conversation-a", "guestUid": "phase0-anonymous-guest", "streamSecret": "0123456789abcdef0123456789abcdef", "minutes": 30, "lat": 14.1, "lng": 121.3, "accuracy": 12 },
+  "flow": ["Browse", "Booking start", "Details", "Official payment / proof", "Pending", "Admin review", "Approved", "Checked-In", "Staying", "Checked-Out", "Completed"]
+}
