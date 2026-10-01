@@ -109,6 +109,39 @@ service cloud.firestore {
       return role() == 'admin';
     }
 
+    // Guest advance-booking policy, in the existing Admin-owned site_config.
+    // This document is the authoritative setting for both clients and rules.
+    // The fallback mirrors MINIMUM_BOOKING_LEAD_TIME_DAYS in booking/leadTime.ts.
+    function minimumBookingLeadTimeDays() {
+      let defaultDays = 30;
+      let policy = /databases/$(database)/documents/site_config/booking;
+      let days = exists(policy)
+        ? get(policy).data.get('minimumBookingLeadTimeDays', defaultDays)
+        : defaultDays;
+      return days is int && days > 0 ? days : defaultDays;
+    }
+
+    function validBookingPolicy() {
+      // Preserve other Admin-owned settings/metadata on this document. Only
+      // the new field is constrained; an absent field uses the shared default.
+      return !request.resource.data.keys().hasAny(['minimumBookingLeadTimeDays'])
+        || (request.resource.data.minimumBookingLeadTimeDays is int
+            && request.resource.data.minimumBookingLeadTimeDays > 0);
+    }
+
+    function meetsMinimumBookingLeadTime(checkIn) {
+      let parts = checkIn.split('-');
+      let year = int(parts[0]);
+      let month = int(parts[1]);
+      let day = int(parts[2]);
+      let date = timestamp.date(year, month, day);
+      // request.time is trusted server time. Asia/Manila is UTC+08:00 with
+      // no DST. Shift BEFORE truncating to a date to avoid UTC off-by-one days.
+      let today = (request.time + duration.value(8, 'h')).date();
+      return date.year() == year && date.month() == month && date.day() == day
+        && date >= today + duration.value(minimumBookingLeadTimeDays(), 'd');
+    }
+
     // ------------------------------------------------------------------
     // The two invariants the rule layer has to hold on its own
     // ------------------------------------------------------------------
@@ -214,6 +247,11 @@ service cloud.firestore {
         && request.resource.data.email is string
         && request.resource.data.check_in is string
         && request.resource.data.check_out is string
+        // Guest/public creates obey the lead time; only a backend-resolved
+        // Admin may create a manual booking sooner. No existing update/action
+        // is gated, including review of previously submitted bookings.
+        && (isAdmin() || (request.resource.data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+                         && meetsMinimumBookingLeadTime(request.resource.data.check_in)))
         && request.resource.data.status == 'Pending'
         && request.resource.data.get('uid', '') != ''
         // ADR-0012: a Booking is born Pending, and only with a downpayment
@@ -439,7 +477,8 @@ service cloud.firestore {
     // the app's Rates screen writes (public read, Admin write).
     match /site_config/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin()
+        && (docId != 'booking' || request.resource == null || validBookingPolicy());
     }
 
     // The retired tracking module's collection (ADR-0009). Superseded for

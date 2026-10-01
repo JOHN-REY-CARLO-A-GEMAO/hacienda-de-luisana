@@ -18,6 +18,7 @@ import App from '../../src/App'
 import { AuthProvider } from '../../src/context/AuthContext'
 import { resetAppSession } from '../../src/lib/authSession'
 import { COOKIE } from '../../src/lib/cookies'
+import { bookingBusinessDate } from '../../src/lib/booking'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -131,7 +132,7 @@ function tutorialCookieSet(): boolean {
 
 /** Dates the booking form will accept, whenever the test happens to run. */
 function futureDate(offsetDays: number): string {
-  const d = new Date(Date.now() + offsetDays * 86_400_000)
+  const d = new Date(Date.parse(`${bookingBusinessDate()}T00:00:00Z`) + offsetDays * 86_400_000)
   return d.toISOString().slice(0, 10)
 }
 

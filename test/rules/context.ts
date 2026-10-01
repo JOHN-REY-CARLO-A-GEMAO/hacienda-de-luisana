@@ -40,8 +40,9 @@ export const bookingDoc = (overrides: DocData = {}): DocData => ({
   guest_name: 'Ana Reyes',
   phone: '09171234567',
   email: 'ana@example.com',
-  check_in: '2026-10-01',
-  check_out: '2026-10-03',
+  // Exactly 30 days after DEFAULT_REQUEST_TIME's Manila date.
+  check_in: '2026-10-24',
+  check_out: '2026-10-26',
   guests: 2,
   accommodation: 'Main House',
   special_requests: '',

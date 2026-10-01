@@ -312,8 +312,8 @@ describe('evaluator: errors deny, and never silently allow', () => {
 
   it('throws on constructs it does not model, so coverage failures are loud', () => {
     const request = { path: 'docs/one', method: 'get' as const, auth: null, resourceData: null }
-    // The clock is not modelled at all.
-    expect(() => allows(request, fixture('request.time > timestamp.date(2020, 1, 1)'))).toThrow(UnsupportedConstructError)
+    // Unknown stdlib members still fail loudly.
+    expect(() => allows(request, fixture('request.time > timestamp.unknown(2020, 1, 1)'))).toThrow(UnsupportedConstructError)
     // Nor is an unknown global, nor a member read of a path.
     expect(() => allows(request, fixture('math.abs(-1) == 1'))).toThrow(UnsupportedConstructError)
     expect(() =>
@@ -451,5 +451,40 @@ service cloud.firestore {
 }
 `
     expect(allows({ ...base, method: 'update', requestData: {}, resourceData: {} }, readOnly)).toBe(false)
+  })
+})
+
+describe('evaluator: calendar stdlib used by the booking lead-time rule', () => {
+  it('constructs a UTC date, and converts canonical digit strings to ints', () => {
+    expect(check("timestamp.date(int('2026'), int('10'), int('01')) == request.time", {
+      time: Date.parse('2026-10-01T00:00:00Z'),
+    })).toBe(true)
+    expect(check("int('no-date') == 0")).toBe(false)
+  })
+  it('truncates a timestamp only after adding the Manila offset', () => {
+    const time = Date.parse('2026-09-30T16:00:00Z')
+    expect(check("request.time.date() == timestamp.date(2026, 9, 30)", { time })).toBe(true)
+    expect(check("(request.time + duration.value(8, 'h')).date() == timestamp.date(2026, 10, 1)", { time })).toBe(true)
+  })
+  it('exposes UTC year, month and day on timestamps, not machine-local parts', () => {
+    expect(check('request.time.year() == 2028 && request.time.month() == 2 && request.time.day() == 29', {
+      time: Date.parse('2028-02-29T23:59:59Z'),
+    })).toBe(true)
+  })
+  it.each(['timestamp.date(2026, 2, 30)', 'timestamp.date(2026, 13, 1)', 'timestamp.date(0, 1, 1)'])(
+    'does not silently normalize an invalid date: %s', (expression) => {
+      const result = evaluate({ path: 'docs/one', method: 'get', auth: null }, fixture(`${expression} > request.time`))
+      expect(result.allow).toBe(false)
+      expect(result.statements[0].result).toBe('error')
+    },
+  )
+  it('evaluates function-local lets in order and isolates repeated invocations', () => {
+    expect(check('dateOf(1) == timestamp.date(2026, 10, 1) && dateOf(2) == timestamp.date(2026, 10, 2)', {}, {
+      extra: `function dateOf(day) {
+        let year = int('2026');
+        let date = timestamp.date(year, 10, day);
+        return date;
+      }`,
+    })).toBe(true)
   })
 })

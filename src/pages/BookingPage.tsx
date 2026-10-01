@@ -20,6 +20,8 @@ import { LEGAL_VERSION } from '../lib/legal'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
+import { useBookingPolicy } from '../hooks/useBookingPolicy'
+import { validateMinimumBookingLeadTime } from '../lib/booking'
 
 type FormState = {
   check_in: string
@@ -34,8 +36,6 @@ type FormState = {
 
 type Errors = Partial<Record<keyof FormState, string>>
 
-const today = () => new Date().toISOString().slice(0, 10)
-
 const OPTIONS = [
   ...ACCOMMODATIONS.filter((a) => a.active).map((a) => ({ id: a.id, label: a.name })),
   { id: 'other', label: 'Other / Ask Us' },
@@ -43,6 +43,7 @@ const OPTIONS = [
 
 export function BookingPage() {
   const { user } = useAuth()
+  const { minimumBookingLeadTimeDays, earliestCheckIn } = useBookingPolicy()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const initialAccommodation = params.get('accommodation') || ACCOMMODATIONS[0].id
@@ -106,7 +107,8 @@ export function BookingPage() {
   }, [rate, nights])
 
   useEffect(() => {
-    if (!form.check_in || !form.check_out || !form.accommodation) {
+    if (!form.check_in || !form.check_out || !form.accommodation
+        || !validateMinimumBookingLeadTime(form.check_in, new Date(), minimumBookingLeadTimeDays).ok) {
       setAvailability(null)
       return
     }
@@ -132,7 +134,7 @@ export function BookingPage() {
     return () => {
       alive = false
     }
-  }, [form.check_in, form.check_out, form.accommodation, nights])
+  }, [form.check_in, form.check_out, form.accommodation, nights, minimumBookingLeadTimeDays, earliestCheckIn])
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -141,8 +143,10 @@ export function BookingPage() {
 
   const validate = (): boolean => {
     const e: Errors = {}
+    const leadTime = validateMinimumBookingLeadTime(form.check_in, new Date(), minimumBookingLeadTimeDays)
+    if (!leadTime.ok) e.check_in = leadTime.reason
     const stay = validateStayDates(form.check_in, form.check_out)
-    if (!stay.ok) e[stay.field] = stay.message
+    if (!stay.ok && !e[stay.field]) e[stay.field] = stay.message
     const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity ?? 12)
     if (!guests.ok) e.guests = guests.message
     if (!form.accommodation) e.accommodation = 'Select an accommodation'
@@ -235,12 +239,17 @@ export function BookingPage() {
 
             <div>
               <h2 className="font-serif text-2xl text-forest-900">Stay Details</h2>
+              <p id="booking-lead-time" className="mt-2 text-sm text-forest-700">
+                Book at least {minimumBookingLeadTimeDays} days before check-in.
+                Earliest check-in: {earliestCheckIn} (Philippine time).
+              </p>
               <div className="mt-6 grid sm:grid-cols-2 gap-5" data-tour="stay-details">
                 <Field label="Check-in" error={errors.check_in}>
                   <input
                     type="date"
                     className="field"
-                    min={today()}
+                    min={earliestCheckIn}
+                    aria-describedby="booking-lead-time"
                     value={form.check_in}
                     data-tour-field="check-in"
                     onChange={(e) => set('check_in', e.target.value)}
@@ -250,7 +259,7 @@ export function BookingPage() {
                   <input
                     type="date"
                     className="field"
-                    min={form.check_in || today()}
+                    min={form.check_in >= earliestCheckIn ? form.check_in : earliestCheckIn}
                     value={form.check_out}
                     data-tour-field="check-out"
                     onChange={(e) => set('check_out', e.target.value)}

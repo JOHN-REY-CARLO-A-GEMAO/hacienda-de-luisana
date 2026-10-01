@@ -89,8 +89,9 @@ const bookingDoc = (overrides: Record<string, unknown> = {}) => ({
   guest_name: 'Ana Reyes',
   phone: '09171234567',
   email: 'ana@example.com',
-  check_in: '2026-10-01',
-  check_out: '2026-10-03',
+  // Existing create/auth/payment tests need a lead-time-valid fixture.
+  check_in: manilaDatePlus(60),
+  check_out: manilaDatePlus(62),
   guests: 2,
   accommodation: 'Main House',
   status: 'Pending',
@@ -854,5 +855,109 @@ describe('storage', () => {
 
   it('refuses a path with no rule', async () => {
     await assertFails(uploadBytes(ref(admin().storage(), 'backups/dump.png'), bytes, { contentType: 'image/png' }))
+  })
+})
+
+// Independent calendar arithmetic, not the app helper: the emulator's request
+// clock is real and cannot be set by the client. UTC+08:00 is Asia/Manila today.
+function manilaDatePlus(days: number): string {
+  const calendar = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  calendar.setUTCHours(0, 0, 0, 0)
+  calendar.setUTCDate(calendar.getUTCDate() + days)
+  return calendar.toISOString().slice(0, 10)
+}
+
+describe('guest minimum advance booking: direct Firestore requests', () => {
+  it.each([0, 1, 7, 29])('refuses today + %i with no booking/payment/activity records', async (days) => {
+    const guest = anonymousGuest()
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'direct-invalid'), bookingDoc({
+      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 2),
+    })))
+    await seed(async (owner) => {
+      expect((await getDocs(collection(owner.firestore(), 'bookings'))).size).toBe(0)
+      expect((await getDocs(collection(owner.firestore(), 'payment_references'))).size).toBe(0)
+      expect((await getDocs(collection(owner.firestore(), 'bookings', 'direct-invalid', 'activity'))).size).toBe(0)
+    })
+  })
+
+  it.each([30, 31, 60])('allows today + %i through the existing Pending/proof workflow', async (days) => {
+    const guest = anonymousGuest()
+    const target = doc(guest.firestore(), 'bookings', 'direct-valid')
+    await assertSucceeds(setDoc(target, bookingDoc({
+      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 2),
+    })))
+    const stored = await assertSucceeds(getDoc(target))
+    expect(stored.data()).toMatchObject({ status: 'Pending', payment_status: 'pending', amount_claimed: 5000 })
+    expect(stored.data()?.payment_proof_url).toBeTruthy()
+  })
+
+  it('does not trust created_at, a forged policy, source or an Admin actor/uid claim', async () => {
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'bookings', 'spoofed'), bookingDoc({
+      check_in: manilaDatePlus(7), created_at: Timestamp.fromDate(new Date('2020-01-01T00:00:00Z')),
+      source: 'admin', actor: 'admin', uid: 'admin-uid-1', minimumBookingLeadTimeDays: 0,
+    })))
+    await seed(async (owner) => expect((await getDocs(collection(owner.firestore(), 'bookings'))).size).toBe(0))
+  })
+
+  it('applies the same lead time to the existing signed-out public create path', async () => {
+    const publicDB = env.unauthenticatedContext().firestore()
+    await assertFails(setDoc(doc(publicDB, 'bookings', 'public-invalid'), bookingDoc({ check_in: manilaDatePlus(7) })))
+    await assertSucceeds(setDoc(doc(publicDB, 'bookings', 'public-valid'), bookingDoc({ check_in: manilaDatePlus(30) })))
+  })
+
+  it.each(['2026-11-31', '2027-02-29', '2099-13-01', '2099-01-01T00:00:00Z', '2099-1-01', 'garbage'])(
+    'rejects malformed calendar date %s', async (check_in) => {
+      await assertFails(setDoc(doc(anonymousGuest().firestore(), 'bookings', 'bad-date'), bookingDoc({ check_in })))
+    },
+  )
+
+  it('reads a configurable 45-day policy and refuses Guest changes to it', async () => {
+    const policy = doc(admin().firestore(), 'site_config', 'booking')
+    await assertSucceeds(setDoc(policy, { minimumBookingLeadTimeDays: 45 }))
+    const guest = anonymousGuest()
+    await assertSucceeds(getDoc(doc(guest.firestore(), 'site_config', 'booking')))
+    await assertFails(updateDoc(doc(guest.firestore(), 'site_config', 'booking'), { minimumBookingLeadTimeDays: 0 }))
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'policy-invalid'), bookingDoc({ check_in: manilaDatePlus(44) })))
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'policy-valid'), bookingDoc({ check_in: manilaDatePlus(45) })))
+  })
+
+  it.each([0, -1, 1.5, '45', null])('refuses invalid Admin policy value %s', async (minimumBookingLeadTimeDays) => {
+    await assertFails(setDoc(doc(admin().firestore(), 'site_config', 'booking'), { minimumBookingLeadTimeDays }))
+  })
+
+  it('preserves manual creates for both allowlisted and Profile-promoted Admins', async () => {
+    await assertSucceeds(setDoc(doc(admin().firestore(), 'bookings', 'manual'), bookingDoc({ check_in: manilaDatePlus(1) })))
+    await seed(async (owner) => setDoc(doc(owner.firestore(), 'profiles', 'promoted-admin-1'), { uid: 'promoted-admin-1', role: 'admin' }))
+    const promoted = env.authenticatedContext('promoted-admin-1', {})
+    await assertSucceeds(setDoc(doc(promoted.firestore(), 'bookings', 'manual-promoted'), bookingDoc({ check_in: manilaDatePlus(1) })))
+  })
+
+  it('does not revalidate lead time on existing Guest withdrawals or Admin approval', async () => {
+    await seed(async (owner) => {
+      await setDoc(doc(owner.firestore(), 'bookings', 'legacy-cancel'), bookingDoc({ check_in: manilaDatePlus(7) }))
+      await setDoc(doc(owner.firestore(), 'bookings', 'legacy-approve'), bookingDoc({ check_in: manilaDatePlus(7) }))
+    })
+    await assertSucceeds(updateDoc(doc(anonymousGuest().firestore(), 'bookings', 'legacy-cancel'), { status: 'Cancelled' }))
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'bookings', 'legacy-approve'), {
+      status: 'Approved', payment_status: 'verified', amount_verified: 5000,
+      payment_verified_at: new Date().toISOString(), payment_verified_by: 'admin-uid-1',
+    }))
+  })
+
+  it('still refuses a Guest changing the dates of an existing booking', async () => {
+    const guest = anonymousGuest()
+    const target = doc(guest.firestore(), 'bookings', 'immutable-dates')
+    await assertSucceeds(setDoc(target, bookingDoc()))
+    await assertFails(updateDoc(target, { check_in: manilaDatePlus(7) }))
+  })
+})
+
+
+describe('booking policy: existing Admin metadata', () => {
+  it('preserves unrelated Admin settings on the policy document', async () => {
+    const target = doc(admin().firestore(), 'site_config', 'booking')
+    await assertSucceeds(setDoc(target, { notes: 'existing Admin metadata' }))
+    await assertSucceeds(updateDoc(target, { minimumBookingLeadTimeDays: 45 }))
+    expect((await assertSucceeds(getDoc(target))).data()).toEqual({ notes: 'existing Admin metadata', minimumBookingLeadTimeDays: 45 })
   })
 })

@@ -324,7 +324,7 @@ describe('everything else', () => {
 
   it('keeps site images and site config (the published rates) to the Admin', () => {
     expect(allow(block(rules, 'match /gallery/{imageId}'), 'write:')).toBe('allow write: if isAdmin();')
-    expect(allow(block(rules, 'match /site_config/{docId}'), 'write:')).toBe('allow write: if isAdmin();')
+    expect(allow(block(rules, 'match /site_config/{docId}'), 'write:')).toBe("allow write: if isAdmin() && (docId != 'booking' || request.resource == null || validBookingPolicy());")
   })
 })
 

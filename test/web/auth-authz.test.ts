@@ -18,8 +18,9 @@ const request = {
   guest_name: 'Maria Santos',
   phone: '0917 123 4567',
   email: 'maria@example.com',
-  check_in: '2026-10-01',
-  check_out: '2026-10-04',
+  // Valid guest-creation dates; the auth/audit assertions are unchanged.
+  check_in: '2029-06-01',
+  check_out: '2029-06-04',
   guests: 4,
   accommodation: 'main-house',
   special_requests: '',

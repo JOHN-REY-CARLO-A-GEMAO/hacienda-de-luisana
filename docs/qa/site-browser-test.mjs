@@ -81,8 +81,9 @@ async function shot(page, label, fullPage = false) {
   return file
 }
 const futureDate = (days) => {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
+  const d = new Date(Date.now() + 8 * 60 * 60 * 1000) // Asia/Manila
+  d.setUTCHours(0, 0, 0, 0)
+  d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
 }
 

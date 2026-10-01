@@ -135,6 +135,22 @@ function durationConstructor(name: string, args: unknown[]): RuleDuration {
   return durationValue(value, unit)
 }
 
+/** timestamp.date(year, month, day), a UTC calendar date in the rules runtime. */
+function timestampConstructor(name: string, args: unknown[]): RuleTimestamp {
+  if (name !== 'date') return unsupported(`the timestamp member \`.${name}()\``)
+  const [year, month, day] = args as number[]
+  if (args.length !== 3 || !args.every((part) => typeof part === 'number' && Number.isInteger(part))
+      || year < 1 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) {
+    throw new RuleEvaluationError('timestamp.date() takes a valid year, month and day')
+  }
+  const date = new Date(0)
+  date.setUTCFullYear(year, month - 1, day)
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw new RuleEvaluationError('timestamp.date() takes a valid calendar date')
+  }
+  return ruleTimestamp(date)
+}
+
 /**
  * The clock every request is evaluated at unless it names one. A fixed instant,
  * never `Date.now()`: a suite that decides an expiry case has to be able to say
@@ -216,7 +232,7 @@ export class RuleEvaluationError extends Error {
   }
 }
 
-const unsupported = (what: string): never => {
+const unsupported: (what: string) => never = (what) => {
   throw new UnsupportedConstructError(`rules engine does not model ${what}`)
 }
 
@@ -634,6 +650,7 @@ function evalExpr(node: Node, scope: Scope): unknown {
     }
     case 'LiteralExpression':
       return literal(kid(node, 'Literal') ?? node)
+    case 'Id':
     case 'VariableSimpleExpression': {
       const name = text(kid(node, 'LocalVariableId') ?? node).trim()
       return lookupVariable(name, scope, node)
@@ -661,6 +678,7 @@ function evalExpr(node: Node, scope: Scope): unknown {
       // duration. `duration` is a type name, not a binding, so it is intercepted
       // here rather than resolved through the scope.
       if (text(base).trim() === 'duration') return durationConstructor(name, args)
+      if (text(base).trim() === 'timestamp') return timestampConstructor(name, args)
       return method(evalExpr(base, scope), name, args)
     }
     case 'FunctionCallSimpleExpression': {
@@ -969,6 +987,16 @@ function indexGet(base: unknown, key: unknown, semantics: Semantics = DEFAULT_SE
 }
 
 function method(base: unknown, name: string, args: unknown[]): unknown {
+  const firstArgument = args[0]
+  if (isTimestamp(base)) {
+    const date = new Date(base.__timestamp)
+    switch (name) {
+      case 'date': date.setUTCHours(0, 0, 0, 0); return ruleTimestamp(date)
+      case 'year': return date.getUTCFullYear()
+      case 'month': return date.getUTCMonth() + 1
+      case 'day': return date.getUTCDate()
+    }
+  }
   switch (name) {
     case 'size':
       if (typeof base === 'string') return base.length
@@ -1043,13 +1071,13 @@ function method(base: unknown, name: string, args: unknown[]): unknown {
       if (isSet(base) && isSet(args[0])) return setOf([...base.__set, ...args[0].__set])
       break
     case 'intersection':
-      if (isSet(base) && isSet(args[0])) return setOf(base.__set.filter((item) => args[0].__set.some((other) => deepEqual(item, other))))
+      if (isSet(base) && isSet(firstArgument)) return setOf(base.__set.filter((item) => firstArgument.__set.some((other) => deepEqual(item, other))))
       break
     case 'difference':
-      if (isSet(base) && isSet(args[0])) return setOf(base.__set.filter((item) => !args[0].__set.some((other) => deepEqual(item, other))))
+      if (isSet(base) && isSet(firstArgument)) return setOf(base.__set.filter((item) => !firstArgument.__set.some((other) => deepEqual(item, other))))
       break
     case 'removeAll':
-      if (Array.isArray(base) && Array.isArray(args[0])) return base.filter((item) => !args[0].some((other) => deepEqual(item, other)))
+      if (Array.isArray(base) && Array.isArray(firstArgument)) return base.filter((item) => !firstArgument.some((other) => deepEqual(item, other)))
       break
   }
   return unsupported(`the method \`.${name}()\` on ${describe(base)}`)
@@ -1158,6 +1186,12 @@ function globalCall(name: string, args: unknown[], scope: Scope, node: Node): un
   if (local) return callUserFunction(local, args, scope, name)
 
   switch (name) {
+    case 'int': {
+      const value = args[0]
+      if (typeof value === 'string' && /^[+-]?[0-9]+$/.test(value)) return Number(value)
+      if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
+      throw new RuleEvaluationError('int() takes a number or an integer string')
+    }
     case 'get':
     case 'getAfter': {
       const path = asPath(args[0], name)
@@ -1203,6 +1237,13 @@ function callUserFunction(binding: FnBinding, args: unknown[], scope: Scope, nam
     vars[param] = args[index]
   })
   const inner: Scope = { ...scope, vars, calls: scope.calls + 1 }
+  // v2 function-local let bindings are evaluated in order and remain scoped
+  // to this invocation, including on subsequent calls of the same function.
+  for (const binding of kids(fn.body, 'BindingDeclaration')) {
+    const variable = text(kid(binding, 'LocalVariableId')!).trim()
+    const expression = expressionChildren(binding).at(-1)!
+    vars[variable] = evalExpr(expression, inner)
+  }
   const returns = collectReturns(fn.body)
   if (returns.length !== 1) unsupported(`a function body with ${returns.length} return statements`)
   return evalExpr(expressionChildren(returns[0]).at(-1)!, inner)
