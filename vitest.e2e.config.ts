@@ -1,4 +1,7 @@
 import { defineConfig } from 'vitest/config'
+import { assertIsolatedProcess } from './scripts/phase0/boundary.mjs'
+
+assertIsolatedProcess()
 
 // The final end-to-end scenario (P8). Its own config so the record can be run
 // and reprinted on demand without dragging the whole web suite in:
@@ -11,7 +14,10 @@ import { defineConfig } from 'vitest/config'
 // evaluator. It does not need Java, so it runs in environments where the
 // Firebase Emulator Suite cannot (`npm run test:emulator`).
 export default defineConfig({
+  envDir: 'test/phase0/empty-env',
   test: {
+    fileParallelism: false,
+    maxWorkers: 1,
     environment: 'jsdom',
     globals: true,
     include: ['test/e2e/**/*.e2e.test.ts'],

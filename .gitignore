@@ -93,3 +93,6 @@ android/app/google-services.json
 
 # Real-browser QA output (docs/qa/*.mjs) — screenshots and reports are local evidence, never committed
 docs/qa/screenshots/
+
+# Phase 0 isolated scratch/tool downloads/reports (never datasets or release artifacts)
+.cache/

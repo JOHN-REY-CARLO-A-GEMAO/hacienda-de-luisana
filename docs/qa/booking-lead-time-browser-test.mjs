@@ -9,6 +9,9 @@
 //
 // Optional: BASE_URL, CHROMIUM_PATH, PLAYWRIGHT_MODULE, CHROMIUM_MODULE (module
 // specifiers/absolute paths, for external tooling); mirrors other docs/qa tests.
+import { assertIsolatedProcess } from '../../scripts/phase0/boundary.mjs'
+assertIsolatedProcess()
+
 import assert from 'node:assert/strict'
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')

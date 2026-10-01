@@ -1,0 +1,676 @@
+[
+  {
+    "finding": "F01",
+    "name": "Booking create ownership and schema",
+    "existingTests": [
+      "test/emulator/rules.emulator.test.ts",
+      "test/rules/firestore-rules.test.ts"
+    ],
+    "newRegressionGroups": [
+      "security",
+      "emulator/security"
+    ],
+    "expectedInvariant": "Unsigned/foreign-UID/malformed create must be refused; legitimate anonymous create must work",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Supplemental rules; canonical Firebase BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (supplemental rules): unsigned/foreign-owner/malformed creates allowed; DESIRED probes FAIL. Canonical emulator BLOCKED.",
+    "notes": "Current create permits unsigned/foreign ownership and weak schema; offline evaluator is not canonical.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F02",
+    "name": "Guest-controlled financial quote and policy",
+    "existingTests": [
+      "test/web/authorization-regressions.test.ts",
+      "test/emulator/rules.emulator.test.ts"
+    ],
+    "newRegressionGroups": [
+      "security",
+      "model",
+      "emulator/security"
+    ],
+    "expectedInvariant": "Guest cannot alter authoritative quote/deposit/balance/policy/hold/refund decisions",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Supplemental rules; TS model; canonical BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (model + supplemental rules): ₱1/zero-due approval; guest quote rewrite allowed. DESIRED FAIL. Canonical BLOCKED.",
+    "notes": "A zero-due/₱1 model claim can reach Approved. No trusted quote/allocation service exercised.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F03",
+    "name": "Approved verification/evidence tampering",
+    "existingTests": [
+      "test/emulator/rules.emulator.test.ts",
+      "test/rules/firestore-rules.test.ts"
+    ],
+    "newRegressionGroups": [
+      "security",
+      "emulator/security"
+    ],
+    "expectedInvariant": "Confirmed financial/evidence facts remain immutable to Guest resubmission",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Supplemental rules; canonical BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (supplemental): Approved verified downgrade and proof replacement allowed. DESIRED FAIL. Canonical BLOCKED.",
+    "notes": "Existing downgrade case covers Reserved, not Approved. New Approved cases are separate.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F04",
+    "name": "Admin identity/role trust across planes",
+    "existingTests": [
+      "test/web/auth-roles.test.ts",
+      "test/web/auth-firestore-rules.test.ts"
+    ],
+    "newRegressionGroups": [
+      "identity",
+      "security",
+      "emulator/security"
+    ],
+    "expectedInvariant": "Unverified/unbound allowlisted claim is insufficient; Admin A/B and non-Admin remain distinguishable",
+    "coverage": "REQUIRES RUNTIME/STAGING VERIFICATION",
+    "environment": "Resolver; supplemental rules; provider/staging not tested",
+    "baselineResult": "CURRENT REPRODUCED for synthetic token claims only (resolver + supplemental). DESIRED FAIL. Real-provider claimability NOT TESTED.",
+    "notes": "Token-claim fixtures do not prove a real address is claimable. Enrollment and cross-plane effective roles remain runtime/owner work.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Auth emulator: self-registered token carries registrant-chosen email, email_verified=false (precondition only); rules evaluation BLOCKED",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F05",
+    "name": "Payment-proof namespace and booking association",
+    "existingTests": [
+      "test/web/payment-contract.test.ts",
+      "test/web/supabase-storage.test.ts",
+      "test/emulator/rules.emulator.test.ts"
+    ],
+    "newRegressionGroups": [
+      "proofs",
+      "security",
+      "emulator/security",
+      "runtime spec"
+    ],
+    "expectedInvariant": "Own namespace, booking association, valid context and private reads/deletes enforced",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "SDK doubles; supplemental legacy Storage; Supabase REQUIRES STAGING",
+    "baselineResult": "SQL source confirmed anon insert; legacy Firebase Storage supplemental: no booking association required. Supabase REQUIRES STAGING.",
+    "notes": "Firebase Storage is legacy and not Supabase RLS. Supabase upload/read/delete/signer cases are specifications only.",
+    "canonicalStatus": "PARTIALLY CONFIRMED",
+    "canonicalEvidence": "test:supabase:rls (real PostgreSQL 17.5 RLS, verbatim 01-storage.sql): anon may write any payments/{uid}/ path incl. another uid; no read; no booking binding. Supabase staging BLOCKED",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F06",
+    "name": "Competing Admin decisions and capacity commitments",
+    "existingTests": [
+      "test/web/date-hold.test.ts",
+      "test/booking_lifecycle_test.dart"
+    ],
+    "newRegressionGroups": [
+      "cloud",
+      "emulator/concurrency",
+      "dart/characterization"
+    ],
+    "expectedInvariant": "Two Admins reviewing one Pending booking and two last-unit bookings produce one authoritative commitment",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "TS adapter SDK double; canonical/native BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED with SDK double (two approvals on capacity 1). DESIRED FAIL. Canonical emulator + Flutter BLOCKED.",
+    "notes": "Deterministic stale-query schedule is executable; no fake SDK transaction result proves official conflict semantics.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F07",
+    "name": "Transfer verification/allocation/reuse",
+    "existingTests": [
+      "test/web/payment-history.test.ts",
+      "test/web/receipt-ocr.test.ts",
+      "test/booking_lifecycle_test.dart"
+    ],
+    "newRegressionGroups": [
+      "model",
+      "security",
+      "emulator/security",
+      "financial spec"
+    ],
+    "expectedInvariant": "One actual transfer has at most one allocation; partial/full/overpayment balances reconcile",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "TS model; SDK doubles; ledger/staging not tested",
+    "baselineResult": "CURRENT REPRODUCED (model): claim copied as verified; duplicate reference accepted; overpayment not reconciled. DESIRED FAIL.",
+    "notes": "Claim-copy and duplicate-reference model acceptance observed. OCR is extraction, not a ledger.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Postgres: duplicate reference stored as separate accepted objects (storage layer only); verification logic needs Flutter/Firestore",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F08",
+    "name": "Paid Pending terminal outcomes and reconciliation",
+    "existingTests": [
+      "test/web/booking-actions.test.ts",
+      "test/web/date-hold.test.ts"
+    ],
+    "newRegressionGroups": [
+      "model",
+      "financial spec"
+    ],
+    "expectedInvariant": "Rejected/Cancelled/Expired paid Pending money retains explicit unresolved disposition",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "TS model; real received-money workflow not available",
+    "baselineResult": "CURRENT REPRODUCED (model): paid Pending Reject/Cancel/Expire produce no reconciliation record. Policy owner decision required.",
+    "notes": "Model has no bank receipt authority. Fixtures/specs do not invent refund eligibility or amounts.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F09",
+    "name": "Date/balance/deposit completion gates",
+    "existingTests": [
+      "test/web/booking-actions.test.ts",
+      "test/booking_lifecycle_test.dart"
+    ],
+    "newRegressionGroups": [
+      "model",
+      "dart/characterization"
+    ],
+    "expectedInvariant": "Stay progression/completion cannot precede dates or discard financial/deposit obligations",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "TS model; native/staging not tested",
+    "baselineResult": "CURRENT REPRODUCED (model): future stay Completed with ₱23,999 balance. DESIRED FAIL. Dart test written, BLOCKED.",
+    "notes": "Future stay progresses to Completed with outstanding balance/deposit in model.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F10",
+    "name": "Immutable historical cancellation policy",
+    "existingTests": [
+      "test/web/published-rates.test.ts",
+      "test/published_rates_test.dart"
+    ],
+    "newRegressionGroups": [
+      "model",
+      "dart/characterization"
+    ],
+    "expectedInvariant": "Same recorded terms settle consistently despite later publication/caller changes",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "TS model; native/server snapshot not tested",
+    "baselineResult": "CURRENT REPRODUCED (model): same version → ₱12,000 vs ₱1,500 refund. DESIRED FAIL.",
+    "notes": "Same version with caller-supplied changed policy gives different settlements.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F11",
+    "name": "Night-by-night multi-unit occupancy",
+    "existingTests": [
+      "test/web/date-hold.test.ts",
+      "test/booking_lifecycle_test.dart"
+    ],
+    "newRegressionGroups": [
+      "model",
+      "dart/characterization"
+    ],
+    "expectedInvariant": "Capacity is checked on each night, not total intersecting bookings",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "TS model; canonical/native not tested",
+    "baselineResult": "CURRENT REPRODUCED (model): disjoint nights falsely exhaust 2 units. DESIRED FAIL.",
+    "notes": "Two disjoint single-night reservations falsely exhaust two units.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F12",
+    "name": "Local proof/cloud booking split",
+    "existingTests": [
+      "test/web/supabase-storage.test.ts",
+      "test/web/payment-step.test.tsx"
+    ],
+    "newRegressionGroups": [
+      "proofs"
+    ],
+    "expectedInvariant": "Local-only proof provenance stays observable and cannot be presented as remotely reviewable",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Actual TS helpers with SDK doubles; Supabase not tested",
+    "baselineResult": "CURRENT REPRODUCED (actual helpers, SDK double): local-only proof accepted into cloud booking; wrapper drops mode. Isolated build also showed production Firebase default with no Supabase. DESIRED FAIL.",
+    "notes": "Wrapper drops local mode; mixed persistence is reproduced with doubles.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Needs Firestore emulator + Supabase staging; not contradicted",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F13",
+    "name": "Truthful mutation errors and local fallback",
+    "existingTests": [
+      "test/web/booking-lead-time-cloud.test.ts",
+      "test/web/booking-store.test.ts"
+    ],
+    "newRegressionGroups": [
+      "cloud",
+      "location",
+      "dart/characterization"
+    ],
+    "expectedInvariant": "Denials/unknown commits are not reported as authoritative success",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Actual TS adapters with SDK doubles",
+    "baselineResult": "CURRENT REPRODUCED (SDK double): denied non-decision patch resolves and mutates local copy. Decision patches/create denials already fail correctly (controls PASS). DESIRED FAIL.",
+    "notes": "Create security refusals and approval-like patch failures already throw; non-decision patch and ancillary failures do not.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F14",
+    "name": "Empty/error/malformed/demo separation",
+    "existingTests": [
+      "test/web/booking-store.test.ts",
+      "test/web/date-hold-cloud.test.ts"
+    ],
+    "newRegressionGroups": [
+      "cloud",
+      "dart/characterization"
+    ],
+    "expectedInvariant": "Valid empty, permission failure, corrupt document and explicit demo are distinct outcomes",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Actual TS adapters with SDK doubles; Flutter BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (web): denied subscription emits demo bookings; denied list == empty. DESIRED FAIL. Flutter parser test written, BLOCKED.",
+    "notes": "Web list [] masks errors; subscription/local empty reads seed mocks. Whole-list mobile fallback needs native execution.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F15",
+    "name": "Admin B progression after Admin A verification",
+    "existingTests": [
+      "test/emulator/rules.emulator.test.ts",
+      "test/rules/firestore-rules.test.ts"
+    ],
+    "newRegressionGroups": [
+      "security",
+      "emulator/security"
+    ],
+    "expectedInvariant": "Legitimate Admin B progresses stay without rewriting Admin A original verification",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Supplemental rules; canonical/native BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (supplemental): Admin B progression denied. DESIRED FAIL. Canonical BLOCKED.",
+    "notes": "Writer=verifier marker interferes with unchanged verified facts.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F16",
+    "name": "Anonymous continuity and later authentication/recovery",
+    "existingTests": [
+      "test/web/auth-session.test.ts",
+      "test/web/auth-flow.test.tsx"
+    ],
+    "newRegressionGroups": [
+      "identity",
+      "security",
+      "emulator/auth-review"
+    ],
+    "expectedInvariant": "Anonymous booking continuity survives approved linking; no unauthorized takeover/recovery",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Actual Auth adapter SDK double; canonical Auth BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (Auth adapter double): register/login replace anonymous UID. Canonical Auth sequence written, BLOCKED.",
+    "notes": "New-account/sign-in paths replace UID. Linking is only a positive-control specification; no recovery implementation added.",
+    "canonicalStatus": "PARTIALLY CONFIRMED",
+    "canonicalEvidence": "test:emulator:auth: same SDK calls as authFirebase.ts; register/login from anonymous session yield new uid; anonymous account orphaned. Firestore impact BLOCKED",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F17",
+    "name": "Durable submission/upload intent and retry",
+    "existingTests": [
+      "test/web/payment-contract.test.ts",
+      "test/web/booking-lead-time-cloud.test.ts"
+    ],
+    "newRegressionGroups": [
+      "cloud",
+      "proofs",
+      "recovery spec"
+    ],
+    "expectedInvariant": "Duplicate/retry/unknown commit reconcile to one intent and associated evidence",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Actual TS adapters with SDK doubles",
+    "baselineResult": "CURRENT REPRODUCED (SDK double): lost response + retry → 2 cloud bookings; double submit → 2 IDs; upload timeout leaves operation live. DESIRED FAIL.",
+    "notes": "Lost-response and duplicate submissions create duplicate modeled records; proof timeout leaves issued operation alive.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Postgres: each retry is a new accepted object (consistent); duplicate-booking core claim needs Firestore emulator",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F18",
+    "name": "Authoritative and idempotent Activity",
+    "existingTests": [
+      "test/web/activity-log.test.ts",
+      "test/emulator/rules.emulator.test.ts"
+    ],
+    "newRegressionGroups": [
+      "model",
+      "cloud",
+      "security",
+      "emulator/security"
+    ],
+    "expectedInvariant": "Events reflect actual authorized commands, original actor/Admin/time, once only",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "TS adapters/models; supplemental rules; canonical BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED: duplicate Activity on replay; Activity failure falls back locally after cloud create; guest false Approve event allowed (supplemental). DESIRED FAIL.",
+    "notes": "Actor binding is not action authority. Ancillary Activity can fall back locally after cloud booking success.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F19",
+    "name": "Physical smart-lock implementation",
+    "existingTests": [
+      "test/e2e/final-scenario.e2e.test.ts",
+      "docs/SMART_LOCK.md"
+    ],
+    "newRegressionGroups": [
+      "hardware runtime specification"
+    ],
+    "expectedInvariant": "Authenticated physical command/acknowledgement, grant/revoke and booking binding proven on device",
+    "coverage": "NOT TESTABLE IN CURRENT HARNESS",
+    "environment": "Simulator/source contract only; physical hardware not tested",
+    "baselineResult": "NOT TESTABLE: no firmware/gateway in repository. Boundary documented.",
+    "notes": "No tracked firmware/gateway/device authority. Never treat a simulated granted row as physical actuation.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F20",
+    "name": "Simulator/event contract and trust",
+    "existingTests": [
+      "test/e2e/final-scenario.e2e.test.ts",
+      "test/rules/firestore-rules.test.ts"
+    ],
+    "newRegressionGroups": [
+      "security",
+      "foundation",
+      "emulator/security",
+      "dart/characterization"
+    ],
+    "expectedInvariant": "Event shape matches readers; client cannot forge authoritative physical granted proof",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Supplemental rules/source; native/canonical BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (source + supplemental): simulator payload lacks required fields; guest can mint granted row. DESIRED FAIL.",
+    "notes": "Simulator schema differs from required access log contract; no hardware proof exists.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F21",
+    "name": "Location secret/lease/restart contract",
+    "existingTests": [
+      "test/web/live-location.test.ts",
+      "test/emulator/realtime-rules.emulator.test.ts"
+    ],
+    "newRegressionGroups": [
+      "location",
+      "foundation",
+      "emulator/location"
+    ],
+    "expectedInvariant": "Actual client consent/fix is readable by Admin, conforms to lease and can restart safely",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Actual web transport SDK double; canonical/native BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (actual web transport, SDK double): 30-minute expiry on first fix > 90s rule; secret field mismatch (source). DESIRED FAIL. Canonical BLOCKED.",
+    "notes": "30-minute first payload exceeds <=90-second RTDB rule; stream_secret versus session_secret mismatch.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F22",
+    "name": "Location consent/ownership/expiry/deletion authority",
+    "existingTests": [
+      "test/web/realtime-database-rules.test.ts",
+      "test/emulator/realtime-rules.emulator.test.ts"
+    ],
+    "newRegressionGroups": [
+      "location",
+      "emulator/location",
+      "runtime spec"
+    ],
+    "expectedInvariant": "No unauthorized or stopped-consent access; stale/expired hidden separately from physical cleanup",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Local policy/SDK double; two-store canonical BLOCKED",
+    "baselineResult": "CURRENT REPRODUCED (SDK double): inactive session still publishes; stop failures swallowed. DESIRED FAIL. Two-store canonical BLOCKED.",
+    "notes": "RTDB has UID-only writes; no Firestore consent check. Cleanup is not TTL or proven purge.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F23",
+    "name": "Message pagination/ties/preview consistency",
+    "existingTests": [
+      "test/web/chat-messaging.test.ts",
+      "test/web/reviews-chat.test.ts"
+    ],
+    "newRegressionGroups": [
+      "foundation",
+      "runtime spec"
+    ],
+    "expectedInvariant": "Older/tied messages remain addressable and preview cannot falsely claim unsaved message",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Existing offline/source contracts; device/staging not tested",
+    "baselineResult": "NOT NEWLY EXECUTED: existing offline tests only; scenarios specified.",
+    "notes": "No new canonical/native message integration. Cursor/older-page and split-write scenarios specified.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F24",
+    "name": "Booking status refresh and lifecycle descriptions",
+    "existingTests": [
+      "test/web/booking-lead-time-ui.test.tsx"
+    ],
+    "newRegressionGroups": [
+      "flow characterization",
+      "runtime spec"
+    ],
+    "expectedInvariant": "Returned status refreshes across review/stay changes; correct current stage shown",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Existing jsdom UI; model; real browser/staging not tested",
+    "baselineResult": "CURRENT REPRODUCED (real component, SDK double): one-shot refresh; Staying/Completed/Reserved shown as Pending headline. DESIRED FAIL.",
+    "notes": "One-shot status and later-stage descriptions require browser/cloud follow-up.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F25",
+    "name": "First-review missing-document read",
+    "existingTests": [
+      "test/web/review-form.test.tsx",
+      "test/web/reviews-cloud.test.ts",
+      "test/emulator/rules.emulator.test.ts"
+    ],
+    "newRegressionGroups": [
+      "security",
+      "emulator/auth-review"
+    ],
+    "expectedInvariant": "Actual first submit missing-review get then create succeeds only for own finished stay",
+    "coverage": "REQUIRES RUNTIME/STAGING VERIFICATION",
+    "environment": "Supplemental evaluator; canonical application SDK path BLOCKED",
+    "baselineResult": "Supplemental: missing-review get denied (DESIRED FAIL). Application-sequence canonical test written, BLOCKED (Java).",
+    "notes": "Direct setDoc success does not prove the application pre-read sequence.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F26",
+    "name": "Review query indexes and error presentation",
+    "existingTests": [
+      "test/web/reviews-cloud.test.ts",
+      "test/review_policy_test.dart"
+    ],
+    "newRegressionGroups": [
+      "foundation",
+      "runtime spec"
+    ],
+    "expectedInvariant": "Actual deployed review queries/indexes succeed; errors are not normal empty results",
+    "coverage": "REQUIRES RUNTIME/STAGING VERIFICATION",
+    "environment": "Index/source inspection; deployed index/query not tested",
+    "baselineResult": "Source: no review composite indexes checked in. Deployed state REQUIRES STAGING.",
+    "notes": "Emulators do not prove production composite index readiness.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F27",
+    "name": "Consent/privacy claims and retention execution",
+    "existingTests": [
+      "test/web/reviews-chat.test.ts",
+      "test/chat_limits_test.dart"
+    ],
+    "newRegressionGroups": [
+      "foundation",
+      "runtime spec"
+    ],
+    "expectedInvariant": "Recorded consent/legal behavior match; expired data physically purged by verified worker",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Local policy/source; scheduled/staging purge not tested",
+    "baselineResult": "Source: privacy text contradicts live location; retention helpers delete nothing. Purge REQUIRES STAGING/owner.",
+    "notes": "Helpers and unreadability do not prove consent capture or deletion.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F28",
+    "name": "Mobile quote parsing and financial reporting",
+    "existingTests": [
+      "test/booking_model_test.dart"
+    ],
+    "newRegressionGroups": [
+      "foundation",
+      "dart/characterization"
+    ],
+    "expectedInvariant": "Stored quote reads faithfully; monthly revenue uses received/allocated/refunded money in range",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Source inspection; native/reporting runtime BLOCKED",
+    "baselineResult": "Source confirmed nights×12000 default; Dart test written, BLOCKED.",
+    "notes": "Native total fallback and aggregate reports are not a payment ledger.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F29",
+    "name": "Physical maintenance/sellable units/rates mapping",
+    "existingTests": [
+      "test/web/date-hold.test.ts"
+    ],
+    "newRegressionGroups": [
+      "model",
+      "foundation",
+      "owner/runtime spec"
+    ],
+    "expectedInvariant": "Maintenance/out-of-service mapping is explicit and cannot accidentally remain sellable",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "TS model/source; physical mapping requires owner decision",
+    "baselineResult": "Source confirmed room status separate from capacity. Mapping REQUIRES OWNER DECISION.",
+    "notes": "No synchronization implementation or invented mapping added.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F30",
+    "name": "Bounded queries versus authoritative capacity",
+    "existingTests": [
+      "test/web/chat-messaging.test.ts"
+    ],
+    "newRegressionGroups": [
+      "foundation",
+      "runtime spec"
+    ],
+    "expectedInvariant": "Read costs bounded without using a truncated UI page for authoritative capacity",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Source/query contracts; quota/load staging not tested",
+    "baselineResult": "Source confirmed unbounded approval query. Load NOT TESTED.",
+    "notes": "No production load test or pagination remediation performed.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F31",
+    "name": "CI/build/dependency/environment gate",
+    "existingTests": [
+      "test/web/firebase-config.test.ts",
+      "test/web/status-page.test.tsx"
+    ],
+    "newRegressionGroups": [
+      "safety",
+      "foundation",
+      "typecheck/build",
+      "CI assessment"
+    ],
+    "expectedInvariant": "Isolation, critical suites and builds gate release without production credentials",
+    "coverage": "PARTIALLY COVERED",
+    "environment": "Linux test boundary; local Node22 checks; hosted CI not run",
+    "baselineResult": "Source confirmed Node20 vs >=22. Local Node22 isolated build PASS. Hosted CI NOT RUN.",
+    "notes": "Deploy workflow Node20 versus locked >=22 requirement remains, even if local Node22 build passes.",
+    "canonicalStatus": "PARTIALLY CONFIRMED",
+    "canonicalEvidence": "Hosted run metadata: Node 20 deploys succeed (npm ci + build) and contain no test step. Gate gap confirmed; build-break impact NOT reproduced",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F32",
+    "name": "Native signing/project/bundle/deployment",
+    "existingTests": [
+      "No native release/device integration test"
+    ],
+    "newRegressionGroups": [
+      "foundation",
+      "native/runtime checklist"
+    ],
+    "expectedInvariant": "Owner-controlled signing and consistent bundle/project configuration verified on release device",
+    "coverage": "REQUIRES RUNTIME/STAGING VERIFICATION",
+    "environment": "Static native configuration; no signed native build/device test",
+    "baselineResult": "Source confirmed debug release signing. Device/release NOT TESTED.",
+    "notes": "Do not change signing/bundle identity in Phase 0.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  },
+  {
+    "finding": "F33",
+    "name": "Notifications/escalation consumers",
+    "existingTests": [
+      "No delivery/escalation integration test"
+    ],
+    "newRegressionGroups": [
+      "foundation",
+      "runtime/owner specification"
+    ],
+    "expectedInvariant": "Event delivery/retry/escalation has observed consumers and accountable recipients",
+    "coverage": "NOT TESTABLE IN CURRENT HARNESS",
+    "environment": "Source inventory only; external operations not verified",
+    "baselineResult": "NOT TESTABLE: no tracked delivery/escalation consumer.",
+    "notes": "No tracked worker/consumer wired to alerts; external staffing unknown.",
+    "canonicalStatus": "BLOCKED",
+    "canonicalEvidence": "Canonical engine not run (Firestore/RTDB/Storage JARs unavailable, Flutter absent, or runtime/owner item); see CANONICAL_VERIFICATION.md §6",
+    "canonicalDate": "2026-10-01"
+  }
+]

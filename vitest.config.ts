@@ -1,4 +1,7 @@
 import { defineConfig } from 'vitest/config'
+import { assertIsolatedProcess } from './scripts/phase0/boundary.mjs'
+
+assertIsolatedProcess()
 
 // Test harness for the web app (Vite + React + TS).
 // Flutter behaviour tests keep living in /test/*.dart and are run by `flutter test`;
@@ -10,8 +13,10 @@ export default defineConfig({
   // build" tests would fail. No `.env*` files live here, so the run is hermetic.
   // A test that wants to know about a variable passes `env` in by hand
   // (test/web/firebase-config.test.ts).
-  envDir: 'test/web',
+  envDir: 'test/phase0/empty-env',
   test: {
+    fileParallelism: false,
+    maxWorkers: 1,
     environment: 'jsdom',
     globals: true,
     include: ['test/web/**/*.test.ts', 'test/web/**/*.test.tsx'],

@@ -1,4 +1,7 @@
 import { defineConfig } from 'vitest/config'
+import { assertEmulatorEnvironment } from './scripts/phase0/boundary.mjs'
+
+assertEmulatorEnvironment()
 
 /**
  * The emulator-backed rules suite. It is not part of `npm test`: it needs the
@@ -7,11 +10,18 @@ import { defineConfig } from 'vitest/config'
  * config inside `firebase emulators:exec`.
  */
 export default defineConfig({
+  envDir: 'test/phase0/empty-env',
   test: {
+    fileParallelism: false,
+    maxWorkers: 1,
     environment: 'node',
     globals: true,
-    include: ['test/emulator/**/*.test.ts'],
-    testTimeout: 20_000,
-    hookTimeout: 30_000,
+    include: process.env.HDL_PHASE0_ACTION === 'emulator-invariants'
+      ? ['test/phase0/emulator/**/*.invariants.test.ts']
+      : process.env.HDL_PHASE0_ACTION === 'emulator-auth'
+        ? ['test/phase0/emulator/**/*.auth-emulator.test.ts']
+        : ['test/emulator/**/*.test.ts', 'test/phase0/emulator/**/*.characterization.test.ts'],
+    testTimeout: 40_000,
+    hookTimeout: 60_000,
   },
 })
