@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { join, relative, sep } from 'path'
 import { ACCOMMODATIONS, EXPERIENCES, GALLERY, NEARBY } from '../../src/config/site'
+import { TABS } from '../../src/sections/Gallery'
 
 const ROOT = join(__dirname, '..', '..')
 const PUBLIC = join(ROOT, 'public')
@@ -57,5 +58,16 @@ describe('gallery imagery', () => {
       expect(g.caption.trim().length, `${g.id} has no caption`).toBeGreaterThan(0)
       expect(g.url.trim().length, `${g.id} has no url`).toBeGreaterThan(0)
     }
+  })
+
+  it('offers no filter tab that holds nothing', () => {
+    // Every tab in the row must lead somewhere. A category is offered only
+    // while GALLERY holds a photo for it, so a dead filter cannot be shipped —
+    // and the day a Food & Gatherings or Nearby Adventures photo is added, its
+    // tab appears without any change to the Gallery component.
+    const empty = TABS.filter((t) => t !== 'All' && !GALLERY.some((g) => g.category === t))
+    expect(empty, 'tabs with no photos').toEqual([])
+    expect(TABS).toContain('All')
+    for (const c of GALLERY.map((g) => g.category)) expect(TABS).toContain(c)
   })
 })
