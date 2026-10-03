@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { GALLERY, GalleryImage } from '../config/site'
+import { asset } from '../lib/asset'
 import { SmartImage } from '../components/SmartImage'
 import { Close, ArrowRight } from '../lib/icons'
 
 const CATEGORIES = ['All', 'Hacienda', 'Main House', 'Camping', 'Outdoors', 'Food & Gatherings', 'Nearby Adventures'] as const
+
+// A filter a guest can click that then shows nothing is a dead end, so the row
+// carries only the categories the Gallery actually holds. "Food & Gatherings"
+// and "Nearby Adventures" appear here on their own — the moment such a photo is
+// added to GALLERY in src/config/site.ts — with no change to this component.
+export const TABS = CATEGORIES.filter((c) => c === 'All' || GALLERY.some((g) => g.category === c))
 
 export function Gallery() {
   const [cat, setCat] = useState<(typeof CATEGORIES)[number]>('All')
@@ -58,7 +65,7 @@ export function Gallery() {
 
           <div className="-mx-5 lg:mx-0 overflow-x-auto no-scrollbar">
             <div className="px-5 lg:px-0 flex gap-2 min-w-max">
-              {CATEGORIES.map((c) => (
+              {TABS.map((c) => (
                 <button
                   key={c}
                   onClick={() => setCat(c)}
@@ -151,7 +158,7 @@ function Lightbox({
         </button>
 
         <img
-          src={image.url}
+          src={asset(image.url)}
           alt={image.caption}
           className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-soft"
         />

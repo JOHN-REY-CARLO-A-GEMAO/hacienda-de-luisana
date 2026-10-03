@@ -352,8 +352,10 @@ export const ACCOMMODATIONS: Accommodation[] = [
     priceSource: "Listed by the Hacienda on Airbnb",
     amenities: ['campfire', 'grill', 'garden', 'wifi', 'parking', 'pets'],
     images: [
+      '/images/gmaps/camping_units_stepping_stones.jpg',
       '/images/gmaps/img-02.jpg',
       FB_CDN['fb-02'],
+      '/images/gmaps/camping_units_garden.jpg',
       '/images/gmaps/img-09.jpg',
       '/images/gmaps/img-12.jpg',
     ],
@@ -482,6 +484,7 @@ export const GALLERY: GalleryImage[] = [
   { id: 'g13', url: '/images/gmaps/img-13.jpg', category: 'Hacienda', caption: 'Campfire in front of the main house at blue hour', aspect: 'tall' },
   { id: 'g10', url: '/images/gmaps/img-10.jpg', category: 'Hacienda', caption: 'Welcome — the HDL signage at the entrance', aspect: 'square' },
   { id: 'fb08', url: FB_CDN['fb-08'], category: 'Hacienda', caption: 'Hacienda de LuisAna — main gate and welcome sign', aspect: 'square' },
+  { id: 'g17', url: '/images/gmaps/hdl_sign_wall.jpg', category: 'Hacienda', caption: 'The Hacienda’s own sign — “Munting Mansyon ng Luisiana”', aspect: 'tall' },
 
   // Main house — exterior
   { id: 'g01', url: '/images/gmaps/img-01.jpg', category: 'Main House', caption: 'Front facade of the main house at golden hour', aspect: 'tall' },
@@ -490,6 +493,7 @@ export const GALLERY: GalleryImage[] = [
   { id: 'g08', url: '/images/gmaps/img-08.jpg', category: 'Main House', caption: 'The main house lit up at night', aspect: 'tall' },
   { id: 'g15', url: '/images/gmaps/main_house_facade.jpg', category: 'Main House', caption: 'Front of the main house — the HDL sign, bench and parasol', aspect: 'wide' },
   { id: 'g16', url: '/images/gmaps/main_house_night_lit.jpg', category: 'Main House', caption: 'The main house lit at night, above the carport', aspect: 'tall' },
+  { id: 'g18', url: '/images/gmaps/entrance_porch_sign.jpg', category: 'Main House', caption: 'The entrance porch of the main house, framed by a Norfolk pine', aspect: 'tall' },
 
   // Main house — interior (Facebook photos)
   { id: 'fb05', url: FB_CDN['fb-05'], category: 'Main House', caption: 'Cozy living room with big-screen TV', aspect: 'wide' },
@@ -503,6 +507,8 @@ export const GALLERY: GalleryImage[] = [
   { id: 'g09', url: '/images/gmaps/img-09.jpg', category: 'Camping', caption: 'Two A-frame cabins with stepping-stone path', aspect: 'square' },
   { id: 'g12', url: '/images/gmaps/img-12.jpg', category: 'Camping', caption: 'Camping cabins glowing warm at nightfall', aspect: 'tall' },
   { id: 'fb02', url: FB_CDN['fb-02'], category: 'Camping', caption: 'Foggy afternoon — A-frame cabins peeking through the mist', aspect: 'tall' },
+  { id: 'g19', url: '/images/gmaps/camping_units_garden.jpg', category: 'Camping', caption: 'The two A-frame units seen through the garden blooms', aspect: 'tall' },
+  { id: 'g20', url: '/images/gmaps/camping_units_stepping_stones.jpg', category: 'Camping', caption: 'A stepping-stone path laid to the door of each unit', aspect: 'wide' },
 
   // Outdoors (Facebook foggy shots + Google Maps garden)
   { id: 'fb01', url: FB_CDN['fb-01'], category: 'Outdoors', caption: 'Misty morning — pine trees and stone pathway through the garden', aspect: 'tall' },

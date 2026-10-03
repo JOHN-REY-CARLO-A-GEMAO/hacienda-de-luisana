@@ -42,6 +42,52 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  # Brand generators — build-time only. Neither package is imported by the app
+  # (no FlutterNativeSplash.preserve()/remove() in main.dart), so both belong in
+  # dev_dependencies and nothing here ships in the bundle. Run after `pub get`:
+  #   dart run flutter_launcher_icons
+  #   dart run flutter_native_splash:create
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.8
+
+# -----------------------------------------------------------------------------
+# LAUNCHER ICONS — from the client's own brand mark
+# -----------------------------------------------------------------------------
+# icon-full-bleed.png is the supplied icon.png with its white corner mat
+# replaced by the artwork's own green; assets/icons/README.md carries the exact
+# command. The original is kept untouched beside it.
+flutter_launcher_icons:
+  image_path: "assets/icons/icon-full-bleed.png"
+  android: true
+  ios: true
+  # Android 8+ masks the icon and crops roughly a third of the foreground, so
+  # the adaptive foreground is given the full-bleed artwork with a small inset
+  # and the same green behind it — what the launcher reveals past the mark is
+  # that green, never a white notch, whatever mask shape the OEM uses.
+  min_sdk_android: 21
+  adaptive_icon_background: "#2d502f"
+  adaptive_icon_foreground: "assets/icons/icon-full-bleed.png"
+  adaptive_icon_foreground_inset: 10
+
+# -----------------------------------------------------------------------------
+# NATIVE SPLASH — the loading screen, before Flutter paints its first frame
+# -----------------------------------------------------------------------------
+# The field colour is sampled from splash.png itself (srgb(15,32,16)) so the
+# band around the artwork on a tall screen is indistinguishable from the
+# artwork. No *_dark variants: app_theme.dart is Brightness.light only, so a
+# dark splash would be the one place the app contradicted itself.
+flutter_native_splash:
+  color: "#0f2010"
+  image: assets/splash/splash.png
+  android_gravity: center
+  ios_content_mode: center
+  # Android 12+ ignores the block above and composes a window colour plus a
+  # centre icon clipped to a circle, which is what splash-android12.png is
+  # sized for: the 1152px canvas the platform asks for, mark inside the 768px
+  # safe circle. Derived from the same artwork — see assets/splash/README.md.
+  android_12:
+    color: "#0f2010"
+    image: assets/splash/splash-android12.png
 
 flutter:
   uses-material-design: true

@@ -15,7 +15,14 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { applyAction, type Actor, type BookingAction, type BookingState, type BookingPatch } from '../../src/lib/booking'
+import {
+  applyAction,
+  minimumCheckInDate,
+  type Actor,
+  type BookingAction,
+  type BookingState,
+  type BookingPatch,
+} from '../../src/lib/booking'
 import { cloudBookingsDB, activityLogDB, signActivityEntries } from '../../src/lib/firestoreBookings'
 import { bookingsDB, activityLogStorage } from '../../src/lib/storage'
 import { reviewDocId, reviewRecordFor } from '../../src/lib/reviewsCloud'
@@ -26,6 +33,10 @@ const GUEST_UID = 'guest-uid-1'
 const ADMIN_UID = 'admin-uid-1'
 const guest: Actor = { actor: 'guest', actor_id: GUEST_UID, now: '2026-09-24T02:00:00.000Z' }
 const admin: Actor = { actor: 'admin', actor_id: ADMIN_UID, now: '2026-09-24T02:00:00.000Z' }
+
+/** `2026-09-24` + 2 = `2026-09-26`, on the calendar — never a local-time drift. */
+const plusDays = (day: string, days: number): string =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
 
 const booking = (over: Partial<BookingState> = {}): BookingState => ({
   id: 'booking-1',
@@ -211,6 +222,12 @@ describe('P1: Reserved is the status verified money buys', () => {
 describe('P1: the submission entry is signed by the identity the Booking belongs to', () => {
   it('names the Guest uid on the Booking, not a placeholder', async () => {
     window.localStorage.clear()
+    // The stay is derived from the app's own first-legal-date helper, not
+    // pinned: `add()` measures the lead-time gate against the real clock on
+    // purpose (an actor's `now` must not exempt a submission), so a hardcoded
+    // check-in satisfied it for one season and then failed on its own.
+    const checkIn = minimumCheckInDate()
+    const checkOut = plusDays(checkIn, 2)
     const created = await cloudBookingsDB.add({
       guest_name: 'Ana Reyes',
       phone: '09171234567',
@@ -218,8 +235,8 @@ describe('P1: the submission entry is signed by the identity the Booking belongs
       guests: 2,
       special_requests: '',
       accommodation: 'villa-luisana',
-      check_in: '2026-11-01',
-      check_out: '2026-11-03',
+      check_in: checkIn,
+      check_out: checkOut,
       uid: 'guest-uid-7',
       payment_proof_url: 'payments/guest-uid-7/proof.jpg',
       amount_claimed: 15000,
