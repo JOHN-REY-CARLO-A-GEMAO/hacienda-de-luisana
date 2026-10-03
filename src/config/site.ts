@@ -354,7 +354,7 @@ export const ACCOMMODATIONS: Accommodation[] = [
     images: [
       '/images/gmaps/img-02.jpg',
       FB_CDN['fb-02'],
-      '/images/gmaps/img-09.jpg',
+      '/images/gmaps/camping_units_stepping_stones.jpg',
       '/images/gmaps/img-12.jpg',
     ],
     active: true,
@@ -474,14 +474,13 @@ export const FAQS: FAQ[] = [
 ]
 
 // -----------------------------------------------------------------------------
-// GALLERY (uses real property imagery — Google Maps listing + Facebook photos)
+// GALLERY (real property imagery from the Google Maps listing, committed under public/images/gmaps)
 // -----------------------------------------------------------------------------
 export const GALLERY: GalleryImage[] = [
   // Hacienda — exterior / overview
   { id: 'g07', url: '/images/gmaps/img-07.jpg', category: 'Hacienda', caption: 'The Hacienda at dusk — main house, campfire, and camping units', aspect: 'wide' },
   { id: 'g13', url: '/images/gmaps/img-13.jpg', category: 'Hacienda', caption: 'Campfire in front of the main house at blue hour', aspect: 'tall' },
   { id: 'g10', url: '/images/gmaps/img-10.jpg', category: 'Hacienda', caption: 'Welcome — the HDL signage at the entrance', aspect: 'square' },
-  { id: 'fb08', url: FB_CDN['fb-08'], category: 'Hacienda', caption: 'Hacienda de LuisAna — main gate and welcome sign', aspect: 'square' },
 
   // Main house — exterior
   { id: 'g01', url: '/images/gmaps/img-01.jpg', category: 'Main House', caption: 'Front facade of the main house at golden hour', aspect: 'tall' },
@@ -491,23 +490,17 @@ export const GALLERY: GalleryImage[] = [
   { id: 'g15', url: '/images/gmaps/main_house_facade.jpg', category: 'Main House', caption: 'Front of the main house — the HDL sign, bench and parasol', aspect: 'wide' },
   { id: 'g16', url: '/images/gmaps/main_house_night_lit.jpg', category: 'Main House', caption: 'The main house lit at night, above the carport', aspect: 'tall' },
 
-  // Main house — interior (Facebook photos)
-  { id: 'fb05', url: FB_CDN['fb-05'], category: 'Main House', caption: 'Cozy living room with big-screen TV', aspect: 'wide' },
-  { id: 'fb06', url: FB_CDN['fb-06'], category: 'Main House', caption: 'Dining area with fresh flowers and garden view', aspect: 'tall' },
-  { id: 'fb07', url: FB_CDN['fb-07'], category: 'Main House', caption: 'Wooden piano and staircase leading to the loft', aspect: 'tall' },
+  // Main house — interior
   { id: 'g03', url: '/images/gmaps/img-03.jpg', category: 'Main House', caption: 'Loft bedroom with wooden floors and countryside views', aspect: 'wide' },
   { id: 'g04', url: '/images/gmaps/img-04.jpg', category: 'Main House', caption: 'Dining area with warm pendant lights and open windows', aspect: 'tall' },
 
   // Camping
   { id: 'g02', url: '/images/gmaps/img-02.jpg', category: 'Camping', caption: 'A-frame camping units under the trees', aspect: 'tall' },
-  { id: 'g09', url: '/images/gmaps/img-09.jpg', category: 'Camping', caption: 'Two A-frame cabins with stepping-stone path', aspect: 'square' },
+  { id: 'g09', url: '/images/gmaps/camping_units_stepping_stones.jpg', category: 'Camping', caption: 'Two A-frame cabins with stepping-stone path', aspect: 'wide' },
+  { id: 'g17', url: '/images/gmaps/camping_units_garden.jpg', category: 'Camping', caption: 'The A-frame camping units seen from the garden', aspect: 'tall' },
   { id: 'g12', url: '/images/gmaps/img-12.jpg', category: 'Camping', caption: 'Camping cabins glowing warm at nightfall', aspect: 'tall' },
-  { id: 'fb02', url: FB_CDN['fb-02'], category: 'Camping', caption: 'Foggy afternoon — A-frame cabins peeking through the mist', aspect: 'tall' },
 
-  // Outdoors (Facebook foggy shots + Google Maps garden)
-  { id: 'fb01', url: FB_CDN['fb-01'], category: 'Outdoors', caption: 'Misty morning — pine trees and stone pathway through the garden', aspect: 'tall' },
-  { id: 'fb03', url: FB_CDN['fb-03'], category: 'Outdoors', caption: 'The white fence fading into the fog', aspect: 'wide' },
-  { id: 'fb04', url: FB_CDN['fb-04'], category: 'Outdoors', caption: 'Norfolk pines and red ti plants on a foggy day', aspect: 'tall' },
+  // Outdoors
   { id: 'g05', url: '/images/gmaps/img-05.jpg', category: 'Outdoors', caption: 'Garden pathway with views toward the countryside', aspect: 'tall' },
   { id: 'g11', url: '/images/gmaps/img-11.jpg', category: 'Outdoors', caption: 'The Hacienda framed by lush foliage', aspect: 'square' },
 ]
