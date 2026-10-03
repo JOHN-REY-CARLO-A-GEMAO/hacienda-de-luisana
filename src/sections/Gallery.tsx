@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { GALLERY, GalleryImage } from '../config/site'
+import { asset } from '../lib/asset'
 import { SmartImage } from '../components/SmartImage'
 import { Close, ArrowRight } from '../lib/icons'
 
@@ -151,7 +152,7 @@ function Lightbox({
         </button>
 
         <img
-          src={image.url}
+          src={asset(image.url)}
           alt={image.caption}
           className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-soft"
         />
