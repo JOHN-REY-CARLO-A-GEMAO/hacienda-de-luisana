@@ -488,6 +488,8 @@ export const GALLERY: GalleryImage[] = [
   { id: 'g14', url: '/images/gmaps/img-14.jpg', category: 'Main House', caption: 'The main house — private entrance and garden', aspect: 'square' },
   { id: 'g06', url: '/images/gmaps/img-06.jpg', category: 'Main House', caption: 'Side view of the main house with garden', aspect: 'tall' },
   { id: 'g08', url: '/images/gmaps/img-08.jpg', category: 'Main House', caption: 'The main house lit up at night', aspect: 'tall' },
+  { id: 'g15', url: '/images/gmaps/main_house_facade.jpg', category: 'Main House', caption: 'Front of the main house — the HDL sign, bench and parasol', aspect: 'wide' },
+  { id: 'g16', url: '/images/gmaps/main_house_night_lit.jpg', category: 'Main House', caption: 'The main house lit at night, above the carport', aspect: 'tall' },
 
   // Main house — interior (Facebook photos)
   { id: 'fb05', url: FB_CDN['fb-05'], category: 'Main House', caption: 'Cozy living room with big-screen TV', aspect: 'wide' },
