@@ -386,7 +386,7 @@ describe('applyAction — money', () => {
     })
   })
 
-  it('stamps nulls when the Admin had published no policy, so the stay refunds nothing', () => {
+  it('does not add a policy stamp when no policy snapshot was supplied', () => {
     const chosen = expectOk(
       applyAction(
         approvedBooking(),
@@ -395,7 +395,8 @@ describe('applyAction — money', () => {
       ),
     )
 
-    expect(chosen.patch).toMatchObject({ policy_version: null, policy_effective_date: null })
+    expect(chosen.patch).not.toHaveProperty('policy_version')
+    expect(chosen.patch).not.toHaveProperty('policy_effective_date')
   })
 
   it('refuses a payment plan the Admin has not published', () => {
@@ -588,6 +589,32 @@ describe('applyAction — cancellation and the Refund pipeline', () => {
     )
 
     expect(cancelled.patch.refund_total).toBe(30300)
+  })
+
+  it('uses the saved rate, deposit and refund-policy snapshot after rates are republished', () => {
+    const booking = {
+      ...reserve(approvedBooking()),
+      refund_policy_snapshot: { refund_percent: 25, deposit_refund_percent: 50 },
+    }
+    const cancelled = expectOk(applyAction(
+      booking,
+      {
+        type: 'Cancel',
+        refund: {
+          rateCard: { nightlyRate: 99000, securityDeposit: 99000 },
+          policy: { refundPercent: 100, depositRefundPercent: 100 },
+        },
+      },
+      { ...guest, now: NOW },
+    ))
+    expect(cancelled.patch.refund_breakdown).toEqual({
+      stayTotal: 30000,
+      stayRefund: 7500,
+      depositHeld: 500,
+      damageDeduction: 0,
+      depositRefund: 250,
+      refundTotal: 7750,
+    })
   })
 
   it('refunds nothing beyond the money the Admin verified', () => {

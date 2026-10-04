@@ -331,7 +331,11 @@ void main() {
         },
       };
       final r = applyAdminAction(
-        booking(status: 'Reserved', extra: {'amount_verified': 14000}),
+        booking(status: 'Reserved', extra: {
+          'stay_total': 12000,
+          'security_deposit': 2000,
+          'amount_verified': 14000,
+        }),
         AdminAction.cancel,
         admin,
         input: ActionInput(publishedRates: rates, damageDeduction: 500),
@@ -354,7 +358,41 @@ void main() {
       expect(marked.patch['status'], 'Cancelled');
     });
 
-    test('MarkRefunded needs an initiated refund', () {
+    test('cancellation uses the Booking rate, deposit and refund-policy snapshots after republishing', () {
+      final currentRates = {
+        'accommodations': {
+          'main-house': {'nightly_rate': 99000, 'security_deposit': 99000},
+        },
+        'refund': {'refund_percent': 100, 'deposit_refund_percent': 100},
+      };
+      final r = applyAdminAction(
+        booking(status: 'Reserved', extra: {
+          'stay_total': 12000,
+          'security_deposit': 2000,
+          'amount_verified': 14000,
+          'refund_policy_snapshot': {
+            'refund_percent': 0,
+            'deposit_refund_percent': 50,
+            'tiers': [
+              {'min_days_before_check_in': 7, 'refund_percent': 50},
+            ],
+          },
+        }),
+        AdminAction.cancel,
+        admin,
+        input: ActionInput(publishedRates: currentRates, damageDeduction: 500),
+        now: now,
+      );
+      expect(r.ok, isTrue);
+      final breakdown = r.patch['refund_breakdown'] as Map;
+      expect(breakdown['stayTotal'], 12000);
+      expect(breakdown['depositHeld'], 2000);
+      expect(breakdown['depositRefund'], 750);
+      expect(breakdown['stayRefund'], 6000);
+      expect(r.patch['refund_total'], 6750);
+    });
+
+    test('MarkRefunded needs an initiated refund', () => {
       expect(applyAdminAction(booking(status: 'Cancelled'), AdminAction.markRefunded, admin, now: now).ok, isFalse);
     });
   });

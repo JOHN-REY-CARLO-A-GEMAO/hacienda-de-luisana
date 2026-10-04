@@ -4,10 +4,9 @@ import type { PublishedRates } from '../lib/booking'
 
 /**
  * The Admin's Published rates (`site_config/rates`), live, or null while
- * nothing is published. The same subscription PaymentStep uses to quote a
- * plan; the public pages use it so a nightly rate, Security deposit or
- * down-payment percentage shown to a visitor is the figure the Admin actually
- * published — never a number typed into page copy.
+ * nothing valid is published. The public pages use the per-stay guest schedule,
+ * Security deposit and 50% down-payment figure from the Admin — never a number
+ * typed into page copy.
  */
 export function usePublishedRates(): PublishedRates | null {
   const [rates, setRates] = useState<PublishedRates | null>(null)

@@ -254,72 +254,93 @@ npm run build
 firebase deploy --only hosting
 ```
 
-### 6. Publish the rate card & cancellation policy (`site_config/rates`)
+### 6. Publish rates, holidays and cancellation policy (`site_config/rates`)
 
-The lifecycle module moves no money on guesses: when the Admin approves a
-Booking, `ChoosePaymentPlan` quotes the stay from the published figures, and a
-cancellation refunds by the published policy. Until the document below exists,
-the choice is refused ("The Admin has not published that payment option for
-this Accommodation.") and a cancellation refunds nothing — the safe defaults,
-not an error.
+New guest bookings use an Admin-published per-property guest-count schedule.
+Firestore independently recomputes the check-in classification, stay total and
+50% down payment; the browser cannot supply authoritative money. Until a valid
+schedule is published, direct online booking cannot submit payment. Each new
+Booking stores its rate classification and financial figures plus the exact
+published refund terms in `refund_policy_snapshot` (or `null` if none were
+published). These snapshots are immutable; existing bookings are not migrated,
+rewritten or recalculated when a new version is published.
 
-**Where:** one document, `site_config/rates`. The normal way to write it is the
-Admin app's **Rates & Cancellation Policy** screen (`lib/views/rates/rates_screen.dart`),
-which runs `validatePublishedRates` before it writes. The Firestore console
-works too (Database → Firestore → `site_config` → Add document, id `rates`);
-the rules grant public read and Admin-only write but do not shape-check it, so
-run the checklist below before writing by hand. The same check lives in both
-code bases — `src/lib/booking/rates.ts` and `lib/services/booking_lifecycle.dart`.
+**Where:** `site_config/rates`, normally published through the Admin app's
+**Rates & Cancellation Policy** screen (`lib/views/rates/rates_screen.dart`).
+The website validates reads with `src/lib/booking/rates.ts`; the Admin app
+validates writes with `lib/services/booking_lifecycle.dart`. The Firestore
+rules independently validate guest-submitted booking money. The console can
+still be used by an Admin, but use the same shape and validation before writing.
+A legacy flat nightly-rate document remains stored as-is but is not accepted as
+a new guest quote; review it in the Admin app and publish a new version rather
+than migrating or recalculating historical bookings.
 
-**Shape** (the `PublishedRates` type in `src/lib/booking/rates.ts`):
+**Shape sketch** (not paste-ready: replace each security-deposit placeholder
+with the current Admin-confirmed figure, and fill the holiday list from the
+Admin-configured dates; do not guess either):
 
-```json
+```text
 {
-  "version": "v2026-09",
-  "effective_date": "2026-09-01",
-  "accommodations": {
-    "main-house": { "nightly_rate": 10000, "security_deposit": 500, "down_payment_percent": 50 },
-    "house-a-camping": { "nightly_rate": 1200, "security_deposit": 0 }
-  },
-  "refund": {
-    "tiers": [
-      { "min_days_before_check_in": 14, "refund_percent": 100 },
-      { "min_days_before_check_in": 7, "refund_percent": 50 }
-    ],
-    "deposit_refund_percent": 100
+  version: "guest-count-v2",
+  effective_date: "YYYY-MM-DD",
+  holiday_dates: [],
+  accommodations: {
+    "main-house": {
+      rate_unit: "standard_stay", security_deposit: <confirmed amount>,
+      down_payment_percent: 50,
+      guest_pricing: {
+        units_per_booking: 1,
+        weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 }
+      }
+    },
+    "annex": {
+      rate_unit: "standard_stay", security_deposit: <confirmed amount>,
+      down_payment_percent: 50,
+      guest_pricing: {
+        units_per_booking: 1,
+        weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 }
+      }
+    },
+    "house-a-camping": {
+      rate_unit: "standard_stay", security_deposit: <confirmed amount>,
+      down_payment_percent: 50,
+      guest_pricing: {
+        units_per_booking: 1,
+        weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 }
+      }
+    }
   }
 }
 ```
 
-**Checklist** (every line is what `validatePublishedRates` asserts):
+**Validation and schedule rules:**
 
-- [ ] `version` is a non-empty string — the name the Booking is stamped with.
-- [ ] `effective_date` is a real calendar date in `YYYY-MM-DD` (not `2026-02-30`).
-- [ ] `accommodations` is an object keyed by the ids the site actually lists
-      (`main-house`, `house-a-camping`) — a figure for an id the site does not
-      list is a price nobody can be charged, and is refused.
-- [ ] Each listed Accommodation: `nightly_rate` in pesos, greater than zero;
-      `security_deposit` zero or more; `down_payment_percent` strictly between
-      0 and 100, or **omitted** for full-payment-only.
-- [ ] Every Accommodation the site lists is present — an absent one has no
-      machine price, so a Guest cannot choose a plan for it.
-- [ ] `refund` (optional): a flat `refund_percent` (0–100) **or** `tiers` of
-      `{ min_days_before_check_in, refund_percent }` (tiers win when both are
-      published); `deposit_refund_percent` 0–100 (defaults to 100). Omit
-      `refund` entirely to publish rates without a refund policy — then a
-      cancellation refunds nothing.
+- `holiday_dates` is an explicit, unique list of real `YYYY-MM-DD` dates
+  maintained by the Admin; `[]` means no dates are currently configured.
+- The check-in night sets the standard-stay rate: Sunday night through
+  Thursday night is weekday; Friday and Saturday check-in nights are weekend;
+  a configured holiday uses weekend/holiday pricing. Sunday morning checkout
+  completes the Saturday stay. Standard check-in is 2:00 PM and check-out is
+  12:00 noon (about 22 hours).
+- Main House has 10 guests included; Annex has 6 included. These are base-rate
+  thresholds, not booking caps. No physical/safety maximum is published here.
+  A-House is one unit per booking, ₱1,000 per unit, up to 3 guests.
+- The rate unit must be `standard_stay`; retired `nightly_rate`, fixed
+  `reservation_fee_amount`, upper brackets, non-50% down-payment percentages,
+  and Main/Annex caps are rejected for new quotes.
+- The stay total is computed first. `amount_due` is 50% of that total, rounded
+  down to centavos; the remaining 50% is due at check-in. The refundable
+  Security deposit is a separate Admin-confirmed amount.
+- `refund` is optional. If used, publish a 0–100 `refund_percent` or `tiers`
+  of `{ min_days_before_check_in, refund_percent }`; `deposit_refund_percent`
+  is also 0–100. Omit `refund` to publish no cancellation refund policy.
 
-**Semantics the Admin should know:**
-
-- `ChoosePaymentPlan` stamps `policy_version` and `policy_effective_date` on
-  the Booking at the moment the Guest commits to a plan. **Republishing later
-  (a new `version`) changes the terms of future choices only — never the
-  refund terms of a stay already promised.** The stamped Booking settles its
-  refund by the policy it was stamped under.
-- A Booking chosen while nothing was published carries nulls in both fields
-  and refunds nothing — the same as an unpublished policy.
-- The website reads the document (`src/lib/ratesDB.ts`, read-only) to offer
-  payment plans on `/account`; `src/config/site.ts` prices are display copy only.
+Payment channels and instructions remain separately configurable in
+`site_config/payment`; they are not pricing inputs. Publish only guest-visible
+payment details there—never passwords, PINs, OTPs, API keys or credentials.
 
 ## 🔐 Security Notes
 

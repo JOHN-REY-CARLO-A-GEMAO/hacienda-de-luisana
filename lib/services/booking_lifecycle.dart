@@ -354,9 +354,11 @@ RefundSettlement settleRefund({
   double? verifiedAmount,
   double? damageDeduction,
 }) {
-  final total = rateCard != null
-      ? roundMoney(nightsBetween(checkIn, checkOut) * rateCard.nightlyRate)
-      : roundMoney((stayTotal ?? 0) < 0 ? 0 : (stayTotal ?? 0));
+  final total = stayTotal != null
+      ? roundMoney(math.max(0, stayTotal))
+      : rateCard != null
+          ? roundMoney(nightsBetween(checkIn, checkOut) * rateCard.nightlyRate)
+          : 0.0;
   final checkInAt = parseDateOnly(checkIn);
   final int daysBefore = checkInAt == null
       ? 0
@@ -368,9 +370,9 @@ RefundSettlement settleRefund({
 
   final double percent = _refundPercentFor(policy, daysBefore);
   final double depositPercent = policy.depositRefundPercent ?? 100;
-  final double depositExpected = rateCard != null
-      ? rateCard.securityDeposit
-      : math.max(0.0, securityDeposit ?? 0.0);
+  final double depositExpected = securityDeposit != null
+      ? math.max(0.0, securityDeposit)
+      : rateCard?.securityDeposit ?? 0.0;
 
   final double verified = verifiedAmount ?? (total + depositExpected);
   final double capped =
@@ -393,6 +395,30 @@ RefundSettlement settleRefund({
     depositRefund: depositRefund,
     refundTotal: roundMoney(stayRefund + depositRefund),
   );
+}
+
+/// Recover a stay total only from financial values already on the Booking.
+/// Never substitute the currently published rate for a missing old snapshot.
+double? recordedStayTotal(Map<String, dynamic> booking) {
+  final stayTotal = booking['stay_total'];
+  if (stayTotal is num && stayTotal.isFinite) {
+    return roundMoney(math.max(0, stayTotal.toDouble()));
+  }
+  final legacyTotal = booking['total_amount'];
+  if (legacyTotal is num && legacyTotal.isFinite) {
+    return roundMoney(math.max(0, legacyTotal.toDouble()));
+  }
+  final rateAmount = booking['rate_amount'];
+  if (rateAmount is! num || !rateAmount.isFinite || rateAmount < 0) return null;
+  if (booking['rate_unit'] == 'standard_stay') return roundMoney(rateAmount.toDouble());
+  if (booking['rate_unit'] == 'night') {
+    final storedNights = booking['nights'];
+    final nights = storedNights is num && storedNights > 0
+        ? storedNights.toInt()
+        : nightsBetween(booking['check_in'], booking['check_out']);
+    if (nights > 0) return roundMoney(rateAmount * nights);
+  }
+  return null;
 }
 
 /// One problem with a rates document the Admin is about to publish.
@@ -420,29 +446,49 @@ bool _isValidDate(Object? v) {
   return d >= 1 && candidate.isBefore(firstOfNext);
 }
 
-void _validateGuestSchedule(Object? value, String path, List<RatesProblem> problems) {
+void _validateGuestSchedule(
+    Object? value, String path, List<RatesProblem> problems,
+    {required bool allowDocumentedCap, required bool requireExcess}) {
   if (value is! Map) {
     problems.add(RatesProblem(path, 'must be a guest-count schedule.'));
     return;
   }
   bool positiveInt(Object? v) => v is int && v > 0;
-  bool money(Object? v) => v is num && v.isFinite && v > 0;
-  if (!positiveInt(value['min_guests']) || !positiveInt(value['base_max_guests'])
-      || (value['base_max_guests'] as int? ?? 0) < (value['min_guests'] as int? ?? 1)
-      || !money(value['base_rate'])) {
-    problems.add(RatesProblem(path, 'needs a valid minimum, base maximum, and base rate.'));
+  if (!positiveInt(value['min_guests'])) {
+    problems.add(RatesProblem('$path.min_guests', 'must be a positive whole number.'));
+  } else if (value['min_guests'] != 1) {
+    problems.add(RatesProblem('$path.min_guests', 'must be 1; base occupancy is not a minimum booking size.'));
   }
-  final hasUpper = value.containsKey('upper_min_guests') || value.containsKey('upper_max_guests') || value.containsKey('upper_rate');
-  if (hasUpper && (!positiveInt(value['upper_min_guests']) || !positiveInt(value['upper_max_guests'])
-      || value['upper_min_guests'] != (value['base_max_guests'] as int? ?? 0) + 1
-      || (value['upper_max_guests'] as int? ?? 0) < (value['upper_min_guests'] as int? ?? 1)
-      || !money(value['upper_rate']))) {
-    problems.add(RatesProblem(path, 'upper bracket must be complete and contiguous.'));
+  if (!positiveInt(value['base_max_guests'])
+      || (value['base_max_guests'] as int? ?? 0) < 1) {
+    problems.add(RatesProblem('$path.base_max_guests', 'must be a positive whole-number included occupancy.'));
   }
-  final hasExcess = value.containsKey('excess_after') || value.containsKey('excess_per_guest');
-  if (hasExcess && (!hasUpper || value['excess_after'] != value['upper_max_guests']
-      || !money(value['excess_per_guest']))) {
-    problems.add(RatesProblem(path, 'excess pricing must start after the upper bracket.'));
+  if (value['base_rate'] is! num || !(value['base_rate'] as num).isFinite
+      || (value['base_rate'] as num) <= 0) {
+    problems.add(RatesProblem('$path.base_rate', 'must be a positive peso amount.'));
+  }
+  if (value.containsKey('max_guests')) {
+    if (!allowDocumentedCap) {
+      problems.add(RatesProblem('$path.max_guests', 'is not supported without a separately documented physical/safety limit.'));
+    } else if (!positiveInt(value['max_guests'])
+        || (value['max_guests'] as int? ?? 0) < (value['base_max_guests'] as int? ?? 1)) {
+      problems.add(RatesProblem('$path.max_guests', 'must be a whole-number cap at or above base_max_guests.'));
+    }
+  }
+  if (requireExcess && !value.containsKey('excess_per_guest')) {
+    problems.add(RatesProblem('$path.excess_per_guest', 'is required when there is no absolute guest cap.'));
+  } else if (!requireExcess && value.containsKey('excess_per_guest')) {
+    problems.add(RatesProblem('$path.excess_per_guest', 'A-House is a flat per-unit amount through its documented three-guest maximum.'));
+  } else if (value.containsKey('excess_per_guest')
+      && (value['excess_per_guest'] is! num
+          || !(value['excess_per_guest'] as num).isFinite
+          || (value['excess_per_guest'] as num) < 0)) {
+    problems.add(RatesProblem('$path.excess_per_guest', 'must be a non-negative per-person peso amount.'));
+  }
+  for (final retired in ['upper_min_guests', 'upper_max_guests', 'upper_rate', 'excess_after']) {
+    if (value.containsKey(retired)) {
+      problems.add(RatesProblem('$path.$retired', 'is retired; use base_rate plus excess_per_guest.'));
+    }
   }
 }
 
@@ -486,27 +532,38 @@ List<RatesProblem> validatePublishedRates(Object? doc,
         problems.add(RatesProblem('accommodations.$key.property_name',
             'must be a non-empty property name.'));
       }
+      if (node.containsKey('nightly_rate')) {
+        problems.add(RatesProblem('accommodations.$key.nightly_rate',
+            'legacy flat nightly pricing cannot be published for new bookings; use guest_pricing.'));
+      }
+      if (node['rate_unit'] != 'standard_stay') {
+        problems.add(RatesProblem('accommodations.$key.rate_unit',
+            'new guest-count prices must use the standard_stay rate unit.'));
+      }
       final guestPricing = node['guest_pricing'];
-      if (guestPricing != null) {
-        if (node['rate_unit'] != 'standard_stay' || node.containsKey('nightly_rate')) {
-          problems.add(RatesProblem('accommodations.$key.rate_unit',
-              'guest schedules must use standard_stay and omit nightly_rate.'));
-        }
-        if (guestPricing is! Map || guestPricing['units_per_booking'] != 1) {
-          problems.add(RatesProblem('accommodations.$key.guest_pricing',
-              'must use one unit per booking.'));
-        } else {
-          _validateGuestSchedule(guestPricing['weekday'], 'accommodations.$key.guest_pricing.weekday', problems);
-          _validateGuestSchedule(guestPricing['weekend_holiday'], 'accommodations.$key.guest_pricing.weekend_holiday', problems);
-        }
+      if (guestPricing is! Map) {
+        problems.add(RatesProblem('accommodations.$key.guest_pricing',
+            'must publish weekday and weekend_holiday guest-count schedules.'));
       } else {
-        if (node.containsKey('rate_unit') && node['rate_unit'] != 'night') {
-          problems.add(RatesProblem('accommodations.$key.rate_unit', 'must be "night".'));
+        if (guestPricing['units_per_booking'] != null && guestPricing['units_per_booking'] != 1) {
+          problems.add(RatesProblem('accommodations.$key.guest_pricing.units_per_booking',
+              'must be 1 until quantity booking is defined.'));
         }
-        final nightly = node['nightly_rate'];
-        if (nightly is! num || !nightly.isFinite || nightly <= 0) {
-          problems.add(RatesProblem('accommodations.$key.nightly_rate',
-              'must be a number of pesos per night, greater than zero.'));
+        final allowCap = key == 'house-a-camping';
+        final weekdayPath = 'accommodations.$key.guest_pricing.weekday';
+        final weekendPath = 'accommodations.$key.guest_pricing.weekend_holiday';
+        _validateGuestSchedule(guestPricing['weekday'], weekdayPath, problems,
+            allowDocumentedCap: allowCap, requireExcess: !allowCap);
+        _validateGuestSchedule(guestPricing['weekend_holiday'], weekendPath, problems,
+            allowDocumentedCap: allowCap, requireExcess: !allowCap);
+        if (allowCap) {
+          for (final schedule in [guestPricing['weekday'], guestPricing['weekend_holiday']]) {
+            if (schedule is Map && (schedule['base_max_guests'] != 3 || schedule['max_guests'] != 3)) {
+              problems.add(RatesProblem('accommodations.$key.guest_pricing',
+                  'A-House is one unit per booking, with an included and absolute maximum of 3 guests.'));
+              break;
+            }
+          }
         }
       }
       if (node.containsKey('active') && node['active'] is! bool) {
@@ -518,33 +575,21 @@ List<RatesProblem> validatePublishedRates(Object? doc,
         problems.add(RatesProblem('accommodations.$key.security_deposit',
             'must be a peso amount, zero or more.'));
       }
-      if (node.containsKey('reservation_fee_amount') && node.containsKey('down_payment_percent')) {
-        problems.add(RatesProblem('accommodations.$key',
-            'use either reservation_fee_amount or down_payment_percent, not both.'));
-      }
       if (node.containsKey('reservation_fee_amount')) {
-        final fee = node['reservation_fee_amount'];
-        if (fee is! num || !fee.isFinite || fee <= 0) {
-          problems.add(RatesProblem('accommodations.$key.reservation_fee_amount',
-              'must be a positive peso amount.'));
-        }
+        problems.add(RatesProblem('accommodations.$key.reservation_fee_amount',
+            'fixed reservation fees are not accepted; the down payment is 50% of the computed stay total.'));
       }
-      if (node.containsKey('down_payment_percent') &&
-          node['down_payment_percent'] != null) {
-        final dp = node['down_payment_percent'];
-        if (dp is! num || !dp.isFinite || dp <= 0 || dp >= 100) {
-          problems.add(RatesProblem('accommodations.$key.down_payment_percent',
-              'must be a percentage strictly between 0 and 100 (omit it for full payment only).'));
-        }
+      final dp = node['down_payment_percent'];
+      if (dp is! num || !dp.isFinite || dp != 50) {
+        problems.add(RatesProblem('accommodations.$key.down_payment_percent',
+            'must be 50; the remaining 50% is due at check-in.'));
       }
     });
   }
-  if (doc.containsKey('holiday_dates')) {
-    final dates = doc['holiday_dates'];
-    if (dates is! List || dates.any((date) => !_isValidDate(date)) || dates.toSet().length != dates.length) {
-      problems.add(const RatesProblem('holiday_dates',
-          'must contain unique YYYY-MM-DD dates configured by the Admin.'));
-    }
+  final dates = doc['holiday_dates'];
+  if (dates is! List || dates.any((date) => !_isValidDate(date)) || dates.toSet().length != dates.length) {
+    problems.add(const RatesProblem('holiday_dates',
+        'must contain an explicit, unique Admin-maintained list of YYYY-MM-DD dates (use [] when none are configured).'));
   }
   if (doc.containsKey('refund') && doc['refund'] != null) {
     final refund = doc['refund'];
@@ -592,6 +637,39 @@ List<RatesProblem> validatePublishedRates(Object? doc,
   return problems;
 }
 
+/// Read the published cancellation terms independently of any legacy rate
+/// card; the current guest-count schedules do not need to fabricate one.
+RefundPolicy refundPolicyFromPublished(Object? ratesDocument) {
+  final refund = ratesDocument is Map ? ratesDocument['refund'] : null;
+  return refundPolicyFromSnapshot(refund);
+}
+
+/// Parse the exact snake-case refund policy captured on a Booking.
+RefundPolicy refundPolicyFromSnapshot(Object? snapshot) {
+  if (snapshot is! Map) return const RefundPolicy();
+  final tiers = <RefundTier>[];
+  final rawTiers = snapshot['tiers'];
+  if (rawTiers is List) {
+    for (final t in rawTiers) {
+      if (t is Map && t['min_days_before_check_in'] is num && t['refund_percent'] is num) {
+        tiers.add(RefundTier(
+          minDaysBeforeCheckIn: (t['min_days_before_check_in'] as num).toInt(),
+          refundPercent: (t['refund_percent'] as num).toDouble(),
+        ));
+      }
+    }
+  }
+  return RefundPolicy(
+    refundPercent: snapshot['refund_percent'] is num
+        ? (snapshot['refund_percent'] as num).toDouble()
+        : null,
+    tiers: tiers,
+    depositRefundPercent: snapshot['deposit_refund_percent'] is num
+        ? (snapshot['deposit_refund_percent'] as num).toDouble()
+        : null,
+  );
+}
+
 /// The rate card and refund policy for one Accommodation out of a published
 /// document; null when it has no figures (the action refuses rather than
 /// inventing a price).
@@ -606,29 +684,7 @@ List<RatesProblem> validatePublishedRates(Object? doc,
   final deposit = figures['security_deposit'];
   if (nightly is! num || deposit is! num) return null;
   final dp = figures['down_payment_percent'];
-  final refund = doc['refund'];
-  RefundPolicy policy = const RefundPolicy();
-  if (refund is Map) {
-    final tiers = <RefundTier>[];
-    final rawTiers = refund['tiers'];
-    if (rawTiers is List) {
-      for (final t in rawTiers) {
-        if (t is Map &&
-            t['min_days_before_check_in'] is num &&
-            t['refund_percent'] is num) {
-          tiers.add(RefundTier(
-            minDaysBeforeCheckIn: (t['min_days_before_check_in'] as num).toInt(),
-            refundPercent: (t['refund_percent'] as num).toDouble(),
-          ));
-        }
-      }
-    }
-    policy = RefundPolicy(
-      refundPercent: (refund['refund_percent'] as num?)?.toDouble(),
-      tiers: tiers,
-      depositRefundPercent: (refund['deposit_refund_percent'] as num?)?.toDouble(),
-    );
-  }
+  final policy = refundPolicyFromPublished(doc);
   return (
     rateCard: RateCard(
       nightlyRate: nightly.toDouble(),
@@ -1010,17 +1066,18 @@ ActionResult applyAdminAction(
       if (from == BookingStatuses.reserved ||
           (from == BookingStatuses.approved &&
               booking['payment_status'] == 'verified')) {
-        final rates = ratesForAccommodation(
-            input.publishedRates, (booking['accommodation'] ?? '').toString());
+        final policy = booking.containsKey('refund_policy_snapshot')
+            ? refundPolicyFromSnapshot(booking['refund_policy_snapshot'])
+            : refundPolicyFromPublished(input.publishedRates);
         final settlement = settleRefund(
           checkIn: booking['check_in'],
           checkOut: booking['check_out'],
-          policy: rates?.policy ?? const RefundPolicy(),
+          policy: policy,
           cancelledAt: at,
-          rateCard: rates?.rateCard,
-          stayTotal: booking['stay_total'] is num
-              ? (booking['stay_total'] as num).toDouble()
-              : null,
+          // Refund from the total/deposit already recorded, not today's rate
+          // card. Missing legacy snapshots stay missing rather than being
+          // recalculated under a later publication.
+          stayTotal: recordedStayTotal(booking),
           securityDeposit: booking['security_deposit'] is num
               ? (booking['security_deposit'] as num).toDouble()
               : null,

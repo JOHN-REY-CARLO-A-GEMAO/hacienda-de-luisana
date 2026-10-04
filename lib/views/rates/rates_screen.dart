@@ -47,6 +47,8 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
   bool _paymentActive = true;
   bool _busy = false;
   bool _paymentBusy = false;
+  bool _legacyRatesNeedReview = false;
+  Map<String, dynamic>? _preservedPolicies;
   List<RatesProblem> _problems = const [];
 
   @override
@@ -74,34 +76,40 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     super.dispose();
   }
 
+  void _seedOfficialSchedules() {
+    void official(String id, Map<String, num> weekday, Map<String, num> weekend) {
+      final f = _acc[id]!;
+      f.weekday.seed(weekday);
+      f.weekend.seed(weekend);
+    }
+    official('main-house',
+      {'base_max_guests': 10, 'base_rate': 5000, 'excess_per_guest': 500},
+      {'base_max_guests': 10, 'base_rate': 6000, 'excess_per_guest': 500});
+    official('annex',
+      {'base_max_guests': 6, 'base_rate': 4000, 'excess_per_guest': 500},
+      {'base_max_guests': 6, 'base_rate': 5000, 'excess_per_guest': 500});
+    official('house-a-camping',
+      {'base_max_guests': 3, 'base_rate': 1000, 'max_guests': 3},
+      {'base_max_guests': 3, 'base_rate': 1000, 'max_guests': 3});
+  }
+
   void _seedFrom(Map<String, dynamic>? doc) {
     if (_seeded) return;
     _seeded = true;
+    _seedOfficialSchedules();
     if (doc == null) {
       final today = DateTime.now().toIso8601String().substring(0, 10);
-      _version.text = 'official-v1';
+      _version.text = 'official-v2';
       _effectiveDate.text = today;
-      void official(String id, Map<String, num> weekday, Map<String, num> weekend) {
-        final f = _acc[id]!;
-        f.tiered = true;
-        f.weekday.seed(weekday);
-        f.weekend.seed(weekend);
-      }
-      official('main-house',
-        {'min_guests': 6, 'base_max_guests': 10, 'base_rate': 5000, 'upper_min_guests': 11, 'upper_max_guests': 13, 'upper_rate': 5500, 'excess_after': 13, 'excess_per_guest': 500},
-        {'min_guests': 6, 'base_max_guests': 10, 'base_rate': 6000, 'upper_min_guests': 11, 'upper_max_guests': 13, 'upper_rate': 6500, 'excess_after': 13, 'excess_per_guest': 500});
-      official('annex',
-        {'min_guests': 2, 'base_max_guests': 6, 'base_rate': 4000},
-        {'min_guests': 2, 'base_max_guests': 6, 'base_rate': 5000});
-      official('house-a-camping',
-        {'min_guests': 2, 'base_max_guests': 3, 'base_rate': 1000},
-        {'min_guests': 2, 'base_max_guests': 3, 'base_rate': 1000});
       return;
     }
     _version.text = '${doc['version'] ?? ''}';
     _effectiveDate.text = '${doc['effective_date'] ?? ''}';
     final holidays = doc['holiday_dates'];
     if (holidays is List) _holidayDates.text = holidays.join(', ');
+    final policies = doc['policies'];
+    if (policies is Map) _preservedPolicies = Map<String, dynamic>.from(policies);
+
     final acc = doc['accommodations'];
     if (acc is Map) {
       acc.forEach((id, node) {
@@ -109,17 +117,37 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
         if (f == null || node is! Map) return;
         f.name.text = '${node['property_name'] ?? BookingModel.accommodationLabel('$id')}';
         f.active = node['active'] != false;
-        f.nightly.text = _numText(node['nightly_rate']);
         f.deposit.text = _numText(node['security_deposit']);
-        f.downPayment.text = _numText(node['down_payment_percent']);
-        f.reservationFee.text = _numText(node['reservation_fee_amount']);
+        if (node['manual_review_notice'] is String) {
+          f.manualReviewNotice = node['manual_review_notice'] as String;
+        }
         final gp = node['guest_pricing'];
         if (gp is Map) {
-          f.tiered = true;
           f.weekday.seed(gp['weekday']);
           f.weekend.seed(gp['weekend_holiday']);
+          for (final schedule in [gp['weekday'], gp['weekend_holiday']]) {
+            if (schedule is Map && (schedule.containsKey('upper_min_guests')
+                || schedule.containsKey('upper_max_guests')
+                || schedule.containsKey('upper_rate')
+                || schedule.containsKey('excess_after')
+                || schedule['min_guests'] != 1)) {
+              _legacyRatesNeedReview = true;
+            }
+          }
+        } else {
+          // A flat nightly amount cannot be safely converted. Show the confirmed
+          // guest schedule as an editable proposal; the old Firestore document
+          // remains unchanged until the Admin explicitly publishes a new version.
+          _legacyRatesNeedReview = true;
+        }
+        if (node.containsKey('nightly_rate') || node.containsKey('reservation_fee_amount')
+            || node['down_payment_percent'] != 50) {
+          _legacyRatesNeedReview = true;
         }
       });
+    }
+    if (_legacyRatesNeedReview) {
+      _version.text = '${_version.text}-guest-v2';
     }
     final refund = doc['refund'];
     if (refund is Map) {
@@ -154,23 +182,19 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
   Map<String, dynamic> _buildDoc() {
     final accommodations = <String, dynamic>{};
     _acc.forEach((id, f) {
-      final nightly = _num(f.nightly.text);
       final deposit = _num(f.deposit.text);
-      final dp = _num(f.downPayment.text);
-      final reservationFee = _num(f.reservationFee.text);
-      if (!f.tiered && nightly == null && deposit == null && dp == null && reservationFee == null) return;
       accommodations[id] = {
         'property_name': f.name.text.trim(),
-        'rate_unit': f.tiered ? 'standard_stay' : 'night',
+        'rate_unit': 'standard_stay',
         'active': f.active,
-        if (f.tiered) 'guest_pricing': {
+        'guest_pricing': {
           'units_per_booking': 1,
           'weekday': f.weekday.toMap(),
           'weekend_holiday': f.weekend.toMap(),
-        } else 'nightly_rate': nightly,
+        },
         'security_deposit': deposit,
-        if (reservationFee != null) 'reservation_fee_amount': reservationFee,
-        if (dp != null) 'down_payment_percent': dp,
+        'down_payment_percent': 50,
+        if (f.manualReviewNotice != null) 'manual_review_notice': f.manualReviewNotice,
       };
     });
     final refund = <String, dynamic>{};
@@ -186,12 +210,17 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
               })
           .toList();
     }
+    final holidayDates = _holidayDates.text
+        .split(',')
+        .map((date) => date.trim())
+        .where((date) => date.isNotEmpty)
+        .toList();
     return {
       'version': _version.text.trim(),
       'effective_date': _effectiveDate.text.trim(),
+      'holiday_dates': holidayDates,
       'accommodations': accommodations,
-      if (_holidayDates.text.trim().isNotEmpty)
-        'holiday_dates': _holidayDates.text.split(',').map((date) => date.trim()).where((date) => date.isNotEmpty).toList(),
+      if (_preservedPolicies != null) 'policies': _preservedPolicies,
       if (refund.isNotEmpty) 'refund': refund,
     };
   }
@@ -250,8 +279,8 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
       _paymentMethod2.text = 'BDO';
       _paymentRecipient2.text = 'Agueda Hortillas';
       _paymentAccount2.text = '005438013682';
-      _paymentInstructions.text = 'Send the non-refundable reservation fee through one listed channel. Full payment is due at check-in. Submit a screenshot or Gmail confirmation/reference for verification.';
-      _paymentDepositNotes.text = 'Reservation fee is non-refundable. Confirm its amount before publishing rates.';
+      _paymentInstructions.text = 'Send the 50% down payment calculated from the published stay total through one listed channel. The remaining 50% is due at check-in. Upload a screenshot for Admin review.';
+      _paymentDepositNotes.text = 'The down payment is 50% of the computed stay total. Any refundable security deposit is shown separately on the published rate card.';
       return;
     }
     _paymentActive = doc['active'] != false;
@@ -333,6 +362,18 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                             ? AppColors.statusWarning
                             : AppColors.primaryForest),
                   ),
+                  if (_legacyRatesNeedReview) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'The stored rates use a retired nightly, minimum-guest, flat reservation-fee, or old bracket format. A new guest-count schedule is prepared below; review it and publish under a new version. Nothing changes until you publish.',
+                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.statusWarning, height: 1.4),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    'Rates below are per 22-hour standard stay. New Bookings use a 50% down payment from the computed total; the remaining 50% is due at check-in.',
+                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted, height: 1.4),
+                  ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -358,9 +399,9 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                   TextField(
                     controller: _holidayDates,
                     decoration: const InputDecoration(
-                      labelText: 'Holiday dates (comma-separated)',
+                      labelText: 'Admin-configured holiday dates (comma-separated)',
                       hintText: 'YYYY-MM-DD, YYYY-MM-DD',
-                      helperText: 'Only dates entered here use holiday pricing; no calendar is assumed.',
+                      helperText: 'Friday and Saturday nights use weekend rates. Sunday check-in is weekday unless it is listed here; Sunday noon checkout completes the Saturday stay. No calendar is assumed.'
                     ),
                   ),
                 ],
@@ -537,25 +578,30 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     );
   }
 
-  Widget _scheduleFields(String label, _ScheduleFields f) {
+  Widget _scheduleFields(String label, _ScheduleFields f, {bool allowCap = false}) {
     InputDecoration decoration(String text) => InputDecoration(labelText: text, isDense: true);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold)),
       const SizedBox(height: 6),
       Wrap(spacing: 8, runSpacing: 8, children: [
-        SizedBox(width: 115, child: TextField(controller: f.min, keyboardType: TextInputType.number, decoration: decoration('Min guests'))),
-        SizedBox(width: 115, child: TextField(controller: f.baseMax, keyboardType: TextInputType.number, decoration: decoration('Base max'))),
-        SizedBox(width: 125, child: TextField(controller: f.baseRate, keyboardType: TextInputType.number, decoration: decoration('Base rate ₱'))),
-        SizedBox(width: 115, child: TextField(controller: f.upperMin, keyboardType: TextInputType.number, decoration: decoration('Upper min'))),
-        SizedBox(width: 115, child: TextField(controller: f.upperMax, keyboardType: TextInputType.number, decoration: decoration('Upper max'))),
-        SizedBox(width: 125, child: TextField(controller: f.upperRate, keyboardType: TextInputType.number, decoration: decoration('Upper rate ₱'))),
-        SizedBox(width: 125, child: TextField(controller: f.excessAfter, keyboardType: TextInputType.number, decoration: decoration('Excess after'))),
-        SizedBox(width: 135, child: TextField(controller: f.excessRate, keyboardType: TextInputType.number, decoration: decoration('Excess/person ₱'))),
+        SizedBox(width: 145, child: TextField(controller: f.baseMax, keyboardType: TextInputType.number, decoration: decoration('Guests included'))),
+        SizedBox(width: 145, child: TextField(controller: f.baseRate, keyboardType: TextInputType.number, decoration: decoration('Base rate / stay ₱'))),
+        SizedBox(width: 145, child: TextField(controller: f.excessRate, keyboardType: TextInputType.number, decoration: decoration('Each extra guest ₱'))),
+        if (allowCap)
+          SizedBox(width: 145, child: TextField(controller: f.maxGuests, keyboardType: TextInputType.number, decoration: decoration('Maximum guests'))),
       ]),
+      const SizedBox(height: 4),
+      Text(
+        allowCap
+            ? 'A-House is one unit per booking and is capped at 3 guests.'
+            : 'Included occupancy is the base-rate threshold, not an absolute booking cap. No physical/safety maximum is configured.',
+        style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+      ),
     ]);
   }
 
   Widget _accommodationCard(String id, _AccommodationFields f) {
+    final hasAHouseCap = id == 'house-a-camping';
     return HaciendaCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -563,8 +609,8 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
           Row(
             children: [
               Expanded(
-                child: Text(id,
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
+                child: Text(BookingModel.accommodationLabel(id),
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold)),
               ),
               Switch.adaptive(
                 value: f.active,
@@ -577,62 +623,19 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
             controller: f.name,
             decoration: const InputDecoration(labelText: 'Property name'),
           ),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Guest-count / standard-stay schedule'),
-            subtitle: const Text('Use weekday and weekend/Admin-holiday brackets instead of a nightly price.'),
-            value: f.tiered,
-            onChanged: (value) => setState(() => f.tiered = value == true),
-          ),
-          if (f.tiered) ...[
-            _scheduleFields('Weekday', f.weekday),
-            const SizedBox(height: 10),
-            _scheduleFields('Weekend / configured holiday', f.weekend),
-          ] else Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: f.nightly,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      labelText: 'Per night', prefixText: '₱ '),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: f.deposit,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      labelText: 'Security deposit', prefixText: '₱ '),
-                ),
-              ),
-            ],
+          const SizedBox(height: 8),
+          _scheduleFields('Weekday (Sunday night–Thursday night)', f.weekday, allowCap: hasAHouseCap),
+          const SizedBox(height: 10),
+          _scheduleFields('Weekend / configured holiday (Friday and Saturday nights)', f.weekend, allowCap: hasAHouseCap),
+          const SizedBox(height: 8),
+          TextField(
+            controller: f.deposit,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Security deposit', prefixText: '₱ '),
           ),
           const SizedBox(height: 8),
-          if (f.tiered) ...[
-            TextField(
-              controller: f.deposit,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Security deposit', prefixText: '₱ '),
-            ),
-            const SizedBox(height: 8),
-          ],
-          Row(children: [
-            Expanded(child: TextField(
-              controller: f.reservationFee,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Exact reservation fee ₱'),
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: TextField(
-              controller: f.downPayment,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Legacy down payment %'),
-            )),
-          ]),
-          const SizedBox(height: 4),
-          Text('Use only one; leave both blank for full payment.', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
+          Text('50% down payment from computed total · remaining 50% due at check-in',
+              style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
         ],
       ),
     );
@@ -640,66 +643,52 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
 }
 
 class _ScheduleFields {
-  final min = TextEditingController();
   final baseMax = TextEditingController();
   final baseRate = TextEditingController();
-  final upperMin = TextEditingController();
-  final upperMax = TextEditingController();
-  final upperRate = TextEditingController();
-  final excessAfter = TextEditingController();
   final excessRate = TextEditingController();
+  final maxGuests = TextEditingController();
+
   void seed(Object? value) {
     if (value is! Map) return;
-    min.text = _RatesScreenState._numText(value['min_guests']);
     baseMax.text = _RatesScreenState._numText(value['base_max_guests']);
     baseRate.text = _RatesScreenState._numText(value['base_rate']);
-    upperMin.text = _RatesScreenState._numText(value['upper_min_guests']);
-    upperMax.text = _RatesScreenState._numText(value['upper_max_guests']);
-    upperRate.text = _RatesScreenState._numText(value['upper_rate']);
-    excessAfter.text = _RatesScreenState._numText(value['excess_after']);
     excessRate.text = _RatesScreenState._numText(value['excess_per_guest']);
+    maxGuests.text = _RatesScreenState._numText(value['max_guests']);
   }
+
   Map<String, dynamic> toMap() {
-    final upperMinValue = _RatesScreenState._num(upperMin.text);
-    final upperMaxValue = _RatesScreenState._num(upperMax.text);
-    final upperRateValue = _RatesScreenState._num(upperRate.text);
-    final excessAfterValue = _RatesScreenState._num(excessAfter.text);
-    final excessRateValue = _RatesScreenState._num(excessRate.text);
+    final excess = _RatesScreenState._num(excessRate.text);
+    final max = _RatesScreenState._num(maxGuests.text);
     return {
-      'min_guests': _RatesScreenState._num(min.text),
+      'min_guests': 1,
       'base_max_guests': _RatesScreenState._num(baseMax.text),
       'base_rate': _RatesScreenState._num(baseRate.text),
-      if (upperMinValue != null) 'upper_min_guests': upperMinValue,
-      if (upperMaxValue != null) 'upper_max_guests': upperMaxValue,
-      if (upperRateValue != null) 'upper_rate': upperRateValue,
-      if (excessAfterValue != null) 'excess_after': excessAfterValue,
-      if (excessRateValue != null) 'excess_per_guest': excessRateValue,
+      if (excess != null) 'excess_per_guest': excess,
+      if (max != null) 'max_guests': max,
     };
   }
+
   void dispose() {
-    for (final field in [min, baseMax, baseRate, upperMin, upperMax, upperRate, excessAfter, excessRate]) { field.dispose(); }
+    baseMax.dispose();
+    baseRate.dispose();
+    excessRate.dispose();
+    maxGuests.dispose();
   }
 }
 
 class _AccommodationFields {
   final name = TextEditingController();
-  final nightly = TextEditingController();
   final deposit = TextEditingController();
-  final downPayment = TextEditingController();
-  final reservationFee = TextEditingController();
   final weekday = _ScheduleFields();
   final weekend = _ScheduleFields();
-  bool tiered = false;
+  String? manualReviewNotice;
   bool active = true;
   _AccommodationFields(String initialName) {
     name.text = initialName;
   }
   void dispose() {
     name.dispose();
-    nightly.dispose();
     deposit.dispose();
-    downPayment.dispose();
-    reservationFee.dispose();
     weekday.dispose();
     weekend.dispose();
   }

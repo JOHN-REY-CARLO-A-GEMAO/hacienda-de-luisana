@@ -2,7 +2,7 @@ import { paymentOptionsForTotal, quoteAccommodation, validatePublishedRates, typ
 import { OFFICIAL_ACCOMMODATION_RATES } from '../../src/config/officialBusiness'
 
 const official: PublishedRates = {
-  version: 'official-v1',
+  version: 'official-v2',
   effective_date: '2026-10-04',
   holiday_dates: ['2026-10-06'],
   accommodations: Object.fromEntries(
@@ -20,58 +20,102 @@ function quote(accommodation: string, date: string, guests: number) {
   })
 }
 
-describe('official guest-bracket pricing', () => {
-  it('validates the backward-compatible official schema', () => {
+describe('official guest-count standard-stay pricing', () => {
+  it('validates the official configurable schedule and explicit holiday list', () => {
     expect(validatePublishedRates(official, ['main-house', 'annex', 'house-a-camping'])).toEqual([])
   })
 
   it.each([
-    ['2026-10-05', 6, 5000], ['2026-10-05', 10, 5000],
-    ['2026-10-05', 11, 5500], ['2026-10-05', 13, 5500], ['2026-10-05', 14, 6000],
-    ['2026-10-10', 6, 6000], ['2026-10-10', 10, 6000],
-    ['2026-10-10', 11, 6500], ['2026-10-10', 13, 6500], ['2026-10-10', 14, 7000],
-    ['2026-10-06', 6, 6000],
+    ['2026-10-05', 1, 5000], ['2026-10-05', 10, 5000],
+    ['2026-10-05', 11, 5500], ['2026-10-05', 13, 6500], ['2026-10-05', 14, 7000],
+    ['2026-10-09', 10, 6000], ['2026-10-09', 11, 6500],
+    ['2026-10-10', 10, 6000], ['2026-10-10', 13, 7500], ['2026-10-10', 14, 8000],
+    ['2026-10-11', 10, 5000], ['2026-10-06', 10, 6000],
   ])('quotes Main House %s / %i guests as ₱%i', (date, guests, expected) => {
     expect(quote('main-house', String(date), Number(guests))?.stayTotal).toBe(expected)
   })
 
   it.each([
-    ['2026-10-05', 2, 4000], ['2026-10-05', 6, 4000],
-    ['2026-10-10', 2, 5000], ['2026-10-10', 6, 5000],
-  ])('quotes Annex boundaries', (date, guests, expected) => {
+    ['2026-10-05', 1, 4000], ['2026-10-05', 6, 4000], ['2026-10-05', 7, 4500],
+    ['2026-10-10', 1, 5000], ['2026-10-10', 6, 5000], ['2026-10-10', 7, 5500],
+  ])('quotes Annex per included occupancy and excess guest', (date, guests, expected) => {
     expect(quote('annex', String(date), Number(guests))?.stayTotal).toBe(expected)
   })
 
-  it.each([2, 3])('quotes one A-House for %i guests', (guests) => {
+  it.each([1, 2, 3])('quotes one A-House for %i guests', (guests) => {
     expect(quote('house-a-camping', '2026-10-05', guests)?.stayTotal).toBe(1000)
     expect(quote('house-a-camping', '2026-10-10', guests)?.stayTotal).toBe(1000)
   })
 
-  it('refuses invalid counts, missing/inactive properties and unresolved multi-stays', () => {
-    expect(quote('annex', '2026-10-05', 1)).toBeUndefined()
-    expect(quote('annex', '2026-10-05', 7)).toBeUndefined()
+  it('uses the computed total first, then takes 50% with the balance due at check-in', () => {
+    const main = quote('main-house', '2026-10-05', 11)!
+    expect(main.stayTotal).toBe(5500)
+    expect(paymentOptionsForTotal(main.stayTotal, main.rateCard)).toEqual([
+      { plan: 'down-payment', stayTotal: 5500, dueNow: 2750, securityDeposit: 500, balance: 2750 },
+      { plan: 'full', stayTotal: 5500, dueNow: 5500, securityDeposit: 500, balance: 0 },
+    ])
+  })
+
+  it('does not treat base occupancy as a minimum or a cap for Main House or Annex', () => {
+    expect(quote('main-house', '2026-10-05', 1)?.stayTotal).toBe(5000)
+    expect(quote('main-house', '2026-10-05', 25)?.stayTotal).toBe(12500)
+    expect(quote('annex', '2026-10-05', 1)?.stayTotal).toBe(4000)
+    expect(quote('annex', '2026-10-05', 25)?.stayTotal).toBe(13500)
+  })
+
+  it('refuses invalid counts, A-House counts above 3, inactive properties and unresolved multi-stays', () => {
+    expect(quote('annex', '2026-10-05', 0)).toBeUndefined()
     expect(quote('house-a-camping', '2026-10-05', 4)).toBeUndefined()
     expect(quote('missing', '2026-10-05', 2)).toBeUndefined()
     expect(quoteAccommodation(official, 'annex', { check_in: '2026-10-05', check_out: '2026-10-07', guests: 2 })).toBeUndefined()
     expect(quoteAccommodation({ ...official, accommodations: { annex: { ...official.accommodations.annex, active: false } } }, 'annex', { check_in: '2026-10-05', check_out: '2026-10-06', guests: 2 })).toBeUndefined()
   })
 
-  it('uses an exact reservation fee without inventing a percentage', () => {
-    expect(paymentOptionsForTotal(5000, { securityDeposit: 0, reservationFeeAmount: 750 })).toEqual([
-      { plan: 'down-payment', stayTotal: 5000, dueNow: 750, securityDeposit: 0, balance: 4250 },
-      { plan: 'full', stayTotal: 5000, dueNow: 5000, securityDeposit: 0, balance: 0 },
-    ])
+  it('rejects per-person charges on the fixed-price A-House schedule', () => {
+    const aHouse = official.accommodations['house-a-camping']
+    const bad: PublishedRates = {
+      ...official,
+      accommodations: {
+        ...official.accommodations,
+        'house-a-camping': {
+          ...aHouse,
+          guest_pricing: {
+            ...aHouse.guest_pricing!,
+            weekday: { ...aHouse.guest_pricing!.weekday, excess_per_guest: 500 },
+          },
+        },
+      },
+    }
+    expect(validatePublishedRates(bad).map((problem) => problem.path)).toContain(
+      'accommodations.house-a-camping.guest_pricing.weekday.excess_per_guest',
+    )
   })
 
-  it('does not add pet, bonfire, event or late-checkout charges to the authoritative stay total', () => {
+  it('rejects fixed reservation fees and anything other than 50% down payment', () => {
+    const main = official.accommodations['main-house']
+    expect(validatePublishedRates({
+      ...official,
+      accommodations: {
+        'main-house': { ...main, reservation_fee_amount: 750 },
+      },
+    }).map((problem) => problem.path)).toContain('accommodations.main-house.reservation_fee_amount')
+    expect(validatePublishedRates({
+      ...official,
+      accommodations: {
+        'main-house': { ...main, down_payment_percent: 30 },
+      },
+    }).map((problem) => problem.path)).toContain('accommodations.main-house.down_payment_percent')
+  })
+
+  it('does not add pet, wedding-preparation, event or late-checkout charges to an ordinary stay', () => {
     expect(quote('main-house', '2026-10-05', 6)?.stayTotal).toBe(5000)
   })
 
-  it('leaves historical snapshots unchanged when a new version is quoted', () => {
+  it('leaves a captured quote unchanged when a new version is published', () => {
     const historical = quote('annex', '2026-10-05', 2)!
     const changed: PublishedRates = {
       ...official,
-      version: 'official-v2',
+      version: 'official-v3',
       accommodations: {
         ...official.accommodations,
         annex: {
@@ -85,6 +129,7 @@ describe('official guest-bracket pricing', () => {
     }
     expect(quoteAccommodation(changed, 'annex', { check_in: '2026-10-05', check_out: '2026-10-06', guests: 2 })?.stayTotal).toBe(4500)
     expect(historical.stayTotal).toBe(4000)
-    expect(historical.snapshot.version).toBe('official-v1')
+    expect(historical.classification).toBe('weekday')
+    expect(historical.snapshot.version).toBe('official-v2')
   })
 })

@@ -14,6 +14,7 @@ import {
   paymentOptions,
   paymentOptionsForTotal,
   quoteStay,
+  recordedStayTotal,
   suggestAlternativeDates,
   settleRefund,
   type RateCard,
@@ -440,9 +441,9 @@ describe('paymentOptions', () => {
     expect(options[0]).toEqual({
       plan: 'down-payment',
       stayTotal: 1234.57,
-      dueNow: 617.29,
+      dueNow: 617.28,
       securityDeposit: 0,
-      balance: 617.28,
+      balance: 617.29,
     })
     expect(options[0].dueNow + options[0].balance).toBe(options[0].stayTotal)
   })
@@ -477,9 +478,9 @@ describe('paymentOptionsForTotal', () => {
     expect(options[0]).toEqual({
       plan: 'down-payment',
       stayTotal: 1234.57,
-      dueNow: 407.41,
+      dueNow: 407.40,
       securityDeposit: 0,
-      balance: 827.16,
+      balance: 827.17,
     })
     expect(options[0].dueNow + options[0].balance).toBe(options[0].stayTotal)
   })
@@ -494,6 +495,17 @@ describe('paymentOptionsForTotal', () => {
     expect(paymentOptionsForTotal(-5, { securityDeposit: 0 })).toEqual([
       { plan: 'full', stayTotal: 0, dueNow: 0, securityDeposit: 0, balance: 0 },
     ])
+  })
+})
+
+describe('recordedStayTotal', () => {
+  it('uses saved totals first and otherwise derives only from saved rate/unit/nights', () => {
+    expect(recordedStayTotal({ stay_total: 5000, rate_amount: 99000, rate_unit: 'night', nights: 2 })).toBe(5000)
+    expect(recordedStayTotal({ total_amount: 6000 })).toBe(6000)
+    expect(recordedStayTotal({ rate_amount: 4250, rate_unit: 'night', nights: 2 })).toBe(8500)
+    expect(recordedStayTotal({ rate_amount: 1000, rate_unit: 'standard_stay' })).toBe(1000)
+    expect(recordedStayTotal({ rate_amount: 5000, nights: 2 })).toBeUndefined()
+    expect(recordedStayTotal({})).toBeUndefined()
   })
 })
 

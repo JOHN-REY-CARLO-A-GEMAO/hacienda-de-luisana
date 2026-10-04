@@ -188,22 +188,48 @@ describe('rates, fees and sleeping arrangements', () => {
     expect(displayedRate(camping, null).label).toBe('₱1,000 / A-House / standard stay')
 
     const published: PublishedRates = {
-      version: 'v-test',
-      effective_date: '2026-09-01',
+      version: 'guest-count-test',
+      effective_date: '2026-10-01',
+      holiday_dates: ['2026-10-06'],
       accommodations: {
-        'main-house': { nightly_rate: 7500, security_deposit: 1000, down_payment_percent: 50 },
-        'house-a-camping': { nightly_rate: 1500, security_deposit: 0 },
+        'main-house': {
+          rate_unit: 'standard_stay', security_deposit: 1000, down_payment_percent: 50,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+          },
+        },
+        'house-a-camping': {
+          rate_unit: 'standard_stay', security_deposit: 0, down_payment_percent: 50,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+          },
+        },
       },
     }
-    expect(displayedRate(mainHouse, published)).toMatchObject({ label: '₱7,500 / night', nightly: 7500 })
-    expect(displayedRate(camping, published)).toMatchObject({ label: '₱1,500 / unit / night', nightly: 1500 })
-    expect(displayedRate(mainHouse, published).source).toContain('v-test')
+    expect(displayedRate(mainHouse, published).label).toBe('From ₱5,000 weekday · ₱6,000 weekend/holiday')
+    expect(displayedRate(camping, published).label).toBe('₱1,000 / standard stay')
+    expect(displayedRate(mainHouse, published).source).toContain('guest-count-test')
   })
 
-  it('separates the pet fee from optional, unpriced extras', () => {
+  it('keeps pet, event and late-checkout charges manual while pricing only the wedding-preparation package', () => {
     const pets = FEES.additional.find((f) => f.id === 'pets')!
     expect(pets.amount).toBe(300)
-    for (const f of FEES.optional) expect(f.amount).toBeUndefined()
+    expect(pets.unit).toBe('per pet')
+    expect(pets.note).toContain('not added automatically')
+    const lateCheckout = FEES.additional.find((f) => f.id === 'late-checkout')!
+    expect(lateCheckout.amount).toBe(250)
+    expect(lateCheckout.note).toContain('requested and approved')
+    const wedding = FEES.optional.find((f) => f.id === 'wedding-preparation')!
+    expect(wedding.amount).toBe(8500)
+    expect(wedding.unit).toContain('up to 10 pax')
+    expect(wedding.note).toContain('explicitly identified')
+    const event = FEES.optional.find((f) => f.id === 'special-event')!
+    expect(event.amount).toBeUndefined()
+    expect(event.note).toContain('No arbitrary event charge')
     expect(FEES.included.length).toBeGreaterThan(0)
   })
 

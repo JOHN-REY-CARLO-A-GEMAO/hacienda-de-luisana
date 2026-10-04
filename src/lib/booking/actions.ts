@@ -17,6 +17,7 @@ import { effectiveStatus, findDateConflicts, type HoldBearingBooking } from './a
 import {
   paymentOptions,
   paymentOptionsForTotal,
+  recordedStayTotal,
   settleRefund,
   type RateCard,
   type RefundPolicy,
@@ -24,7 +25,7 @@ import {
 } from './money'
 import { roundMoney } from './internal'
 import type { PaymentPlan } from './money'
-import type { PolicySnapshot } from './rates'
+import { refundPolicyFromPublished, type PolicySnapshot, type PublishedRefundPolicy } from './rates'
 
 export type PaymentStatus = 'unpaid' | 'pending' | 'verified' | 'rejected'
 export type RefundStatus = 'none' | 'initiated' | 'refunded'
@@ -63,6 +64,10 @@ export type BookingState = {
   nights?: number
   rate_amount?: number
   rate_unit?: 'night' | 'standard_stay'
+  /** An older persisted total field, read only as a historical snapshot. */
+  total_amount?: number
+  /** Weekday or weekend/holiday rate schedule applied when this Booking was quoted. */
+  rate_classification?: 'weekday' | 'weekend_holiday'
   stay_total?: number
   amount_due?: number
   security_deposit?: number
@@ -82,6 +87,8 @@ export type BookingState = {
   policy_version?: string | null
   /** When the stamped policy version took effect (YYYY-MM-DD). */
   policy_effective_date?: string | null
+  /** Exact refund terms captured at quote time; null means none was published. */
+  refund_policy_snapshot?: PublishedRefundPolicy | null
   hold_expires_at?: string | null
   created_at?: string
 }
@@ -415,12 +422,13 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       patch.amount_due = option.dueNow
       patch.security_deposit = option.securityDeposit
       patch.balance_due = option.balance
-      // The policy in force is stamped with the choice: republishing later
-      // changes the terms of future choices, never of a stay already promised.
-      // A Booking chosen under no published policy carries nulls and refunds
-      // nothing — which is what an unpublished policy amounts to.
-      patch.policy_version = action.policy?.version ?? null
-      patch.policy_effective_date = action.policy?.effectiveDate ?? null
+      // Stamp a newly quoted policy when one is supplied. Historical plan
+      // choices based on an already-saved total must not replace an existing
+      // policy snapshot with today's version or clear the old stamp.
+      if (action.policy) {
+        patch.policy_version = action.policy.version
+        patch.policy_effective_date = action.policy.effectiveDate
+      }
       break
     }
 
@@ -489,10 +497,20 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       patch.cancellation_reason = action.reason ?? null
       if (from === 'Reserved' || (from === 'Approved' && booking.payment_status === 'verified')) {
         // Money was verified, so the cancellation goes through the Refund pipeline.
-        const settlement = settleRefund(booking, action.refund?.policy ?? {}, {
+        const savedTotal = recordedStayTotal(booking)
+        const savedPolicy = booking.refund_policy_snapshot
+        const refundPolicy = savedPolicy === null
+          ? {}
+          : savedPolicy !== undefined
+            ? refundPolicyFromPublished(savedPolicy)
+            : action.refund?.policy ?? {}
+        const settlement = settleRefund(booking, refundPolicy, {
           cancelledAt: at,
-          rateCard: action.refund?.rateCard,
-          stay_total: booking.stay_total,
+          // Once a Booking has a stored rate/total, a current card must never
+          // reprice it. The card remains a legacy fallback only when the
+          // document has no recoverable financial snapshot at all.
+          rateCard: savedTotal === undefined ? action.refund?.rateCard : undefined,
+          stay_total: savedTotal,
           security_deposit: booking.security_deposit,
           verifiedAmount: booking.amount_verified,
           damageDeduction: action.refund?.damageDeduction,

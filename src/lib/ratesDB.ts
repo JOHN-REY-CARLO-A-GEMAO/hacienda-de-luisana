@@ -58,7 +58,9 @@ export const ratesDB = {
     if (!isCloud || !db) return readLocal()
     try {
       const snap = await getDoc(doc(db, COLLECTION, DOC_ID))
-      return snap.exists() ? (snap.data() as PublishedRates) : null
+      if (!snap.exists()) return null
+      const parsed = snap.data() as unknown
+      return validatePublishedRates(parsed).length === 0 ? parsed as PublishedRates : null
     } catch (e) {
       console.warn('[Rates] get() failed, falling back to local', e)
       return readLocal()
@@ -76,7 +78,14 @@ export const ratesDB = {
     const ref = doc(db, COLLECTION, DOC_ID)
     const unsub = onSnapshot(
       ref,
-      (snap) => callback(snap.exists() ? (snap.data() as PublishedRates) : null),
+      (snap) => {
+        if (!snap.exists()) {
+          callback(null)
+          return
+        }
+        const parsed = snap.data() as unknown
+        callback(validatePublishedRates(parsed).length === 0 ? parsed as PublishedRates : null)
+      },
       (err) => {
         console.error('[Rates] subscribe error', err)
         callback(readLocal())

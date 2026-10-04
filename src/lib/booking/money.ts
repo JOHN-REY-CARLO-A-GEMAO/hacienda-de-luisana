@@ -17,14 +17,12 @@ import { nightsBetween } from './availability'
 
 /** The Admin's published figures for one Accommodation. */
 export type RateCard = {
-  /** Philippine pesos per night. */
+  /** Philippine pesos per one 22-hour standard stay. */
   nightlyRate: number
   /** Refundable amount held against damage, settled at check-out. */
   securityDeposit: number
-  /** Down-payment percentage offered alongside full payment; omitted means full payment only. */
+  /** Published down-payment percentage; new rates require 50%. */
   downPaymentPercent?: number
-  /** Exact non-refundable reservation fee, when officially configured. */
-  reservationFeeAmount?: number
 }
 
 /** One refund tier: cancel at least this many days before check-in, get this percentage back. */
@@ -56,8 +54,9 @@ export function quoteStay(dates: { check_in: string; check_out: string }, rateCa
  */
 export function downPaymentAmount(stayTotal: number, percent: number): number | null {
   if (!(percent > 0 && percent < 100)) return null
-  const total = roundMoney(Math.max(0, stayTotal))
-  return Math.floor(roundMoney((total * percent) / 100) * 100) / 100
+  const totalCents = Math.round(roundMoney(Math.max(0, stayTotal)) * 100)
+  const dueCents = Math.floor((totalCents * percent + Number.EPSILON) / 100)
+  return dueCents / 100
 }
 
 export type PaymentPlan = 'down-payment' | 'full'
@@ -82,26 +81,16 @@ export type PaymentOption = {
  */
 function optionsFromTotal(
   stayTotal: number,
-  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent' | 'reservationFeeAmount'>,
+  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent'>,
 ): PaymentOption[] {
   const total = roundMoney(Math.max(0, stayTotal))
   const options: PaymentOption[] = []
 
-  const exactFee = rate.reservationFeeAmount
   const percent = rate.downPaymentPercent
-  if (typeof exactFee === 'number' && exactFee > 0 && exactFee < total) {
-    const dueNow = roundMoney(exactFee)
-    options.push({
-      plan: 'down-payment',
-      stayTotal: total,
-      dueNow,
-      securityDeposit: rate.securityDeposit,
-      balance: roundMoney(total - dueNow),
-    })
-  } else if (typeof percent === 'number' && percent > 0 && percent < 100) {
-    // Floor at whole centavos, off the quoted total, so the down payment and
-    // the balance add back up to exactly what the Guest was quoted.
-    const dueNow = Math.floor(roundMoney((total * percent) / 100) * 100) / 100
+  if (typeof percent === 'number' && percent > 0 && percent < 100) {
+    // Floor at whole centavos, off the already-rounded computed stay total,
+    // so the down payment and exact remaining balance add back to the quote.
+    const dueNow = downPaymentAmount(total, percent)!
     options.push({
       plan: 'down-payment',
       stayTotal: total,
@@ -144,7 +133,7 @@ export function paymentOptions(
  */
 export function paymentOptionsForTotal(
   stayTotal: number,
-  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent' | 'reservationFeeAmount'>,
+  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent'>,
 ): PaymentOption[] {
   return optionsFromTotal(stayTotal, rate)
 }
@@ -158,8 +147,36 @@ export function stayQuote(
   dates: { check_in: string; check_out: string },
   money: { rateCard?: RateCard; stay_total?: number } = {},
 ): number {
+  if (typeof money.stay_total === 'number') return roundMoney(Math.max(0, money.stay_total))
   if (money.rateCard) return quoteStay(dates, money.rateCard)
-  return roundMoney(Math.max(0, money.stay_total ?? 0))
+  return 0
+}
+
+/**
+ * Recover a historical total only from financial fields already saved on that
+ * Booking. Never consult the current rates document to fill a missing total.
+ */
+export function recordedStayTotal(snapshot: {
+  stay_total?: number
+  total_amount?: number
+  rate_amount?: number
+  rate_unit?: 'night' | 'standard_stay'
+  nights?: number
+}): number | undefined {
+  if (typeof snapshot.stay_total === 'number' && Number.isFinite(snapshot.stay_total)) {
+    return roundMoney(Math.max(0, snapshot.stay_total))
+  }
+  if (typeof snapshot.total_amount === 'number' && Number.isFinite(snapshot.total_amount)) {
+    return roundMoney(Math.max(0, snapshot.total_amount))
+  }
+  if (typeof snapshot.rate_amount !== 'number' || !Number.isFinite(snapshot.rate_amount) || snapshot.rate_amount < 0) {
+    return undefined
+  }
+  if (snapshot.rate_unit === 'standard_stay') return roundMoney(snapshot.rate_amount)
+  if (snapshot.rate_unit === 'night' && Number.isInteger(snapshot.nights) && (snapshot.nights ?? 0) > 0) {
+    return roundMoney(snapshot.rate_amount * snapshot.nights!)
+  }
+  return undefined
 }
 
 export type RefundSettlement = {

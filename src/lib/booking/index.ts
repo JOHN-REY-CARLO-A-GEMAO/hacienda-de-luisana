@@ -51,6 +51,7 @@ export {
   paymentOptions,
   paymentOptionsForTotal,
   quoteStay,
+  recordedStayTotal,
   settleRefund,
   stayQuote,
   type PaymentOption,

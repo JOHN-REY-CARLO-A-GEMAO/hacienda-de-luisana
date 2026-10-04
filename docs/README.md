@@ -133,7 +133,7 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 | Smart lock | `smartlock/smart_lock_screen.dart` | `access_logs` audit trail + simulator |
 | Rooms | `rooms/rooms_screen.dart` | Accommodation status and pricing |
 | CRM | `crm/guest_crm_screen.dart` | Guest history, VIP badges, notes |
-| Rates | `rates/rates_screen.dart` | Publish `site_config/rates` — nightly rate, Security deposit, down-payment %, cancellation policy — validated with the same rules the website applies |
+| Rates | `rates/rates_screen.dart` | Publish `site_config/rates` — weekday/weekend-holiday guest-count standard-stay schedules, holiday dates, Security deposit, fixed 50% down payment and cancellation policy — validated with the same rules the website applies |
 
 ### Lifecycle rules
 

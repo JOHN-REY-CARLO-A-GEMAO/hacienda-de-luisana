@@ -12,22 +12,39 @@ const decide = compileRules(rules)
 const NOW = Date.parse('2026-10-01T04:00:00Z')
 const plus = (days: number) => new Date(Date.UTC(2026, 9, 1 + days)).toISOString().slice(0, 10)
 const publishedRates = {
-  version: 'test-v1', effective_date: '2026-09-01',
+  version: 'test-v2', effective_date: '2026-09-01', holiday_dates: [],
   accommodations: {
-    'main-house': { property_name: 'Main House', rate_unit: 'night', active: true, nightly_rate: 4250, security_deposit: 500, down_payment_percent: 50 },
+    'main-house': {
+      property_name: 'Main House', rate_unit: 'standard_stay', active: true,
+      security_deposit: 500, down_payment_percent: 50,
+      guest_pricing: {
+        units_per_booking: 1,
+        weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+      },
+    },
   },
 }
 const rateStore: Store = { 'site_config/rates': publishedRates }
 const proofBooking = (data: DocData = {}) => {
   const checkIn = String(data.check_in ?? plus(30))
   const parsed = Date.parse(`${checkIn}T00:00:00Z`)
-  const checkOut = Number.isNaN(parsed)
-    ? plus(32)
-    : new Date(parsed + 2 * 86_400_000).toISOString().slice(0, 10)
+  const validDate = Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === checkIn
+  const checkOut = validDate
+    ? new Date(parsed + 86_400_000).toISOString().slice(0, 10)
+    : plus(31)
+  const day = validDate ? new Date(parsed).getUTCDay() : 0
+  const classification = day === 5 || day === 6 ? 'weekend_holiday' : 'weekday'
+  const rate = classification === 'weekend_holiday' ? 6000 : 5000
+  const due = Math.floor(rate * 50) / 100
   return bookingDoc({
     payment_status: 'pending', payment_plan: 'down-payment',
     payment_proof_url: 'payments/guest-uid-1/HDL/proof-1.png', amount_claimed: 8500,
-    check_in: checkIn, check_out: checkOut, ...data,
+    check_in: checkIn, check_out: checkOut, nights: 1,
+    rate_amount: rate, rate_unit: 'standard_stay', rate_classification: classification,
+    stay_total: rate, amount_due: due, security_deposit: 500, balance_due: rate - due,
+    policy_version: 'test-v2', policy_effective_date: '2026-09-01',
+    ...data,
   })
 }
 const create = (data: DocData, time = NOW, store: Store = {}) => decide(request({

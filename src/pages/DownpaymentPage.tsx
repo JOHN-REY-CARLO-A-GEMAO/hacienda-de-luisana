@@ -175,9 +175,11 @@ export function DownpaymentPage() {
           security_deposit: deposit,
           balance_due: balance,
           rate_amount: quoted.rateCard.nightlyRate,
-          rate_unit: quoted.classification === 'legacy_flat' ? 'night' : 'standard_stay',
+          rate_unit: 'standard_stay',
+          rate_classification: quoted.classification,
           policy_version: quoted.snapshot.version,
           policy_effective_date: quoted.snapshot.effectiveDate,
+          refund_policy_snapshot: published.refund ?? null,
           source: 'web',
         },
         { actor: 'guest', actor_id: uid || uploaded.uid, actor_name: draft.name.trim() },
@@ -236,14 +238,11 @@ export function DownpaymentPage() {
                   <>
                     <div className="font-serif text-4xl mt-1">{peso(dueNow)}</div>
                     <p className="mt-2 text-xs text-cream-100/75 leading-relaxed">
-                      {reservationOption
-                        ? (quoted?.rateCard.reservationFeeAmount !== undefined ? 'Non-refundable reservation fee for ' : `${quoted?.rateCard.downPaymentPercent}% of `)
-                        : 'Full payment of '}
-                      {peso(stayTotal!)} for {quoted?.classification === 'legacy_flat' ? `${nights} night${nights === 1 ? '' : 's'}` : 'one 22-hour standard stay'}
+                      50% of {peso(stayTotal!)} for one 22-hour standard stay (2:00 PM–12:00 noon). The {quoted?.classification === 'weekend_holiday' ? 'weekend/holiday rate (Friday or Saturday check-in, or an Admin-listed holiday)' : 'weekday rate (Sunday–Thursday check-in)'} uses your check-in date
                       {rate?.source ? ` · ${rate.source}` : ''}.
-                      {deposit ? ` The refundable security deposit (${peso(deposit)}) is settled with the Hacienda separately.` : ''}
+                      {deposit ? ` The refundable security deposit (${peso(deposit)}) is shown separately.` : ''}
                       {stayTotal !== null && dueNow < stayTotal
-                        ? ` Balance of ${peso(stayTotal - dueNow)} is not part of this screenshot.`
+                        ? ` The remaining 50% (${peso(stayTotal - dueNow)}) is due at check-in and is not part of this screenshot.`
                         : ''}
                     </p>
                   </>

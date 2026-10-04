@@ -72,12 +72,27 @@ beforeEach(async () => {
   await env.clearStorage()
   await env.withSecurityRulesDisabled(async (owner) => {
     await setDoc(doc(owner.firestore(), 'site_config', 'rates'), {
-      version: 'emulator-v1',
+      version: 'emulator-v2',
       effective_date: '2026-10-01',
+      holiday_dates: [],
       accommodations: {
         'main-house': {
-          property_name: 'Main House', rate_unit: 'night', active: true,
-          nightly_rate: 5000, security_deposit: 500, down_payment_percent: 50,
+          property_name: 'Main House', rate_unit: 'standard_stay', active: true,
+          security_deposit: 500, down_payment_percent: 50,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+          },
+        },
+        'house-a-camping': {
+          property_name: 'A-House', rate_unit: 'standard_stay', active: true,
+          security_deposit: 0, down_payment_percent: 50,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+          },
         },
       },
     })
@@ -100,30 +115,38 @@ const admin = () => env.authenticatedContext('admin-uid-1', { email: ADMIN_EMAIL
 const bookingDoc = (overrides: Record<string, unknown> = {}) => {
   const checkIn = String(overrides.check_in ?? manilaDatePlus(60))
   const parsed = Date.parse(`${checkIn}T00:00:00Z`)
-  const checkOut = Number.isNaN(parsed)
-    ? manilaDatePlus(62)
-    : new Date(parsed + 2 * 86_400_000).toISOString().slice(0, 10)
+  const validDate = Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === checkIn
+  const checkOut = validDate
+    ? new Date(parsed + 86_400_000).toISOString().slice(0, 10)
+    : manilaDatePlus(61)
+  const guests = Number(overrides.guests ?? 2)
+  const day = validDate ? new Date(parsed).getUTCDay() : 0
+  const classification = day === 5 || day === 6 ? 'weekend_holiday' : 'weekday'
+  const baseRate = classification === 'weekend_holiday' ? 6000 : 5000
+  const total = baseRate + Math.max(0, guests - 10) * 500
+  const due = Math.floor(total * 50) / 100
   return {
     guest_name: 'Ana Reyes',
     phone: '09171234567',
     email: 'ana@example.com',
     check_in: checkIn,
     check_out: checkOut,
-    guests: 2,
+    guests,
     accommodation: 'main-house',
     status: 'Pending',
     payment_plan: 'down-payment',
     payment_status: 'pending',
     payment_proof_url: `payments/${GUEST_UID}/${BOOKING_ID}/proof.jpg`,
     amount_claimed: 5000,
-    nights: 2,
-    rate_amount: 5000,
-    rate_unit: 'night',
-    stay_total: 10000,
-    amount_due: 5000,
+    nights: 1,
+    rate_amount: total,
+    rate_unit: 'standard_stay',
+    rate_classification: classification,
+    stay_total: total,
+    amount_due: due,
     security_deposit: 500,
-    balance_due: 5000,
-    policy_version: 'emulator-v1',
+    balance_due: total - due,
+    policy_version: 'emulator-v2',
     policy_effective_date: '2026-10-01',
     created_at: new Date(),
     uid: GUEST_UID,
@@ -131,6 +154,51 @@ const bookingDoc = (overrides: Record<string, unknown> = {}) => {
     source: 'web',
     ...overrides,
   }
+}
+
+function nextCalendarDate(date: string): string {
+  const parsed = Date.parse(`${date}T00:00:00Z`)
+  return new Date(parsed + 86_400_000).toISOString().slice(0, 10)
+}
+
+function futureDateForDay(targetDay: number): string {
+  const date = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  date.setUTCHours(0, 0, 0, 0)
+  date.setUTCDate(date.getUTCDate() + 35)
+  while (date.getUTCDay() !== targetDay) date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
+function quotedBooking(
+  checkIn: string,
+  guests: number,
+  options: { holiday?: boolean; accommodation?: string; overrides?: Record<string, unknown> } = {},
+) {
+  const day = new Date(`${checkIn}T00:00:00Z`).getUTCDay()
+  const classification = options.holiday || day === 5 || day === 6 ? 'weekend_holiday' : 'weekday'
+  const accommodation = options.accommodation ?? 'main-house'
+  const isAHouse = accommodation === 'house-a-camping'
+  const total = isAHouse ? 1000 : (classification === 'weekend_holiday' ? 6000 : 5000) + Math.max(0, guests - 10) * 500
+  const due = Math.floor(total * 50) / 100
+  return bookingDoc({
+    check_in: checkIn,
+    check_out: nextCalendarDate(checkIn),
+    nights: 1,
+    guests,
+    accommodation,
+    rate_amount: total,
+    rate_unit: 'standard_stay',
+    rate_classification: classification,
+    stay_total: total,
+    amount_due: due,
+    security_deposit: isAHouse ? 0 : 500,
+    balance_due: total - due,
+    payment_plan: 'down-payment',
+    amount_claimed: Math.max(5000, due),
+    policy_version: 'emulator-v2',
+    policy_effective_date: '2026-10-01',
+    ...options.overrides,
+  })
 }
 
 /**
@@ -895,11 +963,116 @@ function manilaDatePlus(days: number): string {
   return calendar.toISOString().slice(0, 10)
 }
 
+describe('published guest-count prices: independent Firestore verification', () => {
+  it('recomputes weekday, Friday/Saturday, Sunday, holiday, and excess totals with 50% due now', async () => {
+    const cases = [
+      ['weekday-monday', futureDateForDay(1), 10, 'weekday', 5000, 2500],
+      ['weekend-friday', futureDateForDay(5), 11, 'weekend_holiday', 6500, 3250],
+      ['weekend-saturday', futureDateForDay(6), 14, 'weekend_holiday', 8000, 4000],
+      ['weekday-sunday', futureDateForDay(0), 10, 'weekday', 5000, 2500],
+    ] as const
+    const guest = anonymousGuest()
+    for (const [id, date, guests, classification, total, due] of cases) {
+      const payload = quotedBooking(date, guests)
+      expect(payload).toMatchObject({ rate_classification: classification, stay_total: total, amount_due: due, balance_due: total - due })
+      await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', id), payload))
+      await assertFails(setDoc(doc(guest.firestore(), 'bookings', `${id}-tampered`), {
+        ...payload, stay_total: total + 1,
+      }))
+    }
+
+    const holiday = futureDateForDay(2)
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'site_config', 'rates'), { holiday_dates: [holiday] }))
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'configured-holiday'), quotedBooking(holiday, 10, { holiday: true })))
+  })
+
+  it('allows one A-House for up to three guests and refuses a fourth', async () => {
+    const guest = anonymousGuest()
+    const date = futureDateForDay(3)
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'a-house-three'), quotedBooking(date, 3, { accommodation: 'house-a-camping' })))
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'a-house-four'), quotedBooking(date, 4, { accommodation: 'house-a-camping' })))
+  })
+
+  it('stores only the exact Admin-published refund-policy snapshot', async () => {
+    const refund = {
+      refund_percent: 50,
+      deposit_refund_percent: 100,
+      tiers: [{ min_days_before_check_in: 7, refund_percent: 75 }],
+    }
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'site_config', 'rates'), { refund }))
+    const guest = anonymousGuest()
+    const date = futureDateForDay(2)
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'refund-snapshot'), {
+      ...quotedBooking(date, 10),
+      refund_policy_snapshot: refund,
+    }))
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'refund-tampered'), {
+      ...quotedBooking(date, 10),
+      refund_policy_snapshot: { ...refund, refund_percent: 100 },
+    }))
+    await assertFails(updateDoc(doc(admin().firestore(), 'bookings', 'refund-snapshot'), {
+      refund_policy_snapshot: { ...refund, refund_percent: 100 },
+    }))
+  })
+})
+
+describe('historical payment choices retain their stored quote', () => {
+  it('allows a 50% choice from a saved legacy total without reading or stamping today\'s rates', async () => {
+    const base: Record<string, unknown> = {
+      ...bookingDoc({
+        status: 'Payment Pending', payment_status: 'unpaid',
+        check_in: '2029-06-01', check_out: '2029-06-03', nights: 2,
+        rate_amount: 4250, rate_unit: 'night', stay_total: 8500,
+        security_deposit: 500, policy_version: 'historic-v1', policy_effective_date: '2029-01-01',
+      }),
+    }
+    delete base.rate_classification
+    delete base.payment_plan
+    delete base.amount_due
+    delete base.balance_due
+    await seed(async (owner) => setDoc(doc(owner.firestore(), 'bookings', 'historic-choice'), base))
+    const target = doc(emailGuest().firestore(), 'bookings', 'historic-choice')
+    await assertSucceeds(updateDoc(target, {
+      payment_plan: 'down-payment', payment_status: 'pending', amount_due: 4250, balance_due: 4250,
+    }))
+    expect((await assertSucceeds(getDoc(target))).data()).toMatchObject({
+      stay_total: 8500, amount_due: 4250, balance_due: 4250,
+      rate_amount: 4250, rate_unit: 'night', policy_version: 'historic-v1',
+    })
+
+    const noStoredTotal = { ...base }
+    delete noStoredTotal.stay_total
+    await seed(async (owner) => setDoc(doc(owner.firestore(), 'bookings', 'historic-rate-fallback'), noStoredTotal))
+    await assertSucceeds(updateDoc(doc(emailGuest().firestore(), 'bookings', 'historic-rate-fallback'), {
+      payment_plan: 'down-payment', payment_status: 'pending', stay_total: 8500,
+      amount_due: 4250, balance_due: 4250,
+    }))
+
+    const camelTotal = { ...base, totalAmount: 8500 }
+    delete camelTotal.stay_total
+    delete camelTotal.rate_amount
+    delete camelTotal.rate_unit
+    await seed(async (owner) => setDoc(doc(owner.firestore(), 'bookings', 'historic-camel-total'), camelTotal))
+    await assertSucceeds(updateDoc(doc(emailGuest().firestore(), 'bookings', 'historic-camel-total'), {
+      payment_plan: 'down-payment', payment_status: 'pending', stay_total: 8500,
+      amount_due: 4250, balance_due: 4250,
+    }))
+    await assertFails(updateDoc(doc(admin().firestore(), 'bookings', 'historic-camel-total'), {
+      totalAmount: 9000,
+    }))
+
+    await seed(async (owner) => setDoc(doc(owner.firestore(), 'bookings', 'historic-tamper'), base))
+    await assertFails(updateDoc(doc(emailGuest().firestore(), 'bookings', 'historic-tamper'), {
+      payment_plan: 'down-payment', payment_status: 'pending', amount_due: 1, balance_due: 8499,
+    }))
+  })
+})
+
 describe('guest minimum advance booking: direct Firestore requests', () => {
   it.each([0, 1, 7, 29])('refuses today + %i with no booking/payment/activity records', async (days) => {
     const guest = anonymousGuest()
     await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'direct-invalid'), bookingDoc({
-      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 2),
+      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 1),
     })))
     await seed(async (owner) => {
       expect((await getDocs(collection(owner.firestore(), 'bookings'))).size).toBe(0)
@@ -912,7 +1085,7 @@ describe('guest minimum advance booking: direct Firestore requests', () => {
     const guest = anonymousGuest()
     const target = doc(guest.firestore(), 'bookings', 'direct-valid')
     await assertSucceeds(setDoc(target, bookingDoc({
-      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 2),
+      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 1),
     })))
     const stored = await assertSucceeds(getDoc(target))
     expect(stored.data()).toMatchObject({ status: 'Pending', payment_status: 'pending', amount_claimed: 5000 })

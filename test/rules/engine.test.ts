@@ -455,6 +455,12 @@ service cloud.firestore {
 })
 
 describe('evaluator: calendar stdlib used by the booking lead-time rule', () => {
+  it('uses the Security Rules weekday numbering: Monday=1 through Sunday=7', () => {
+    expect(check('timestamp.date(2026, 10, 5).dayOfWeek() == 1')).toBe(true) // Monday
+    expect(check('timestamp.date(2026, 10, 9).dayOfWeek() == 5')).toBe(true) // Friday
+    expect(check('timestamp.date(2026, 10, 10).dayOfWeek() == 6')).toBe(true) // Saturday
+    expect(check('timestamp.date(2026, 10, 11).dayOfWeek() == 7')).toBe(true) // Sunday
+  })
   it('constructs a UTC date, and converts canonical digit strings to ints', () => {
     expect(check("timestamp.date(int('2026'), int('10'), int('01')) == request.time", {
       time: Date.parse('2026-10-01T00:00:00Z'),

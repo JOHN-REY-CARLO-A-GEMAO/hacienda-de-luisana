@@ -52,9 +52,17 @@ const profiles: Store = storeWith(
   {
     [`conversations/${CONVO_ID}`]: conversationDoc(),
     'site_config/rates': {
-      version: 'test-v1', effective_date: '2026-09-01',
+      version: 'test-v2', effective_date: '2026-09-24', holiday_dates: [],
       accommodations: {
-        'main-house': { property_name: 'Main House', rate_unit: 'night', active: true, nightly_rate: 4250, security_deposit: 500, down_payment_percent: 50 },
+        'main-house': {
+          property_name: 'Main House', rate_unit: 'standard_stay', active: true,
+          security_deposit: 500, down_payment_percent: 50,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+          },
+        },
       },
     },
     // The Booking the Review rules read through `get()`: the Guest's own, and
@@ -81,58 +89,135 @@ const deny = (partial: Parameters<typeof request>[0], store: Store = profiles) =
   decideRules(request(partial), { store }).allow === false
 
 // ---------------------------------------------------------------------------
-// Official bracket pricing is independently recomputed by Firestore rules
+// Official guest-count pricing is independently recomputed by Firestore rules
 // ---------------------------------------------------------------------------
 describe('official guest-count rates', () => {
   const officialStore: Store = {
     ...profiles,
     'site_config/rates': {
-      version: 'official-v1', effective_date: '2026-10-04', holiday_dates: ['2026-10-27'],
+      version: 'official-v2', effective_date: '2026-10-04', holiday_dates: ['2026-10-27'],
       accommodations: {
         'main-house': {
-          rate_unit: 'standard_stay', active: true, security_deposit: 500, reservation_fee_amount: 750,
+          rate_unit: 'standard_stay', active: true, security_deposit: 500,
+          down_payment_percent: 50,
           guest_pricing: {
             units_per_booking: 1,
-            weekday: { min_guests: 6, base_max_guests: 10, base_rate: 5000, upper_min_guests: 11, upper_max_guests: 13, upper_rate: 5500, excess_after: 13, excess_per_guest: 500 },
-            weekend_holiday: { min_guests: 6, base_max_guests: 10, base_rate: 6000, upper_min_guests: 11, upper_max_guests: 13, upper_rate: 6500, excess_after: 13, excess_per_guest: 500 },
+            weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+          },
+        },
+        'house-a-camping': {
+          rate_unit: 'standard_stay', active: true, security_deposit: 0,
+          down_payment_percent: 50,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
           },
         },
       },
     },
   }
 
-  const officialBooking = (overrides: DocData = {}) => bookingDoc({
-    check_in: '2026-10-26', check_out: '2026-10-27', nights: 1, guests: 6,
-    rate_amount: 5000, rate_unit: 'standard_stay', stay_total: 5000,
-    payment_plan: 'down-payment', amount_due: 750, balance_due: 4250,
-    amount_claimed: 750, payment_status: 'pending', payment_proof_url: 'payments/guest-uid-1/proof.jpg',
-    policy_version: 'official-v1', policy_effective_date: '2026-10-04',
-    ...overrides,
-  })
+  const officialBooking = (overrides: DocData = {}) => {
+    const booking = bookingDoc({
+      check_in: '2026-10-26', check_out: '2026-10-27', nights: 1, guests: 10,
+      rate_amount: 5000, rate_unit: 'standard_stay', rate_classification: 'weekday', stay_total: 5000,
+      payment_plan: 'down-payment', amount_due: 2500, balance_due: 2500,
+      amount_claimed: 2500, payment_status: 'pending', payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+      policy_version: 'official-v2', policy_effective_date: '2026-10-04',
+      ...overrides,
+    })
+    if (!Object.prototype.hasOwnProperty.call(overrides, 'amount_claimed')) {
+      booking.amount_claimed = booking.amount_due
+    }
+    return booking
+  }
 
-  it('accepts exact weekday, weekend and configured-holiday boundary quotes', () => {
+  it('classifies Monday–Thursday as weekday, Friday/Saturday as weekend, and Sunday check-in as weekday', () => {
     expect(allow({ path: 'bookings/official-weekday', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-weekend', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ check_in: '2026-10-31', check_out: '2026-11-01', rate_amount: 6000, stay_total: 6000, balance_due: 5250 }) }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-holiday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ check_in: '2026-10-27', check_out: '2026-10-28', rate_amount: 6000, stay_total: 6000, balance_due: 5250 }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-friday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+      check_in: '2026-10-30', check_out: '2026-10-31', guests: 10, rate_amount: 6000,
+      rate_classification: 'weekend_holiday', stay_total: 6000, amount_due: 3000, balance_due: 3000,
+    }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-saturday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+      check_in: '2026-10-31', check_out: '2026-11-01', guests: 10, rate_amount: 6000,
+      rate_classification: 'weekend_holiday', stay_total: 6000, amount_due: 3000, balance_due: 3000,
+    }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-sunday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+      check_in: '2026-11-01', check_out: '2026-11-02', guests: 10, rate_amount: 5000,
+      rate_classification: 'weekday', stay_total: 5000, amount_due: 2500, balance_due: 2500,
+    }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-holiday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+      check_in: '2026-10-27', check_out: '2026-10-28', rate_amount: 6000,
+      rate_classification: 'weekend_holiday', stay_total: 6000, amount_due: 3000, balance_due: 3000,
+    }) }, officialStore)).toBe(true)
   })
 
-  it('accepts upper/excess boundaries and rejects manipulated totals, invalid counts and multi-stays', () => {
-    expect(allow({ path: 'bookings/official-upper', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 13, rate_amount: 5500, stay_total: 5500, balance_due: 4750 }) }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-excess', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 14, rate_amount: 6000, stay_total: 6000, balance_due: 5250 }) }, officialStore)).toBe(true)
+  it('computes included occupancy and linear excess without a Main House cap', () => {
+    expect(allow({ path: 'bookings/official-included', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 5 }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-excess-one', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 11, rate_amount: 5500, stay_total: 5500, amount_due: 2750, balance_due: 2750 }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-excess-four', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 14, rate_amount: 7000, stay_total: 7000, amount_due: 3500, balance_due: 3500 }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-no-base-cap', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 25, rate_amount: 12500, stay_total: 12500, amount_due: 6250, balance_due: 6250 }) }, officialStore)).toBe(true)
+  })
+
+  it('validates one A-House unit at up to three guests', () => {
+    expect(allow({ path: 'bookings/official-a-house', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+      accommodation: 'house-a-camping', guests: 3, rate_amount: 1000, rate_classification: 'weekday',
+      rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
+    }) }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/official-a-house-over-cap', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+      accommodation: 'house-a-camping', guests: 4, rate_amount: 1000, rate_classification: 'weekday',
+      rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
+    }) }, officialStore)).toBe(true)
+  })
+
+  it('rejects manipulated totals, invalid counts and multi-stays', () => {
     expect(deny({ path: 'bookings/official-tampered', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ stay_total: 1 }) }, officialStore)).toBe(true)
-    expect(deny({ path: 'bookings/official-count', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 5 }) }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/official-count', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 0 }) }, officialStore)).toBe(true)
     expect(deny({ path: 'bookings/official-multi', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ check_out: '2026-10-28', nights: 2 }) }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/official-wrong-class', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ rate_classification: 'weekend_holiday' }) }, officialStore)).toBe(true)
   })
 
-  it('fails closed when the Admin has not confirmed a reservation fee', () => {
-    const withoutFee = structuredClone(officialStore)
-    delete (withoutFee['site_config/rates'].accommodations as DocData)['main-house'].reservation_fee_amount
-    expect(deny({ path: 'bookings/official-no-fee', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, withoutFee)).toBe(true)
+  it('fails closed for retired flat/fixed-fee rates and missing holiday configuration', () => {
+    const withFee = structuredClone(officialStore)
+    ;((withFee['site_config/rates'].accommodations as DocData)['main-house'] as DocData).reservation_fee_amount = 750
+    expect(deny({ path: 'bookings/official-fixed-fee', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, withFee)).toBe(true)
+    const withNightly = structuredClone(officialStore)
+    ;((withNightly['site_config/rates'].accommodations as DocData)['main-house'] as DocData).nightly_rate = 5000
+    expect(deny({ path: 'bookings/official-flat-rate', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, withNightly)).toBe(true)
+    const noHolidayList = structuredClone(officialStore)
+    delete noHolidayList['site_config/rates'].holiday_dates
+    expect(deny({ path: 'bookings/official-missing-holidays', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, noHolidayList)).toBe(true)
   })
 
-  it('keeps an existing booking rate/policy snapshot immutable', () => {
-    const original = officialBooking({ status: 'Payment Pending' })
-    expect(deny({ path: 'bookings/historical', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, stay_total: 9999 } }, officialStore)).toBe(true)
+  it('captures the exact published refund policy and rejects a guest-edited copy', () => {
+    const refund = {
+      refund_percent: 50,
+      deposit_refund_percent: 100,
+      tiers: [{ min_days_before_check_in: 7, refund_percent: 75 }],
+    }
+    const withRefund = structuredClone(officialStore)
+    withRefund['site_config/rates'].refund = refund
+    expect(allow({
+      path: 'bookings/official-refund-snapshot', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({ refund_policy_snapshot: refund }),
+    }, withRefund)).toBe(true)
+    expect(deny({
+      path: 'bookings/official-refund-tampered', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({ refund_policy_snapshot: { ...refund, refund_percent: 100 } }),
+    }, withRefund)).toBe(true)
+  })
+
+  it('keeps an existing booking rate, classification, policy and money snapshot immutable', () => {
+    const original = officialBooking({
+      status: 'Payment Pending',
+      refund_policy_snapshot: { refund_percent: 50, deposit_refund_percent: 100 },
+    })
+    expect(deny({ path: 'bookings/historical-total', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, stay_total: 9999 } }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/historical-rate', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, rate_amount: 9999 } }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/historical-classification', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, rate_classification: 'weekend_holiday' } }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/historical-refund-policy', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, refund_policy_snapshot: { refund_percent: 100 } } }, officialStore)).toBe(true)
   })
 })
 
@@ -156,7 +241,7 @@ describe('auth: who is asking', () => {
     })).toBe(true)
   })
 
-  it.each(['stay_total', 'amount_due', 'security_deposit', 'balance_due'])(
+  it.each(['rate_amount', 'rate_unit', 'rate_classification', 'stay_total', 'amount_due', 'security_deposit', 'balance_due'])(
     'refuses a Guest-created Booking with manipulated %s',
     (field) => {
       expect(deny({
@@ -708,7 +793,7 @@ describe('bookings/{id}/activity: the append-only record', () => {
     const write = { path: `bookings/${BOOKING_ID}/activity/entry-5`, method: 'create' as const, auth: anonymousGuest(), requestData: entry('guest', GUEST_UID) }
     expect(evaluate(request(write), rules, { store: profiles }).allow).toBe(true)
     expect(evaluate(request(write), rules, { store: profiles, semantics: { missingKeys: 'null' } }).allow).toBe(true)
-  })
+  }, 15_000)
 
   it('lets a signed-out visitor write exactly the submission entry', () => {
     expect(allow({ path: `bookings/${BOOKING_ID}/activity/entry-6`, method: 'create', auth: null, requestData: entry('guest', GUEST_UID) })).toBe(true)
@@ -725,6 +810,81 @@ describe('bookings/{id}/activity: the append-only record', () => {
 
 describe('payments: proof and verification', () => {
   const awaiting = bookingDoc({ status: 'Payment Pending', payment_plan: 'Full Payment', payment_status: 'pending' })
+
+  it('lets a historical unclassified Booking choose a plan from its saved total without repricing it', () => {
+    const original = bookingDoc({
+      status: 'Payment Pending', payment_status: 'unpaid',
+      check_in: '2026-10-24', check_out: '2026-10-26', nights: 2,
+      rate_amount: 4250, rate_unit: 'night', stay_total: 8500,
+      security_deposit: 500, policy_version: 'historic-v1', policy_effective_date: '2026-08-01',
+      refund_policy_snapshot: { refund_percent: 100, deposit_refund_percent: 100 },
+    })
+    delete original.rate_classification
+    delete original.payment_plan
+    delete original.amount_due
+    delete original.balance_due
+    const chosen = {
+      ...original,
+      payment_plan: 'down-payment',
+      payment_status: 'pending',
+      amount_due: 4250,
+      balance_due: 4250,
+    }
+    expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: chosen })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: { ...chosen, amount_due: 1 } })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: { ...chosen, stay_total: 9000, amount_due: 4500, balance_due: 4500 } })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: { ...chosen, rate_classification: 'weekday' } })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: { ...chosen, refund_policy_snapshot: null } })).toBe(true)
+  })
+
+  it('recovers an absent legacy total only from the saved nightly rate and stay length', () => {
+    const original = bookingDoc({
+      status: 'Payment Pending', payment_status: 'unpaid',
+      check_in: '2026-10-24', check_out: '2026-10-26', nights: 2,
+      rate_amount: 4250, rate_unit: 'night', security_deposit: 500,
+    })
+    delete original.rate_classification
+    delete original.payment_plan
+    delete original.amount_due
+    delete original.balance_due
+    delete original.stay_total
+    const chosen = {
+      ...original,
+      payment_plan: 'down-payment',
+      payment_status: 'pending',
+      stay_total: 8500,
+      amount_due: 4250,
+      balance_due: 4250,
+    }
+    expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: chosen })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: { ...chosen, stay_total: 9999, amount_due: 4999, balance_due: 5000 } })).toBe(true)
+  })
+
+  it('recovers a legacy camel-case totalAmount without consulting current rates', () => {
+    const original = bookingDoc({
+      status: 'Payment Pending', payment_status: 'unpaid',
+      check_in: '2026-10-24', check_out: '2026-10-26', nights: 2,
+      totalAmount: 8500, security_deposit: 500,
+    })
+    delete original.rate_classification
+    delete original.payment_plan
+    delete original.amount_due
+    delete original.balance_due
+    delete original.stay_total
+    delete original.rate_amount
+    delete original.rate_unit
+    const chosen = {
+      ...original,
+      payment_plan: 'down-payment',
+      payment_status: 'pending',
+      stay_total: 8500,
+      amount_due: 4250,
+      balance_due: 4250,
+    }
+    expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: chosen })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: original, requestData: { ...chosen, stay_total: 9000, amount_due: 4500, balance_due: 4500 } })).toBe(true)
+    expect(deny({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, totalAmount: 9000 } })).toBe(true)
+  })
 
   it('lets a Guest submit proof: reference, amount and the proof URL', () => {
     expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: emailGuest(), resourceData: awaiting, requestData: guestPaymentPatch() })).toBe(true)

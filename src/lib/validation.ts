@@ -188,10 +188,11 @@ export function validateStarRating(n: number): FieldResult {
   return { ok: true, value: String(n) }
 }
 
-export function guestCountValid(guests: number, capacity: number): FieldResult {
+export function guestCountValid(guests: number, absoluteMaximum?: number): FieldResult {
   if (!Number.isInteger(guests) || guests < 1) return { ok: false, message: 'At least 1 guest required' }
-  if (guests > 12) return { ok: false, message: 'Max 12 guests per booking' }
-  if (guests > capacity) return { ok: false, message: `This stay accommodates up to ${capacity} guests` }
+  if (absoluteMaximum !== undefined && guests > absoluteMaximum) {
+    return { ok: false, message: `This stay accommodates up to ${absoluteMaximum} guests` }
+  }
   return { ok: true, value: String(guests) }
 }
 
