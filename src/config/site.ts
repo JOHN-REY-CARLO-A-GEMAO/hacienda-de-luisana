@@ -476,14 +476,23 @@ export const FAQS: FAQ[] = [
 ]
 
 // -----------------------------------------------------------------------------
-// GALLERY (uses real property imagery — Google Maps listing + Facebook photos)
+// GALLERY (real property imagery — Google Maps listing photos in public/images)
+//
+// Every entry must point at a file that exists under `public/`. A tile whose
+// image fails to load falls back to a gradient placeholder showing only the
+// caption (`SmartImage`), which reads as a broken card rather than a photo.
+// The Facebook CDN shots that used to sit here were dropped for exactly that
+// reason: they were hotlinks with expiring tokens, nothing backed them on
+// disk, and all eight had expired. `test/web/gallery-images.test.ts` holds the
+// line — it walks `public/` and fails on any referenced path that is missing.
+// To add a photo: drop the file in `public/images/gmaps/`, add the entry, run
+// the tests. See assets/images/gmaps/README.md.
 // -----------------------------------------------------------------------------
 export const GALLERY: GalleryImage[] = [
   // Hacienda — exterior / overview
   { id: 'g07', url: '/images/gmaps/img-07.jpg', category: 'Hacienda', caption: 'The Hacienda at dusk — main house, campfire, and camping units', aspect: 'wide' },
   { id: 'g13', url: '/images/gmaps/img-13.jpg', category: 'Hacienda', caption: 'Campfire in front of the main house at blue hour', aspect: 'tall' },
   { id: 'g10', url: '/images/gmaps/img-10.jpg', category: 'Hacienda', caption: 'Welcome — the HDL signage at the entrance', aspect: 'square' },
-  { id: 'fb08', url: FB_CDN['fb-08'], category: 'Hacienda', caption: 'Hacienda de LuisAna — main gate and welcome sign', aspect: 'square' },
   { id: 'g17', url: '/images/gmaps/hdl_sign_wall.jpg', category: 'Hacienda', caption: 'The Hacienda’s own sign — “Munting Mansyon ng Luisiana”', aspect: 'tall' },
 
   // Main house — exterior
@@ -495,10 +504,7 @@ export const GALLERY: GalleryImage[] = [
   { id: 'g16', url: '/images/gmaps/main_house_night_lit.jpg', category: 'Main House', caption: 'The main house lit at night, above the carport', aspect: 'tall' },
   { id: 'g18', url: '/images/gmaps/entrance_porch_sign.jpg', category: 'Main House', caption: 'The entrance porch of the main house, framed by a Norfolk pine', aspect: 'tall' },
 
-  // Main house — interior (Facebook photos)
-  { id: 'fb05', url: FB_CDN['fb-05'], category: 'Main House', caption: 'Cozy living room with big-screen TV', aspect: 'wide' },
-  { id: 'fb06', url: FB_CDN['fb-06'], category: 'Main House', caption: 'Dining area with fresh flowers and garden view', aspect: 'tall' },
-  { id: 'fb07', url: FB_CDN['fb-07'], category: 'Main House', caption: 'Wooden piano and staircase leading to the loft', aspect: 'tall' },
+  // Main house — interior
   { id: 'g03', url: '/images/gmaps/img-03.jpg', category: 'Main House', caption: 'Loft bedroom with wooden floors and countryside views', aspect: 'wide' },
   { id: 'g04', url: '/images/gmaps/img-04.jpg', category: 'Main House', caption: 'Dining area with warm pendant lights and open windows', aspect: 'tall' },
 
@@ -506,34 +512,24 @@ export const GALLERY: GalleryImage[] = [
   { id: 'g02', url: '/images/gmaps/img-02.jpg', category: 'Camping', caption: 'A-frame camping units under the trees', aspect: 'tall' },
   { id: 'g09', url: '/images/gmaps/img-09.jpg', category: 'Camping', caption: 'Two A-frame cabins with stepping-stone path', aspect: 'square' },
   { id: 'g12', url: '/images/gmaps/img-12.jpg', category: 'Camping', caption: 'Camping cabins glowing warm at nightfall', aspect: 'tall' },
-  { id: 'fb02', url: FB_CDN['fb-02'], category: 'Camping', caption: 'Foggy afternoon — A-frame cabins peeking through the mist', aspect: 'tall' },
   { id: 'g19', url: '/images/gmaps/camping_units_garden.jpg', category: 'Camping', caption: 'The two A-frame units seen through the garden blooms', aspect: 'tall' },
   { id: 'g20', url: '/images/gmaps/camping_units_stepping_stones.jpg', category: 'Camping', caption: 'A stepping-stone path laid to the door of each unit', aspect: 'wide' },
 
-  // Outdoors (Facebook foggy shots + Google Maps garden)
-  { id: 'fb01', url: FB_CDN['fb-01'], category: 'Outdoors', caption: 'Misty morning — pine trees and stone pathway through the garden', aspect: 'tall' },
-  { id: 'fb03', url: FB_CDN['fb-03'], category: 'Outdoors', caption: 'The white fence fading into the fog', aspect: 'wide' },
-  { id: 'fb04', url: FB_CDN['fb-04'], category: 'Outdoors', caption: 'Norfolk pines and red ti plants on a foggy day', aspect: 'tall' },
+  // Outdoors
   { id: 'g05', url: '/images/gmaps/img-05.jpg', category: 'Outdoors', caption: 'Garden pathway with views toward the countryside', aspect: 'tall' },
   { id: 'g11', url: '/images/gmaps/img-11.jpg', category: 'Outdoors', caption: 'The Hacienda framed by lush foliage', aspect: 'square' },
 ]
 
 // -----------------------------------------------------------------------------
 // EXPERIENCES
+//
+// Same rule as GALLERY: `image` must resolve to a file under `public/`. A card
+// whose image fails renders as a gradient tile carrying nothing but its title,
+// so a dead URL costs the card its photograph. These four were removed with the
+// expired Facebook hotlinks they pointed at — Family Bonding, Small Gatherings,
+// Nature Escape and Quiet Retreat. Re-add them once real photos exist for them.
 // -----------------------------------------------------------------------------
 export const EXPERIENCES = [
-  {
-    id: 'family',
-    title: 'Family Bonding',
-    body: 'Spend uninterrupted time together away from the city.',
-    image: FB_CDN['fb-05'],
-  },
-  {
-    id: 'gatherings',
-    title: 'Small Gatherings',
-    body: 'A peaceful setting for intimate celebrations and gatherings.',
-    image: FB_CDN['fb-06'],
-  },
   {
     id: 'camping',
     title: 'Camping',
@@ -545,18 +541,6 @@ export const EXPERIENCES = [
     title: 'Team Building',
     body: 'A relaxed countryside environment for small team activities.',
     image: '/images/gmaps/img-05.jpg',
-  },
-  {
-    id: 'nature',
-    title: 'Nature Escape',
-    body: 'Slow down, breathe fresh air, and explore the surrounding Laguna countryside.',
-    image: FB_CDN['fb-01'],
-  },
-  {
-    id: 'retreat',
-    title: 'Quiet Retreat',
-    body: 'A place to disconnect from noise and reconnect with yourself and others.',
-    image: FB_CDN['fb-03'],
   },
 ]
 
