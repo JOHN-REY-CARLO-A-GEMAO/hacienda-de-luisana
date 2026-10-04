@@ -9,6 +9,65 @@ import '../core/constants/app_constants.dart';
 import 'booking_lifecycle.dart';
 import 'mock_data_service.dart';
 
+/// Why a `site_config/payment` document cannot be published, or null when it can.
+///
+/// The document has two shapes: a `methods` list of up to five official payment
+/// channels, or the three singular fields a document published before that list
+/// existed. `firestore.rules` accepts either (`validPaymentConfig`), and so does
+/// the website (`validatePaymentInformation` in `src/lib/paymentInfoDB.ts`), so
+/// this accepts both too.
+///
+/// It used to read only the singular fields. The Admin screen publishes the list
+/// shape, where `doc['method']` does not exist, so every publish was refused with
+/// "method is required and must be at most 80 characters" — no way for the person
+/// publishing to get a channel saved.
+///
+/// Pure, so it is a test rather than a guess (`test/payment_information_test.dart`).
+String? validatePaymentInformationDocument(Map<String, dynamic> doc) {
+  String? validateText(String path, Object? value, int max) {
+    if (value is! String || value.trim().isEmpty || value.length > max) {
+      return '$path is required and must be at most $max characters.';
+    }
+    return null;
+  }
+
+  String? validateChannel(Object? channel, String path) {
+    if (channel is! Map) return '$path must be an object.';
+    final method = validateText('$path.method', channel['method'], 80);
+    if (method != null) return method;
+    final recipient = validateText('$path.recipient_name', channel['recipient_name'], 120);
+    if (recipient != null) return recipient;
+    return validateText('$path.account_identifier', channel['account_identifier'], 120);
+  }
+
+  if (doc['active'] is! bool) return 'Active must be true or false.';
+
+  final methods = doc['methods'];
+  if (methods is List) {
+    if (methods.isEmpty || methods.length > 5) {
+      return 'methods must list between 1 and 5 payment channels.';
+    }
+    for (var i = 0; i < methods.length; i++) {
+      final problem = validateChannel(methods[i], 'methods[$i]');
+      if (problem != null) return problem;
+    }
+  } else {
+    final problem = validateChannel(doc, '');
+    if (problem != null) return problem;
+  }
+
+  final instructions = validateText('instructions', doc['instructions'], 1000);
+  if (instructions != null) return instructions;
+
+  for (final key in ['security_deposit_notes', 'notes']) {
+    final value = doc[key];
+    if (value != null && (value is! String || value.length > 1000)) {
+      return '$key must be at most 1000 characters.';
+    }
+  }
+  return null;
+}
+
 class FirestoreService {
   final FirebaseFirestore? _firestore;
   bool _isFirebaseReady = false;
@@ -413,24 +472,8 @@ class FirestoreService {
   }
 
   Future<String?> publishPaymentInformation(Map<String, dynamic> doc) async {
-    String? validateRequired(String key, int max) {
-      final value = doc[key];
-      if (value is! String || value.trim().isEmpty || value.length > max) {
-        return '$key is required and must be at most $max characters.';
-      }
-      return null;
-    }
-    if (doc['active'] is! bool) return 'Active must be true or false.';
-    for (final field in [('method', 80), ('recipient_name', 120), ('account_identifier', 120), ('instructions', 1000)]) {
-      final problem = validateRequired(field.$1, field.$2);
-      if (problem != null) return problem;
-    }
-    for (final key in ['security_deposit_notes', 'notes']) {
-      final value = doc[key];
-      if (value != null && (value is! String || value.length > 1000)) {
-        return '$key must be at most 1000 characters.';
-      }
-    }
+    final problem = validatePaymentInformationDocument(doc);
+    if (problem != null) return problem;
     _paymentInformation = Map<String, dynamic>.from(doc);
     _paymentController.add(_paymentInformation);
     if (isCloud) {
