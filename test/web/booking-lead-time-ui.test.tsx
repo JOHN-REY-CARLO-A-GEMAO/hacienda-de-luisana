@@ -18,7 +18,14 @@ import * as payments from '../../src/lib/payments'
 import { resetRateLimit } from '../../src/lib/rateLimit'
 import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 
-vi.mock('../../src/lib/payments/ocr', () => ({ runReceiptOcr: vi.fn(async () => ({ reference: '', amount: '' })) }))
+// `runReceiptOcr` is stubbed because the real one loads tesseract.js. The rest of
+// the module is spread through from the original so an export added to ocr.ts is
+// still there: a closed list here silently breaks every later import of it, which
+// is how `amountMismatchNote` went missing and took all 7 of these tests with it.
+vi.mock('../../src/lib/payments/ocr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/lib/payments/ocr')>()),
+  runReceiptOcr: vi.fn(async () => ({ reference: '', amount: '', amounts: [], confidence: 'none', notes: [] })),
+}))
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
 let root: Root | undefined

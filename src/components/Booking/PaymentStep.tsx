@@ -9,7 +9,7 @@ import {
 } from '../../lib/booking'
 import { uploadPaymentProof } from '../../lib/payments'
 import type { Booking } from '../../lib/storage'
-import { extractReceiptFields, runReceiptOcr } from '../../lib/payments/ocr'
+import { extractReceiptFields, runReceiptOcr, suggestedAmount, amountMismatchNote, type ReceiptAmount } from '../../lib/payments/ocr'
 import { nextProofAttempt } from '../../lib/payments'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import { validateAmount, validateReference } from '../../lib/validation'
@@ -39,6 +39,8 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   const [plan, setPlan] = useState<PaymentPlan>('full')
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [amountClaimed, setAmountClaimed] = useState('')
+  /** Every distinct figure the receipt prints, when it prints more than one. */
+  const [amountCandidates, setAmountCandidates] = useState<ReceiptAmount[]>([])
   const [reference, setReference] = useState('')
   const [ocrNotes, setOcrNotes] = useState<string[]>([])
   const [ocrBusy, setOcrBusy] = useState(false)
@@ -173,6 +175,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       setAmountClaimed('')
       setReference('')
       setExtractedRef('')
+      setAmountCandidates([])
       setOcrNotes([])
       setSent(true)
       setMessage({
@@ -297,6 +300,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                     const file = e.target.files?.[0] ?? null
                     setProofFile(file)
                     setExtractedRef('')
+                    setAmountCandidates([])
                     setOcrNotes([])
                     if (!file) return
                     const ocrLimit = checkRateLimit(`ocr:${booking.id}`, LIMITS.ocr)
@@ -315,7 +319,23 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                           setReference(referenceGuess)
                           setExtractedRef(referenceGuess)
                         }
-                        if (amountGuess) setAmountClaimed(amountGuess)
+                        // Every distinct figure the receipt prints, so a receipt
+                        // whose `Amount` and `Total Amount Sent` disagree asks the
+                        // Guest which one they sent instead of silently picking
+                        // the first number OCR happened to find.
+                        const candidates = [...extracted.amounts, ...fromName.amounts]
+                          .filter(
+                            (c, i, all) =>
+                              all.findIndex((o) => o.value === c.value) === i,
+                          )
+                        setAmountCandidates(candidates)
+                        // Default to the figure nearest what is owed; when nothing
+                        // is close, or two are equally close, leave the field for
+                        // the Guest to type.
+                        const suggestion = suggestedAmount(candidates, owed)
+                        const defaultAmount =
+                          suggestion?.value ?? (candidates.length === 1 ? candidates[0].value : '')
+                        if (defaultAmount) setAmountClaimed(defaultAmount)
                         setOcrNotes([
                           ...extracted.notes,
                           'Confirm or correct the fields below. OCR is not verification.',
@@ -348,6 +368,36 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   </span>
                 )}
               </label>
+              {/* Two or more figures on one receipt is a question, not a detail. A GCash
+                  Express Send prints `Amount` (what the recipient receives) and
+                  `Total Amount Sent` (what left the sender), and they disagree
+                  whenever a fee was charged — so the Guest says which they sent. */}
+              {amountCandidates.length > 1 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2.5">
+                  <span className="block text-[11px] font-medium text-amber-900">
+                    This receipt shows {amountCandidates.length} different amounts. Which one did you send?
+                  </span>
+                  <div className="mt-1.5 space-y-1">
+                    {amountCandidates.map((candidate) => (
+                      <label key={candidate.value} className="flex items-center gap-2 text-[11px] text-amber-900 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`amount-${booking.id}`}
+                          checked={amountClaimed === candidate.value}
+                          onChange={() => setAmountClaimed(candidate.value)}
+                        />
+                        <span className="font-medium">
+                          ₱{Number(candidate.value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-amber-700">({candidate.label})</span>
+                        {owed > 0 && Math.abs(Number(candidate.value) - owed) < 0.005 && (
+                          <span className="text-emerald-700">— matches what you owe</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <label className="block">
                 <span className="block text-xs font-medium text-forest-900">Reference number</span>
                 <span className="block text-[11px] text-forest-700/70 mb-1">
@@ -365,6 +415,11 @@ export function PaymentStep({ booking }: { booking: Booking }) {
               </label>
               <label className="block">
                 <span className="block text-xs font-medium text-forest-900">Amount you sent (₱)</span>
+                {amountCandidates.length <= 1 && (
+                  <span className="block text-[11px] text-forest-700/70 mb-1">
+                    OCR fills this in — correct it if it misread
+                  </span>
+                )}
                 <input
                   value={amountClaimed}
                   onChange={(e) => setAmountClaimed(e.target.value)}
@@ -373,6 +428,11 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   className="block w-full text-xs rounded-xl border border-forest-900/15 bg-white px-3 py-2 text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-700/30"
                 />
               </label>
+              {amountMismatchNote(Number(amountClaimed) || 0, owed) && (
+                <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-2 py-1.5 leading-relaxed">
+                  {amountMismatchNote(Number(amountClaimed) || 0, owed)}
+                </p>
+              )}
               <label className="flex items-start gap-2 text-[11px] text-forest-700 leading-relaxed cursor-pointer">
                 <input
                   type="checkbox"

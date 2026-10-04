@@ -12,7 +12,7 @@ import { paymentOptionsForTotal, quoteAccommodation } from '../lib/booking'
 import { uploadPaymentProof } from '../lib/payments'
 import { usePaymentInformation } from '../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from '../components/Booking/PaymentInformationPanel'
-import { runReceiptOcr } from '../lib/payments/ocr'
+import { amountMismatchNote, runReceiptOcr, suggestedAmount, type ReceiptAmount } from '../lib/payments/ocr'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
@@ -39,6 +39,8 @@ export function DownpaymentPage() {
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
+  /** Every distinct peso figure the screenshot prints, when it prints more than one. */
+  const [amountCandidates, setAmountCandidates] = useState<ReceiptAmount[]>([])
   const [reference, setReference] = useState('')
   const [ocrNote, setOcrNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -80,12 +82,36 @@ export function DownpaymentPage() {
     setProofFile(file)
     setError('')
     setOcrNote('')
+    setAmountCandidates([])
     if (!file) return
     try {
       const fields = await runReceiptOcr(file)
       if (fields.reference && !reference) setReference(fields.reference)
-      if (fields.amount && dueNow === null) setAmount(fields.amount)
-      if (fields.reference) setOcrNote('A reference was read off the screenshot. Please check it before you submit.')
+      // Every distinct figure the screenshot prints, kept so a receipt whose
+      // `Amount` and `Total Amount Sent` disagree asks the Guest which one they
+      // sent. Without this the field sits on the published `dueNow` whatever the
+      // screenshot says, and a Guest who paid short files a full claim — the
+      // underpayment check below compares the field against `dueNow`, so a
+      // pre-filled field agrees with itself and nothing catches it.
+      const candidates = fields.amounts
+      setAmountCandidates(candidates)
+      if (candidates.length === 1) {
+        // One unambiguous figure: trust it over a pre-filled amount.
+        setAmount(candidates[0].value)
+      } else if (candidates.length > 1 && dueNow !== null) {
+        const suggestion = suggestedAmount(candidates, dueNow)
+        if (suggestion) setAmount(suggestion.value)
+      }
+      const notes: string[] = []
+      if (fields.reference) notes.push('A reference was read off the screenshot. Please check it before you submit.')
+      if (candidates.length > 1) {
+        notes.push(
+          `This screenshot shows ${candidates.length} different amounts (${candidates
+            .map((c) => `${c.label} ${c.value}`)
+            .join(', ')}). Choose the one you actually sent.`,
+        )
+      }
+      setOcrNote(notes.join(' '))
     } catch {
       // OCR is a convenience. The screenshot itself is what the Admin reviews.
     }
@@ -294,6 +320,7 @@ export function DownpaymentPage() {
                   className="mt-3 text-xs text-forest-700 underline underline-offset-2"
                   onClick={() => {
                     setProofFile(null)
+                    setAmountCandidates([])
                     if (fileInput.current) fileInput.current.value = ''
                   }}
                 >
@@ -301,6 +328,37 @@ export function DownpaymentPage() {
                 </button>
               )}
               {ocrNote && <p className="mt-3 text-xs text-forest-700/70">{ocrNote}</p>}
+
+              {/* Two or more figures on one screenshot is a question, not a detail.
+                  A GCash Express Send prints `Amount` (what the recipient receives)
+                  and `Total Amount Sent` (what left the sender), and they disagree
+                  whenever a fee was charged. */}
+              {amountCandidates.length > 1 && (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+                  <span className="block text-xs font-medium text-amber-900">
+                    This screenshot shows {amountCandidates.length} different amounts. Which one did you send?
+                  </span>
+                  <div className="mt-2 space-y-1.5">
+                    {amountCandidates.map((candidate) => (
+                      <label key={candidate.value} className="flex items-center gap-2 text-xs text-amber-900 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="screenshot-amount"
+                          checked={amount === candidate.value}
+                          onChange={() => setAmount(candidate.value)}
+                        />
+                        <span className="font-medium">
+                          ₱{Number(candidate.value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-amber-700">({candidate.label})</span>
+                        {dueNow !== null && Math.abs(Number(candidate.value) - dueNow) < 0.005 && (
+                          <span className="text-emerald-700">— matches your downpayment</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
                 <label className="block">
@@ -323,6 +381,16 @@ export function DownpaymentPage() {
                   />
                 </label>
               </div>
+
+              {/* The underpayment check in `submit` compares this field against
+                  `dueNow`. When the field is pre-filled with `dueNow` it agrees
+                  with itself, so a Guest who sent less still files a full claim.
+                  This says so before the screenshot leaves the device. */}
+              {amountMismatchNote(Number(amount) || 0, dueNow ?? 0) && (
+                <p className="mt-4 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
+                  {amountMismatchNote(Number(amount) || 0, dueNow ?? 0)}
+                </p>
+              )}
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <button
