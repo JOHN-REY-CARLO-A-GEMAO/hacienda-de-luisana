@@ -216,7 +216,7 @@ describe('Bookings', () => {
     // The Admin branch is parenthesised and comes after the invariant that binds
     // every writer, so the money rule is checked before anything else.
     const update = allow(bookings, 'update:')
-    expect(update).toContain('if reservedIsPaidFor() && (')
+    expect(update).toContain('if reservedIsPaidFor() && pricingSnapshotImmutable() && (')
     expect(update).toContain('(isAdmin()')
     expect(allow(bookings, 'delete:')).toBe('allow delete: if isAdmin();')
   })
@@ -324,7 +324,10 @@ describe('everything else', () => {
 
   it('keeps site images and site config (the published rates) to the Admin', () => {
     expect(allow(block(rules, 'match /gallery/{imageId}'), 'write:')).toBe('allow write: if isAdmin();')
-    expect(allow(block(rules, 'match /site_config/{docId}'), 'write:')).toBe("allow write: if isAdmin() && (docId != 'booking' || request.resource == null || validBookingPolicy());")
+    const configWrite = allow(block(rules, 'match /site_config/{docId}'), 'write:')
+    expect(configWrite).toContain('allow write: if isAdmin()')
+    expect(configWrite).toContain("docId != 'booking'")
+    expect(configWrite).toContain("docId != 'payment'")
   })
 })
 

@@ -19,6 +19,17 @@ export function displayedRate(
   a: Accommodation,
   published: PublishedRates | null,
 ): { label: string; source: string; nightly?: number } {
+  const configured = published?.accommodations[a.id]
+  if (configured?.guest_pricing && configured.active !== false) {
+    const weekday = configured.guest_pricing.weekday.base_rate
+    const weekend = configured.guest_pricing.weekend_holiday.base_rate
+    return {
+      label: weekday === weekend
+        ? `₱${weekday.toLocaleString('en-PH')} / standard stay`
+        : `From ₱${weekday.toLocaleString('en-PH')} weekday · ₱${weekend.toLocaleString('en-PH')} weekend/holiday`,
+      source: `Guest-count rates ${published!.version}`,
+    }
+  }
   const quoted = published ? ratesForAccommodation(published, a.id) : undefined
   if (quoted) {
     const per = a.availableUnits ? ' / unit / night' : ' / night'
@@ -48,8 +59,9 @@ export function Accommodations() {
         </SceneHeader>
 
         <div className="mt-14 grid lg:grid-cols-2 gap-8 lg:gap-10">
-          {ACCOMMODATIONS.filter((a) => a.active).map((a) => {
+          {ACCOMMODATIONS.filter((a) => a.active && published?.accommodations[a.id]?.active !== false).map((a) => {
             const rate = displayedRate(a, published)
+            const propertyName = published?.accommodations[a.id]?.property_name?.trim() || a.name
             return (
               <div key={a.id} className="reveal">
               <TiltCard
@@ -78,7 +90,7 @@ export function Accommodations() {
                 </div>
 
                 <div className="p-7 lg:p-8 flex-1 flex flex-col">
-                  <h3 className="font-serif text-3xl text-forest-900">{a.name}</h3>
+                  <h3 className="font-serif text-3xl text-forest-900">{propertyName}</h3>
                   <p className="mt-3 text-forest-800/80 leading-relaxed">{a.description}</p>
 
                   <div className="mt-5 flex flex-wrap items-center gap-4 text-sm text-forest-800">

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { BUSINESS } from '../../config/site'
+import { usePaymentInformation } from '../../hooks/usePaymentInformation'
+import { PaymentInformationPanel } from './PaymentInformationPanel'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
 import { ratesDB } from '../../lib/ratesDB'
 import {
   paymentOptions,
   paymentOptionsForTotal,
-  ratesForAccommodation,
+  quoteAccommodation,
   type PaymentPlan,
   type PublishedRates,
 } from '../../lib/booking'
@@ -36,6 +37,7 @@ import { Link } from 'react-router-dom'
  */
 export function PaymentStep({ booking }: { booking: Booking }) {
   const [rates, setRates] = useState<PublishedRates | null>(null)
+  const paymentInformation = usePaymentInformation()
   const [plan, setPlan] = useState<PaymentPlan>('full')
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [amountClaimed, setAmountClaimed] = useState('')
@@ -64,7 +66,11 @@ export function PaymentStep({ booking }: { booking: Booking }) {
     return null
   }
 
-  const quoted = rates ? ratesForAccommodation(rates, booking.accommodation) : undefined
+  const quoted = rates ? quoteAccommodation(rates, booking.accommodation, {
+    check_in: booking.check_in,
+    check_out: booking.check_out,
+    guests: booking.guests,
+  }) : undefined
   const options = quoted
     ? paymentOptions(booking, quoted.rateCard)
     : booking.stay_total
@@ -262,17 +268,11 @@ export function PaymentStep({ booking }: { booking: Booking }) {
             </p>
           )}
 
-          <div className="mt-2 rounded-xl bg-cream-50 border border-forest-900/10 px-3 py-2.5 text-xs text-forest-800 leading-relaxed space-y-1.5">
-            <strong className="block text-forest-900">Payment information</strong>
-            <p><strong>Who receives it:</strong> Hacienda de LuisAna ({BUSINESS.name}).</p>
-            <p><strong>Methods:</strong> GCash or bank transfer (external). No card data is collected here.</p>
-            <p><strong>Account details:</strong> confirm the current GCash number at {BUSINESS.contact.phone} or bank details at {BUSINESS.contact.email} before sending. Secret API keys are never shown.</p>
-            <p><strong>Required amount:</strong> {owed > 0 ? peso(owed) : 'the quoted amount on your plan'}.</p>
-            <p><strong>Reference:</strong> keep the unique GCash/bank reference. Do not reuse a number from another stay.</p>
-            <p><strong>Receipt:</strong> upload a clear photo under 5MB. OCR may suggest fields; you must confirm them.</p>
-            <p><strong>Deadline:</strong> send proof before the date hold on this booking expires.</p>
-            <p><strong>Verification:</strong> status stays Pending until an Admin matches reference and amount. OCR never verifies payment.</p>
-            <p><strong>After verification:</strong> the booking becomes Reserved and smart-lock credentials work on stay dates.</p>
+          <div className="mt-2">
+            <PaymentInformationPanel
+              payment={paymentInformation}
+              requiredAmount={owed > 0 ? owed : undefined}
+            />
           </div>
 
           {booking.payment_status === 'rejected' && booking.payment_reject_reason && (

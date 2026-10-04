@@ -249,8 +249,10 @@ class BookingModel {
     switch (idOrName) {
       case 'main-house':
         return 'The Main House';
+      case 'annex':
+        return 'HDL Annex';
       case 'house-a-camping':
-        return 'House A Camping Units';
+        return 'A-House';
       case 'other':
         return 'Other / Ask Us';
       default:

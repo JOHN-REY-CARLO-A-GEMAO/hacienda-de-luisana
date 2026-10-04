@@ -20,6 +20,8 @@ class FirestoreService {
   final _crmController = StreamController<List<GuestCrmModel>>.broadcast();
   final _ratesController =
       StreamController<Map<String, dynamic>?>.broadcast();
+  final _paymentController =
+      StreamController<Map<String, dynamic>?>.broadcast();
   final _activityControllers =
       <String, StreamController<List<Map<String, dynamic>>>>{};
 
@@ -32,6 +34,7 @@ class FirestoreService {
   /// against, and what the in-memory fallback mutates.
   List<BookingModel> _latestBookings = [];
   Map<String, dynamic>? _rates;
+  Map<String, dynamic>? _paymentInformation;
   final Map<String, List<Map<String, dynamic>>> _localActivity = {};
 
   bool get isCloud => _isFirebaseReady && _firestore != null;
@@ -387,6 +390,61 @@ class FirestoreService {
     return const [];
   }
 
+  Stream<Map<String, dynamic>?> streamPaymentInformation() {
+    if (isCloud) {
+      return _firestore!
+          .collection(AppConstants.colSiteConfig)
+          .doc(AppConstants.docPayment)
+          .snapshots()
+          .map((snap) {
+        _paymentInformation = snap.data();
+        return _paymentInformation;
+      }).transform(StreamTransformer<Map<String, dynamic>?,
+          Map<String, dynamic>?>.fromHandlers(
+        handleData: (data, sink) => sink.add(data),
+        handleError: (_, __, sink) => sink.add(_paymentInformation),
+      ));
+    }
+    return Stream<Map<String, dynamic>?>.multi((mc) {
+      mc.add(_paymentInformation);
+      final sub = _paymentController.stream.listen(mc.add);
+      mc.onCancel = sub.cancel;
+    });
+  }
+
+  Future<String?> publishPaymentInformation(Map<String, dynamic> doc) async {
+    String? validateRequired(String key, int max) {
+      final value = doc[key];
+      if (value is! String || value.trim().isEmpty || value.length > max) {
+        return '$key is required and must be at most $max characters.';
+      }
+      return null;
+    }
+    if (doc['active'] is! bool) return 'Active must be true or false.';
+    for (final field in [('method', 80), ('recipient_name', 120), ('account_identifier', 120), ('instructions', 1000)]) {
+      final problem = validateRequired(field.$1, field.$2);
+      if (problem != null) return problem;
+    }
+    for (final key in ['security_deposit_notes', 'notes']) {
+      final value = doc[key];
+      if (value != null && (value is! String || value.length > 1000)) {
+        return '$key must be at most 1000 characters.';
+      }
+    }
+    _paymentInformation = Map<String, dynamic>.from(doc);
+    _paymentController.add(_paymentInformation);
+    if (isCloud) {
+      try {
+        await _firestore!
+            .collection(AppConstants.colSiteConfig)
+            .doc(AppConstants.docPayment)
+            .set({...doc, 'updated_at': FieldValue.serverTimestamp()});
+      } catch (e) {
+        return 'Could not save payment information (${e.toString().split('\n').first}).';
+      }
+    }
+    return null;
+  }
 
   Future<void> recordSmartLockEvent(SmartLockEventModel event) async {
     _lockLogs.insert(0, event);
@@ -426,6 +484,7 @@ class FirestoreService {
     _roomsController.close();
     _crmController.close();
     _ratesController.close();
+    _paymentController.close();
     for (final c in _activityControllers.values) {
       c.close();
     }

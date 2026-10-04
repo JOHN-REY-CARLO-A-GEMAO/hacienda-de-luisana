@@ -405,7 +405,7 @@ class RatesProblem {
 }
 
 /// The Accommodation ids the website lists (`src/config/site.ts`).
-const List<String> kKnownAccommodationIds = ['main-house', 'house-a-camping'];
+const List<String> kKnownAccommodationIds = ['main-house', 'annex', 'house-a-camping'];
 
 bool _isValidDate(Object? v) {
   if (v is! String) return false;
@@ -418,6 +418,32 @@ bool _isValidDate(Object? v) {
   final firstOfNext = DateTime.utc(y, mo + 1, 1);
   final candidate = DateTime.utc(y, mo, d);
   return d >= 1 && candidate.isBefore(firstOfNext);
+}
+
+void _validateGuestSchedule(Object? value, String path, List<RatesProblem> problems) {
+  if (value is! Map) {
+    problems.add(RatesProblem(path, 'must be a guest-count schedule.'));
+    return;
+  }
+  bool positiveInt(Object? v) => v is int && v > 0;
+  bool money(Object? v) => v is num && v.isFinite && v > 0;
+  if (!positiveInt(value['min_guests']) || !positiveInt(value['base_max_guests'])
+      || (value['base_max_guests'] as int? ?? 0) < (value['min_guests'] as int? ?? 1)
+      || !money(value['base_rate'])) {
+    problems.add(RatesProblem(path, 'needs a valid minimum, base maximum, and base rate.'));
+  }
+  final hasUpper = value.containsKey('upper_min_guests') || value.containsKey('upper_max_guests') || value.containsKey('upper_rate');
+  if (hasUpper && (!positiveInt(value['upper_min_guests']) || !positiveInt(value['upper_max_guests'])
+      || value['upper_min_guests'] != (value['base_max_guests'] as int? ?? 0) + 1
+      || (value['upper_max_guests'] as int? ?? 0) < (value['upper_min_guests'] as int? ?? 1)
+      || !money(value['upper_rate']))) {
+    problems.add(RatesProblem(path, 'upper bracket must be complete and contiguous.'));
+  }
+  final hasExcess = value.containsKey('excess_after') || value.containsKey('excess_per_guest');
+  if (hasExcess && (!hasUpper || value['excess_after'] != value['upper_max_guests']
+      || !money(value['excess_per_guest']))) {
+    problems.add(RatesProblem(path, 'excess pricing must start after the upper bracket.'));
+  }
 }
 
 /// Validate a `site_config/rates` document before publishing — same rules the
@@ -454,15 +480,54 @@ List<RatesProblem> validatePublishedRates(Object? doc,
             RatesProblem('accommodations.$key', 'must be an object of figures.'));
         return;
       }
-      final nightly = node['nightly_rate'];
-      if (nightly is! num || !nightly.isFinite || nightly <= 0) {
-        problems.add(RatesProblem('accommodations.$key.nightly_rate',
-            'must be a number of pesos per night, greater than zero.'));
+      if (node.containsKey('property_name') &&
+          (node['property_name'] is! String ||
+              (node['property_name'] as String).trim().isEmpty)) {
+        problems.add(RatesProblem('accommodations.$key.property_name',
+            'must be a non-empty property name.'));
+      }
+      final guestPricing = node['guest_pricing'];
+      if (guestPricing != null) {
+        if (node['rate_unit'] != 'standard_stay' || node.containsKey('nightly_rate')) {
+          problems.add(RatesProblem('accommodations.$key.rate_unit',
+              'guest schedules must use standard_stay and omit nightly_rate.'));
+        }
+        if (guestPricing is! Map || guestPricing['units_per_booking'] != 1) {
+          problems.add(RatesProblem('accommodations.$key.guest_pricing',
+              'must use one unit per booking.'));
+        } else {
+          _validateGuestSchedule(guestPricing['weekday'], 'accommodations.$key.guest_pricing.weekday', problems);
+          _validateGuestSchedule(guestPricing['weekend_holiday'], 'accommodations.$key.guest_pricing.weekend_holiday', problems);
+        }
+      } else {
+        if (node.containsKey('rate_unit') && node['rate_unit'] != 'night') {
+          problems.add(RatesProblem('accommodations.$key.rate_unit', 'must be "night".'));
+        }
+        final nightly = node['nightly_rate'];
+        if (nightly is! num || !nightly.isFinite || nightly <= 0) {
+          problems.add(RatesProblem('accommodations.$key.nightly_rate',
+              'must be a number of pesos per night, greater than zero.'));
+        }
+      }
+      if (node.containsKey('active') && node['active'] is! bool) {
+        problems.add(RatesProblem('accommodations.$key.active',
+            'must be true or false.'));
       }
       final deposit = node['security_deposit'];
       if (deposit is! num || !deposit.isFinite || deposit < 0) {
         problems.add(RatesProblem('accommodations.$key.security_deposit',
             'must be a peso amount, zero or more.'));
+      }
+      if (node.containsKey('reservation_fee_amount') && node.containsKey('down_payment_percent')) {
+        problems.add(RatesProblem('accommodations.$key',
+            'use either reservation_fee_amount or down_payment_percent, not both.'));
+      }
+      if (node.containsKey('reservation_fee_amount')) {
+        final fee = node['reservation_fee_amount'];
+        if (fee is! num || !fee.isFinite || fee <= 0) {
+          problems.add(RatesProblem('accommodations.$key.reservation_fee_amount',
+              'must be a positive peso amount.'));
+        }
       }
       if (node.containsKey('down_payment_percent') &&
           node['down_payment_percent'] != null) {
@@ -473,6 +538,13 @@ List<RatesProblem> validatePublishedRates(Object? doc,
         }
       }
     });
+  }
+  if (doc.containsKey('holiday_dates')) {
+    final dates = doc['holiday_dates'];
+    if (dates is! List || dates.any((date) => !_isValidDate(date)) || dates.toSet().length != dates.length) {
+      problems.add(const RatesProblem('holiday_dates',
+          'must contain unique YYYY-MM-DD dates configured by the Admin.'));
+    }
   }
   if (doc.containsKey('refund') && doc['refund'] != null) {
     final refund = doc['refund'];

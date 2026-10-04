@@ -23,6 +23,8 @@ export type RateCard = {
   securityDeposit: number
   /** Down-payment percentage offered alongside full payment; omitted means full payment only. */
   downPaymentPercent?: number
+  /** Exact non-refundable reservation fee, when officially configured. */
+  reservationFeeAmount?: number
 }
 
 /** One refund tier: cancel at least this many days before check-in, get this percentage back. */
@@ -80,13 +82,23 @@ export type PaymentOption = {
  */
 function optionsFromTotal(
   stayTotal: number,
-  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent'>,
+  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent' | 'reservationFeeAmount'>,
 ): PaymentOption[] {
   const total = roundMoney(Math.max(0, stayTotal))
   const options: PaymentOption[] = []
 
+  const exactFee = rate.reservationFeeAmount
   const percent = rate.downPaymentPercent
-  if (typeof percent === 'number' && percent > 0 && percent < 100) {
+  if (typeof exactFee === 'number' && exactFee > 0 && exactFee < total) {
+    const dueNow = roundMoney(exactFee)
+    options.push({
+      plan: 'down-payment',
+      stayTotal: total,
+      dueNow,
+      securityDeposit: rate.securityDeposit,
+      balance: roundMoney(total - dueNow),
+    })
+  } else if (typeof percent === 'number' && percent > 0 && percent < 100) {
     // Floor at whole centavos, off the quoted total, so the down payment and
     // the balance add back up to exactly what the Guest was quoted.
     const dueNow = Math.floor(roundMoney((total * percent) / 100) * 100) / 100
@@ -132,7 +144,7 @@ export function paymentOptions(
  */
 export function paymentOptionsForTotal(
   stayTotal: number,
-  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent'>,
+  rate: Pick<RateCard, 'securityDeposit' | 'downPaymentPercent' | 'reservationFeeAmount'>,
 ): PaymentOption[] {
   return optionsFromTotal(stayTotal, rate)
 }

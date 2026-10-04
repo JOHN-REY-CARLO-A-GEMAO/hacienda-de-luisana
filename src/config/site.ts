@@ -69,7 +69,7 @@ export type Accommodation = {
   amenities: string[]      // keys into AMENITIES
   images: string[]         // paths in /public or full URLs
   active: boolean
-  category: 'main-house' | 'camping'
+  category: 'main-house' | 'annex' | 'camping'
 }
 
 export type NearbyAttraction = {
@@ -172,6 +172,7 @@ export const BUSINESS = {
   policies: {
     checkIn: '2:00 PM',
     checkOut: '12:00 NN',
+    standardStayHours: 22,
     maxGuests: 10,
     petFriendly: true,
     smokingAllowed: false,
@@ -267,6 +268,11 @@ export const AMENITIES: Amenity[] = [
   { key: 'campfire', label: 'Campfire Area' },
   { key: 'garden', label: 'Garden / Outdoor Space' },
   { key: 'pets', label: 'Pet Friendly' },
+  { key: 'workspace', label: 'Dedicated Workspace' },
+  { key: 'patio', label: 'Patio / Balcony' },
+  { key: 'rice-cooker', label: 'Rice Cooker' },
+  { key: 'piano', label: 'Piano' },
+  { key: 'butterfly-fridge', label: 'Butterfly Refrigerator' },
 ]
 
 // -----------------------------------------------------------------------------
@@ -301,8 +307,9 @@ export const ACCOMMODATIONS: Accommodation[] = [
       source: "As listed on the Hacienda's Airbnb page",
     },
     amenities: [
-      'ac', 'wifi', 'kitchen', 'fridge', 'microwave',
-      'kettle', 'tv', 'garden', 'parking',
+      'ac', 'wifi', 'kitchen', 'fridge', 'butterfly-fridge', 'microwave',
+      'kettle', 'rice-cooker', 'tv', 'piano', 'workspace', 'patio',
+      'cooking', 'grill', 'campfire', 'garden', 'parking',
     ],
     images: [
       '/images/gmaps/img-01.jpg',
@@ -316,19 +323,36 @@ export const ACCOMMODATIONS: Accommodation[] = [
     category: 'main-house',
   },
   {
+    id: 'annex',
+    name: 'HDL Annex',
+    shortName: 'Annex',
+    description: 'A separate Hacienda stay option for 2–6 guests, offered under the official weekday and weekend/holiday rate schedule.',
+    capacity: 6,
+    capacityLabel: '2–6 guests',
+    priceLabel: 'From ₱4,000 / standard stay',
+    priceSource: 'Official Hacienda rate card',
+    amenities: [
+      'wifi', 'parking', 'cooking', 'grill', 'campfire', 'workspace',
+      'patio', 'ac', 'rice-cooker', 'tv', 'fridge', 'microwave', 'kettle',
+    ],
+    // Client materials supplied the Annex rate and capacity but no Annex-only
+    // photograph. Use the Hacienda overview rather than mislabelling another room.
+    images: ['/images/gmaps/img-07.jpg'],
+    active: true,
+    category: 'annex',
+  },
+  {
     id: 'house-a-camping',
-    name: 'House A Camping Units',
-    shortName: 'Camping Unit',
+    name: 'A-House',
+    shortName: 'A-House',
     description:
-      'For guests who want a simpler and more intimate countryside camping experience.',
-    capacity: 2,
-    capacityLabel: 'Up to 2 guests per unit',
+      'An intimate A-frame countryside stay, priced per A-House for 2–3 guests.',
+    capacity: 3,
+    capacityLabel: '2–3 guests per A-House',
     availableUnits: 2,
-    // [A] "A-Houses only (2 pax per unit) — 2 units available — ₱1,200/unit".
-    // The Hacienda's own listed figure; the Published rates override it.
-    price: 1200,
-    priceLabel: '₱1,200 / unit / night',
-    priceSource: "Listed by the Hacienda on Airbnb",
+    price: 1000,
+    priceLabel: '₱1,000 / A-House / standard stay',
+    priceSource: 'Official Hacienda rate card',
     amenities: ['campfire', 'grill', 'garden', 'wifi', 'parking', 'pets'],
     images: [
       '/images/gmaps/camping_units_stepping_stones.jpg',
@@ -411,7 +435,7 @@ export const NEARBY: NearbyAttraction[] = [
 export const FAQS: FAQ[] = [
   {
     q: 'How many guests can stay?',
-    a: `The Main House takes up to ${BUSINESS.policies.maxGuests} guests. Each House A camping unit sleeps 2, and there are 2 units.`,
+    a: `The website currently accepts up to ${BUSINESS.policies.maxGuests} guests for the Main House, the Annex takes 2–6 guests, and each A-House takes 2–3 guests. Ask the Hacienda about larger Main House groups.`,
   },
   {
     q: 'Are pets allowed?',
@@ -429,7 +453,7 @@ export const FAQS: FAQ[] = [
   },
   {
     q: 'Do you offer camping?',
-    a: 'Yes. There are 2 House A camping units, each for up to 2 guests. They can be booked on their own — choose the camping unit on the booking form or message us directly.',
+    a: 'Yes. There are 2 A-Houses, each for 2–3 guests. One online booking holds one A-House; message the Hacienda if you need more than one unit.',
   },
   {
     q: 'What time is check-in?',
@@ -441,7 +465,7 @@ export const FAQS: FAQ[] = [
   },
   {
     q: 'How much does it cost?',
-    a: 'The House A camping units are listed at ₱1,200 per unit per night. The Main House is quoted on request; the Rates & Fees section shows the current published figures, the refundable security deposit and the payment plans, and the Hacienda confirms the final quote before anything is reserved.',
+    a: 'Rates depend on the property, guest count, and whether check-in is a weekday, weekend, or Admin-published holiday. The Rates & Fees section shows the current authoritative schedule and optional charges.',
   },
   {
     q: 'How do I reserve?',
@@ -596,27 +620,27 @@ export const HOUSE_RULES: HouseRule[] = [
   {
     id: 'times',
     title: 'Check-in and check-out',
-    body: `Check-in from ${BUSINESS.policies.checkIn}, check-out by ${BUSINESS.policies.checkOut}.`,
+    body: `The standard 22-hour stay checks in at ${BUSINESS.policies.checkIn} and checks out by ${BUSINESS.policies.checkOut} for cleaning before the next guest. Late checkout is by request and approval, at ₱250 per hour after noon.`,
   },
   {
     id: 'capacity',
     title: 'Headcount',
-    body: `The Main House is for a maximum of ${BUSINESS.policies.maxGuests} guests. Each House A camping unit is for 2 guests, and there are 2 units.`,
+    body: `The website currently limits the Main House to ${BUSINESS.policies.maxGuests} guests. The Annex is for 2–6 guests; each A-House is for 2–3 guests. Contact the Hacienda about larger Main House groups.`,
   },
   {
     id: 'pets',
     title: 'Pets',
-    body: 'Pets are allowed for an additional ₱300 cleaning and sanitizing fee.',
+    body: 'Pets are welcome. The sanitation fee is ₱300 per pet and is not added unless a guest declares a pet.',
   },
   {
     id: 'claygo',
     title: 'Clean as you go',
-    body: 'Please clean as you go — the Hacienda’s own request to every guest.',
+    body: 'CLEAN AS YOU GO! Please observe the Hacienda house rules.',
   },
   {
     id: 'kitchen',
     title: 'Kitchen, ihawan and bonfire',
-    body: 'Free use of the gas stove, kitchen utensils, the ihawan (grill) and the bonfire pit.',
+    body: 'Free use of the gas stove, kitchen utensils, BBQ grill and bonfire pit. An optional bonfire wood set is ₱150 and is not automatically added.',
   },
   {
     id: 'parking',
@@ -678,7 +702,12 @@ export const FEES = {
     'Free use of the ihawan (grill)',
     'Free use of the bonfire pit',
     'Kitchen utensils',
-    'Air-conditioning, TV, refrigerator, microwave and electric kettle (Main House)',
+    'Dedicated workspace and patio / balcony',
+    'Air conditioning',
+    'Rice cooker',
+    'Television and piano',
+    'Butterfly refrigerator',
+    'Microwave and electric kettle',
   ],
   /** Charged on top of the stay when they apply. */
   additional: [
@@ -686,15 +715,30 @@ export const FEES = {
       id: 'pets',
       label: 'Pets',
       amount: 300,
-      note: 'Cleaning and sanitizing fee. Ask whether it applies per pet or per stay when you book.',
+      unit: 'per pet',
+      note: 'For sanitation purposes. Applied only when a pet is declared.',
+    },
+    {
+      id: 'bonfire-wood',
+      label: 'Bonfire wood set',
+      amount: 150,
+      unit: 'per set',
+      note: 'Optional; free use of the bonfire pit remains included.',
+    },
+    {
+      id: 'late-checkout',
+      label: 'Approved late checkout',
+      amount: 250,
+      unit: 'per hour after 12:00 noon',
+      note: 'Applied only when requested and approved.',
     },
   ] as Fee[],
   /** Available on request; priced by the Hacienda when you ask. */
   optional: [
     {
-      id: 'water',
-      label: 'Drinking water',
-      note: 'Available from the Hacienda if you don’t bring your own (as guests report) — ask for the current price.',
+      id: 'special-event',
+      label: 'Reunion, team building, wedding prep or shoot',
+      note: 'Additional charges may apply depending on guest count. No fixed fee is invented; the Admin confirms it.',
     },
   ] as Fee[],
 }

@@ -61,6 +61,12 @@ final publishedRatesProvider = StreamProvider<Map<String, dynamic>?>((ref) {
   return service.streamPublishedRates();
 });
 
+/// Public payment instructions (`site_config/payment`) managed by the Admin.
+final paymentInformationProvider = StreamProvider<Map<String, dynamic>?>((ref) {
+  final service = ref.watch(firestoreServiceProvider);
+  return service.streamPaymentInformation();
+});
+
 /// The Activity log of one Booking, oldest first.
 final bookingActivityProvider =
     StreamProvider.family<List<Map<String, dynamic>>, String>((ref, id) {
