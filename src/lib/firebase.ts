@@ -27,6 +27,7 @@ import type { Database } from 'firebase/database'
 import {
   fieldReport,
   resolveFirebaseConfig,
+  FIREBASE_ENV_KEYS,
   type FirebaseConfigField,
   type FirebaseConfigReport,
 } from './firebaseConfig'
@@ -53,20 +54,28 @@ import { COMMITTED_PROJECT } from './firebaseDefaults'
 // have left the whole env object sitting in the bundle and leaked exactly as much.
 // Each dot access is replaced by that one value, and nothing else survives.
 //
-// The `Record<FirebaseConfigField, unknown>` annotation is what keeps the list
-// honest. It is the reason the eight names are repeated rather than derived: add a
-// ninth field to FIREBASE_ENV_KEYS and this stops compiling until it is listed
-// here, instead of quietly ignoring the new variable and falling back to the
-// committed defaults.
-const FIREBASE_ENV: Record<FirebaseConfigField, unknown> = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+// The keys are the *variable names*, not the field names, because that is what
+// `resolveFirebaseConfig` looks up: it iterates FIREBASE_ENV_KEYS and reads
+// `env[envKey]`. Keyed by field name instead, every lookup missed, every field
+// came back `missing`, and the site reported demo mode in every environment —
+// `.env.local`, a Vercel deployment, all of them — with a fully populated
+// `import.meta.env` sitting right there. The unit test could not see it: it
+// passes a correctly-keyed env in by hand, so it never exercised this shape.
+//
+// The annotation is what keeps the list honest. It is the union of the names in
+// FIREBASE_ENV_KEYS, so the eight are repeated rather than derived: add a ninth
+// field to FIREBASE_ENV_KEYS and this stops compiling until it is listed here,
+// instead of quietly ignoring the new variable and falling back to the committed
+// defaults.
+const FIREBASE_ENV: Record<(typeof FIREBASE_ENV_KEYS)[FirebaseConfigField], unknown> = {
+  VITE_FIREBASE_API_KEY: import.meta.env.VITE_FIREBASE_API_KEY,
+  VITE_FIREBASE_AUTH_DOMAIN: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  VITE_FIREBASE_MESSAGING_SENDER_ID: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  VITE_FIREBASE_APP_ID: import.meta.env.VITE_FIREBASE_APP_ID,
+  VITE_FIREBASE_MEASUREMENT_ID: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  VITE_FIREBASE_DATABASE_URL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
 }
 
 const resolution: FirebaseConfigReport = resolveFirebaseConfig({
