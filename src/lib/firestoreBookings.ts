@@ -108,6 +108,11 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     nights: typeof data.nights === 'number' ? data.nights : undefined,
     rate_amount: typeof data.rate_amount === 'number' ? data.rate_amount : undefined,
     rate_unit: data.rate_unit === 'night' || data.rate_unit === 'standard_stay' ? data.rate_unit : undefined,
+    total_amount: typeof data.total_amount === 'number'
+      ? data.total_amount
+      : typeof data.totalAmount === 'number' ? data.totalAmount : undefined,
+    rate_classification: data.rate_classification === 'weekday' || data.rate_classification === 'weekend_holiday'
+      ? data.rate_classification : undefined,
     stay_total: typeof data.stay_total === 'number' ? data.stay_total : undefined,
     amount_due: typeof data.amount_due === 'number' ? data.amount_due : undefined,
     security_deposit: typeof data.security_deposit === 'number' ? data.security_deposit : undefined,
@@ -121,6 +126,9 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     // before it): nulls on read mean the Admin had published nothing.
     policy_version: data.policy_version ?? null,
     policy_effective_date: data.policy_effective_date ?? null,
+    ...(Object.prototype.hasOwnProperty.call(data, 'refund_policy_snapshot')
+      ? { refund_policy_snapshot: data.refund_policy_snapshot ?? null }
+      : {}),
     // P3-era keys still present on documents stored before Government ID KYC
     // was removed (2026-09-27 — recorded in ADR-0004's amendment): ref_id, uid
     // and source are kept; the KYC fields are dropped on read rather than

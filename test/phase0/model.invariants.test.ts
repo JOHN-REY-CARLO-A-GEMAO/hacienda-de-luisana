@@ -22,9 +22,12 @@ it('F09 DESIRED: future-dated stay cannot check in before its allowed date', () 
 it('F09 DESIRED: completion cannot erase outstanding money/deposit obligations', () => {
   expect(applyAction(approved({ ...scenarios.money.outstandingBalanceAndDeposit, status: 'Checked-Out' }), { type: 'Complete' }, actor()).ok).toBe(false)
 })
-it('F10 DESIRED: settlement is stable for the recorded policy, not caller-supplied changed contents', () => {
+it('F10 DESIRED: cancellation uses the saved refund terms, not caller-supplied changed contents', () => {
+  const state = approved({
+    refund_policy_snapshot: { refund_percent: 100, deposit_refund_percent: 100 },
+  })
   const refunds = [scenarios.policy.historical, scenarios.policy.changedSameVersion].map(policy => {
-    const result = applyAction(approved(), { type: 'Cancel', refund: { policy } }, actor())
+    const result = applyAction(state, { type: 'Cancel', refund: { policy } }, actor())
     if (!result.ok) throw new Error(result.reason)
     return result.patch.refund_total
   })

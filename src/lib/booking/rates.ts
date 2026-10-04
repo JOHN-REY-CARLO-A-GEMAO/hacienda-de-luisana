@@ -2,19 +2,14 @@
 // Booking lifecycle — the published rate card & cancellation policy
 // Hacienda de LuisAna
 // ----------------------------------------------------------------------------
-// The one document the Admin publishes so that money can move: per-
-// Accommodation rates, the Security deposit, the down-payment percent and the
-// cancellation policy, under a version that takes effect on a date.
+// The shared rates document publishes per-Accommodation weekday and
+// weekend/holiday guest-count schedules, the Security deposit, a 50% down
+// payment and cancellation policy. Every quote is one 22-hour standard stay.
+// A Booking records the version, date, and rate classification used at submit;
+// later rate publications do not rewrite an existing Booking.
 //
-// Why a version: ChoosePaymentPlan stamps the version in force on the Booking
-// at the moment the Guest commits to a plan, so a later republish changes the
-// terms for *future* choices only — never the refund terms of a stay already
-// promised. A policy that is not published refunds nothing (settleRefund),
-// which is what an unpublished or invalid document amounts to.
-//
-// This file owns the document's shape and its validator, and nothing else: it
-// is pure, so the check a publishing surface runs before it writes
-// `site_config` is the same check a test runs, and neither needs Firebase.
+// This file owns the document's shape and its pure validator so both publishing
+// surfaces and tests check one contract without requiring Firebase.
 // ----------------------------------------------------------------------------
 
 import { roundMoney } from './internal'
@@ -22,14 +17,14 @@ import type { RefundPolicy, RefundTier, RateCard } from './money'
 
 /** The Admin's published figures for one Accommodation. */
 export type GuestRateSchedule = {
+  /** Minimum count is one; base occupancy is included at the base rate. */
   min_guests: number
   base_max_guests: number
   base_rate: number
-  upper_min_guests?: number
-  upper_max_guests?: number
-  upper_rate?: number
-  excess_after?: number
+  /** Linear charge for each guest above base_max_guests. */
   excess_per_guest?: number
+  /** A separately documented occupancy limit, if one exists (A-House: 3). */
+  max_guests?: number
 }
 
 export type GuestBracketPricing = {
@@ -46,15 +41,15 @@ export type AccommodationRates = {
   rate_unit?: 'night' | 'standard_stay'
   /** Whether this property can receive new bookings. Optional means active for legacy documents. */
   active?: boolean
-  /** Legacy flat nightly figure. Kept for already-published Phase 1 documents. */
+  /** Legacy flat nightly figure; accepted only as a read-time type for older records. */
   nightly_rate?: number
-  /** Official guest-count schedule. Mutually exclusive with `nightly_rate`. */
+  /** Required guest-count schedules for new bookings. */
   guest_pricing?: GuestBracketPricing
   /** Refundable amount held against damage, settled at check-out. */
   security_deposit: number
-  /** Down-payment percentage; omitted means full payment only. */
+  /** Required 50% down payment for all new guest bookings. */
   down_payment_percent?: number
-  /** Exact reservation fee, when the client publishes one. Takes priority over a percentage. */
+  /** Retired fixed fee; new rate publications reject this field. */
   reservation_fee_amount?: number
   /** Informational/manual pricing review notice; never adds invented money. */
   manual_review_notice?: string
@@ -109,7 +104,7 @@ export type PublishedRates = {
   /** When this version took effect (ISO date, YYYY-MM-DD). */
   effective_date: string
   /** Admin-maintained Philippine holiday dates. No holiday calendar is guessed in code. */
-  holiday_dates?: string[]
+  holiday_dates: string[]
   /** Figures per Accommodation id; accommodations absent here have no machine price. */
   accommodations: Record<string, AccommodationRates>
   /** Guest-visible non-automatic policies and optional charges. */
@@ -119,7 +114,7 @@ export type PublishedRates = {
 }
 
 /** The one translation from the document's vocabulary to the money module's. */
-function toRefundPolicy(published: PublishedRefundPolicy): RefundPolicy {
+export function refundPolicyFromPublished(published: PublishedRefundPolicy): RefundPolicy {
   const tiers: RefundTier[] | undefined = published.tiers?.map((t) => ({
     minDaysBeforeCheckIn: t.min_days_before_check_in,
     refundPercent: t.refund_percent,
@@ -173,7 +168,7 @@ export type PropertyQuote = {
   policy: RefundPolicy | undefined
   snapshot: PolicySnapshot
   stayTotal: number
-  classification: RateClassification | 'legacy_flat'
+  classification: RateClassification
   bracket: string
   units: 1
 }
@@ -188,30 +183,25 @@ function calendarNights(checkIn: string, checkOut: string): number {
 export function classifyRateDate(date: string, holidayDates: readonly string[] = []): RateClassification | undefined {
   if (!isValidDate(date)) return undefined
   const day = new Date(`${date}T00:00:00Z`).getUTCDay()
-  return holidayDates.includes(date) || day === 0 || day === 6 ? 'weekend_holiday' : 'weekday'
+  return holidayDates.includes(date) || day === 5 || day === 6 ? 'weekend_holiday' : 'weekday'
 }
 
 function scheduledAmount(schedule: GuestRateSchedule, guests: number): { amount: number; bracket: string } | undefined {
   if (!Number.isInteger(guests) || guests < schedule.min_guests) return undefined
-  if (guests <= schedule.base_max_guests) return { amount: schedule.base_rate, bracket: `${schedule.min_guests}-${schedule.base_max_guests}` }
-  if (schedule.upper_min_guests !== undefined && schedule.upper_max_guests !== undefined && schedule.upper_rate !== undefined) {
-    if (guests >= schedule.upper_min_guests && guests <= schedule.upper_max_guests) {
-      return { amount: schedule.upper_rate, bracket: `${schedule.upper_min_guests}-${schedule.upper_max_guests}` }
-    }
-    if (schedule.excess_after !== undefined && schedule.excess_per_guest !== undefined && guests > schedule.excess_after) {
-      return {
-        amount: roundMoney(schedule.upper_rate + (guests - schedule.excess_after) * schedule.excess_per_guest),
-        bracket: `${schedule.excess_after}+`,
-      }
-    }
+  if (schedule.max_guests !== undefined && guests > schedule.max_guests) return undefined
+  if (guests <= schedule.base_max_guests) return { amount: schedule.base_rate, bracket: `up to ${schedule.base_max_guests}` }
+  const excessPerGuest = schedule.excess_per_guest
+  if (!isFiniteNumber(excessPerGuest) || excessPerGuest < 0) return undefined
+  return {
+    amount: roundMoney(schedule.base_rate + (guests - schedule.base_max_guests) * excessPerGuest),
+    bracket: `${schedule.base_max_guests} included + ${guests - schedule.base_max_guests} extra`,
   }
-  return undefined
 }
 
 /**
- * The single authoritative quote path for both legacy flat prices and the
- * official guest-count schedules. Tiered rates are per one 22-hour standard
- * stay; multi-stay mixing is refused until the business defines that policy.
+ * The authoritative quote path for new guest bookings. Tiered rates are per
+ * one 22-hour standard stay; multi-stay mixing is refused until the business
+ * defines that policy.
  */
 export function quoteAccommodation(
   doc: PublishedRates,
@@ -219,81 +209,61 @@ export function quoteAccommodation(
   input: { check_in: string; check_out: string; guests: number },
 ): PropertyQuote | undefined {
   const figures = doc.accommodations[accommodationId]
-  if (!figures || figures.active === false) return undefined
-  const common = {
-    policy: doc.refund !== undefined ? toRefundPolicy(doc.refund) : undefined,
-    snapshot: { version: doc.version, effectiveDate: doc.effective_date },
-    units: 1 as const,
-  }
-  const nights = calendarNights(input.check_in, input.check_out)
-  if (figures.guest_pricing) {
-    if (figures.rate_unit !== 'standard_stay' || nights !== 1) return undefined
-    const classification = classifyRateDate(input.check_in, doc.holiday_dates)
-    if (!classification) return undefined
-    const scheduled = scheduledAmount(figures.guest_pricing[classification], input.guests)
-    if (!scheduled) return undefined
-    return {
-      ...common,
-      classification,
-      bracket: scheduled.bracket,
-      stayTotal: scheduled.amount,
-      rateCard: {
-        nightlyRate: scheduled.amount,
-        securityDeposit: figures.security_deposit,
-        ...(figures.reservation_fee_amount !== undefined ? { reservationFeeAmount: figures.reservation_fee_amount } : {}),
-        ...(figures.down_payment_percent !== undefined ? { downPaymentPercent: figures.down_payment_percent } : {}),
-      },
-    }
-  }
-  if (figures.rate_unit !== undefined && figures.rate_unit !== 'night') return undefined
-  if (!isFiniteNumber(figures.nightly_rate) || nights < 1) return undefined
+  if (!figures || figures.active === false || !figures.guest_pricing
+      || figures.rate_unit !== 'standard_stay' || calendarNights(input.check_in, input.check_out) !== 1) return undefined
+  const classification = classifyRateDate(input.check_in, doc.holiday_dates)
+  if (!classification) return undefined
+  const scheduled = scheduledAmount(figures.guest_pricing[classification], input.guests)
+  if (!scheduled) return undefined
   return {
-    ...common,
-    classification: 'legacy_flat',
-    bracket: 'flat',
-    stayTotal: roundMoney(nights * figures.nightly_rate),
+    policy: doc.refund !== undefined ? refundPolicyFromPublished(doc.refund) : undefined,
+    snapshot: { version: doc.version, effectiveDate: doc.effective_date },
+    units: 1,
+    classification,
+    bracket: scheduled.bracket,
+    stayTotal: scheduled.amount,
     rateCard: {
-      nightlyRate: figures.nightly_rate,
+      nightlyRate: scheduled.amount,
       securityDeposit: figures.security_deposit,
-      ...(figures.reservation_fee_amount !== undefined ? { reservationFeeAmount: figures.reservation_fee_amount } : {}),
       ...(figures.down_payment_percent !== undefined ? { downPaymentPercent: figures.down_payment_percent } : {}),
     },
   }
 }
 
-function scheduleProblems(path: string, node: unknown): RatesProblem[] {
+function scheduleProblems(path: string, node: unknown, allowDocumentedCap: boolean, requireExcess: boolean): RatesProblem[] {
   if (typeof node !== 'object' || node === null || Array.isArray(node)) {
     return [{ path, message: 'must be a guest-count rate schedule.' }]
   }
   const schedule = node as Record<string, unknown>
   const problems: RatesProblem[] = []
   const positiveInt = (value: unknown) => Number.isInteger(value) && (value as number) > 0
-  if (!positiveInt(schedule.min_guests)) problems.push({ path: `${path}.min_guests`, message: 'must be a positive whole number.' })
-  if (!positiveInt(schedule.base_max_guests) || (positiveInt(schedule.min_guests) && (schedule.base_max_guests as number) < (schedule.min_guests as number))) {
+  if (!positiveInt(schedule.min_guests)) {
+    problems.push({ path: `${path}.min_guests`, message: 'must be a positive whole number.' })
+  } else if (schedule.min_guests !== 1) {
+    problems.push({ path: `${path}.min_guests`, message: 'must be 1; base occupancy is not a minimum booking size.' })
+  }
+  if (!positiveInt(schedule.base_max_guests) || (schedule.base_max_guests as number) < (positiveInt(schedule.min_guests) ? schedule.min_guests as number : 1)) {
     problems.push({ path: `${path}.base_max_guests`, message: 'must be at or above min_guests.' })
   }
-  if (!isFiniteNumber(schedule.base_rate) || schedule.base_rate <= 0) problems.push({ path: `${path}.base_rate`, message: 'must be a positive peso amount.' })
-
-  const upperFields = ['upper_min_guests', 'upper_max_guests', 'upper_rate'] as const
-  const hasUpper = upperFields.some((key) => schedule[key] !== undefined)
-  if (hasUpper) {
-    if (!positiveInt(schedule.upper_min_guests) || (positiveInt(schedule.base_max_guests) && schedule.upper_min_guests !== (schedule.base_max_guests as number) + 1)) {
-      problems.push({ path: `${path}.upper_min_guests`, message: 'must immediately follow the base bracket.' })
-    }
-    if (!positiveInt(schedule.upper_max_guests) || (positiveInt(schedule.upper_min_guests) && (schedule.upper_max_guests as number) < (schedule.upper_min_guests as number))) {
-      problems.push({ path: `${path}.upper_max_guests`, message: 'must be at or above upper_min_guests.' })
-    }
-    if (!isFiniteNumber(schedule.upper_rate) || schedule.upper_rate <= 0) problems.push({ path: `${path}.upper_rate`, message: 'must be a positive peso amount.' })
+  if (!isFiniteNumber(schedule.base_rate) || schedule.base_rate <= 0) {
+    problems.push({ path: `${path}.base_rate`, message: 'must be a positive peso amount.' })
   }
-
-  const hasExcess = schedule.excess_after !== undefined || schedule.excess_per_guest !== undefined
-  if (hasExcess) {
-    if (!hasUpper) problems.push({ path: `${path}.excess_after`, message: 'requires an upper bracket.' })
-    if (!positiveInt(schedule.excess_after) || (positiveInt(schedule.upper_max_guests) && schedule.excess_after !== schedule.upper_max_guests)) {
-      problems.push({ path: `${path}.excess_after`, message: 'must equal the upper bracket maximum.' })
-    }
-    if (!isFiniteNumber(schedule.excess_per_guest) || schedule.excess_per_guest <= 0) {
-      problems.push({ path: `${path}.excess_per_guest`, message: 'must be a positive per-person amount.' })
+  if (schedule.max_guests !== undefined && !allowDocumentedCap) {
+    problems.push({ path: `${path}.max_guests`, message: 'is not supported without a separately documented physical/safety limit.' })
+  } else if (schedule.max_guests !== undefined && (!positiveInt(schedule.max_guests)
+      || (positiveInt(schedule.base_max_guests) && (schedule.max_guests as number) < (schedule.base_max_guests as number)))) {
+    problems.push({ path: `${path}.max_guests`, message: 'must be a whole-number cap at or above base_max_guests.' })
+  }
+  if (requireExcess && schedule.excess_per_guest === undefined) {
+    problems.push({ path: `${path}.excess_per_guest`, message: 'is required when there is no absolute guest cap.' })
+  } else if (!requireExcess && schedule.excess_per_guest !== undefined) {
+    problems.push({ path: `${path}.excess_per_guest`, message: 'A-House is a flat per-unit amount through its documented three-guest maximum.' })
+  } else if (schedule.excess_per_guest !== undefined && (!isFiniteNumber(schedule.excess_per_guest) || schedule.excess_per_guest < 0)) {
+    problems.push({ path: `${path}.excess_per_guest`, message: 'must be a non-negative per-person peso amount.' })
+  }
+  for (const retired of ['upper_min_guests', 'upper_max_guests', 'upper_rate', 'excess_after']) {
+    if (schedule[retired] !== undefined) {
+      problems.push({ path: `${path}.${retired}`, message: 'is retired; use base_rate plus excess_per_guest.' })
     }
   }
   return problems
@@ -326,34 +296,43 @@ function accommodationProblems(accommodationId: string, node: unknown): RatesPro
       message: 'must be true or false.',
     })
   }
-  const hasFlatRate = rates.nightly_rate !== undefined
-  const hasGuestPricing = rates.guest_pricing !== undefined
-  if (hasFlatRate === hasGuestPricing) {
-    problems.push({
-      path: `accommodations.${accommodationId}`,
-      message: 'must publish exactly one pricing model: nightly_rate or guest_pricing.',
-    })
-  }
-  if (hasFlatRate && (!isFiniteNumber(rates.nightly_rate) || rates.nightly_rate <= 0)) {
+  if (rates.nightly_rate !== undefined) {
     problems.push({
       path: `accommodations.${accommodationId}.nightly_rate`,
-      message: 'must be a number of pesos per night, greater than zero.',
+      message: 'legacy flat nightly pricing cannot be published for new bookings; use guest_pricing.',
     })
   }
-  if (hasGuestPricing) {
+  if (rates.guest_pricing === undefined) {
+    problems.push({
+      path: `accommodations.${accommodationId}.guest_pricing`,
+      message: 'must publish weekday and weekend_holiday guest-count schedules.',
+    })
+  } else {
     const pricing = rates.guest_pricing as Record<string, unknown>
     if (typeof pricing !== 'object' || pricing === null || Array.isArray(pricing)) {
       problems.push({ path: `accommodations.${accommodationId}.guest_pricing`, message: 'must contain weekday and weekend_holiday schedules.' })
     } else {
-      problems.push(...scheduleProblems(`accommodations.${accommodationId}.guest_pricing.weekday`, pricing.weekday))
-      problems.push(...scheduleProblems(`accommodations.${accommodationId}.guest_pricing.weekend_holiday`, pricing.weekend_holiday))
+      const hasDocumentedCap = accommodationId === 'house-a-camping'
+      const weekdayPath = `accommodations.${accommodationId}.guest_pricing.weekday`
+      const weekendPath = `accommodations.${accommodationId}.guest_pricing.weekend_holiday`
+      problems.push(...scheduleProblems(weekdayPath, pricing.weekday, hasDocumentedCap, !hasDocumentedCap))
+      problems.push(...scheduleProblems(weekendPath, pricing.weekend_holiday, hasDocumentedCap, !hasDocumentedCap))
+      if (hasDocumentedCap) {
+        for (const [path, schedule] of [[weekdayPath, pricing.weekday], [weekendPath, pricing.weekend_holiday]] as const) {
+          if (typeof schedule === 'object' && schedule !== null && !Array.isArray(schedule)
+              && ((schedule as Record<string, unknown>).base_max_guests !== 3
+                  || (schedule as Record<string, unknown>).max_guests !== 3)) {
+            problems.push({ path, message: 'A-House is one unit per booking, with an included and absolute maximum of 3 guests.' })
+          }
+        }
+      }
       if (pricing.units_per_booking !== undefined && pricing.units_per_booking !== 1) {
         problems.push({ path: `accommodations.${accommodationId}.guest_pricing.units_per_booking`, message: 'must be 1 until quantity booking is defined.' })
       }
     }
-    if (rates.rate_unit !== 'standard_stay') {
-      problems.push({ path: `accommodations.${accommodationId}.rate_unit`, message: 'guest bracket pricing must use standard_stay.' })
-    }
+  }
+  if (rates.rate_unit !== 'standard_stay') {
+    problems.push({ path: `accommodations.${accommodationId}.rate_unit`, message: 'new guest-count prices must use the standard_stay rate unit.' })
   }
   if (!isFiniteNumber(rates.security_deposit) || rates.security_deposit < 0) {
     problems.push({
@@ -361,19 +340,17 @@ function accommodationProblems(accommodationId: string, node: unknown): RatesPro
       message: 'must be a peso amount, zero or more.',
     })
   }
-  if (rates.down_payment_percent !== undefined) {
-    if (!isFiniteNumber(rates.down_payment_percent) || rates.down_payment_percent <= 0 || rates.down_payment_percent >= 100) {
-      problems.push({
-        path: `accommodations.${accommodationId}.down_payment_percent`,
-        message: 'must be a percentage strictly between 0 and 100 (omit it for full payment only).',
-      })
-    }
+  if (!isFiniteNumber(rates.down_payment_percent) || rates.down_payment_percent !== 50) {
+    problems.push({
+      path: `accommodations.${accommodationId}.down_payment_percent`,
+      message: 'must be 50; the remaining 50% is due at check-in.',
+    })
   }
-  if (rates.reservation_fee_amount !== undefined && (!isFiniteNumber(rates.reservation_fee_amount) || rates.reservation_fee_amount <= 0)) {
-    problems.push({ path: `accommodations.${accommodationId}.reservation_fee_amount`, message: 'must be a positive peso amount.' })
-  }
-  if (rates.reservation_fee_amount !== undefined && rates.down_payment_percent !== undefined) {
-    problems.push({ path: `accommodations.${accommodationId}`, message: 'cannot publish both a reservation fee and a down-payment percentage.' })
+  if (rates.reservation_fee_amount !== undefined) {
+    problems.push({
+      path: `accommodations.${accommodationId}.reservation_fee_amount`,
+      message: 'fixed reservation fees are not accepted; the down payment is 50% of the computed stay total.',
+    })
   }
   if (rates.manual_review_notice !== undefined && (typeof rates.manual_review_notice !== 'string' || rates.manual_review_notice.length > 500)) {
     problems.push({ path: `accommodations.${accommodationId}.manual_review_notice`, message: 'must be text of at most 500 characters.' })
@@ -435,13 +412,15 @@ export function validatePublishedRates(doc: unknown, knownAccommodationIds?: rea
   if (!isValidDate(rates.effective_date)) {
     problems.push({ path: 'effective_date', message: 'must be the date this version took effect (YYYY-MM-DD).' })
   }
-  if (rates.holiday_dates !== undefined) {
-    if (!Array.isArray(rates.holiday_dates)) {
-      problems.push({ path: 'holiday_dates', message: 'must be a list of YYYY-MM-DD dates.' })
-    } else {
-      rates.holiday_dates.forEach((date, index) => {
-        if (!isValidDate(date)) problems.push({ path: `holiday_dates[${index}]`, message: 'must be a real YYYY-MM-DD date.' })
-      })
+  if (!Array.isArray(rates.holiday_dates)) {
+    problems.push({ path: 'holiday_dates', message: 'must be an explicit Admin-maintained list of YYYY-MM-DD dates (use [] when none are configured).' })
+  } else {
+    const holidayDates = rates.holiday_dates as unknown[]
+    holidayDates.forEach((date, index) => {
+      if (!isValidDate(date)) problems.push({ path: `holiday_dates[${index}]`, message: 'must be a real YYYY-MM-DD date.' })
+    })
+    if (new Set(holidayDates).size !== holidayDates.length) {
+      problems.push({ path: 'holiday_dates', message: 'must not contain duplicate dates.' })
     }
   }
 
@@ -483,10 +462,9 @@ export function ratesForAccommodation(
     rateCard: {
       nightlyRate: figures.nightly_rate,
       securityDeposit: figures.security_deposit,
-      ...(figures.reservation_fee_amount !== undefined ? { reservationFeeAmount: figures.reservation_fee_amount } : {}),
       ...(figures.down_payment_percent !== undefined ? { downPaymentPercent: figures.down_payment_percent } : {}),
     },
-    policy: doc.refund !== undefined ? toRefundPolicy(doc.refund) : undefined,
+    policy: doc.refund !== undefined ? refundPolicyFromPublished(doc.refund) : undefined,
     snapshot: { version: doc.version, effectiveDate: doc.effective_date },
   }
 }

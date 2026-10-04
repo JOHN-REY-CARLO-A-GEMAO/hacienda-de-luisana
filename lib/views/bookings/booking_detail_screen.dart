@@ -544,12 +544,18 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           if (booking.paymentPlan != null) _kv('Plan', booking.paymentPlan!),
           if (booking.policyVersion != null)
             _kv('Policy version', booking.policyVersion!),
+          if (booking.rateClassification != null)
+            _kv('Rate schedule', booking.rateClassification == 'weekend_holiday'
+                ? 'Weekend / Admin holiday (Friday/Saturday check-in night)'
+                : 'Weekday (Sunday–Thursday check-in night)'),
+          if (booking.raw['rate_amount'] is num)
+            _kv('Stay rate snapshot', peso((booking.raw['rate_amount'] as num).toDouble())),
           _kv('Stay total', peso(booking.stayTotal ?? booking.totalAmount)),
           if (booking.amountDue != null) _kv('Due now', peso(booking.amountDue)),
           if (booking.securityDeposit != null)
             _kv('Security deposit', peso(booking.securityDeposit)),
           if (booking.balanceDue != null)
-            _kv('Balance at stay', peso(booking.balanceDue)),
+            _kv('Balance due at check-in', peso(booking.balanceDue)),
           if (booking.amountClaimed != null)
             _kv('Guest says they sent', peso(booking.amountClaimed)),
           if (booking.amountVerified != null)

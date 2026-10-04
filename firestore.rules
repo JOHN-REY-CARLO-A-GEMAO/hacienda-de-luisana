@@ -164,61 +164,128 @@ service cloud.firestore {
     }
 
     function scheduledRate(schedule, guests) {
-      return !(guests is int) || guests < schedule.min_guests ? -1
-        : guests <= schedule.base_max_guests ? schedule.base_rate
-        : (schedule.keys().hasAll(['upper_min_guests', 'upper_max_guests', 'upper_rate'])
-            && guests >= schedule.upper_min_guests && guests <= schedule.upper_max_guests)
-          ? schedule.upper_rate
-        : (schedule.keys().hasAll(['upper_rate', 'excess_after', 'excess_per_guest'])
-            && guests > schedule.excess_after)
-          ? schedule.upper_rate + (guests - schedule.excess_after) * schedule.excess_per_guest
+      return !(guests is int) || guests < schedule.get('min_guests', 0) ? -1
+        : (schedule.keys().hasAny(['max_guests']) && guests > schedule.max_guests) ? -1
+        : guests <= schedule.get('base_max_guests', 0) ? schedule.get('base_rate', -1)
+        : schedule.keys().hasAny(['excess_per_guest'])
+          ? schedule.base_rate + (guests - schedule.base_max_guests) * schedule.excess_per_guest
         : -1;
+    }
+
+    function validGuestSchedule(schedule, allowThreeGuestCap) {
+      return schedule is map
+        && !schedule.keys().hasAny(['upper_min_guests', 'upper_max_guests', 'upper_rate', 'excess_after'])
+        && schedule.get('min_guests', 0) == 1
+        && schedule.get('base_max_guests', 0) is int
+        && schedule.base_max_guests >= 1
+        && schedule.get('base_rate', 0) is number
+        && schedule.base_rate > 0
+        && (allowThreeGuestCap
+          ? (schedule.get('base_max_guests', 0) == 3
+             && schedule.get('max_guests', 0) == 3
+             && !schedule.keys().hasAny(['excess_per_guest']))
+          : (!schedule.keys().hasAny(['max_guests'])
+             && schedule.get('excess_per_guest', -1) is number
+             && schedule.excess_per_guest >= 0));
     }
 
     function validAuthoritativeMoney(data) {
       let published = get(/databases/$(database)/documents/site_config/rates).data;
       let rate = published.accommodations[data.accommodation];
-      let tiered = rate.keys().hasAny(['guest_pricing']);
+      let pricing = rate.get('guest_pricing', {});
+      let allowThreeGuestCap = data.accommodation == 'house-a-camping';
       let start = data.check_in.split('-');
       let checkIn = timestamp.date(int(start[0]), int(start[1]), int(start[2]));
-      let holiday = data.check_in in published.get('holiday_dates', []);
-      let weekend = checkIn.dayOfWeek() in [1, 7];
-      let schedule = tiered
-        ? (weekend || holiday ? rate.guest_pricing.weekend_holiday : rate.guest_pricing.weekday)
-        : {};
-      let amount = tiered ? scheduledRate(schedule, data.guests) : rate.nightly_rate;
-      let rawTotal = tiered ? amount : amount * data.nights;
-      let total = int(rawTotal * 100 + 0.5) / 100;
-      let hasReservationFee = rate.keys().hasAny(['reservation_fee_amount']);
-      let hasDownPayment = rate.keys().hasAny(['down_payment_percent']);
-      let due = hasReservationFee ? rate.reservation_fee_amount
-        : hasDownPayment ? int(total * rate.down_payment_percent) / 100 : total;
-      return hasConfiguredRate(data)
+      let holidayDates = published.get('holiday_dates', []);
+      let holiday = holidayDates is list && data.check_in in holidayDates;
+      // Firestore's dayOfWeek is Monday=1 ... Sunday=7. Weekend check-in
+      // nights are Friday and Saturday; Sunday 2 PM is a weekday start.
+      let weekend = checkIn.dayOfWeek() in [5, 6];
+      let classification = weekend || holiday ? 'weekend_holiday' : 'weekday';
+      let schedule = classification == 'weekend_holiday'
+        ? pricing.get('weekend_holiday', {}) : pricing.get('weekday', {});
+      let amount = scheduledRate(schedule, data.guests);
+      let total = int(amount * 100 + 0.5) / 100;
+      let due = int(total * 50) / 100;
+      return published.keys().hasAny(['holiday_dates'])
+        && holidayDates is list
+        && hasConfiguredRate(data)
         && rate.get('active', true) == true
-        && rate.security_deposit is number && rate.security_deposit >= 0
-        && (!tiered || (rate.get('rate_unit', '') == 'standard_stay'
-            && data.nights == 1 && amount is number && amount > 0))
-        && (tiered || (rate.get('rate_unit', 'night') == 'night'
-            && rate.nightly_rate is number && rate.nightly_rate > 0))
-        && !(hasReservationFee && hasDownPayment)
-        // Phase 1 requires proof with creation. A tiered rate without an
-        // Admin-confirmed reservation fee is displayable but not payable yet.
-        && (!tiered || hasReservationFee || hasDownPayment)
-        && (!hasReservationFee || (rate.reservation_fee_amount is number
-            && rate.reservation_fee_amount > 0 && rate.reservation_fee_amount < total))
-        && (!hasDownPayment || (rate.down_payment_percent is number
-            && rate.down_payment_percent > 0 && rate.down_payment_percent < 100))
+        && rate.get('rate_unit', '') == 'standard_stay'
+        && !rate.keys().hasAny(['nightly_rate', 'reservation_fee_amount'])
+        && pricing is map
+        && pricing.get('units_per_booking', 1) == 1
+        && validGuestSchedule(pricing.get('weekday', {}), allowThreeGuestCap)
+        && validGuestSchedule(pricing.get('weekend_holiday', {}), allowThreeGuestCap)
+        && rate.get('down_payment_percent', 0) == 50
+        && rate.get('security_deposit', -1) is number
+        && rate.security_deposit >= 0
         && validStayLength(data)
-        && data.rate_amount == amount
-        && data.rate_unit == (tiered ? 'standard_stay' : 'night')
+        && data.nights == 1
+        && amount is number && amount > 0
+        && data.rate_amount == total
+        && data.rate_unit == 'standard_stay'
+        && data.rate_classification == classification
         && data.stay_total == total
-        && data.payment_plan == (hasReservationFee || hasDownPayment ? 'down-payment' : 'full')
+        && data.payment_plan == 'down-payment'
         && data.amount_due == due
         && data.security_deposit == rate.security_deposit
         && data.balance_due == total - due
         && data.amount_claimed >= due
         && data.policy_version == published.version
-        && data.policy_effective_date == published.effective_date;
+        && data.policy_effective_date == published.effective_date
+        && data.get('refund_policy_snapshot', null) == published.get('refund', null);
+    }
+
+    // Payment choices on old `Payment Pending` records must use the total and
+    // rate/policy fields already saved on that Booking. Never re-read the
+    // current rates document for an existing quote: that would silently reprice
+    // a historical record after an Admin publication.
+    function validHistoricalPlanChoice(data) {
+      let savedTotal = resource.data.get('stay_total', -1);
+      let savedRate = resource.data.get('rate_amount', -1);
+      let savedNights = resource.data.get('nights', -1);
+      let savedUnit = resource.data.get('rate_unit', '');
+      let rateTotal = savedUnit == 'standard_stay' && savedRate is number
+        ? int(savedRate * 100 + 0.5) / 100
+        : savedUnit == 'night' && savedRate is number && savedNights is int && savedNights > 0
+          ? int(savedRate * savedNights * 100 + 0.5) / 100
+          : -1;
+      let legacySnakeTotal = resource.data.get('total_amount', null);
+      let legacyCamelTotal = resource.data.get('totalAmount', null);
+      let legacyTotal = legacySnakeTotal is number ? legacySnakeTotal : legacyCamelTotal;
+      let total = resource.data.keys().hasAny(['stay_total'])
+        ? (savedTotal is number ? savedTotal : -1)
+        : legacyTotal is number
+          ? int(legacyTotal * 100 + 0.5) / 100
+          : rateTotal;
+      let plan = data.get('payment_plan', '');
+      let due = plan == 'down-payment' ? int(total * 50) / 100
+        : plan == 'full' ? total : -1;
+      return resource.data.get('status', '') == 'Payment Pending'
+        && !resource.data.keys().hasAny(['rate_classification'])
+        && resource.data.get('payment_plan', '') in ['', null]
+        && total is number && total > 0
+        && data.get('stay_total', -1) == total
+        && plan in ['down-payment', 'full']
+        && due > 0
+        && data.get('payment_status', '') == 'pending'
+        && data.get('amount_due', -1) == due
+        && data.get('security_deposit', 0) is number
+        && data.get('security_deposit', 0) >= 0
+        && data.get('security_deposit', 0) == resource.data.get('security_deposit', 0)
+        && data.get('balance_due', -1) == total - due
+        && data.get('policy_version', null) == resource.data.get('policy_version', null)
+        && data.get('policy_effective_date', null) == resource.data.get('policy_effective_date', null)
+        && data.get('refund_policy_snapshot', null) == resource.data.get('refund_policy_snapshot', null)
+        && (!data.keys().hasAny(['nights'])
+            || (resource.data.keys().hasAny(['nights']) && data.nights == resource.data.nights))
+        && (!data.keys().hasAny(['rate_amount'])
+            || (resource.data.keys().hasAny(['rate_amount']) && data.rate_amount == resource.data.rate_amount))
+        && (!data.keys().hasAny(['rate_unit'])
+            || (resource.data.keys().hasAny(['rate_unit']) && data.rate_unit == resource.data.rate_unit))
+        && (!data.keys().hasAny(['rate_classification'])
+            || (resource.data.keys().hasAny(['rate_classification']) && data.rate_classification == resource.data.rate_classification));
     }
 
     function validPaymentMethod(method) {
@@ -260,12 +327,16 @@ service cloud.firestore {
       return (!resource.data.keys().hasAny(['nights']) || request.resource.data.nights == resource.data.nights)
         && (!resource.data.keys().hasAny(['rate_amount']) || request.resource.data.rate_amount == resource.data.rate_amount)
         && (!resource.data.keys().hasAny(['rate_unit']) || request.resource.data.rate_unit == resource.data.rate_unit)
+        && (!resource.data.keys().hasAny(['rate_classification']) || request.resource.data.rate_classification == resource.data.rate_classification)
         && (!resource.data.keys().hasAny(['stay_total']) || request.resource.data.stay_total == resource.data.stay_total)
+        && (!resource.data.keys().hasAny(['total_amount']) || request.resource.data.get('total_amount', null) == resource.data.get('total_amount', null))
+        && (!resource.data.keys().hasAny(['totalAmount']) || request.resource.data.get('totalAmount', null) == resource.data.get('totalAmount', null))
         && (!resource.data.keys().hasAny(['security_deposit']) || request.resource.data.security_deposit == resource.data.security_deposit)
         && (!resource.data.keys().hasAny(['amount_due']) || request.resource.data.amount_due == resource.data.amount_due)
         && (!resource.data.keys().hasAny(['balance_due']) || request.resource.data.balance_due == resource.data.balance_due)
         && (!resource.data.keys().hasAny(['policy_version']) || request.resource.data.policy_version == resource.data.policy_version)
-        && (!resource.data.keys().hasAny(['policy_effective_date']) || request.resource.data.policy_effective_date == resource.data.policy_effective_date);
+        && (!resource.data.keys().hasAny(['policy_effective_date']) || request.resource.data.policy_effective_date == resource.data.policy_effective_date)
+        && (!resource.data.keys().hasAny(['refund_policy_snapshot']) || request.resource.data.get('refund_policy_snapshot', null) == resource.data.get('refund_policy_snapshot', null));
     }
 
     // ------------------------------------------------------------------
@@ -455,21 +526,22 @@ service cloud.firestore {
             .hasOnly(['status',
                       'payment_plan', 'payment_status', 'payment_proof_url', 'paymentProofUrl',
                       'payment_reject_reason', 'extractedRefNumber',
-                      'amount_claimed', 'nights', 'rate_amount', 'rate_unit',
+                      'amount_claimed', 'nights', 'rate_amount', 'rate_unit', 'rate_classification',
                       'stay_total', 'amount_due', 'security_deposit',
                       'balance_due', 'cancellation_reason', 'hold_expires_at',
                       'refund_status', 'refund_total', 'refund_breakdown',
-                      'policy_version', 'policy_effective_date',
+                      'policy_version', 'policy_effective_date', 'refund_policy_snapshot',
                       'payment_reference', 'ocr_reference', 'ocr_amount',
                       'terms_version', 'terms_accepted_at'])
           // Choosing/changing a plan is permitted only when every financial
           // snapshot field agrees with the current authoritative property rate.
           // Proof-only updates to a historical Booking do not re-price it.
           && (!request.resource.data.diff(resource.data).affectedKeys()
-                .hasAny(['payment_plan', 'nights', 'rate_amount', 'rate_unit',
+                .hasAny(['payment_plan', 'nights', 'rate_amount', 'rate_unit', 'rate_classification',
                          'stay_total', 'amount_due', 'security_deposit', 'balance_due',
-                         'policy_version', 'policy_effective_date'])
-              || validAuthoritativeMoney(request.resource.data))
+                         'policy_version', 'policy_effective_date', 'refund_policy_snapshot'])
+              || validAuthoritativeMoney(request.resource.data)
+              || validHistoricalPlanChoice(request.resource.data))
           // Money moves in one direction only, and only into the Guest's own
           // words: `unpaid` -> `pending` by sending a proof. `verified`,
           // `approved` and `rejected` are the Admin's — a Guest may not claim

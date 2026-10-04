@@ -23,8 +23,13 @@ vi.mock('../../src/lib/payments/ocr', () => ({ runReceiptOcr: vi.fn(async () => 
 
 let root: Root | undefined
 let container: HTMLDivElement
+const checkoutAfter = (checkIn: string) => {
+  const date = new Date(`${checkIn}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
 const draft = (check_in = '2026-10-31') => ({
-  check_in, check_out: '2026-11-02', guests: 2, accommodation: 'main-house',
+  check_in, check_out: checkoutAfter(check_in), guests: 2, accommodation: 'main-house',
   name: 'Ana Reyes', phone: '09171234567', email: 'ana@example.com', special_requests: '',
 })
 
@@ -68,7 +73,7 @@ async function until(test: () => boolean) {
 }
 function fillDetails(checkIn: string) {
   fill('[data-tour-field="check-in"]', checkIn)
-  fill('[data-tour-field="check-out"]', '2026-11-02')
+  fill('[data-tour-field="check-out"]', checkoutAfter(checkIn))
   fill('[data-tour-field="guest-name"]', 'Ana Reyes')
   fill('[autocomplete="tel"]', '09171234567')
   fill('[type="email"]', 'ana@example.com')
@@ -78,7 +83,7 @@ async function attachScreenshot() {
   const file = new File(['test screenshot'], 'proof.png', { type: 'image/png' })
   Object.defineProperty(input('[type="file"]'), 'files', { configurable: true, value: [file] })
   await act(async () => input('[type="file"]').dispatchEvent(new Event('change', { bubbles: true })))
-  fill('[inputmode="decimal"]', '5000')
+  fill('[inputmode="decimal"]', '3000')
 }
 function submitProof() {
   const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.includes('Submit booking'))
@@ -91,9 +96,17 @@ beforeEach(() => {
   sessionStorage.clear()
   resetAppSession()
   localStorage.setItem(LOCAL_RATES_KEY, JSON.stringify({
-    version: 'test-v1', effective_date: '2026-10-01',
+    version: 'test-v2', effective_date: '2026-10-01', holiday_dates: [],
     accommodations: {
-      'main-house': { property_name: 'The Main House', rate_unit: 'night', active: true, nightly_rate: 5000, security_deposit: 0, down_payment_percent: 50 },
+      'main-house': {
+        property_name: 'The Main House', rate_unit: 'standard_stay', active: true,
+        security_deposit: 0, down_payment_percent: 50,
+        guest_pricing: {
+          units_per_booking: 1,
+          weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+          weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+        },
+      },
     },
   }))
   resetRateLimit('booking:create')
@@ -170,7 +183,7 @@ describe('the existing booking date picker', () => {
     submitProof()
     await until(() => Boolean(container.textContent?.includes('Booking submitted')))
     const created = bookingsDB.list().find((booking) => booking.guest_name === 'Ana Reyes')
-    expect(created).toMatchObject({ check_in: '2026-10-31', status: 'Pending', payment_status: 'pending', amount_claimed: 5000 })
+    expect(created).toMatchObject({ check_in: '2026-10-31', check_out: '2026-11-01', status: 'Pending', payment_status: 'pending', amount_claimed: 3000, stay_total: 6000, amount_due: 3000, rate_classification: 'weekend_holiday', policy_version: 'test-v2', policy_effective_date: '2026-10-01', refund_policy_snapshot: null })
     expect(created?.payment_proof_url).toMatch(/^payments\/.+\/HDL-\d+\/proof-1.png$/)
     expect(localStorage.getItem('hdl:payment-proofs')).not.toBeNull()
     expect(loadBookingDraft()).toBeNull()

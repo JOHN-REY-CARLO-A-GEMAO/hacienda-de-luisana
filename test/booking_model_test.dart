@@ -34,8 +34,26 @@ void main() {
     expect(b.refId, 'HDL-2026-0001');
     expect(b.uid, 'guest-uid');
     expect(b.stayTotal, 12000);
+    expect(b.totalAmount, 12000);
     expect(b.totalNights, 2);
     expect(b.holdExpiresAt, DateTime.parse('2026-10-02T00:00:00.000Z'));
+  });
+
+  test('uses the stored total or saved legacy rate snapshot rather than inventing a per-night price', () {
+    expect(
+      BookingModel.fromJson({
+        ...webDoc,
+        'stay_total': 5000,
+        'total_amount': 32000,
+      }).totalAmount,
+      5000,
+    );
+    final legacy = Map<String, dynamic>.from(webDoc)
+      ..remove('stay_total')
+      ..addAll({'rate_amount': 4250, 'rate_unit': 'night', 'nights': 2});
+    expect(BookingModel.fromJson(legacy).totalAmount, 8500);
+    final noSnapshot = Map<String, dynamic>.from(webDoc)..remove('stay_total');
+    expect(BookingModel.fromJson(noSnapshot).totalAmount, 0);
   });
 
   test('stages bucket the eleven statuses, and retired values read as successors', () {

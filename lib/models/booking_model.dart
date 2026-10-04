@@ -97,6 +97,8 @@ class BookingModel {
   final String? paymentProofUrl;
   final String? paymentRejectReason;
   final double? amountClaimed;
+  /// The rate schedule classification captured on new guest-created Bookings.
+  final String? rateClassification;
   final double? stayTotal;
   final double? amountDue;
   final double? securityDeposit;
@@ -134,6 +136,7 @@ class BookingModel {
     this.paymentProofUrl,
     this.paymentRejectReason,
     this.amountClaimed,
+    this.rateClassification,
     this.stayTotal,
     this.amountDue,
     this.securityDeposit,
@@ -272,6 +275,21 @@ class BookingModel {
             json['check_out'], now.add(const Duration(days: 2)));
 
     final nights = checkOut.difference(checkIn).inDays <= 0 ? 1 : checkOut.difference(checkIn).inDays;
+    final recordedNights = json['nights'] is num && (json['nights'] as num) > 0
+        ? (json['nights'] as num).toInt()
+        : nights;
+    final savedStayTotal = _dbl(json['stay_total']);
+    final legacyStayTotal = _dbl(json['totalAmount']) ?? _dbl(json['total_amount']);
+    final savedRateAmount = _dbl(json['rate_amount']);
+    final savedRateUnit = json['rate_unit'];
+    final rateSnapshotTotal = savedRateAmount == null
+        ? null
+        : savedRateUnit == 'standard_stay'
+            ? savedRateAmount
+            : savedRateUnit == 'night'
+                ? savedRateAmount * recordedNights
+                : null;
+    final reportedTotal = savedStayTotal ?? legacyStayTotal ?? rateSnapshotTotal ?? 0.0;
 
     final storedStatus = (json['status'] ?? 'Pending').toString();
     final interpreted = interpretStoredStatus(
@@ -295,7 +313,7 @@ class BookingModel {
       status: BookingStatusX.fromString(interpreted),
       rawStatus: interpreted,
       totalNights: json['totalNights'] ?? nights,
-      totalAmount: (json['totalAmount'] ?? json['total_amount'] ?? (nights * 12000.0)).toDouble(),
+      totalAmount: (reportedTotal * 100).round() / 100,
       createdAt: json['createdAt'] != null
           ? _parseDate(json['createdAt'], now)
           : _parseDate(json['created_at'], now),
@@ -307,6 +325,7 @@ class BookingModel {
       paymentProofUrl: _str(json['payment_proof_url']),
       paymentRejectReason: _str(json['payment_reject_reason']),
       amountClaimed: _dbl(json['amount_claimed']),
+      rateClassification: _str(json['rate_classification']),
       stayTotal: _dbl(json['stay_total']),
       amountDue: _dbl(json['amount_due']),
       securityDeposit: _dbl(json['security_deposit']),
@@ -337,6 +356,7 @@ class BookingModel {
       'specialRequests': specialRequests,
       'status': rawStatus,
       'stage': status.name,
+      if (rateClassification != null) 'rate_classification': rateClassification,
       'totalNights': totalNights,
       'totalAmount': totalAmount,
       'createdAt': createdAt.toIso8601String(),
@@ -384,6 +404,7 @@ class BookingModel {
       paymentProofUrl: paymentProofUrl,
       paymentRejectReason: paymentRejectReason,
       amountClaimed: amountClaimed,
+      rateClassification: rateClassification,
       stayTotal: stayTotal,
       amountDue: amountDue,
       securityDeposit: securityDeposit,

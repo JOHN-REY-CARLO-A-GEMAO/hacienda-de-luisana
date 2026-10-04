@@ -147,8 +147,10 @@ const List<TutorialStep> adminTutorialSteps = [
     title: 'Rates power the website’s quotes',
     targetKey: 'moreRates',
     body:
-        'This screen is where Published rates come from — nightly rate per Accommodation, '
-        'Security deposit, down-payment percentage and the cancellation policy.',
+        'This screen publishes weekday and weekend/holiday guest-count schedules, included occupancy, '
+        'the refundable Security deposit, the fixed 50% down payment, Admin-configured holiday dates '
+        'and cancellation policy. Main House and Annex included occupancy is not an absolute cap; '
+        'A-House remains one unit for up to 3 guests.',
     advance: TutorialAdvance.event,
     eventName: 'open-rates',
     actionHint: 'Tap “Rates & Cancellation Policy”.',

@@ -115,7 +115,7 @@ Every accepted action writes one Activity entry (`bookings/{id}/activity/{seq}`)
 | **Smart lock** | `access_logs` newest first, per-door filter, simulator | Record an event | No events |
 | **Rooms** | Accommodation status and nightly price | Mark available / occupied, edit price | "Publish rates first" |
 | **CRM** | Guest history, VIP badges, notes | — | No profiles |
-| **Rates** | The live `site_config/rates` version; editors for each Accommodation (nightly rate, Security deposit, down-payment %) and the refund policy (flat %, deposit %, tiers) | **Publish to website** (validated first; problems listed inline) | "Nothing published yet" |
+| **Rates** | The live `site_config/rates` version; editors for Main House, Annex and one-unit A-House weekday/weekend-holiday guest schedules, included occupancy, confirmed Security deposit, explicit holiday dates, fixed 50% down payment and refund policy | **Publish to website** (validated first; problems listed inline; retired flat-nightly rates require review) | "Nothing published yet" |
 
 ---
 

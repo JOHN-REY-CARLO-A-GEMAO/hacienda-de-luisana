@@ -67,10 +67,12 @@ it('F27-SOURCE: privacy text denies live tracking while the feature exists; no p
   expect(source('src/lib/liveLocation.ts')).toContain('publishFix')
   expect(source('src/lib/chatRetention.ts')).toContain('Nothing here deletes anything.')
 })
-it('F28-SOURCE: mobile totalAmount defaults to nights*12000 instead of recorded stay_total', () => {
-  const line = source('lib/models/booking_model.dart').split('\n').find(line => line.includes('totalAmount: (json'))!
-  expect(line).toContain('(nights * 12000.0)')
-  expect(line).not.toContain("json['stay_total']")
+it('F28-SOURCE: mobile totalAmount uses recorded money or the saved rate snapshot, never an invented default', () => {
+  const model = source('lib/models/booking_model.dart')
+  expect(model).toContain("final savedStayTotal = _dbl(json['stay_total']);")
+  expect(model).toContain("final legacyStayTotal = _dbl(json['totalAmount']) ?? _dbl(json['total_amount']);")
+  expect(model).toContain('final reportedTotal = savedStayTotal ?? legacyStayTotal ?? rateSnapshotTotal ?? 0.0;')
+  expect(model).not.toContain('(nights * 12000.0)')
 })
 it('F29-SOURCE: room-status writes are separate from rates/sellable-unit configuration', () => {
   const method = source('lib/services/firestore_service.dart').split('Future<void> updateRoomStatus')[1].split('void dispose()')[0]

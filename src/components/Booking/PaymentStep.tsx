@@ -1,14 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { usePaymentInformation } from '../../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from './PaymentInformationPanel'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
-import { ratesDB } from '../../lib/ratesDB'
 import {
-  paymentOptions,
   paymentOptionsForTotal,
-  quoteAccommodation,
+  recordedStayTotal,
   type PaymentPlan,
-  type PublishedRates,
 } from '../../lib/booking'
 import { uploadPaymentProof } from '../../lib/payments'
 import type { Booking } from '../../lib/storage'
@@ -25,9 +22,11 @@ import { Link } from 'react-router-dom'
  *
  * Money moves last (ADR-0001): this renders only once the Admin has approved,
  * and every button goes through the lifecycle (`cloudBookingsDB.transition`),
- * never a bare status write. Amounts are quoted from the Admin's published
- * rates (`site_config/rates`); when nothing is published for this
- * Accommodation there is no price to commit to, and the choice is not offered.
+ * never a bare status write. This remains available for historical `Payment
+ * Pending` records only. Their recorded total, or a total recoverable from
+ * their saved rate amount/unit/nights, is the source for the plan; the current
+ * rate document is never used to reprice an existing Booking. If no original
+ * financial snapshot exists, no amount is offered.
  *
  * The screenshot goes to Supabase Storage's `payment-proofs` bucket
  * (ADR-0011) — in demo mode it stays in this browser, which is labelled for
@@ -36,7 +35,6 @@ import { Link } from 'react-router-dom'
  * moves money (ocr.ts).
  */
 export function PaymentStep({ booking }: { booking: Booking }) {
-  const [rates, setRates] = useState<PublishedRates | null>(null)
   const paymentInformation = usePaymentInformation()
   const [plan, setPlan] = useState<PaymentPlan>('full')
   const [proofFile, setProofFile] = useState<File | null>(null)
@@ -51,8 +49,6 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   const [sent, setSent] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
-  useEffect(() => ratesDB.subscribe(setRates), [])
-
   const status = cloudBookingsDB.readStatus(booking)
   if (status !== 'Payment Pending') {
     if (booking.payment_status === 'verified' && (status === 'Reserved' || status === 'Payment Verified')) {
@@ -66,31 +62,30 @@ export function PaymentStep({ booking }: { booking: Booking }) {
     return null
   }
 
-  const quoted = rates ? quoteAccommodation(rates, booking.accommodation, {
-    check_in: booking.check_in,
-    check_out: booking.check_out,
-    guests: booking.guests,
-  }) : undefined
-  const options = quoted
-    ? paymentOptions(booking, quoted.rateCard)
-    : booking.stay_total
-      ? paymentOptionsForTotal(booking.stay_total, { securityDeposit: booking.security_deposit ?? 0 })
-      : []
+  const historicalTotal = recordedStayTotal(booking)
+  const options = historicalTotal !== undefined && historicalTotal > 0
+    ? paymentOptionsForTotal(historicalTotal, {
+        securityDeposit: booking.security_deposit ?? 0,
+        downPaymentPercent: 50,
+      })
+    : []
 
   const choosePlan = async () => {
+    if (historicalTotal === undefined || historicalTotal <= 0) {
+      setMessage({ tone: 'bad', text: 'This historical Booking has no saved stay total. Please contact the Admin for the original quote.' })
+      return
+    }
     setBusy(true)
     setMessage(null)
     try {
       const result = await cloudBookingsDB.transition(
         booking.id,
-        quoted
-          ? { type: 'ChoosePaymentPlan', plan, rateCard: quoted.rateCard, policy: quoted.snapshot }
-          : {
-              type: 'ChoosePaymentPlan',
-              plan,
-              stayTotal: booking.stay_total,
-              rate: { securityDeposit: booking.security_deposit ?? 0 },
-            },
+        {
+          type: 'ChoosePaymentPlan',
+          plan,
+          stayTotal: historicalTotal,
+          rate: { securityDeposit: booking.security_deposit ?? 0, downPaymentPercent: 50 },
+        },
         { actor: 'guest', actor_id: booking.uid ?? 'guest', actor_name: booking.guest_name },
       )
       setMessage(
@@ -214,8 +209,8 @@ export function PaymentStep({ booking }: { booking: Booking }) {
           </p>
           {options.length === 0 ? (
             <p className="mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
-              The Admin has not published a payment option for this Accommodation yet. Please message the
-              Admin for the amount — your dates stay held while you do.
+              This historical Booking has no usable saved stay total or rate snapshot. Please contact the
+              Admin for the original quote — the current rate card will not reprice it.
             </p>
           ) : (
             <div className="mt-3 space-y-2">
@@ -239,7 +234,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   </span>
                   <span className="block mt-1 text-forest-700/80">
                     {peso(option.dueNow)} now + {peso(option.securityDeposit)} refundable Security deposit
-                    {option.balance > 0 && <> · {peso(option.balance)} balance before the stay</>}
+                    {option.balance > 0 && <> · {peso(option.balance)} remaining 50% due at check-in</>}
                   </span>
                 </label>
               ))}

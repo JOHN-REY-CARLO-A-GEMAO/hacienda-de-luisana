@@ -39,7 +39,7 @@ _Avoid_: Owner app, guest app, client app, staff app
 ### Stay
 
 **Accommodation**:
-A rentable unit: the Main House or a camping unit.
+A rentable unit: the Main House, the Annex, or one A-House camping unit.
 _Avoid_: Room, villa, property (the property is the whole estate)
 
 **Booking**:
@@ -66,11 +66,11 @@ The terminal Booking status reached when a date hold runs out. Releasing the dat
 ### Money
 
 **Payment plan**:
-The Guest's promise of money for a stay: a Down Payment, plus the refundable Security deposit when a rate card publishes one. The screenshot of that downpayment is attached before the Booking is submitted (ADR-0012). A published percent is the only figure the site may compute; if none is published, the Guest enters the amount they sent. Historical bookings may still record a plan chosen after approval.
+The Guest's promise of money for a stay: a 50% Down payment from the computed stay total, with the exact balance due at check-in, plus the refundable Security deposit shown separately. The screenshot is attached before a new Booking is submitted (ADR-0012). Historical Bookings retain their original financial snapshot and may still record a plan chosen after approval.
 _Avoid_: Payment option (an option is one of the plans on offer), rate, price
 
 **Down payment**:
-A percentage of the stay the Guest sends up front, offered alongside Full Payment when the Admin has published a down-payment percentage. Floored to whole centavos, so the down payment and the balance add back to exactly what was quoted.
+50% of the computed standard-stay total, sent up front. It is calculated only after the applicable weekday/weekend-holiday guest schedule determines the total, then floored to whole centavos; the exact remaining balance is due at check-in.
 _Avoid_: Deposit (the Security deposit is a different, refundable-at-check-out amount), advance, retainer
 
 **Payment proof**:
@@ -86,11 +86,11 @@ Money returned to a Guest through the refund pipeline after verified payment.
 _Avoid_: Reversal, reimbursement
 
 **Published rates**:
-The Admin's published figures — the per-Accommodation nightly rate, Security deposit, down-payment percentage and cancellation policy — under a version that takes effect on a date. Published from the Admin app's Rates screen to `site_config/rates`; the website only reads them. Until they are published, no Payment plan can be chosen and a cancellation refunds nothing.
+The Admin's published per-Accommodation weekday and weekend/holiday guest-count schedules, Security deposit, fixed 50% down-payment rule, configured holiday dates and cancellation policy. Each automated quote is one 22-hour standard stay, using the check-in night. Published from the Admin app's Rates screen to `site_config/rates`; the website only reads them. New guest Bookings cannot be submitted until a valid schedule is published.
 _Avoid_: Price list (the prices in the page copy are display placeholders), tariff, menu
 
 **Policy stamp**:
-The version and effective date of the Published rates that the Booking is quoted under, stamped on it the moment the Guest chooses their Payment plan. A later republish changes the terms of future choices only, never the refund terms of a stay already promised; a Booking stamped with nothing refunds nothing.
+The version and effective date of the Published rates used to quote a new guest Booking, recorded with its rate classification, financial fields, and exact `refund_policy_snapshot` (null when no refund policy was published). A later republish does not rewrite that Booking's stored rate, refund terms, or financial values. Historical records without these newer fields remain unchanged.
 _Avoid_: Policy lock, snapshot (the snapshot is what an action is handed; the stamp is what the Booking carries)
 
 ### Access

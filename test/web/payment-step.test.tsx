@@ -154,6 +154,40 @@ describe('PaymentStep', () => {
     expect([...container.querySelectorAll('button')].map((b) => b.textContent)).toContain('Choose this plan')
   })
 
+  it('offers a historical plan from the saved nightly rate when stay_total is absent', async () => {
+    const guest = { actor: 'guest' as const, actor_id: 'guest-legacy', actor_name: 'Legacy Guest' }
+    const created = await cloudBookingsDB.add({
+      guest_name: 'Legacy Guest',
+      phone: '0917 000 2222',
+      email: 'legacy@example.com',
+      guests: 2,
+      special_requests: '',
+      accommodation: 'main-house',
+      check_in: '2029-06-01',
+      check_out: '2029-06-03',
+      uid: 'guest-legacy',
+      payment_status: 'pending',
+      payment_proof_url: 'payments/guest-legacy/proof.jpg',
+      amount_claimed: 4250,
+      amount_due: 4250,
+      rate_amount: 4250,
+      rate_unit: 'night',
+      nights: 2,
+      security_deposit: 500,
+    }, guest)
+    await cloudBookingsDB.update(created.id, {
+      status: 'Payment Pending',
+      hold_expires_at: null,
+      payment_status: 'unpaid',
+      payment_plan: undefined,
+    })
+    const booking = await cloudBookingsDB.get(created.id)
+    if (!booking) throw new Error('the historical Booking vanished')
+    const container = renderStep(booking)
+    expect(container.textContent).toContain('₱4,250.00 now + ₱500.00 refundable Security deposit')
+    expect(container.textContent).not.toContain('current rate card')
+  })
+
   it('refuses a send without a file, then accepts a proof with OCR filling the reference', async () => {
     const booking = await approvedWithPlan()
     expect(booking.payment_plan).toBe('down-payment')

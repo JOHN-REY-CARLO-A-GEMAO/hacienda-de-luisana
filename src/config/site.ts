@@ -20,11 +20,10 @@
 //   [E] Public travel guides for the Sta. Cruz → Luisiana commute, several
 //       agreeing. Used for GETTING_HERE only; no travel times or fares.
 //
-// Money: nightly rates, the Security deposit, the down-payment percentage and
-// the cancellation policy are the Admin's Published rates (`site_config/rates`,
-// see src/lib/booking/rates.ts). The website reads them live; the figures here
-// are the Hacienda's publicly listed prices for display when nothing is
-// published yet.
+// Money: standard-stay guest schedules, the Security deposit, the 50% down-
+// payment percentage and cancellation policy are the Admin's Published rates
+// (`site_config/rates`, see src/lib/booking/rates.ts). The website reads them
+// live; static figures below are informational until the Admin publishes.
 // -----------------------------------------------------------------------------
 
 export type Amenity = {
@@ -53,13 +52,15 @@ export type Accommodation = {
   name: string
   shortName: string
   description: string
-  capacity: number
+  /** Independent absolute guest cap only when separately documented (A-House: 3). */
+  capacity?: number
+  /** Included guest count or documented per-unit cap; never assume included = maximum. */
   capacityLabel: string
   availableUnits?: number
   /**
-   * Per night, PHP — only when the Hacienda has published the figure itself
-   * (its Airbnb listing text or its Published rates). Absent means the
-   * Hacienda quotes on request; the page says so instead of inventing one.
+   * PHP per standard stay — only when the Hacienda has published the figure
+   * itself or the Admin's Published rates. Absent means the Hacienda quotes
+   * on request; the page says so instead of inventing one.
    */
   price?: number
   priceLabel?: string      // e.g. "₱1,200 / unit / night"
@@ -167,13 +168,13 @@ export const BUSINESS = {
     directions:
       'https://www.google.com/maps/dir/?api=1&destination=14.1754304,121.519389',
   },
-  // House rules the Hacienda publishes on its Airbnb listing [A]:
-  // "Check-in after 2:00 PM · Checkout before 12:00 PM · 10 guests maximum".
+  // Standard stay and published house rules.
   policies: {
     checkIn: '2:00 PM',
     checkOut: '12:00 NN',
     standardStayHours: 22,
-    maxGuests: 10,
+    mainHouseIncludedGuests: 10,
+    annexIncludedGuests: 6,
     petFriendly: true,
     smokingAllowed: false,
   },
@@ -286,8 +287,7 @@ export const ACCOMMODATIONS: Accommodation[] = [
     shortName: 'Main House',
     description:
       'A private countryside home designed for groups and families looking for a comfortable place to stay together.',
-    capacity: 10,
-    capacityLabel: 'Up to 10 guests',
+    capacityLabel: '10 guests included · additional guests use the published per-person rate',
     // No nightly figure is published anywhere the website can cite (the Airbnb
     // price only appears once dates are chosen). The Published rates document
     // supplies it when the Admin publishes one; until then the page says
@@ -326,9 +326,8 @@ export const ACCOMMODATIONS: Accommodation[] = [
     id: 'annex',
     name: 'HDL Annex',
     shortName: 'Annex',
-    description: 'A separate Hacienda stay option for 2–6 guests, offered under the official weekday and weekend/holiday rate schedule.',
-    capacity: 6,
-    capacityLabel: '2–6 guests',
+    description: 'A separate Hacienda stay option with 6 guests included and a per-guest excess rate under the weekday/weekend-holiday schedule.',
+    capacityLabel: '6 guests included · additional guests use the published per-person rate',
     priceLabel: 'From ₱4,000 / standard stay',
     priceSource: 'Official Hacienda rate card',
     amenities: [
@@ -346,9 +345,9 @@ export const ACCOMMODATIONS: Accommodation[] = [
     name: 'A-House',
     shortName: 'A-House',
     description:
-      'An intimate A-frame countryside stay, priced per A-House for 2–3 guests.',
+      'An intimate A-frame countryside stay, priced at ₱1,000 per A-House for up to 3 guests.',
     capacity: 3,
-    capacityLabel: '2–3 guests per A-House',
+    capacityLabel: 'Up to 3 guests per A-House',
     availableUnits: 2,
     price: 1000,
     priceLabel: '₱1,000 / A-House / standard stay',
@@ -435,7 +434,7 @@ export const NEARBY: NearbyAttraction[] = [
 export const FAQS: FAQ[] = [
   {
     q: 'How many guests can stay?',
-    a: `The website currently accepts up to ${BUSINESS.policies.maxGuests} guests for the Main House, the Annex takes 2–6 guests, and each A-House takes 2–3 guests. Ask the Hacienda about larger Main House groups.`,
+    a: `The Main House base rate includes ${BUSINESS.policies.mainHouseIncludedGuests} guests and the Annex base rate includes ${BUSINESS.policies.annexIncludedGuests}; additional guests are priced at ₱500 each under the published schedule. These included counts are not absolute caps. Each A-House is one unit for up to 3 guests; contact the Hacienda to discuss large groups or multiple units.`,
   },
   {
     q: 'Are pets allowed?',
@@ -453,7 +452,7 @@ export const FAQS: FAQ[] = [
   },
   {
     q: 'Do you offer camping?',
-    a: 'Yes. There are 2 A-Houses, each for 2–3 guests. One online booking holds one A-House; message the Hacienda if you need more than one unit.',
+    a: 'Yes. There are 2 A-Houses, each priced at ₱1,000 per unit for up to 3 guests. One online booking holds one A-House; message the Hacienda if you need more than one unit.'
   },
   {
     q: 'What time is check-in?',
@@ -465,7 +464,7 @@ export const FAQS: FAQ[] = [
   },
   {
     q: 'How much does it cost?',
-    a: 'Rates depend on the property, guest count, and whether check-in is a weekday, weekend, or Admin-published holiday. The Rates & Fees section shows the current authoritative schedule and optional charges.',
+    a: 'Rates depend on the property, guest count, and the check-in night: Sunday through Thursday is weekday, Friday and Saturday are weekend, and any Admin-configured holiday uses the weekend/holiday rate. A Saturday stay checks out Sunday at noon. The Rates & Fees section shows the current schedule and optional charges.',
   },
   {
     q: 'How do I reserve?',
@@ -624,8 +623,8 @@ export const HOUSE_RULES: HouseRule[] = [
   },
   {
     id: 'capacity',
-    title: 'Headcount',
-    body: `The website currently limits the Main House to ${BUSINESS.policies.maxGuests} guests. The Annex is for 2–6 guests; each A-House is for 2–3 guests. Contact the Hacienda about larger Main House groups.`,
+    title: 'Headcount and included occupancy',
+    body: `The Main House base rate includes ${BUSINESS.policies.mainHouseIncludedGuests} guests and the Annex base rate includes ${BUSINESS.policies.annexIncludedGuests}; each additional guest is ₱500 under the published schedule. Those included counts are not stated as absolute caps. Each A-House is one unit for up to 3 guests; ask the Admin about large groups or multiple units.`,
   },
   {
     id: 'pets',
@@ -685,11 +684,11 @@ export const GUEST_NOTES: GuestNote[] = [
 ]
 
 // -----------------------------------------------------------------------------
-// FEES — what the Hacienda publishes beyond the nightly rate [A]
+// FEES — optional charges beyond the computed standard-stay total [A]
 // -----------------------------------------------------------------------------
-// Nightly rates, the Security deposit and the down-payment percentage are NOT
+// Guest-count schedules, the Security deposit and the 50% down payment are NOT
 // here: they are the Published rates (site_config/rates) and the Rates section
-// reads them live. This block is for the fixed extras the Hacienda lists.
+// reads them live. This block is for optional extras the Hacienda lists.
 // An item without `amount` is one the Hacienda offers but has not priced
 // publicly; the UI says "ask for the current price" for it.
 // -----------------------------------------------------------------------------
@@ -716,7 +715,7 @@ export const FEES = {
       label: 'Pets',
       amount: 300,
       unit: 'per pet',
-      note: 'For sanitation purposes. Applied only when a pet is declared.',
+      note: '₱300 per pet for sanitation. Mention pets explicitly; this is not added automatically to ordinary stays.',
     },
     {
       id: 'bonfire-wood',
@@ -736,9 +735,16 @@ export const FEES = {
   /** Available on request; priced by the Hacienda when you ask. */
   optional: [
     {
+      id: 'wedding-preparation',
+      label: 'Wedding-preparation overnight package',
+      amount: 8500,
+      unit: 'overnight · up to 10 pax',
+      note: 'Only for a booking explicitly identified as wedding preparation and confirmed by the Admin; never added to an ordinary stay.',
+    },
+    {
       id: 'special-event',
-      label: 'Reunion, team building, wedding prep or shoot',
-      note: 'Additional charges may apply depending on guest count. No fixed fee is invented; the Admin confirms it.',
+      label: 'Reunion, team building or shoot',
+      note: 'Discuss the use case with the Admin. No arbitrary event charge is added automatically; the Admin confirms any agreed amount.',
     },
   ] as Fee[],
 }

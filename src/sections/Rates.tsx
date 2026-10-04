@@ -53,8 +53,8 @@ export function Rates() {
             }
           />
           <p className="reveal max-w-md text-forest-800/80 leading-relaxed lg:pb-2">
-            No surprises: the nightly rate, what is included, the extras, and the refundable deposit — all
-            in one place. The Hacienda confirms the final quote with you before anything is reserved.
+            See the per-stay guest schedule, included occupancy, optional extras, and refundable deposit — all
+            in one place. The final amount is computed before payment and confirmed by the Hacienda.
           </p>
         </div>
 
@@ -94,11 +94,7 @@ export function Rates() {
                     <span className="text-right">
                       <span className="font-medium text-cream-50">{peso(figures!.security_deposit)}</span>
                       <span className="block text-[11px] text-cream-100/60">
-                        {figures!.reservation_fee_amount !== undefined
-                          ? `${peso(figures!.reservation_fee_amount)} non-refundable reservation fee or full payment`
-                          : figures!.down_payment_percent !== undefined
-                            ? `${figures!.down_payment_percent}% down payment or full payment`
-                            : 'Full payment at check-in'}
+                        {figures!.down_payment_percent}% down payment from the computed stay total; the remaining 50% is due at check-in
                       </span>
                     </span>
                   </li>
@@ -170,12 +166,12 @@ export function Rates() {
 }
 
 function scheduleLine(label: string, schedule: GuestRateSchedule): string {
-  const parts = [`${schedule.min_guests}–${schedule.base_max_guests} guests ${peso(schedule.base_rate)}`]
-  if (schedule.upper_min_guests !== undefined && schedule.upper_max_guests !== undefined && schedule.upper_rate !== undefined) {
-    parts.push(`${schedule.upper_min_guests}–${schedule.upper_max_guests} ${peso(schedule.upper_rate)}`)
+  const parts = [`${schedule.base_max_guests} guests included: ${peso(schedule.base_rate)}`]
+  if (schedule.excess_per_guest !== undefined) {
+    parts.push(`each additional guest: +${peso(schedule.excess_per_guest)}/guest`)
   }
-  if (schedule.excess_after !== undefined && schedule.excess_per_guest !== undefined) {
-    parts.push(`above ${schedule.excess_after}: +${peso(schedule.excess_per_guest)}/guest`)
+  if (schedule.max_guests !== undefined) {
+    parts.push(`maximum ${schedule.max_guests} guests per unit`)
   }
   return `${label}: ${parts.join(' · ')}`
 }
@@ -183,9 +179,9 @@ function scheduleLine(label: string, schedule: GuestRateSchedule): string {
 function GuestSchedule({ schedule }: { schedule: GuestBracketPricing }) {
   return (
     <div className="mt-4 rounded-xl bg-cream-50 p-3 text-xs leading-relaxed text-forest-800">
-      <p>{scheduleLine('Weekday', schedule.weekday)}</p>
-      <p className="mt-1">{scheduleLine('Weekend / Admin holiday', schedule.weekend_holiday)}</p>
-      <p className="mt-2 text-forest-700/70">One booking · one 22-hour standard stay</p>
+      <p>{scheduleLine('Weekday (Sunday–Thursday check-in night)', schedule.weekday)}</p>
+      <p className="mt-1">{scheduleLine('Weekend / Admin holiday (Friday/Saturday check-in night)', schedule.weekend_holiday)}</p>
+      <p className="mt-2 text-forest-700/70">One booking · one 22-hour standard stay (2:00 PM–12:00 noon). The check-in night sets the rate; Sunday check-in is weekday unless it is an Admin-listed holiday.</p>
     </div>
   )
 }

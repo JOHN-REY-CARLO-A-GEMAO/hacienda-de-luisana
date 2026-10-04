@@ -18,7 +18,6 @@ import {
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { LEGAL_VERSION } from '../lib/legal'
 import { usePublishedRates } from '../hooks/usePublishedRates'
-import { displayedRate } from '../sections/Accommodations'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { useBookingPolicy } from '../hooks/useBookingPolicy'
 import { quoteAccommodation, validateMinimumBookingLeadTime } from '../lib/booking'
@@ -101,10 +100,6 @@ export function BookingPage() {
       })),
     { id: 'other', label: 'Other / Ask Us' },
   ], [published])
-  const rate = useMemo(
-    () => (selectedAcc ? displayedRate(selectedAcc, published) : null),
-    [selectedAcc, published],
-  )
   const authoritativeQuote = useMemo(() => {
     if (!published || form.accommodation === 'other') return undefined
     return quoteAccommodation(published, form.accommodation, {
@@ -113,11 +108,7 @@ export function BookingPage() {
       guests: Number(form.guests),
     })
   }, [published, form.accommodation, form.check_in, form.check_out, form.guests])
-  const estimatedTotal = useMemo(() => {
-    if (authoritativeQuote) return authoritativeQuote.stayTotal
-    if (!rate?.nightly || !nights) return null
-    return rate.nightly * nights
-  }, [authoritativeQuote, rate, nights])
+  const estimatedTotal = authoritativeQuote?.stayTotal ?? null
 
   useEffect(() => {
     if (!form.check_in || !form.check_out || !form.accommodation
@@ -160,25 +151,25 @@ export function BookingPage() {
     if (!leadTime.ok) e.check_in = leadTime.reason
     const stay = validateStayDates(form.check_in, form.check_out)
     if (!stay.ok && !e[stay.field]) e[stay.field] = stay.message
-    const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity ?? 12)
+    const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity)
     if (!guests.ok) e.guests = guests.message
     if (!form.accommodation) e.accommodation = 'Select an accommodation'
-    if (published && form.accommodation !== 'other' && !published.accommodations[form.accommodation]) {
-      e.accommodation = 'This property does not have a published rate.'
+    if (form.accommodation === 'other') {
+      e.accommodation = 'Please contact the Hacienda directly to discuss this request.'
+    } else if (!published) {
+      e.accommodation = 'The Admin must publish the current guest-count rates before online booking can accept payment.'
     }
     if (published?.accommodations[form.accommodation]?.active === false) {
       e.accommodation = 'This property is not accepting new bookings.'
     }
     const configuredRate = published?.accommodations[form.accommodation]
-    if (configuredRate?.guest_pricing && !authoritativeQuote) {
-      e.accommodation = nights !== 1
-        ? 'Published guest-count rates currently support one 22-hour standard stay. Contact the Hacienda for a longer stay.'
-        : 'The selected guest count is outside this property’s published rate brackets.'
+    if (published && !configuredRate) {
+      e.accommodation = 'This property does not have a published guest-count rate.'
     }
-    if (configuredRate?.guest_pricing
-        && configuredRate.reservation_fee_amount === undefined
-        && configuredRate.down_payment_percent === undefined) {
-      e.accommodation = 'The Admin must confirm and publish the reservation-fee amount before online booking can accept payment.'
+    if (configuredRate && !authoritativeQuote) {
+      e.accommodation = nights !== 1
+        ? 'Published guest-count rates support one 22-hour standard stay. Contact the Hacienda for a longer stay.'
+        : 'The selected guest count is outside this property’s published rate rules.'
     }
     const name = validateName(form.name)
     if (!name.ok) e.name = name.message
@@ -299,7 +290,6 @@ export function BookingPage() {
                   <input
                     type="number"
                     min={1}
-                    max={20}
                     inputMode="numeric"
                     className="field"
                     value={form.guests}
@@ -446,8 +436,8 @@ export function BookingPage() {
                           <div className="font-serif text-2xl text-forest-900">₱{estimatedTotal.toLocaleString('en-PH')}</div>
                           <div className="text-[11px] text-forest-700/60">
                             {authoritativeQuote
-                              ? `${authoritativeQuote.classification.replace('_', ' / ')} · ${authoritativeQuote.bracket} guests · one standard stay`
-                              : `${nights} night${nights > 1 ? 's' : ''} × ${rate?.label}`}
+                              ? `${authoritativeQuote.classification === 'weekend_holiday' ? 'Weekend / Admin holiday (Friday/Saturday check-in night)' : 'Weekday (Sunday–Thursday check-in night)'} · ${authoritativeQuote.bracket} · 2:00 PM–12:00 noon`
+                              : 'Uses the published schedule for the selected dates and guest count'}
                           </div>
                         </>
                       ) : (

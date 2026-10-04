@@ -70,7 +70,7 @@ Guest actions (`src/lib/booking/actions.ts`): `ChoosePaymentPlan`, `UploadPaymen
 | **Bookings** → **Booking detail** | Lahat ng bookings; Approve / Reject / Verify payment / Reject proof / Cancel / Mark refunded / Check-in / Begin stay / Check-out / Complete / Revoke key; activity log |
 | **Chat** | Guest conversations (`conversations`, `messages`) |
 | **Stays** | Kasalukuyang naka-stay, check-out progress |
-| **Rates** | Publish `site_config/rates`: nightly rate, security deposit, down-payment %, refund tiers — dito kinukuha ng website ang quote |
+| **Rates** | Publish `site_config/rates`: weekday/weekend-holiday guest-count standard-stay schedules, included occupancy, Admin-configured holiday dates, confirmed security deposit, fixed 50% down payment and refund policy — dito kinukuha ng website ang new-booking quote |
 | **Smart Lock** | Access log + simulation (ESP32 not yet wired) |
 | **Rooms** | Availability at status ng units |
 | **Guest CRM** | Profiles at history ng guests |

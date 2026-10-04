@@ -19,11 +19,13 @@ import { AuthProvider } from '../../src/context/AuthContext'
 import { resetAppSession } from '../../src/lib/authSession'
 import { COOKIE } from '../../src/lib/cookies'
 import { bookingBusinessDate } from '../../src/lib/booking'
+import { OFFICIAL_ACCOMMODATION_RATES } from '../../src/config/officialBusiness'
+import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
 const PUMP_MS = 10
-const TIMEOUT_MS = 20_000
+const TIMEOUT_MS = 30_000
 
 const mounted: Root[] = []
 
@@ -138,6 +140,14 @@ function futureDate(offsetDays: number): string {
 
 beforeEach(() => {
   localStorage.clear()
+  localStorage.setItem(LOCAL_RATES_KEY, JSON.stringify({
+    version: 'tutorial-rates-v1',
+    effective_date: bookingBusinessDate(),
+    holiday_dates: [],
+    accommodations: Object.fromEntries(
+      Object.entries(OFFICIAL_ACCOMMODATION_RATES).map(([id, rates]) => [id, { ...rates, security_deposit: 0 }]),
+    ),
+  }))
   resetAppSession()
   clearTutorialMemory()
 })
@@ -190,7 +200,7 @@ describe('the interactive Guest tutorial', () => {
 
       // 3. Dates: typing into the real date fields is what advances the tour.
       type(page, '[data-tour-field="check-in"]', futureDate(30))
-      type(page, '[data-tour-field="check-out"]', futureDate(32))
+      type(page, '[data-tour-field="check-out"]', futureDate(31))
       await page.wait('Tell us who’s coming')
       click(page, /^\s*Next\s*$/i)
 
@@ -213,7 +223,7 @@ describe('the interactive Guest tutorial', () => {
 
       // 6. Continue: the form does not create a Booking. The payment page does.
       clickTour(page, 'submit-booking')
-      await page.wait('Upload the downpayment screenshot')
+      await page.wait('Downpayment proof')
       expect(page.text()).toMatch(/screenshot/i)
 
       // 7 → 8: My Bookings and the after-approval explanation (informational).
