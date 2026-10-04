@@ -51,6 +51,12 @@ const profiles: Store = storeWith(
   },
   {
     [`conversations/${CONVO_ID}`]: conversationDoc(),
+    'site_config/rates': {
+      version: 'test-v1', effective_date: '2026-09-01',
+      accommodations: {
+        'main-house': { property_name: 'Main House', rate_unit: 'night', active: true, nightly_rate: 4250, security_deposit: 500, down_payment_percent: 50 },
+      },
+    },
     // The Booking the Review rules read through `get()`: the Guest's own, and
     // finished, which is what a Review is allowed to be about.
     [`bookings/${BOOKING_ID}`]: bookingDoc({ status: 'Completed', kyc_status: 'approved' }),
@@ -75,6 +81,62 @@ const deny = (partial: Parameters<typeof request>[0], store: Store = profiles) =
   decideRules(request(partial), { store }).allow === false
 
 // ---------------------------------------------------------------------------
+// Official bracket pricing is independently recomputed by Firestore rules
+// ---------------------------------------------------------------------------
+describe('official guest-count rates', () => {
+  const officialStore: Store = {
+    ...profiles,
+    'site_config/rates': {
+      version: 'official-v1', effective_date: '2026-10-04', holiday_dates: ['2026-10-27'],
+      accommodations: {
+        'main-house': {
+          rate_unit: 'standard_stay', active: true, security_deposit: 500, reservation_fee_amount: 750,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 6, base_max_guests: 10, base_rate: 5000, upper_min_guests: 11, upper_max_guests: 13, upper_rate: 5500, excess_after: 13, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 6, base_max_guests: 10, base_rate: 6000, upper_min_guests: 11, upper_max_guests: 13, upper_rate: 6500, excess_after: 13, excess_per_guest: 500 },
+          },
+        },
+      },
+    },
+  }
+
+  const officialBooking = (overrides: DocData = {}) => bookingDoc({
+    check_in: '2026-10-26', check_out: '2026-10-27', nights: 1, guests: 6,
+    rate_amount: 5000, rate_unit: 'standard_stay', stay_total: 5000,
+    payment_plan: 'down-payment', amount_due: 750, balance_due: 4250,
+    amount_claimed: 750, payment_status: 'pending', payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+    policy_version: 'official-v1', policy_effective_date: '2026-10-04',
+    ...overrides,
+  })
+
+  it('accepts exact weekday, weekend and configured-holiday boundary quotes', () => {
+    expect(allow({ path: 'bookings/official-weekday', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-weekend', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ check_in: '2026-10-31', check_out: '2026-11-01', rate_amount: 6000, stay_total: 6000, balance_due: 5250 }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-holiday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ check_in: '2026-10-27', check_out: '2026-10-28', rate_amount: 6000, stay_total: 6000, balance_due: 5250 }) }, officialStore)).toBe(true)
+  })
+
+  it('accepts upper/excess boundaries and rejects manipulated totals, invalid counts and multi-stays', () => {
+    expect(allow({ path: 'bookings/official-upper', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 13, rate_amount: 5500, stay_total: 5500, balance_due: 4750 }) }, officialStore)).toBe(true)
+    expect(allow({ path: 'bookings/official-excess', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 14, rate_amount: 6000, stay_total: 6000, balance_due: 5250 }) }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/official-tampered', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ stay_total: 1 }) }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/official-count', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 5 }) }, officialStore)).toBe(true)
+    expect(deny({ path: 'bookings/official-multi', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ check_out: '2026-10-28', nights: 2 }) }, officialStore)).toBe(true)
+  })
+
+  it('fails closed when the Admin has not confirmed a reservation fee', () => {
+    const withoutFee = structuredClone(officialStore)
+    delete (withoutFee['site_config/rates'].accommodations as DocData)['main-house'].reservation_fee_amount
+    expect(deny({ path: 'bookings/official-no-fee', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, withoutFee)).toBe(true)
+  })
+
+  it('keeps an existing booking rate/policy snapshot immutable', () => {
+    const original = officialBooking({ status: 'Payment Pending' })
+    expect(deny({ path: 'bookings/historical', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, stay_total: 9999 } }, officialStore)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Authentication and roles
 // ---------------------------------------------------------------------------
 
@@ -89,10 +151,27 @@ describe('auth: who is asking', () => {
       requestData: bookingDoc({
         payment_status: 'pending',
         payment_proof_url: 'payments/guest-uid-1/proof.jpg',
-        amount_claimed: 5000,
+        amount_claimed: 8500,
       }),
     })).toBe(true)
   })
+
+  it.each(['stay_total', 'amount_due', 'security_deposit', 'balance_due'])(
+    'refuses a Guest-created Booking with manipulated %s',
+    (field) => {
+      expect(deny({
+        path: 'bookings/manipulated-money',
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: bookingDoc({
+          payment_status: 'pending',
+          payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+          amount_claimed: 8500,
+          [field]: 0,
+        }),
+      })).toBe(true)
+    },
+  )
 
   it('refuses a Booking created without the identity it will belong to (ADR-0004)', () => {
     expect(deny({ path: 'bookings/new-booking', method: 'create', auth: null, requestData: bookingDoc({ uid: '' }) })).toBe(true)
@@ -364,13 +443,13 @@ describe('bookings: what the Admin may change', () => {
         status: 'Pending',
         payment_proof_url: 'payments/guest-uid-1/proof.jpg',
         payment_status: 'pending',
-        amount_claimed: 5000,
+        amount_claimed: 8500,
       }),
       requestData: bookingDoc({
         status: 'Approved',
         payment_proof_url: 'payments/guest-uid-1/proof.jpg',
         payment_status: 'verified',
-        amount_claimed: 5000,
+        amount_claimed: 8500,
         amount_verified: 5000,
         payment_verified_at: '2026-09-24T03:00:00.000Z',
         payment_verified_by: ADMIN_UID,
@@ -722,7 +801,7 @@ describe('payments: proof and verification', () => {
         requestData: bookingDoc({
           payment_status: 'pending',
           payment_proof_url: 'payments/guest-uid-1/proof.jpg',
-          amount_claimed: 5000,
+          amount_claimed: 8500,
         }),
       }),
     ).toBe(true)
@@ -1428,6 +1507,36 @@ describe('location_sessions: the consent, never the position', () => {
 // ---------------------------------------------------------------------------
 // Anything else
 // ---------------------------------------------------------------------------
+
+describe('site_config/payment', () => {
+  const payment = {
+    active: true,
+    method: 'GCash',
+    recipient_name: 'Hacienda de LuisAna',
+    account_identifier: '09XX XXX XXXX',
+    instructions: 'Send the exact amount and retain the receipt reference.',
+    security_deposit_notes: 'Refundable after checkout.',
+  }
+
+  it('lets the Admin publish valid public payment information and everyone read it', () => {
+    expect(allow({ path: 'site_config/payment', method: 'create', auth: allowlistedAdmin(), requestData: payment })).toBe(true)
+    expect(allow({ path: 'site_config/payment', method: 'create', auth: allowlistedAdmin(), requestData: {
+      active: true,
+      methods: [
+        { method: 'GCash', recipient_name: 'Agueda H.', account_identifier: '09258507707' },
+        { method: 'BDO', recipient_name: 'Agueda Hortillas', account_identifier: '005438013682' },
+      ],
+      instructions: 'Submit a screenshot or Gmail confirmation/reference.',
+    } })).toBe(true)
+    expect(allow({ path: 'site_config/payment', method: 'get', auth: null, resourceData: payment })).toBe(true)
+  })
+
+  it('refuses Guests, incomplete configuration, and undeclared sensitive fields', () => {
+    expect(deny({ path: 'site_config/payment', method: 'create', auth: anonymousGuest(), requestData: payment })).toBe(true)
+    expect(deny({ path: 'site_config/payment', method: 'create', auth: allowlistedAdmin(), requestData: { ...payment, instructions: '' } })).toBe(true)
+    expect(deny({ path: 'site_config/payment', method: 'create', auth: allowlistedAdmin(), requestData: { ...payment, secret_api_key: 'never-public' } })).toBe(true)
+  })
+})
 
 describe('collections with no rule', () => {
   it('refuses a collection nobody wrote a rule for', () => {

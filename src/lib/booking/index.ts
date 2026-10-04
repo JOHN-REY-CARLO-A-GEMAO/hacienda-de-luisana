@@ -66,9 +66,15 @@ export { describeActivity, type ActivityLine } from './activity'
 
 export {
   ratesForAccommodation,
+  quoteAccommodation,
+  classifyRateDate,
   quotedStayTotal,
   validatePublishedRates,
   type AccommodationRates,
+  type GuestBracketPricing,
+  type GuestRateSchedule,
+  type PropertyQuote,
+  type RateClassification,
   type PolicySnapshot,
   type PublishedRates,
   type PublishedRefundPolicy,

@@ -135,6 +135,36 @@ describe('ratesForAccommodation — without a policy', () => {
 })
 
 describe('quotedStayTotal', () => {
+  it('uses each property’s own configured rate', () => {
+    expect(quotedStayTotal(published, 'main-house', 2)).toBe(20000)
+    expect(quotedStayTotal(published, 'house-a-camping', 2)).toBe(2400)
+  })
+
+  it('uses a newly published rate for new quotes without mutating historical totals', () => {
+    const historicalBookingTotal = quotedStayTotal(published, 'main-house', 2)
+    const changed: PublishedRates = {
+      ...published,
+      version: 'v2026-10',
+      accommodations: {
+        ...published.accommodations,
+        'main-house': { ...published.accommodations['main-house'], nightly_rate: 12500 },
+      },
+    }
+    expect(quotedStayTotal(changed, 'main-house', 2)).toBe(25000)
+    expect(historicalBookingTotal).toBe(20000)
+  })
+
+  it('does not quote an inactive property', () => {
+    const inactive: PublishedRates = {
+      ...published,
+      accommodations: {
+        ...published.accommodations,
+        'main-house': { ...published.accommodations['main-house'], active: false },
+      },
+    }
+    expect(quotedStayTotal(inactive, 'main-house', 2)).toBeUndefined()
+  })
+
   it('quotes nights times the nightly rate, rounded to whole centavos', () => {
     expect(quotedStayTotal(published, 'house-a-camping', 3)).toBe(3600)
     // A stay is never zero-length: at least one night is quoted.

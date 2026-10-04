@@ -998,6 +998,10 @@ function method(base: unknown, name: string, args: unknown[]): unknown {
     }
   }
   switch (name) {
+    case 'dayOfWeek':
+      // Firestore Rules timestamps use Sunday=1 through Saturday=7.
+      if (isTimestamp(base)) return new Date(base.__timestamp).getUTCDay() + 1
+      break
     case 'size':
       if (typeof base === 'string') return base.length
       if (Array.isArray(base)) return base.length

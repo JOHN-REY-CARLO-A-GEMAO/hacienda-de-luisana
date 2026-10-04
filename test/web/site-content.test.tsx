@@ -179,13 +179,13 @@ describe('rates, fees and sleeping arrangements', () => {
         expect(a.priceSource, `${a.name} lists a price without a source`).toBeTruthy()
       }
     }
-    expect(camping.price).toBe(1200)
+    expect(camping.price).toBe(1000)
     expect(mainHouse.price).toBeUndefined()
   })
 
   it('quotes the Main House on request until the Admin publishes a rate, then shows the published figure', () => {
     expect(displayedRate(mainHouse, null).label).toBe('Quoted on request')
-    expect(displayedRate(camping, null).label).toBe('₱1,200 / unit / night')
+    expect(displayedRate(camping, null).label).toBe('₱1,000 / A-House / standard stay')
 
     const published: PublishedRates = {
       version: 'v-test',
@@ -210,7 +210,7 @@ describe('rates, fees and sleeping arrangements', () => {
   it('renders the Rates section without a deposit figure until one is published', () => {
     const page = render(<Rates />)
     expect(page.text()).toContain('Quoted on request')
-    expect(page.text()).toContain('₱1,200 / unit / night')
+    expect(page.text()).toContain('₱1,000 / A-House / standard stay')
     expect(page.text()).toContain('₱300')
     expect(page.text()).toContain('Ask for the current price')
     expect(page.text()).toContain('Nothing is confirmed until the Hacienda approves the screenshot.')
@@ -237,7 +237,8 @@ describe('house rules, guest notes and getting here', () => {
   it('keeps the Hacienda\'s rules and the guests\' accounts in separate, labelled voices', () => {
     const page = render(<GoodToKnow />)
     expect(page.text()).toContain('House rules')
-    expect(page.text()).toContain('Check-in from 2:00 PM, check-out by 12:00 NN.')
+    expect(page.text()).toContain('The standard 22-hour stay checks in at 2:00 PM and checks out by 12:00 NN')
+    expect(page.text()).toContain('CLEAN AS YOU GO!')
     expect(page.text()).toContain('₱300')
     expect(page.text()).toContain('What recent guests mention')
     for (const note of GUEST_NOTES) expect(page.text()).toContain(note.from)

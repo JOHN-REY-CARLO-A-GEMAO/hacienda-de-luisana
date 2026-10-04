@@ -8,8 +8,10 @@ import { clearBookingDraft, loadBookingDraft, rememberBookingId, type BookingDra
 import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { ensureGuestUid } from '../lib/guestAuth'
 import { ArrowRight, Calendar, Sparkle, Users } from '../lib/icons'
-import { downPaymentAmount, ratesForAccommodation } from '../lib/booking'
+import { paymentOptionsForTotal, quoteAccommodation } from '../lib/booking'
 import { uploadPaymentProof } from '../lib/payments'
+import { usePaymentInformation } from '../hooks/usePaymentInformation'
+import { PaymentInformationPanel } from '../components/Booking/PaymentInformationPanel'
 import { runReceiptOcr } from '../lib/payments/ocr'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
@@ -31,6 +33,7 @@ export function DownpaymentPage() {
   const navigate = useNavigate()
   const draft = useMemo(() => loadBookingDraft(), [])
   const published = usePublishedRates()
+  const paymentInformation = usePaymentInformation()
   const fileInput = useRef<HTMLInputElement>(null)
 
   const [proofFile, setProofFile] = useState<File | null>(null)
@@ -44,13 +47,13 @@ export function DownpaymentPage() {
   const accommodation = ACCOMMODATIONS.find((item) => item.id === draft?.accommodation)
   const nights = draft ? nightsBetween(draft.check_in, draft.check_out) : 0
   const rate = accommodation ? displayedRate(accommodation, published) : null
-  const quoted = published && draft ? ratesForAccommodation(published, draft.accommodation) : undefined
-  const publishedPercent = quoted?.rateCard.downPaymentPercent
-  const stayTotal = rate?.nightly && nights > 0 ? rate.nightly * nights : null
-  const dueNow =
-    stayTotal !== null && typeof publishedPercent === 'number'
-      ? downPaymentAmount(stayTotal, publishedPercent)
-      : null
+  const quoted = published && draft ? quoteAccommodation(published, draft.accommodation, draft) : undefined
+  const stayTotal = quoted?.stayTotal ?? null
+  const paymentOptions = quoted ? paymentOptionsForTotal(quoted.stayTotal, quoted.rateCard) : []
+  const reservationOption = paymentOptions.find((option) => option.plan === 'down-payment')
+  const selectedOption = reservationOption ?? paymentOptions.find((option) => option.plan === 'full')
+  const dueNow = selectedOption?.dueNow ?? null
+  const paymentPlan = selectedOption?.plan ?? 'full' as const
   const deposit = quoted?.rateCard.securityDeposit
 
   useEffect(() => {
@@ -99,8 +102,12 @@ export function DownpaymentPage() {
         setError(dates.reason)
         return
       }
+      if (!quoted || stayTotal === null || dueNow === null || !published) {
+        setError('This property does not have an active published rate. Please choose another property or contact the Hacienda.')
+        return
+      }
       if (!proofFile) {
-        setError('Upload a screenshot of your downpayment. The booking cannot be submitted without it.')
+        setError('Upload a screenshot of your payment. The booking cannot be submitted without it.')
         return
       }
       const amountCheck = validateAmount(amount)
@@ -141,7 +148,10 @@ export function DownpaymentPage() {
         setError(uploaded.message)
         return
       }
-      const balance = stayTotal !== null ? Math.max(0, Math.round((stayTotal - claimed) * 100) / 100) : undefined
+      // Financial fields are a historical snapshot of the authoritative rate,
+      // not of what OCR/the Guest says the receipt contains. Firestore rules
+      // independently derive and verify this same snapshot.
+      const balance = Math.max(0, Math.round((stayTotal - dueNow) * 100) / 100)
       const booking = await cloudBookingsDB.add(
         {
           guest_name: draft.name.trim(),
@@ -155,17 +165,19 @@ export function DownpaymentPage() {
           ...(uid ? { uid } : {}),
           payment_proof_url: uploaded.url,
           paymentProofUrl: uploaded.url,
-          payment_plan: 'down-payment',
+          payment_plan: paymentPlan,
           payment_status: 'pending',
           amount_claimed: claimed,
           ...(reference.trim() ? { payment_reference: reference.trim() } : {}),
-          ...(stayTotal !== null ? { stay_total: stayTotal } : {}),
-          amount_due: dueNow ?? claimed,
-          ...(deposit !== undefined ? { security_deposit: deposit } : {}),
-          ...(balance !== undefined ? { balance_due: balance } : {}),
-          ...(quoted
-            ? { policy_version: quoted.snapshot.version, policy_effective_date: quoted.snapshot.effectiveDate }
-            : {}),
+          nights,
+          stay_total: stayTotal,
+          amount_due: dueNow,
+          security_deposit: deposit,
+          balance_due: balance,
+          rate_amount: quoted.rateCard.nightlyRate,
+          rate_unit: quoted.classification === 'legacy_flat' ? 'night' : 'standard_stay',
+          policy_version: quoted.snapshot.version,
+          policy_effective_date: quoted.snapshot.effectiveDate,
           source: 'web',
         },
         { actor: 'guest', actor_id: uid || uploaded.uid, actor_name: draft.name.trim() },
@@ -209,11 +221,12 @@ export function DownpaymentPage() {
             <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8">
               <h2 className="font-serif text-2xl text-forest-900">How to pay</h2>
               <p className="mt-3 text-sm text-forest-800/80 leading-relaxed">
-                Pay the downpayment only through Hacienda de LuisAna’s official phone, email, or Facebook
-                page — GCash, Maya, or bank transfer. Never send money to a third party claiming to be staff.
-                This website does not publish a separate account number; confirm the receiving account on
-                those official channels, then upload the screenshot here.
+                Use only the Admin-published account below. Never send money to a third party claiming to be
+                staff, and never share a password, PIN, or one-time code.
               </p>
+              <div className="mt-5">
+                <PaymentInformationPanel payment={paymentInformation} requiredAmount={dueNow ?? undefined} />
+              </div>
               <div className="mt-5">
                 <OfficialChannelsNotice />
               </div>
@@ -223,7 +236,10 @@ export function DownpaymentPage() {
                   <>
                     <div className="font-serif text-4xl mt-1">{peso(dueNow)}</div>
                     <p className="mt-2 text-xs text-cream-100/75 leading-relaxed">
-                      {publishedPercent}% of {peso(stayTotal!)} for {nights} night{nights === 1 ? '' : 's'}
+                      {reservationOption
+                        ? (quoted?.rateCard.reservationFeeAmount !== undefined ? 'Non-refundable reservation fee for ' : `${quoted?.rateCard.downPaymentPercent}% of `)
+                        : 'Full payment of '}
+                      {peso(stayTotal!)} for {quoted?.classification === 'legacy_flat' ? `${nights} night${nights === 1 ? '' : 's'}` : 'one 22-hour standard stay'}
                       {rate?.source ? ` · ${rate.source}` : ''}.
                       {deposit ? ` The refundable security deposit (${peso(deposit)}) is settled with the Hacienda separately.` : ''}
                       {stayTotal !== null && dueNow < stayTotal

@@ -70,6 +70,18 @@ afterAll(async () => {
 beforeEach(async () => {
   await env.clearFirestore()
   await env.clearStorage()
+  await env.withSecurityRulesDisabled(async (owner) => {
+    await setDoc(doc(owner.firestore(), 'site_config', 'rates'), {
+      version: 'emulator-v1',
+      effective_date: '2026-10-01',
+      accommodations: {
+        'main-house': {
+          property_name: 'Main House', rate_unit: 'night', active: true,
+          nightly_rate: 5000, security_deposit: 500, down_payment_percent: 50,
+        },
+      },
+    })
+  })
 })
 
 /** A Guest with a uid but no email claim — Firebase's anonymous sign-in. */
@@ -85,25 +97,41 @@ const admin = () => env.authenticatedContext('admin-uid-1', { email: ADMIN_EMAIL
  * without them is a document the rules refuse to store — which is the point of
  * the fixture being shaped like the app's.
  */
-const bookingDoc = (overrides: Record<string, unknown> = {}) => ({
-  guest_name: 'Ana Reyes',
-  phone: '09171234567',
-  email: 'ana@example.com',
-  // Existing create/auth/payment tests need a lead-time-valid fixture.
-  check_in: manilaDatePlus(60),
-  check_out: manilaDatePlus(62),
-  guests: 2,
-  accommodation: 'Main House',
-  status: 'Pending',
-  payment_status: 'pending',
-  payment_proof_url: `payments/${GUEST_UID}/${BOOKING_ID}/proof.jpg`,
-  amount_claimed: 5000,
-  created_at: new Date(),
-  uid: GUEST_UID,
-  ref_id: BOOKING_ID,
-  source: 'web',
-  ...overrides,
-})
+const bookingDoc = (overrides: Record<string, unknown> = {}) => {
+  const checkIn = String(overrides.check_in ?? manilaDatePlus(60))
+  const parsed = Date.parse(`${checkIn}T00:00:00Z`)
+  const checkOut = Number.isNaN(parsed)
+    ? manilaDatePlus(62)
+    : new Date(parsed + 2 * 86_400_000).toISOString().slice(0, 10)
+  return {
+    guest_name: 'Ana Reyes',
+    phone: '09171234567',
+    email: 'ana@example.com',
+    check_in: checkIn,
+    check_out: checkOut,
+    guests: 2,
+    accommodation: 'main-house',
+    status: 'Pending',
+    payment_plan: 'down-payment',
+    payment_status: 'pending',
+    payment_proof_url: `payments/${GUEST_UID}/${BOOKING_ID}/proof.jpg`,
+    amount_claimed: 5000,
+    nights: 2,
+    rate_amount: 5000,
+    rate_unit: 'night',
+    stay_total: 10000,
+    amount_due: 5000,
+    security_deposit: 500,
+    balance_due: 5000,
+    policy_version: 'emulator-v1',
+    policy_effective_date: '2026-10-01',
+    created_at: new Date(),
+    uid: GUEST_UID,
+    ref_id: BOOKING_ID,
+    source: 'web',
+    ...overrides,
+  }
+}
 
 /**
  * Fixtures, written as the Admin with the rules switched off.

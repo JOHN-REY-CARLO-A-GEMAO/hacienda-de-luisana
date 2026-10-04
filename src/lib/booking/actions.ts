@@ -59,6 +59,10 @@ export type BookingState = {
   ocr_amount?: string
   payment_verified_at?: string | null
   payment_verified_by?: string | null
+  /** Authoritative stay length and rate snapshot for new bookings; absent on legacy records. */
+  nights?: number
+  rate_amount?: number
+  rate_unit?: 'night' | 'standard_stay'
   stay_total?: number
   amount_due?: number
   security_deposit?: number

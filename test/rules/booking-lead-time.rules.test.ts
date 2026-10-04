@@ -11,13 +11,28 @@ const rules = readFileSync(join(__dirname, '../../firestore.rules'), 'utf8')
 const decide = compileRules(rules)
 const NOW = Date.parse('2026-10-01T04:00:00Z')
 const plus = (days: number) => new Date(Date.UTC(2026, 9, 1 + days)).toISOString().slice(0, 10)
-const proofBooking = (data: DocData = {}) => bookingDoc({
-  payment_status: 'pending', payment_proof_url: 'payments/guest-uid-1/HDL/proof-1.png', amount_claimed: 5000,
-  check_in: plus(30), check_out: plus(32), ...data,
-})
+const publishedRates = {
+  version: 'test-v1', effective_date: '2026-09-01',
+  accommodations: {
+    'main-house': { property_name: 'Main House', rate_unit: 'night', active: true, nightly_rate: 4250, security_deposit: 500, down_payment_percent: 50 },
+  },
+}
+const rateStore: Store = { 'site_config/rates': publishedRates }
+const proofBooking = (data: DocData = {}) => {
+  const checkIn = String(data.check_in ?? plus(30))
+  const parsed = Date.parse(`${checkIn}T00:00:00Z`)
+  const checkOut = Number.isNaN(parsed)
+    ? plus(32)
+    : new Date(parsed + 2 * 86_400_000).toISOString().slice(0, 10)
+  return bookingDoc({
+    payment_status: 'pending', payment_plan: 'down-payment',
+    payment_proof_url: 'payments/guest-uid-1/HDL/proof-1.png', amount_claimed: 8500,
+    check_in: checkIn, check_out: checkOut, ...data,
+  })
+}
 const create = (data: DocData, time = NOW, store: Store = {}) => decide(request({
   method: 'create', path: 'bookings/direct-request', auth: anonymousGuest(), requestData: proofBooking(data), time,
-}), { store }).allow
+}), { store: { ...rateStore, ...store } }).allow
 
 it('keeps the rules default synchronized with the shared client default', () => {
   const fallback = rules.match(/function minimumBookingLeadTimeDays\(\)\s*\{\s*let defaultDays = (\d+);/)
@@ -34,7 +49,7 @@ describe('public creates: the trusted server calendar, not payload claims', () =
   it('also enforces the rule for the existing signed-out public creation path', () => {
     for (const [days, allowed] of [[7, false], [30, true]] as const) {
       expect(decide(request({ method: 'create', path: 'bookings/public', auth: null,
-        requestData: proofBooking({ check_in: plus(days) }), time: NOW })).allow).toBe(allowed)
+        requestData: proofBooking({ check_in: plus(days) }), time: NOW }), { store: rateStore }).allow).toBe(allowed)
     }
   })
   it('ignores forged creation timestamps, lead time fields, actor, source and uid', () => {

@@ -3,7 +3,7 @@ import { SceneHeader } from '../components/Scene'
 import { ACCOMMODATIONS, FEES, LISTINGS, type Fee } from '../config/site'
 import { ArrowRight, Check, Sparkle } from '../lib/icons'
 import { usePublishedRates } from '../hooks/usePublishedRates'
-import { ratesForAccommodation } from '../lib/booking'
+import { type GuestBracketPricing, type GuestRateSchedule } from '../lib/booking'
 import { displayedRate } from './Accommodations'
 
 function peso(n: number): string {
@@ -30,8 +30,12 @@ export function Rates() {
 
   // Deposit and down payment come from the Published rates alone.
   const publishedFigures = active
-    .map((a) => ({ a, q: published ? ratesForAccommodation(published, a.id) : undefined }))
-    .filter((x) => x.q !== undefined)
+    .map((a) => {
+      const figures = published?.accommodations[a.id]
+      if (!figures || figures.active === false) return { a, figures: undefined }
+      return { a, figures }
+    })
+    .filter((x) => x.figures !== undefined)
 
   return (
     <section id="rates" className="py-24 lg:py-36 bg-cream-50">
@@ -64,6 +68,9 @@ export function Rates() {
                 <h3 className="font-serif text-2xl text-forest-900 mt-1">{a.name}</h3>
                 <div className="mt-5 font-serif text-4xl text-forest-900">{rate.label}</div>
                 <div className="mt-1 text-xs text-forest-700/70">{rate.source}</div>
+                {published?.accommodations[a.id]?.guest_pricing && (
+                  <GuestSchedule schedule={published.accommodations[a.id]!.guest_pricing!} />
+                )}
                 <div className="mt-4 text-sm text-forest-800">{a.capacityLabel}{a.availableUnits ? ` · ${a.availableUnits} units` : ''}</div>
                 <Link to={`/book?accommodation=${a.id}`} className="btn-ghost mt-6 text-xs group">
                   Book this room
@@ -81,15 +88,17 @@ export function Rates() {
             <h3 className="font-serif text-2xl text-cream-50 mt-2">Refundable security deposit</h3>
             {publishedFigures.length > 0 ? (
               <ul className="mt-4 space-y-2 text-sm">
-                {publishedFigures.map(({ a, q }) => (
+                {publishedFigures.map(({ a, figures }) => (
                   <li key={a.id} className="flex items-start justify-between gap-4">
                     <span className="text-cream-100/80">{a.shortName}</span>
                     <span className="text-right">
-                      <span className="font-medium text-cream-50">{peso(q!.rateCard.securityDeposit)}</span>
+                      <span className="font-medium text-cream-50">{peso(figures!.security_deposit)}</span>
                       <span className="block text-[11px] text-cream-100/60">
-                        {q!.rateCard.downPaymentPercent !== undefined
-                          ? `${q!.rateCard.downPaymentPercent}% down payment or full payment`
-                          : 'Full payment'}
+                        {figures!.reservation_fee_amount !== undefined
+                          ? `${peso(figures!.reservation_fee_amount)} non-refundable reservation fee or full payment`
+                          : figures!.down_payment_percent !== undefined
+                            ? `${figures!.down_payment_percent}% down payment or full payment`
+                            : 'Full payment at check-in'}
                       </span>
                     </span>
                   </li>
@@ -157,6 +166,27 @@ export function Rates() {
         </div>
       </div>
     </section>
+  )
+}
+
+function scheduleLine(label: string, schedule: GuestRateSchedule): string {
+  const parts = [`${schedule.min_guests}–${schedule.base_max_guests} guests ${peso(schedule.base_rate)}`]
+  if (schedule.upper_min_guests !== undefined && schedule.upper_max_guests !== undefined && schedule.upper_rate !== undefined) {
+    parts.push(`${schedule.upper_min_guests}–${schedule.upper_max_guests} ${peso(schedule.upper_rate)}`)
+  }
+  if (schedule.excess_after !== undefined && schedule.excess_per_guest !== undefined) {
+    parts.push(`above ${schedule.excess_after}: +${peso(schedule.excess_per_guest)}/guest`)
+  }
+  return `${label}: ${parts.join(' · ')}`
+}
+
+function GuestSchedule({ schedule }: { schedule: GuestBracketPricing }) {
+  return (
+    <div className="mt-4 rounded-xl bg-cream-50 p-3 text-xs leading-relaxed text-forest-800">
+      <p>{scheduleLine('Weekday', schedule.weekday)}</p>
+      <p className="mt-1">{scheduleLine('Weekend / Admin holiday', schedule.weekend_holiday)}</p>
+      <p className="mt-2 text-forest-700/70">One booking · one 22-hour standard stay</p>
+    </div>
   )
 }
 

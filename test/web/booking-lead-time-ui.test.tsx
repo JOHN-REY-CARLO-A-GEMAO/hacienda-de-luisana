@@ -16,6 +16,7 @@ import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
 import { bookingsDB } from '../../src/lib/storage'
 import * as payments from '../../src/lib/payments'
 import { resetRateLimit } from '../../src/lib/rateLimit'
+import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 
 vi.mock('../../src/lib/payments/ocr', () => ({ runReceiptOcr: vi.fn(async () => ({ reference: '', amount: '' })) }))
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
@@ -89,6 +90,12 @@ beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
   resetAppSession()
+  localStorage.setItem(LOCAL_RATES_KEY, JSON.stringify({
+    version: 'test-v1', effective_date: '2026-10-01',
+    accommodations: {
+      'main-house': { property_name: 'The Main House', rate_unit: 'night', active: true, nightly_rate: 5000, security_deposit: 0, down_payment_percent: 50 },
+    },
+  }))
   resetRateLimit('booking:create')
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-01T04:00:00Z'))

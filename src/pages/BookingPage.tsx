@@ -21,7 +21,7 @@ import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { useBookingPolicy } from '../hooks/useBookingPolicy'
-import { validateMinimumBookingLeadTime } from '../lib/booking'
+import { quoteAccommodation, validateMinimumBookingLeadTime } from '../lib/booking'
 
 type FormState = {
   check_in: string
@@ -35,11 +35,6 @@ type FormState = {
 }
 
 type Errors = Partial<Record<keyof FormState, string>>
-
-const OPTIONS = [
-  ...ACCOMMODATIONS.filter((a) => a.active).map((a) => ({ id: a.id, label: a.name })),
-  { id: 'other', label: 'Other / Ask Us' },
-]
 
 export function BookingPage() {
   const { user } = useAuth()
@@ -97,14 +92,32 @@ export function BookingPage() {
   // Booking is actually quoted at), else the Hacienda's own listed price; when
   // neither exists the summary says the Hacienda quotes it, rather than guess.
   const published = usePublishedRates()
+  const options = useMemo(() => [
+    ...ACCOMMODATIONS
+      .filter((a) => a.active && published?.accommodations[a.id]?.active !== false)
+      .map((a) => ({
+        id: a.id,
+        label: published?.accommodations[a.id]?.property_name?.trim() || a.name,
+      })),
+    { id: 'other', label: 'Other / Ask Us' },
+  ], [published])
   const rate = useMemo(
     () => (selectedAcc ? displayedRate(selectedAcc, published) : null),
     [selectedAcc, published],
   )
+  const authoritativeQuote = useMemo(() => {
+    if (!published || form.accommodation === 'other') return undefined
+    return quoteAccommodation(published, form.accommodation, {
+      check_in: form.check_in,
+      check_out: form.check_out,
+      guests: Number(form.guests),
+    })
+  }, [published, form.accommodation, form.check_in, form.check_out, form.guests])
   const estimatedTotal = useMemo(() => {
+    if (authoritativeQuote) return authoritativeQuote.stayTotal
     if (!rate?.nightly || !nights) return null
     return rate.nightly * nights
-  }, [rate, nights])
+  }, [authoritativeQuote, rate, nights])
 
   useEffect(() => {
     if (!form.check_in || !form.check_out || !form.accommodation
@@ -150,6 +163,23 @@ export function BookingPage() {
     const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity ?? 12)
     if (!guests.ok) e.guests = guests.message
     if (!form.accommodation) e.accommodation = 'Select an accommodation'
+    if (published && form.accommodation !== 'other' && !published.accommodations[form.accommodation]) {
+      e.accommodation = 'This property does not have a published rate.'
+    }
+    if (published?.accommodations[form.accommodation]?.active === false) {
+      e.accommodation = 'This property is not accepting new bookings.'
+    }
+    const configuredRate = published?.accommodations[form.accommodation]
+    if (configuredRate?.guest_pricing && !authoritativeQuote) {
+      e.accommodation = nights !== 1
+        ? 'Published guest-count rates currently support one 22-hour standard stay. Contact the Hacienda for a longer stay.'
+        : 'The selected guest count is outside this property’s published rate brackets.'
+    }
+    if (configuredRate?.guest_pricing
+        && configuredRate.reservation_fee_amount === undefined
+        && configuredRate.down_payment_percent === undefined) {
+      e.accommodation = 'The Admin must confirm and publish the reservation-fee amount before online booking can accept payment.'
+    }
     const name = validateName(form.name)
     if (!name.ok) e.name = name.message
     const phone = validatePhMobile(form.phone)
@@ -282,7 +312,7 @@ export function BookingPage() {
                     value={form.accommodation}
                     onChange={(e) => set('accommodation', e.target.value)}
                   >
-                    {OPTIONS.map((o) => (
+                    {options.map((o) => (
                       <option key={o.id} value={o.id}>{o.label}</option>
                     ))}
                   </select>
@@ -328,10 +358,13 @@ export function BookingPage() {
                 <Field label="Special requests" className="sm:col-span-2">
                   <textarea
                     className="field min-h-[110px] resize-y"
-                    placeholder="Bringing pets, celebrating a birthday, need extra bedding, arriving late…"
+                    placeholder="Pet count; reunion/team building; wedding preparation; shoot; bonfire wood; late-checkout request…"
                     value={form.special_requests}
                     onChange={(e) => set('special_requests', e.target.value)}
                   />
+                  <p className="mt-2 text-xs text-forest-700/70 leading-relaxed">
+                    Declare each pet (₱300 per pet for sanitation). Bonfire wood (₱150/set), approved late checkout (₱250/hour after noon), and special-event/use charges are reviewed by the Admin and are never added automatically.
+                  </p>
                 </Field>
               </div>
             </div>
@@ -402,7 +435,7 @@ export function BookingPage() {
                 <SummaryRow icon={Calendar} label="Check-in" value={form.check_in || '—'} />
                 <SummaryRow icon={Calendar} label="Check-out" value={form.check_out || '—'} />
                 <SummaryRow icon={Users} label="Guests" value={String(form.guests)} />
-                <SummaryRow icon={Bed} label="Accommodation" value={OPTIONS.find(o => o.id === form.accommodation)?.label || '—'} />
+                <SummaryRow icon={Bed} label="Accommodation" value={options.find((o) => o.id === form.accommodation)?.label || '—'} />
 
                 <div className="pt-4 border-t border-forest-900/10">
                   <div className="flex items-center justify-between">
@@ -412,7 +445,9 @@ export function BookingPage() {
                         <>
                           <div className="font-serif text-2xl text-forest-900">₱{estimatedTotal.toLocaleString('en-PH')}</div>
                           <div className="text-[11px] text-forest-700/60">
-                            {nights} night{nights > 1 ? 's' : ''} × {rate?.label}
+                            {authoritativeQuote
+                              ? `${authoritativeQuote.classification.replace('_', ' / ')} · ${authoritativeQuote.bracket} guests · one standard stay`
+                              : `${nights} night${nights > 1 ? 's' : ''} × ${rate?.label}`}
                           </div>
                         </>
                       ) : (

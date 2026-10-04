@@ -17,6 +17,8 @@ class AppConstants {
   /// (`site_config/rates`).
   static const String colSiteConfig = 'site_config';
   static const String docRates = 'rates';
+  /// Public, non-secret payment instructions shown during booking.
+  static const String docPayment = 'payment';
   /// The Guest ↔ Admin conversation, its messages, and the live-location
   /// consent (ADR-0013).
   static const String colConversations = 'conversations';
