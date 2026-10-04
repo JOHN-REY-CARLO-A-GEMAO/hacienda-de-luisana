@@ -270,24 +270,6 @@ export const AMENITIES: Amenity[] = [
 ]
 
 // -----------------------------------------------------------------------------
-// FACEBOOK CDN IMAGE URLS (from official client Facebook photos)
-// -----------------------------------------------------------------------------
-// Source: https://www.facebook.com/haciendadeluisiana/photos
-// These are hotlinked directly — visitor browsers load them from Facebook CDN.
-// When URLs expire (token in `oe=...`), refresh from the Facebook page.
-// See: /public/images/fb/README.md for full mapping and refresh instructions.
-// -----------------------------------------------------------------------------
-export const FB_CDN = {
-  'fb-01': 'https://scontent.fmnl13-5.fna.fbcdn.net/v/t39.30808-6/787083560_1756248286510139_9003513602859904663_n.jpg?stp=cp6_dst-jpg_tt6&cstp=mx720x960&ctp=s720x960&_nc_cat=105&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeFcylekq2nyPe8p-bZze-otSVltRVYeh7tJWW1FVh6Hu5YRbZI3_QMRx8qBpFYHfYkyRbxb0KXtxEdXOM5xl2ua&_nc_ohc=_eqWiWnq2YkQ7kNvwH0shB6&_nc_oc=AdrJhKR5F8fqmVOnKwsjl3rDkgQBf6awchKeToAnMGLL5eaPfdrBvIFMiyUp2DjNPZw&_nc_zt=23&_nc_ht=scontent.fmnl13-5.fna&_nc_gid=D1rwFDxAaAEwXqLwe1So2A&_nc_ss=7b2a8&oh=00_AQJFBWqBje5UVGEw9UivSC9EB7NbKJnix8BK9GJO8r93ew&oe=6AA2EF7D',
-  'fb-02': 'https://scontent.fmnl13-2.fna.fbcdn.net/v/t39.30808-6/784821378_1756248206510147_4908331255314011445_n.jpg?stp=cp6_dst-jpg_tt6&cstp=mx720x960&ctp=s720x960&_nc_cat=111&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeGyNBW_XNH9_B45FxNdeMmD0JaAbqOoNS3QloBuo6g1Lcz9NhNMMZxwKhyHgHIZLpPos0Abwm636vf25FyHP9z1&_nc_ohc=yXcPt63ifn0Q7kNvwHP27EP&_nc_oc=AdojP6i9h7VA2WAFdi_C7TLzozIjExoDaNiQt6RHm1aGb0cg5YIP2FQ8JD5vlhUqIP8&_nc_zt=23&_nc_ht=scontent.fmnl13-2.fna&_nc_gid=EbYbhFP549vSPGnOEnG-ZA&_nc_ss=7b2a8&oh=00_AQIpw0qGr-idhmbsLxoSG3q7KKIzvLyBpl5LRxnXRv_pAQ&oe=6AA2FF2B',
-  'fb-03': 'https://scontent.fmnl13-2.fna.fbcdn.net/v/t39.30808-6/786520124_1756247993176835_6424925951785661436_n.jpg?stp=cp6_dst-jpg_tt6&cstp=mx720x960&ctp=s720x960&_nc_cat=111&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeHI8WG-z7aCdYWPGsbqguL95oDG5sNzgBnmgMbmw3OAGWUrizbo55aIhpN6ddd6A2LNnNFjRSC0-a-_K3jtTAkZ&_nc_ohc=7bqMyYUAiLAQ7kNvwHS-W1D&_nc_oc=AdqBONLDAqTnyr8lmIbjGG6ferD754Az1kPmXpV0U6bnLFRn0cyfSkpKeN86CwSBocM&_nc_zt=23&_nc_ht=scontent.fmnl13-2.fna&_nc_gid=IHZzdvBuuQCSQKGPyTx69g&_nc_ss=7b2a8&oh=00_AQKNt2ZX7vpjbY4KU1aM2FFH-jlnCSco0LBXoou3WNpTMg&oe=6AA30554',
-  'fb-04': 'https://scontent.fmnl13-2.fna.fbcdn.net/v/t39.30808-6/786392812_1756247933176841_5786941906437746464_n.jpg?stp=cp6_dst-jpg_tt6&cstp=mx720x960&ctp=s720x960&_nc_cat=106&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeEfa9ACCk6MMxE2Cf4jJPjHJVJDoANw1bAlUkOgA3DVsALDUnjXBlc2qbzrBYCubCFiSej2O9ADSf6-CJI8rgqc&_nc_ohc=zjQELHVCm-sQ7kNvwFUu5JA&_nc_oc=AdpO7ndgJn9B5lJoTR5yanrMVgs_3A6gOr6cpx1aXr1EWt_nmaO1rh4mo733YCCtsfg&_nc_zt=23&_nc_ht=scontent.fmnl13-2.fna&_nc_gid=H3Q_9NIGuuWU7tYpEFLwtg&_nc_ss=7b2a8&oh=00_AQKgWgi-8eheYItlbtoebrhPg5IhVVz_j2r99AqzcVbdew&oe=6AA31191',
-  'fb-05': 'https://scontent.fmnl13-1.fna.fbcdn.net/v/t39.30808-6/776453559_1745025087632459_1929950175208738272_n.jpg?stp=cp6_dst-jpg_tt6&cstp=mx720x960&ctp=s720x960&_nc_cat=100&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeFKCY7VsOPu_E8FuNXTIEoe_EU9ISSOc6v8RT0hJI5zq2thADNlTk-4TkAA5wcgRYFFZouSFVHocomVoPfji7x2&_nc_ohc=JLL9KiYCwMgQ7kNvwGVNlrH&_nc_oc=Adru47rwrG4FjDTFmdrBfvRJkw-Rxzl0x6I7wOdc7j0-tQS9pmYi4_YbGAfy9HM67lk&_nc_zt=23&_nc_ht=scontent.fmnl13-1.fna&_nc_gid=4fklMPlon8AEyhb5QlTmoA&_nc_ss=7b2a8&oh=00_AQL9QFgK0x58AOsi8w-9jGlxLtJVrLa0ybztNv7a5yeIaA&oe=6AA301A7',
-  'fb-06': 'https://scontent.fmnl13-6.fna.fbcdn.net/v/t39.30808-6/774193415_1745025190965782_2552939446541801609_n.jpg?stp=cp6_dst-jpg_tt6&cstp=mx720x960&ctp=s720x960&_nc_cat=104&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeHXuOev29o_eOSkV9B-kvwhrNsvqWnpEsus2y-paekSy0bFQMMNgxrPcJTRQdp9JZv3337ynEzHRVZ8PjLxm44E&_nc_ohc=_NnkT1c1Yz0Q7kNvwGxf5cC&_nc_oc=AdpkSt8xtlpyH0zaNNpdwNGZ91QV0ulnnoezAxsuZYjfoAG0Ew0615_576HnOT98YTE&_nc_zt=23&_nc_ht=scontent.fmnl13-6.fna&_nc_gid=5HSYO5JaEDatdCaxB3G_KA&_nc_ss=7b2a8&oh=00_AQJGvSwcc91RGHSgJqvOk7tanPmWhK51OZWRoKUMOFh4ow&oe=6AA2FE68',
-  'fb-07': 'https://scontent.fmnl13-2.fna.fbcdn.net/v/t39.30808-6/778568552_1745025164299118_864038632200873366_n.jpg?stp=cp6_dst-jpg_tt6&cstp=mx720x960&ctp=s720x960&_nc_cat=106&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeHC8amPfs7mOOtjJYUY6Ozvfm2JzQ1MKvN-bYnNDUwq89yUOUice6z8rhl0RMBqXoix-qmNJiXrtRr6F-cCeyVp&_nc_ohc=RxEOxtPYbHYQ7kNvwG9kcub&_nc_oc=Adqg5URVyZXb1tT4CpPDalCHLZ1A4gcpjMWvyPxd0laynVIACgD8LatTlezOAsrLmcM&_nc_zt=23&_nc_ht=scontent.fmnl13-2.fna&_nc_gid=AmQ_zfpHuD-ZTkZmZf_s7g&_nc_ss=7b2a8&oh=00_AQK0ODHEDuRGrnbcwIBJ6uyKmpvA7Q8G2S0RCrxQd37i3Q&oe=6AA30700',
-  'fb-08': 'https://scontent.fmnl13-2.fna.fbcdn.net/v/t39.30808-6/774266193_1745025057632462_6998313209688464594_n.jpg?stp=cp6_dst-jpg_tt6&cstp=mx720x960&ctp=s720x960&_nc_cat=106&ccb=1-7&_nc_sid=833d8c&_nc_eui2=AeFbNcj1OYR7M4QQ_HKNcMYvOzWpkmfuG547NamSZ-4bno6ToXql0pUOrBuEeZC5dsZiVaArt25E5CYic2HlgSe6&_nc_ohc=6ZU7ptcKuqAQ7kNvwGFl9y6&_nc_oc=AdpNlrOsZRrzegGnGdJtXa2eLx7c8fbeff3NhDmdUKpVNnQ5E3vC9k_U7p40CEFwUXU&_nc_zt=23&_nc_ht=scontent.fmnl13-2.fna&_nc_gid=nvzQQ3de23k6Yu6T14cYUQ&_nc_ss=7b2a8&oh=00_AQKyYD7EKoQYBmS9xikV8N20YQrH7lByDV2_DlZ1pltdOA&oe=6AA31446',
-} as const
-
 // -----------------------------------------------------------------------------
 // ACCOMMODATIONS
 // -----------------------------------------------------------------------------
@@ -325,11 +307,8 @@ export const ACCOMMODATIONS: Accommodation[] = [
     images: [
       '/images/gmaps/img-01.jpg',
       '/images/gmaps/img-14.jpg',
-      FB_CDN['fb-06'],
       '/images/gmaps/img-04.jpg',
       '/images/gmaps/img-03.jpg',
-      FB_CDN['fb-05'],
-      FB_CDN['fb-07'],
       '/images/gmaps/img-08.jpg',
       '/images/gmaps/img-06.jpg',
     ],
@@ -354,7 +333,6 @@ export const ACCOMMODATIONS: Accommodation[] = [
     images: [
       '/images/gmaps/camping_units_stepping_stones.jpg',
       '/images/gmaps/img-02.jpg',
-      FB_CDN['fb-02'],
       '/images/gmaps/camping_units_garden.jpg',
       '/images/gmaps/img-09.jpg',
       '/images/gmaps/img-12.jpg',
