@@ -42,8 +42,8 @@ export type UnitBearing = {
  * How many Bookings an Accommodation can hold at once.
  *
  * One, unless the Admin has published more: the Main House is a single house, and
- * "Other / Ask Us" is not an Accommodation at all, so neither can be double-sold
- * on a unit count nobody wrote down.
+ * an Accommodation nobody published a unit count for is not a number of units, so
+ * neither can be double-sold on a figure that was never written down.
  */
 export function unitsForAccommodation(
   accommodationId: string,

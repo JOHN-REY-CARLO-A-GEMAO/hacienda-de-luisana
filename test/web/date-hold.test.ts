@@ -88,8 +88,7 @@ describe('unitsForAccommodation', () => {
     expect(unitsForAccommodation(single!.id, ACCOMMODATIONS)).toBe(1)
   })
 
-  it('is one for the "Other / Ask Us" choice, which is not a real Accommodation', () => {
-    expect(unitsForAccommodation('other', ACCOMMODATIONS)).toBe(1)
+  it('is one for an id that names no Accommodation at all', () => {
     expect(unitsForAccommodation('something-nobody-published', ACCOMMODATIONS)).toBe(1)
   })
 })

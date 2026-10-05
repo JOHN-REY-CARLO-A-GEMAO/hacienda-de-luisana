@@ -91,17 +91,14 @@ export function BookingPage() {
   // Booking is actually quoted at), else the Hacienda's own listed price; when
   // neither exists the summary says the Hacienda quotes it, rather than guess.
   const published = usePublishedRates()
-  const options = useMemo(() => [
-    ...ACCOMMODATIONS
-      .filter((a) => a.active && published?.accommodations[a.id]?.active !== false)
-      .map((a) => ({
-        id: a.id,
-        label: published?.accommodations[a.id]?.property_name?.trim() || a.name,
-      })),
-    { id: 'other', label: 'Other / Ask Us' },
-  ], [published])
+  const options = useMemo(() => ACCOMMODATIONS
+    .filter((a) => a.active && published?.accommodations[a.id]?.active !== false)
+    .map((a) => ({
+      id: a.id,
+      label: published?.accommodations[a.id]?.property_name?.trim() || a.name,
+    })), [published])
   const authoritativeQuote = useMemo(() => {
-    if (!published || form.accommodation === 'other') return undefined
+    if (!published) return undefined
     return quoteAccommodation(published, form.accommodation, {
       check_in: form.check_in,
       check_out: form.check_out,
@@ -154,9 +151,7 @@ export function BookingPage() {
     const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity)
     if (!guests.ok) e.guests = guests.message
     if (!form.accommodation) e.accommodation = 'Select an accommodation'
-    if (form.accommodation === 'other') {
-      e.accommodation = 'Please contact the Hacienda directly to discuss this request.'
-    } else if (!published) {
+    else if (!published) {
       e.accommodation = 'The Admin must publish the current guest-count rates before online booking can accept payment.'
     }
     if (published?.accommodations[form.accommodation]?.active === false) {
@@ -417,7 +412,7 @@ export function BookingPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-forest-950/75 via-forest-950/20 to-transparent" />
                 <div className="absolute bottom-4 left-5 right-5 text-cream-50">
                   <div className="text-[10px] uppercase tracking-eyebrow opacity-80">Your stay at a glance</div>
-                  <div className="font-serif text-2xl leading-tight">{selectedAcc?.name || 'Ask Us'}</div>
+                  <div className="font-serif text-2xl leading-tight">{selectedAcc?.name || '—'}</div>
                   <div className="mt-1 text-[11px] text-cream-100/80">{BUSINESS.address.city}, {BUSINESS.address.region}</div>
                 </div>
               </div>
