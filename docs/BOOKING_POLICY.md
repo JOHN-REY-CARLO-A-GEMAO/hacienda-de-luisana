@@ -19,7 +19,7 @@ The existing flow remains:
 
 1. `/book`: stay/date/party/contact/terms validation and availability feedback.
 2. Stay details saved as a session draft, not a Booking.
-3. `/book/pay`: validate claimed amount and required screenshot, re-check availability, attach the existing Guest identity, upload proof through the existing Supabase/demo adapter.
+3. `/book/pay`: validate claimed amount and required screenshot, hold the claim against the figures the screenshot prints (ADR-0012), re-check availability, attach the existing Guest identity, upload proof through the existing Supabase/demo adapter.
 4. `cloudBookingsDB.add`: proof gate, Pending/unverified payment, 24-hour Date hold, Firestore or labelled demo persistence, Submit Activity entry.
 5. Admin review/approval, availability re-check, verification, stay progression, historical payment/resend flow and refunds are unchanged.
 

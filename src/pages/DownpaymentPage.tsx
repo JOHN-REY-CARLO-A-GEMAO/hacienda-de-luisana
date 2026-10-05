@@ -12,7 +12,7 @@ import { paymentOptionsForTotal, quoteAccommodation } from '../lib/booking'
 import { uploadPaymentProof } from '../lib/payments'
 import { usePaymentInformation } from '../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from '../components/Booking/PaymentInformationPanel'
-import { amountMismatchNote, runReceiptOcr, suggestedAmount, type ReceiptAmount } from '../lib/payments/ocr'
+import { amountMismatchNote, claimAgainstReceipt, runReceiptOcr, suggestedAmount, type ReceiptAmount } from '../lib/payments/ocr'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
@@ -43,6 +43,13 @@ export function DownpaymentPage() {
   const [amountCandidates, setAmountCandidates] = useState<ReceiptAmount[]>([])
   const [reference, setReference] = useState('')
   const [ocrNote, setOcrNote] = useState('')
+  /**
+   * The Guest has said, on purpose, that their receipt shows an amount OCR did
+   * not read. Only they can know that — the Admin reads it off the screenshot —
+   * so it is a claim of theirs to make, and it is cleared the moment the
+   * screenshot is replaced or taken away.
+   */
+  const [claimOffReceipt, setClaimOffReceipt] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -57,14 +64,27 @@ export function DownpaymentPage() {
   const dueNow = selectedOption?.dueNow ?? null
   const paymentPlan = selectedOption?.plan ?? 'full' as const
   const deposit = quoted?.rateCard.securityDeposit
+  /**
+   * The claim, held against the evidence for it: the sentence that says the two
+   * disagree, or `null` when they agree, when the screenshot printed no figure to
+   * check against, and once the Guest has said on the record that their receipt
+   * reads differently from what was read off it — OCR is a hint engine, and only
+   * the Admin reads the screenshot for real.
+   */
+  const receiptCheck = claimAgainstReceipt(amount, amountCandidates)
+  const offReceipt = claimOffReceipt ? null : receiptCheck.ok ? null : receiptCheck.message
 
   useEffect(() => {
     if (!draft) navigate('/book', { replace: true })
   }, [draft, navigate])
 
+  // The published downpayment is the default claim, not the permanent one. Once
+  // a screenshot is attached the field belongs to the receipt: re-filling it
+  // whenever the Guest clears it put a figure the receipt never printed —
+  // `dueNow` — straight back into the claim they were correcting.
   useEffect(() => {
-    if (dueNow !== null && amount === '') setAmount(String(dueNow))
-  }, [dueNow, amount])
+    if (!proofFile && dueNow !== null && amount === '') setAmount(String(dueNow))
+  }, [dueNow, amount, proofFile])
 
   useEffect(() => {
     if (!proofFile) {
@@ -83,6 +103,7 @@ export function DownpaymentPage() {
     setError('')
     setOcrNote('')
     setAmountCandidates([])
+    setClaimOffReceipt(false)
     if (!file) return
     try {
       const fields = await runReceiptOcr(file)
@@ -142,6 +163,14 @@ export function DownpaymentPage() {
         return
       }
       const claimed = Number(amountCheck.value)
+      // The claim is checked against its own screenshot before it is checked
+      // against the published rate: a figure the receipt never printed is a
+      // wrong claim whatever the rate says, and `amount_claimed` is the number
+      // the Admin approves against. Nothing is uploaded or written first.
+      if (offReceipt) {
+        setError(offReceipt)
+        return
+      }
       if (dueNow !== null && claimed < dueNow) {
         setError(`The downpayment due now is ${peso(dueNow)}. The screenshot has to cover at least that amount.`)
         return
@@ -321,6 +350,11 @@ export function DownpaymentPage() {
                   onClick={() => {
                     setProofFile(null)
                     setAmountCandidates([])
+                    setClaimOffReceipt(false)
+                    // The figure that was read off this screenshot has no evidence
+                    // behind it any more, so it goes with the screenshot and the
+                    // published downpayment comes back as the default claim.
+                    setAmount(dueNow === null ? '' : String(dueNow))
                     if (fileInput.current) fileInput.current.value = ''
                   }}
                 >
@@ -382,10 +416,55 @@ export function DownpaymentPage() {
                 </label>
               </div>
 
-              {/* The underpayment check in `submit` compares this field against
-                  `dueNow`. When the field is pre-filled with `dueNow` it agrees
-                  with itself, so a Guest who sent less still files a full claim.
-                  This says so before the screenshot leaves the device. */}
+              {/* The claim against the evidence for it. `submit` refuses this, so it
+                  is said plainly here, with the figures the screenshot printed one
+                  click away — and with a way through for a Guest whose receipt the
+                  engine read wrong, because OCR is a hint and the Admin is the one
+                  who reads the screenshot. */}
+              {amountCandidates.length > 0 && (offReceipt || claimOffReceipt) && (
+                <div
+                  className={`mt-4 rounded-2xl border px-4 py-3 ${
+                    offReceipt ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50/60'
+                  }`}
+                >
+                  <span className={`block text-xs font-medium ${offReceipt ? 'text-red-700' : 'text-amber-900'}`}>
+                    {offReceipt ??
+                      `You are claiming an amount this screenshot does not show. The Admin reads the amount off your screenshot before approving this booking.`}
+                  </span>
+                  {offReceipt && (
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                      {amountCandidates.map((candidate) => (
+                        <button
+                          key={candidate.value}
+                          type="button"
+                          className="text-xs text-red-700 underline underline-offset-2"
+                          onClick={() => setAmount(candidate.value)}
+                        >
+                          Use {peso(Number(candidate.value))} ({candidate.label})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <label className="mt-2 flex items-start gap-2 text-xs text-amber-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="claim-off-receipt"
+                      className="mt-0.5"
+                      checked={claimOffReceipt}
+                      onChange={(event) => setClaimOffReceipt(event.target.checked)}
+                    />
+                    <span>
+                      My screenshot says a different amount. I typed it above from the receipt.
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              {/* The underpayment check in `submit` compares this field against `dueNow`, which
+                  the claim-vs-receipt panel above does not: a Guest can hold a
+                  figure their own screenshot prints and still owe more than that,
+                  and the Admin decides what it means. This says so before the
+                  screenshot leaves the device. */}
               {amountMismatchNote(Number(amount) || 0, dueNow ?? 0) && (
                 <p className="mt-4 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
                   {amountMismatchNote(Number(amount) || 0, dueNow ?? 0)}

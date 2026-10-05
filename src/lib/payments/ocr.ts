@@ -394,6 +394,48 @@ export function matchPaymentReference(input: {
 }
 
 /**
+ * Whether the amount a Guest is claiming is one of the figures their own
+ * screenshot prints.
+ *
+ * The claim is the Guest's statement about their money, and the screenshot is
+ * the only evidence for it. When OCR reads a figure the Guest then claims a
+ * different one, the two disagree and nothing else in the system can tell which
+ * is true — so the page stops and says so, rather than filing a claim the Admin
+ * has to disprove by hand.
+ *
+ * It is a check, never a wall. OCR is a hint engine (`canAutoVerifyFromOcr` is
+ * hard-coded off, and ADR-0012 leaves the Admin the decision): a blurry photo, a
+ * GCash/Maya/bank template the engine has not seen, or a plain OCR artifact all
+ * read figures that are not there. So a screenshot with no readable figure at
+ * all validates nothing — there is nothing to compare against — and the caller
+ * offers the Guest a way to say, deliberately, that the receipt says something
+ * else.
+ */
+export function claimAgainstReceipt(
+  claimed: string,
+  amounts: ReceiptAmount[],
+): { ok: true } | { ok: false; message: string } {
+  if (amounts.length === 0) return { ok: true }
+  // `validateAmount` owns the shape of this field — an empty, malformed or
+  // out-of-range claim is its error to report, and reporting it twice here
+  // would only put two complaints about one typo on the page.
+  const parsed = validateAmount(claimed)
+  if (!parsed.ok) return { ok: true }
+  const value = Number(parsed.value)
+  if (amounts.some((candidate) => Math.abs(Number(candidate.value) - value) < 0.005)) return { ok: true }
+  return {
+    ok: false,
+    message:
+      `You entered ₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ` +
+      `but your screenshot shows ` +
+      `${amounts
+        .map((a) => `₱${Number(a.value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${a.label})`)
+        .join(', ')}. ` +
+      'Use one of those figures, or say so below and the Admin will read it off your screenshot.',
+  }
+}
+
+/**
  * The sentence a Guest sees when the amount they entered is not the amount this
  * Booking asks for.
  *

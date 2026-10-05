@@ -70,11 +70,11 @@ The Guest's promise of money for a stay: a 50% Down payment from the computed st
 _Avoid_: Payment option (an option is one of the plans on offer), rate, price
 
 **Down payment**:
-50% of the computed standard-stay total, sent up front. It is calculated only after the applicable weekday/weekend-holiday guest schedule determines the total, then floored to whole centavos; the exact remaining balance is due at check-in.
+50% of the computed standard-stay total, sent up front. It is calculated only after the applicable weekday/weekend-holiday guest schedule determines the total, then floored to whole centavos; the exact remaining balance is due at check-in. It pre-fills the claimed amount, but it is a default and not the claim: the figure the Guest's Payment proof prints wins over it, and removing the screenshot returns the claim to this default.
 _Avoid_: Deposit (the Security deposit is a different, refundable-at-check-out amount), advance, retainer
 
 **Payment proof**:
-The receipt or screenshot a Guest uploads to claim a payment made outside the system.
+The receipt or screenshot a Guest uploads to claim a payment made outside the system. It is also the evidence for the claimed amount: when it prints readable peso figures, the claim must be one of them, and the Guest may deliberately say otherwise for the Admin to read off the screenshot (ADR-0012).
 _Avoid_: OR, receipt, transaction
 
 **Security deposit**:

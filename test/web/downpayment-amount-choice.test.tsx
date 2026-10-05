@@ -14,6 +14,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { DownpaymentPage } from '../../src/pages/DownpaymentPage'
 import { saveBookingDraft, clearBookingDraft } from '../../src/lib/bookingDraft'
+import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -104,6 +105,29 @@ async function attachReceipt(container: HTMLElement, text: string) {
 
 const amountInput = (container: HTMLElement) =>
   container.querySelector<HTMLInputElement>('input[inputmode="decimal"]')
+
+const offReceiptCheckbox = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLInputElement>('input[name="claim-off-receipt"]')][0]
+
+/**
+ * Type into a controlled input the way a person does. React listens for `input`
+ * and reads the value off the DOM node, so the value has to be written through
+ * the native setter — assigning `input.value` directly is a no-op React skips.
+ */
+function typeInto(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+  setter?.call(input, value)
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+async function typeAmount(container: HTMLElement, value: string) {
+  const input = amountInput(container)
+  if (!input) throw new Error('the amount field is missing')
+  await act(async () => {
+    typeInto(input, value)
+  })
+  await pump(1)
+}
 
 describe('DownpaymentPage and a screenshot that shows two amounts', () => {
   beforeEach(() => {
@@ -206,5 +230,169 @@ describe('DownpaymentPage and a screenshot that shows two amounts', () => {
 
     // No stale radios left over a screenshot that is no longer attached.
     expect(container.querySelectorAll('input[name="screenshot-amount"]')).toHaveLength(0)
+  })
+})
+
+/**
+ * The claim against the evidence for it.
+ *
+ * The bug this exists for. The published downpayment pre-fills the amount field,
+ * and a Guest who sent something else — 1,020 against a 2,000 downpayment —
+ * could file the pre-fill as their claim, and the Admin only found out by
+ * opening the screenshot. The claim has to be checked against the screenshot it
+ * is filed with. OCR is a hint engine, though (ADR-0012, `canAutoVerifyFromOcr`),
+ * so the check is a question with a way through, never a wall.
+ */
+describe('DownpaymentPage and a claim the screenshot does not show', () => {
+  // A published 50% down-payment, and the page pre-fills it. The draft checks in
+  // on a Friday, so the weekend/holiday rate applies: ₱6,000 for the stay, ₱3,000
+  // due now. Without a published rate there is no pre-fill to protect and the
+  // tests below would pass on nothing.
+  const PREFILL = '3000'
+
+  beforeEach(() => {
+    localStorage.clear()
+    localStorage.setItem(LOCAL_RATES_KEY, JSON.stringify({
+      version: 'test-v2', effective_date: '2026-10-01', holiday_dates: [],
+      accommodations: {
+        'main-house': {
+          property_name: 'The Main House', rate_unit: 'standard_stay', active: true,
+          security_deposit: 0, down_payment_percent: 50,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+          },
+        },
+      },
+    }))
+    clearBookingDraft()
+    saveBookingDraft({
+      accommodation: 'main-house',
+      check_in: '2029-06-01',
+      check_out: '2029-06-02',
+      guests: 10,
+      name: 'John Guest',
+      phone: '09304857798',
+      email: 'j23245164@gmail.com',
+      special_requests: '',
+    })
+  })
+
+  afterEach(() => {
+    for (const root of mounted.splice(0)) act(() => root.unmount())
+    document.body.innerHTML = ''
+  })
+
+  it('refuses a figure the screenshot never printed, and names the one it did', async () => {
+    const container = renderPage()
+    await pump(2)
+    await attachReceipt(container, AGREEING_RECEIPT)
+    expect(amountInput(container)?.value).toBe('1020.00')
+
+    await typeAmount(container, '2000')
+
+    // The complaint is about the receipt, so it quotes the receipt: what was
+    // claimed, what the screenshot printed, and under which label.
+    expect(container.textContent).toContain('₱2,000.00')
+    expect(container.textContent).toContain('₱1,020.00 (Total Amount Sent)')
+    expect(offReceiptCheckbox(container)).toBeTruthy()
+  })
+
+  it('offers the screenshot’s own figures one click away', async () => {
+    const container = renderPage()
+    await pump(2)
+    await attachReceipt(container, AGREEING_RECEIPT)
+    await typeAmount(container, '2000')
+
+    const use = [...container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Use ₱1,020'),
+    )
+    expect(use).toBeTruthy()
+    await act(async () => {
+      use!.click()
+    })
+    await pump(1)
+
+    // Taking the figure the receipt printed settles it, with nothing to answer.
+    expect(amountInput(container)?.value).toBe('1020.00')
+    expect(container.textContent).not.toContain('₱2,000.00')
+  })
+
+  it('lets the Guest through once they say on the record that the receipt reads differently', async () => {
+    const container = renderPage()
+    await pump(2)
+    await attachReceipt(container, AGREEING_RECEIPT)
+    await typeAmount(container, '2000')
+    expect(container.textContent).toContain('₱2,000.00')
+
+    const checkbox = offReceiptCheckbox(container)
+    await act(async () => {
+      checkbox!.click()
+    })
+    await pump(1)
+
+    // Still telling the Admin the two disagree — the override waives the block,
+    // it does not pretend the screenshot says what the claim says.
+    expect(amountInput(container)?.value).toBe('2000')
+    expect(container.textContent).toContain('You are claiming an amount this screenshot does not show')
+    expect(container.textContent).not.toContain('₱2,000.00 but your screenshot shows')
+
+    // And it can be withdrawn again.
+    await act(async () => {
+      checkbox!.click()
+    })
+    await pump(1)
+    expect(container.textContent).toContain('₱2,000.00 but your screenshot shows')
+  })
+
+  it('does not put the published downpayment back into a claim the Guest is correcting', async () => {
+    const container = renderPage()
+    await pump(2)
+    expect(amountInput(container)?.value).toBe(PREFILL)
+
+    await attachReceipt(container, AGREEING_RECEIPT)
+    expect(amountInput(container)?.value).toBe('1020.00')
+
+    // Clearing the field to retype it used to hand the pre-fill straight back —
+    // a figure the screenshot does not contain, filed as the Guest's claim.
+    await typeAmount(container, '')
+
+    expect(amountInput(container)?.value).toBe('')
+    expect(amountInput(container)?.value).not.toBe(PREFILL)
+  })
+
+  it('takes the claim back to the published downpayment when the screenshot is removed', async () => {
+    const container = renderPage()
+    await pump(2)
+    expect(amountInput(container)?.value).toBe(PREFILL)
+
+    await attachReceipt(container, AGREEING_RECEIPT)
+    expect(amountInput(container)?.value).toBe('1020.00')
+
+    const remove = [...container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Remove screenshot'),
+    )
+    await act(async () => {
+      remove!.click()
+    })
+    await pump(1)
+
+    // The figure that was read off that screenshot has no evidence behind it any
+    // more, so it goes with the screenshot rather than staying as the claim.
+    expect(amountInput(container)?.value).toBe(PREFILL)
+    expect(offReceiptCheckbox(container)).toBeFalsy()
+  })
+
+  it('asks nothing of a Guest whose screenshot printed no figure at all', async () => {
+    const container = renderPage()
+    await pump(2)
+    // A photo the engine could not read leaves nothing to compare against, and a
+    // Guest who paid perfectly well must not be walled off for it.
+    await attachReceipt(container, 'GCash Express Send\nRef No. 7044 357 122304')
+    await typeAmount(container, '2000')
+
+    expect(container.textContent).not.toContain('your screenshot shows')
+    expect(offReceiptCheckbox(container)).toBeFalsy()
   })
 })

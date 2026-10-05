@@ -5,7 +5,11 @@
  * between the first and last group, so the digits never appear as one run.
  */
 import { describe, expect, it } from 'vitest'
-import { extractReceiptFields, extractReferenceNumber } from '../../src/lib/payments/ocr'
+import {
+  claimAgainstReceipt,
+  extractReceiptFields,
+  extractReferenceNumber,
+} from '../../src/lib/payments/ocr'
 
 const GCASH_EXPRESS_SEND = `10:23 AM @ Tl ft.
 X Express Send
@@ -97,5 +101,62 @@ describe('extractReceiptFields on other receipts', () => {
   it('reports low confidence when only the amount is readable', () => {
     const out = extractReceiptFields('GCash\n₱5,000.00\nRef No. 12345')
     expect(out).toMatchObject({ reference: '', amount: '5000.00', confidence: 'low' })
+  })
+})
+
+describe('claimAgainstReceipt', () => {
+  // The captured receipt above prints one figure — `1,020.00`, under `Amount` and
+  // under the more specific `Total Amount Sent` — so this is the real shape a
+  // Guest's claim is checked against.
+  const receipt = extractReceiptFields(GCASH_EXPRESS_SEND).amounts
+  const claim = (raw: string, figures = receipt) => claimAgainstReceipt(raw, figures)
+
+  it('accepts the figure the screenshot prints', () => {
+    expect(claim('1020.00')).toEqual({ ok: true })
+  })
+
+  it('accepts the same figure however the Guest typed it', () => {
+    // A Guest copying off a phone keyboard writes commas, one decimal, or none
+    // at all. The figure is the same peso value and must read as the same claim.
+    for (const raw of ['1,020', '1020', '1020.0', ' 1020.00 ', '1,020.00']) {
+      expect(claim(raw)).toEqual({ ok: true })
+    }
+  })
+
+  it('refuses a claim the screenshot never printed, and names the figure it did', () => {
+    // The bug this exists for: the published downpayment pre-fills the field, a
+    // Guest who sent something else files that number anyway, and the only thing
+    // that can catch it is the receipt they attached.
+    const out = claim('2000')
+    expect(out.ok).toBe(false)
+    const message = out.ok ? '' : out.message
+    expect(message).toContain('₱2,000.00')
+    expect(message).toContain('₱1,020.00')
+    // Under the label the receipt printed it under, so the Guest knows which of
+    // the two figures on the screen is the one being claimed.
+    expect(message).toContain('(Total Amount Sent)')
+  })
+
+  it('accepts either of two figures a screenshot prints', () => {
+    const two = extractReceiptFields('Amount 2,500.00\nTotal Amount Sent 1,020.00').amounts
+    expect(claim('2500.00', two)).toEqual({ ok: true })
+    expect(claim('1020', two)).toEqual({ ok: true })
+    expect(claim('2000', two).ok).toBe(false)
+  })
+
+  it('validates nothing when the screenshot printed no figure at all', () => {
+    // A photo the engine could not read leaves nothing to compare against.
+    // Blocking here would wall off a Guest who paid perfectly well.
+    expect(claim('2000', [])).toEqual({ ok: true })
+    expect(claimAgainstReceipt('2000', extractReceiptFields('Ref No. 7044 357 122304').amounts)).toEqual({
+      ok: true,
+    })
+  })
+
+  it('leaves a claim that is not a number to the field validator', () => {
+    // One typo, one complaint — `validateAmount` says what is wrong with it.
+    expect(claim('')).toEqual({ ok: true })
+    expect(claim('abc')).toEqual({ ok: true })
+    expect(claim('10.999')).toEqual({ ok: true })
   })
 })
