@@ -247,26 +247,50 @@ service cloud.firestore {
       return hours > 0 && rate is number ? int(hours * rate * 100 + 0.5) / 100 : 0;
     }
 
+    // The classification of a check-in date under the published holiday list: a
+    // Friday or Saturday check-in, or any Admin-listed holiday, is the
+    // weekend_holiday rate; everything else is a weekday. One function so
+    // validAuthoritativeMoney does not hold two more names for it.
+    //
+    // Firestore's dayOfWeek is Monday=1 ... Sunday=7. Sunday 2 PM is a weekday
+    // start; the weekend nights are Friday and Saturday.
+    function classifyCheckIn(published, data) {
+      let date = data.check_in.split('-');
+      let checkIn = timestamp.date(int(date[0]), int(date[1]), int(date[2]));
+      let holidays = published.get('holiday_dates', []);
+      let holiday = holidays is list && data.check_in in holidays;
+      return checkIn.dayOfWeek() in [5, 6] || holiday ? 'weekend_holiday' : 'weekday';
+    }
+
+    // The stay total: the accommodation's own published figure plus the charges
+    // published for pets and a late checkout.
+    //
+    // Its own function on purpose. Rules cap a function at ten variables and
+    // validAuthoritativeMoney already sits near that ceiling, so the addon
+    // arithmetic gets names of its own here instead of crowding that one.
+    function stayTotalWithAddons(published, base, data) {
+      let pets = int(petFee(published, data) * 100 + 0.5) / 100;
+      let hours = int(lateCheckoutFee(published, data) * 100 + 0.5) / 100;
+      return int((base + pets + hours) * 100 + 0.5) / 100;
+    }
+
     function validAuthoritativeMoney(data) {
       let published = get(/databases/$(database)/documents/site_config/rates).data;
       let rate = published.accommodations[data.accommodation];
       let pricing = rate.get('guest_pricing', {});
       let allowThreeGuestCap = data.accommodation == 'house-a-camping';
-      let start = data.check_in.split('-');
-      let checkIn = timestamp.date(int(start[0]), int(start[1]), int(start[2]));
       let holidayDates = published.get('holiday_dates', []);
-      let holiday = holidayDates is list && data.check_in in holidayDates;
-      // Firestore's dayOfWeek is Monday=1 ... Sunday=7. Weekend check-in
-      // nights are Friday and Saturday; Sunday 2 PM is a weekday start.
-      let weekend = checkIn.dayOfWeek() in [5, 6];
-      let classification = weekend || holiday ? 'weekend_holiday' : 'weekday';
+      let classification = classifyCheckIn(published, data);
       let schedule = classification == 'weekend_holiday'
         ? pricing.get('weekend_holiday', {}) : pricing.get('weekday', {});
       let amount = scheduledRate(schedule, data.guests);
       // `amount` is the accommodation's own published figure. The addons are
       // recorded separately and `total` is what the 50/50 split is taken from, so
       // a Booking states what it is paying for rather than one larger number.
-      let total = int((amount + petFee(published, data) + lateCheckoutFee(published, data)) * 100 + 0.5) / 100;
+      // The sum is its own function: rules cap a function at ten variables, and
+      // validAuthoritativeMoney is already near that ceiling, so the extra names
+      // belong in a function of their own rather than here.
+      let total = stayTotalWithAddons(published, amount, data);
       let due = int(total * 50) / 100;
       return published.keys().hasAny(['holiday_dates'])
         && holidayDates is list

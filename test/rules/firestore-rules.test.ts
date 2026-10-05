@@ -285,6 +285,79 @@ describe('official guest-count rates', () => {
     }) }, officialStore)).toBe(true)
   })
 
+  // The A-House occupancy is published from the Admin app and also typed by hand
+  // into the Firebase console, and a console edit lands without ever passing
+  // through `validatePublishedRates`. So the shape the rules actually meet is not
+  // guaranteed to be the documented one, and the rules have to fail closed on the
+  // difference: a Guest asking for an ordinary three-guest stay is refused,
+  // because a schedule the rules cannot price is not one a Guest may book against.
+  //
+  // Each shape below is a drift that reached the live document at least once.
+  // None of them is a question about the guest count, so none of them may be
+  // answered by refusing only the larger bookings: every one has to refuse the
+  // smallest one too. One `it` per drift, so a weakened rule names the drift it
+  // let through instead of only the first.
+  describe('an A-House schedule that drifts from the documented occupancy', () => {
+    const documented = { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500 }
+
+    // The smallest stay the A-House sells: three guests, no pets, no extension,
+    // weekday. Nothing about it is contentious, so a refusal can only come from
+    // the published shape.
+    const threeGuestStay = officialBooking({
+      accommodation: 'house-a-camping', guests: 3, rate_amount: 1000, rate_classification: 'weekday',
+      rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
+    })
+
+    // Replaces one schedule of the A-House and leaves every other field alone, so
+    // the shape is the only variable.
+    const drifted = (patch: DocData, which: 'weekday' | 'weekend_holiday' = 'weekday'): Store => {
+      const store = structuredClone(officialStore)
+      const rates = store['site_config/rates']! as DocData
+      const house = (rates.accommodations as DocData)['house-a-camping'] as DocData
+      const pricing = house.guest_pricing as DocData
+      pricing[which] = patch
+      return store
+    }
+
+    const stay = (id: string) =>
+      allow({ path: `bookings/${id}`, method: 'create', auth: anonymousGuest(), requestData: threeGuestStay },
+        drifted({ ...documented }))
+    const refuse = (id: string, patch: DocData, which: 'weekday' | 'weekend_holiday' = 'weekday') =>
+      deny({ path: `bookings/${id}`, method: 'create', auth: anonymousGuest(), requestData: threeGuestStay },
+        drifted(patch, which))
+
+    // The control. Without it a refusal below could be the fixture's doing.
+    it('admits the three-guest stay on the documented shape', () => {
+      expect(stay('ahouse-documented')).toBe(true)
+    })
+
+    // The cap pulled down onto the base occupancy. The fourth guest would then be
+    // refused, and so is the third, because the shape is not the documented one.
+    it('refuses a cap pulled down onto the base occupancy', () => {
+      expect(refuse('ahouse-cap-lowered', { ...documented, max_guests: 3 })).toBe(true)
+    })
+
+    // The excess rule dropped while the cap stands: a cap admitting a guest the
+    // base rate does not cover, which is the pair `validAHouseSchedule` exists to
+    // refuse, and which would price that fourth guest for nothing.
+    it('refuses a cap left without an excess rule', () => {
+      expect(refuse('ahouse-no-excess', { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4 })).toBe(true)
+    })
+
+    // The base occupancy stretched up to the cap: the cap stops meaning anything
+    // and the fourth guest becomes free rather than ₱500.
+    it('refuses a base occupancy stretched up to the cap', () => {
+      expect(refuse('ahouse-base-stretched', { ...documented, base_max_guests: 4 })).toBe(true)
+    })
+
+    // One schedule corrected and the other left behind. Both are priced on a
+    // booking, so both are checked: a weekday stay is refused over a drifted
+    // weekend schedule, which is how a half-finished console edit hides.
+    it('refuses a stay when only the other schedule has drifted', () => {
+      expect(refuse('ahouse-weekend-behind', { ...documented, max_guests: 3 }, 'weekend_holiday')).toBe(true)
+    })
+  })
+
   it('rejects manipulated totals, invalid counts and multi-stays', () => {
     expect(deny({ path: 'bookings/official-tampered', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ stay_total: 1 }) }, officialStore)).toBe(true)
     expect(deny({ path: 'bookings/official-count', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 0 }) }, officialStore)).toBe(true)

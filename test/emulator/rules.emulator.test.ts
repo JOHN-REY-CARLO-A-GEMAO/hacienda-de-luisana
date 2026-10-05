@@ -178,7 +178,14 @@ function quotedBooking(
   const classification = options.holiday || day === 5 || day === 6 ? 'weekend_holiday' : 'weekday'
   const accommodation = options.accommodation ?? 'main-house'
   const isAHouse = accommodation === 'house-a-camping'
-  const total = isAHouse ? 1000 : (classification === 'weekend_holiday' ? 6000 : 5000) + Math.max(0, guests - 10) * 500
+  // A-House has its own included occupancy: three guests inside the base rate,
+  // and a fourth accommodated for a fee. It is the one unit with a hard cap, so
+  // the guest count has to reach the total — quoting a flat ₱1000 would underpay
+  // every stay above three and the rules would refuse it as a tampered total
+  // rather than as a breach of the cap, which is a different assertion entirely.
+  const total = isAHouse
+    ? 1000 + Math.max(0, guests - 3) * 500
+    : (classification === 'weekend_holiday' ? 6000 : 5000) + Math.max(0, guests - 10) * 500
   const due = Math.floor(total * 50) / 100
   return bookingDoc({
     check_in: checkIn,
@@ -986,11 +993,17 @@ describe('published guest-count prices: independent Firestore verification', () 
     await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'configured-holiday'), quotedBooking(holiday, 10, { holiday: true })))
   })
 
-  it('allows one A-House for up to three guests and refuses a fourth', async () => {
+  it('prices one A-House up to four guests and refuses a fifth', async () => {
     const guest = anonymousGuest()
     const date = futureDateForDay(3)
+    // Three guests sit inside the published base rate.
     await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'a-house-three'), quotedBooking(date, 3, { accommodation: 'house-a-camping' })))
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'a-house-four'), quotedBooking(date, 4, { accommodation: 'house-a-camping' })))
+    // The fourth is accommodated for ₱500 on top of it. This is the case the cap
+    // exists for: `max_guests` admits a guest the base rate does not cover, so the
+    // excess rule has to be published and priced or the stay cannot be booked.
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'a-house-four'), quotedBooking(date, 4, { accommodation: 'house-a-camping' })))
+    // A fifth is past the documented cap, whatever the guest claims to have paid.
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'a-house-five'), quotedBooking(date, 5, { accommodation: 'house-a-camping' })))
   })
 
   it('stores only the exact Admin-published refund-policy snapshot', async () => {
