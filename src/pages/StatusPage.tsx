@@ -8,6 +8,7 @@ import {
   type FieldState,
 } from '../lib/firebaseConfig'
 import { lastIdentityFailure } from '../lib/guestAuth'
+import { getSupabaseStatus, describeSupabaseSource, supabaseConfigReport } from '../lib/supabase'
 import { runConnectionCheck, currentIdentity, type Check, type CheckStatus } from '../lib/connectionCheck'
 
 /**
@@ -51,6 +52,7 @@ const CHECK_MARK: Record<CheckStatus, string> = {
 
 export function StatusPage() {
   const status = getFirebaseStatus()
+  const proofStorage = getSupabaseStatus()
   const [checks, setChecks] = useState<Check[] | null>(null)
   const [running, setRunning] = useState(false)
   const identity = currentIdentity()
@@ -113,6 +115,47 @@ export function StatusPage() {
             <p className="mt-2 text-xs text-amber-800">
               This build points at the local Emulator Suite — right for practice on a laptop, wrong for a
               real deployment.
+            </p>
+          )}
+        </div>
+
+        {/* The second half of the same question: does a Guest's receipt survive? */}
+        <div
+          className={`mt-4 rounded-3xl border p-6 ${
+            proofStorage.configured
+              ? 'bg-emerald-50 border-emerald-200'
+              : 'bg-red-50 border-red-200'
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              className={`text-[11px] uppercase tracking-eyebrow font-semibold ${
+                proofStorage.configured ? 'text-emerald-800' : 'text-red-800'
+              }`}
+            >
+              {proofStorage.configured ? 'Payment proofs reach the Admin' : 'Payment proofs do NOT arrive'}
+            </span>
+            <span className="text-xs text-forest-700/70">
+              {proofStorage.configured
+                ? `Supabase bucket ${proofStorage.bucket}`
+                : 'No Supabase project in this build'}
+            </span>
+          </div>
+          <p
+            className={`mt-2 text-sm leading-relaxed ${
+              proofStorage.configured ? 'text-forest-800/90' : 'text-red-900'
+            }`}
+          >
+            {proofStorage.configured
+              ? 'A Guest’s downpayment screenshot is uploaded to the storage bucket the Admin app reads, so every Booking in the review queue has a receipt behind it.'
+              : 'Bookings would still be created, but each Guest’s screenshot would stay in that Guest’s own browser. The Admin would open a Pending booking pointing at a receipt that exists nowhere — and nothing on screen would report an error. This is the failure this page exists to make visible.'}
+          </p>
+          <p className="mt-2 text-xs text-forest-800/70 leading-relaxed">
+            {describeSupabaseSource(supabaseConfigReport.source)}
+          </p>
+          {proofStorage.refusedEnvKeys.length > 0 && (
+            <p className="mt-2 text-xs text-red-800">
+              Set but refused: {proofStorage.refusedEnvKeys.join(', ')}
             </p>
           )}
         </div>
@@ -205,6 +248,38 @@ export function StatusPage() {
         )}
 
         {/* What to do about it */}
+        <h2 className="font-serif text-2xl mt-12 text-forest-900">If it says Demo mode</h2>
+        <ol className="mt-3 space-y-3 text-sm text-forest-800/90 leading-relaxed list-decimal pl-5">
+          <li>
+            On <strong>Vercel → the project → Settings → Environment Variables</strong>, add the{' '}
+            <code className="font-mono text-xs">VITE_SUPABASE_URL</code> and{' '}
+            <code className="font-mono text-xs">VITE_SUPABASE_ANON_KEY</code> values (Supabase → Project
+            Settings → API) if you would rather not rely on the committed project. Both are public by design;
+            the <code className="font-mono text-xs">service_role</code> key never belongs in a{' '}
+            <code className="font-mono text-xs">VITE_</code> variable, because everything Vite exposes to the
+            browser is public.
+          </li>
+        </ol>
+
+        <h2 className="font-serif text-2xl mt-8 text-forest-900">If payment proofs do not arrive</h2>
+        <ol className="mt-3 space-y-3 text-sm text-forest-800/90 leading-relaxed list-decimal pl-5">
+          <li>
+            With no <code className="font-mono text-xs">VITE_SUPABASE_*</code> variables set, a production
+            build falls back to the project committed in{' '}
+            <code className="font-mono text-xs">src/lib/supabaseDefaults.ts</code>. The deploy workflow builds
+            with <code className="font-mono text-xs">SUPABASE_ENV_STRICT=1</code>, so a build that cannot
+            resolve a project <em>fails</em> rather than shipping one that loses receipts — if a deployment
+            succeeded, this panel should be green.
+          </li>
+          <li>
+            Green here means the bytes will be sent. Whether the bucket <em>accepts</em> them depends on the
+            policies in <code className="font-mono text-xs">supabase/01-storage.sql</code> being applied to
+            the project in the Supabase dashboard. An upload refused with{' '}
+            <code className="font-mono text-xs">42501</code> means they are not, and no booking can be
+            submitted until they are.
+          </li>
+        </ol>
+
         <h2 className="font-serif text-2xl mt-12 text-forest-900">If it says Demo mode</h2>
         <ol className="mt-3 space-y-3 text-sm text-forest-800/90 leading-relaxed list-decimal pl-5">
           <li>

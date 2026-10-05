@@ -24,7 +24,20 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # The Firebase project and the Supabase project both come from committed
+      # defaults (`src/lib/firebaseDefaults.ts`, `src/lib/supabaseDefaults.ts`),
+      # so a dashboard variable is an override rather than a requirement. That is
+      # what stopped a production build from silently shipping with no Supabase
+      # project at all — Guest screenshots stayed in their own browsers while the
+      # Bookings reached Firestore (finding F12).
+      #
+      # SUPABASE_ENV_STRICT makes that class of failure a *failed build* rather
+      # than a working website that quietly loses every payment proof. With the
+      # defaults committed this build passes; if the defaults are ever emptied or
+      # the variables are pointed at a placeholder, the deploy stops instead.
       - run: npm run build
+        env:
+          SUPABASE_ENV_STRICT: '1'
       - run: cp dist/index.html dist/404.html && touch dist/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

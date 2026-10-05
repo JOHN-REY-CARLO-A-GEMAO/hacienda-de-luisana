@@ -2,6 +2,8 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolveFirebaseConfig } from './src/lib/firebaseConfig'
 import { COMMITTED_PROJECT } from './src/lib/firebaseDefaults'
+import { resolveSupabaseConfig } from './src/lib/supabaseConfig'
+import { COMMITTED_SUPABASE } from './src/lib/supabaseDefaults'
 
 /**
  * Say, in the build log, which Firebase project this bundle is being built for.
@@ -73,8 +75,68 @@ function firebaseConfigReport(): Plugin {
   }
 }
 
+/**
+ * Say, in the build log, which Supabase project this bundle will upload payment
+ * proofs to.
+ *
+ * The same silent failure as above, one store over: a build with no
+ * `VITE_SUPABASE_*` variables is a *working* website whose Guests' downpayment
+ * screenshots stay in their own browsers, while their Bookings are created in
+ * Firestore pointing at proof paths the Admin cannot open. That was finding F12,
+ * and nothing in the build output mentioned it.
+ *
+ * `SUPABASE_ENV_STRICT=1` makes a production build with no Supabase project
+ * *fail*. That is the setting to turn on once real Guests are paying: from then
+ * on a forgotten variable breaks the deploy instead of losing a receipt.
+ */
+function supabaseConfigReport(): Plugin {
+  return {
+    name: 'hdl:supabase-config-report',
+    apply: 'build',
+    configResolved(config) {
+      const env = loadEnv(config.mode, config.envDir ?? process.cwd(), 'VITE_')
+      const report = resolveSupabaseConfig({
+        env,
+        defaults: COMMITTED_SUPABASE,
+        allowDefaults: true,
+      })
+
+      if (report.configured) {
+        const where =
+          report.source === 'env'
+            ? 'from VITE_SUPABASE_* environment variables'
+            : report.source === 'defaults'
+              ? 'from src/lib/supabaseDefaults.ts (this build has no VITE_SUPABASE_* variables)'
+              : 'partly from the environment, the rest from src/lib/supabaseDefaults.ts'
+        config.logger.info(
+          `\n[supabase] Payment proofs will upload to "${new URL(report.config.url).hostname}" — ${where}.`,
+        )
+        if (report.refusedEnvKeys.length > 0) {
+          config.logger.warn(
+            `[supabase] Set but refused (still the placeholder from .env.example): ` +
+              `${report.refusedEnvKeys.join(', ')}.`,
+          )
+        }
+      } else {
+        const banner =
+          '[supabase] This build has NO Supabase project. Payment-proof screenshots will stay in the ' +
+          'guest’s own browser and will NOT reach the Admin app.\n' +
+          '[supabase]   Fix it with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the hosting ' +
+          'dashboard, or by filling src/lib/supabaseDefaults.ts.'
+        if (process.env.SUPABASE_ENV_STRICT === '1') {
+          throw new Error(
+            `${banner}\n[supabase] SUPABASE_ENV_STRICT=1, so this build is refused rather than shipped ` +
+              'with proofs that never arrive.',
+          )
+        }
+        config.logger.warn(`\n${banner}`)
+      }
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), firebaseConfigReport()],
+  plugins: [react(), firebaseConfigReport(), supabaseConfigReport()],
   // Custom domain: https://haciendadeluisana.com — must be "/"
   base: '/',
   server: {
