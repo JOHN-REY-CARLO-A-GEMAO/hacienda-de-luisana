@@ -10,7 +10,11 @@ import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
 import '../../services/guest_conversation_lookup.dart';
+import '../../services/pin_store.dart';
+import '../../services/security_gate.dart';
 import '../inbox/inbox_screen.dart';
+import '../security/secure_action_sheet.dart';
+import '../security/security_pin_sheet.dart';
 import '../../tutorial/tutorial_controller.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
@@ -23,6 +27,29 @@ class BookingsScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<BookingsScreen> createState() => _BookingsScreenState();
+}
+
+/// One line of consequence for a quick action, in the gate's own words —
+/// the sheet names what the tap will do before the tap does it (ADR-0015).
+String quickConsequence(BookingModel booking, AdminAction action) {
+  switch (action) {
+    case AdminAction.approve:
+      final amount = booking.amountClaimed ??
+          (booking.amountDue ?? 0) + (booking.securityDeposit ?? 0);
+      return 'This verifies ₱${amount.toStringAsFixed(0)} and firms the dates '
+          '${DateFormatter.formatStayRange(booking.checkInDate, booking.checkOutDate)}. '
+          'It cannot be undone.';
+    case AdminAction.checkIn:
+      return 'The Booking becomes Checked-In for the stay recorded on it.';
+    case AdminAction.beginStay:
+      return 'The Booking becomes Staying — the Guest is on the property.';
+    case AdminAction.checkOut:
+      return 'The Booking becomes Checked-Out, which opens the Review window.';
+    case AdminAction.complete:
+      return 'The Booking becomes Completed — its last state.';
+    default:
+      return 'This changes the Booking\'s state on the Activity log.';
+  }
 }
 
 class _BookingsScreenState extends ConsumerState<BookingsScreen> {
@@ -335,7 +362,29 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     return null;
   }
 
+  /// The gate (ADR-0015) sits in front of the quick tap: Approve asks for
+  /// the Security PIN, the stay transitions ask for a confirm — neither is
+  /// ever one bare tap on a card any more.
   Future<void> _runQuick(BookingModel booking, AdminAction action) async {
+    SecurityTicket? ticket;
+    if (gateForBookingAction(action, proofRejectionCancels: false) ==
+        GateLevel.pin) {
+      ticket = await requirePinTicket(
+        context,
+        ref: ref,
+        title: '${action.label} — ${booking.guestName}',
+        consequence: quickConsequence(booking, action),
+      );
+      if (ticket == null) return;
+    } else {
+      final ok = await showSecureConfirm(
+        context,
+        title: '${action.label} — ${booking.guestName}?',
+        body: quickConsequence(booking, action),
+      );
+      if (!ok) return;
+    }
+    if (!mounted) return;
     final auth = legacy.Provider.of<AuthStore>(context, listen: false);
     final actor = Actor.admin(
       auth.uid ?? auth.sessionEmail ?? 'admin',
@@ -343,7 +392,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     );
     final result = await ref
         .read(firestoreServiceProvider)
-        .applyBookingAction(booking, action, actor);
+        .applyBookingAction(booking, action, actor, ticket: ticket);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       backgroundColor: result.ok ? null : AppColors.statusAlert,

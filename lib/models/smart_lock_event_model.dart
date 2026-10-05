@@ -117,6 +117,20 @@ class SmartLockEventModel {
   final bool isSuccess;
   final String? notes;
 
+  /// The uid the rules require on every `access_logs` create
+  /// (`request.resource.data.uid == request.auth.uid`). The simulator rows
+  /// and a real Mobile Key write both carry it.
+  final String? uid;
+
+  /// The Booking reference the touch was about, when there was one.
+  final String? refId;
+
+  /// True for the simulator's demonstration rows. They are tagged so the
+  /// audit trail says what they are instead of passing as real RFID
+  /// history (ADR-0015's bundled fixes); `firestore.rules` allows the extra
+  /// key because `access_logs` create checks `hasAll`, not `hasOnly`.
+  final bool simulated;
+
   SmartLockEventModel({
     required this.id,
     required this.doorName,
@@ -127,6 +141,9 @@ class SmartLockEventModel {
     required this.timestamp,
     required this.isSuccess,
     this.notes,
+    this.uid,
+    this.refId,
+    this.simulated = false,
   });
 
   factory SmartLockEventModel.fromJson(Map<String, dynamic> json, [String? docId]) {
@@ -147,6 +164,9 @@ class SmartLockEventModel {
           : DateTime.now(),
       isSuccess: (json['isSuccess'] ?? json['success'] ?? (action != LockAction.denied)) as bool,
       notes: json['notes'] ?? json['reason'],
+      uid: json['uid'],
+      refId: json['ref_id'] ?? json['refId'],
+      simulated: json['simulated'] == true,
     );
   }
 
@@ -161,6 +181,13 @@ class SmartLockEventModel {
       'timestamp': timestamp.toIso8601String(),
       'isSuccess': isSuccess,
       'notes': notes,
+      // The keys `firestore.rules` holds every access_logs create to.
+      'uid': uid,
+      'ref_id': refId,
+      'result': isSuccess ? 'granted' : 'denied',
+      // Written as-is; absent (not false) when this is a real row, so the
+      // historical shape stays the historical shape.
+      if (simulated) 'simulated': true,
     };
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../models/booking_model.dart';
 import '../models/smart_lock_event_model.dart';
@@ -8,6 +9,8 @@ import '../models/guest_crm_model.dart';
 import '../core/constants/app_constants.dart';
 import 'booking_lifecycle.dart';
 import 'mock_data_service.dart';
+import 'pin_store.dart' show PinSecurityRemote, SecurityTicket;
+import 'security_gate.dart';
 
 /// Why a `site_config/payment` document cannot be published, or null when it can.
 ///
@@ -68,7 +71,7 @@ String? validatePaymentInformationDocument(Map<String, dynamic> doc) {
   return null;
 }
 
-class FirestoreService {
+class FirestoreService implements PinSecurityRemote {
   final FirebaseFirestore? _firestore;
   bool _isFirebaseReady = false;
 
@@ -282,7 +285,21 @@ class FirestoreService {
     AdminAction action,
     Actor actor, {
     ActionInput input = const ActionInput(),
+    SecurityTicket? ticket,
   }) async {
+    // The structural backstop (ADR-0015): every Booking action re-asks what
+    // the gate demands of it, so a call site that forgets the PIN sheet
+    // still cannot take a PIN-tier action — the service refuses anything at
+    // that tier without a fresh ticket. Confirm-tier actions pass with no
+    // ticket; their deliberate input is the confirm modal (or, for Reject,
+    // the reason the Guest reads).
+    if (gateForBookingAction(action,
+                proofRejectionCancels: !input.guestResubmits) ==
+            GateLevel.pin &&
+        (ticket == null || !ticket.isValid(DateTime.now()))) {
+      return ActionResult.refused(
+          'This action needs a fresh Security PIN. Run it again and enter the PIN when the sheet asks.');
+    }
     final others = _latestBookings
         .where((b) => b.id != booking.id)
         .map((b) => b.toLifecycleDoc())
@@ -425,9 +442,22 @@ class FirestoreService {
 
   /// Publish a rates document. Refuses (returns the problems) when it would
   /// not pass the website's `validatePublishedRates`.
-  Future<List<RatesProblem>> publishRates(Map<String, dynamic> doc) async {
+  ///
+  /// PIN-tier (ADR-0015), and the in-memory copy moves only once the network
+  /// write has survived: publishing used to overwrite the local rates before
+  /// Firestore answered, so a failed write left the app quoting figures the
+  /// website had never agreed to.
+  Future<List<RatesProblem>> publishRates(Map<String, dynamic> doc,
+      {SecurityTicket? ticket}) async {
+    if (ticket == null || !ticket.isValid(DateTime.now())) {
+      return [
+        const RatesProblem('',
+            'Publishing rates needs a fresh Security PIN. Press Publish again and enter the PIN.')
+      ];
+    }
     final problems = validatePublishedRates(doc, kKnownAccommodationIds);
     if (problems.isNotEmpty) return problems;
+    final previous = _rates;
     _rates = Map<String, dynamic>.from(doc);
     _ratesController.add(_rates);
     if (isCloud) {
@@ -440,9 +470,11 @@ class FirestoreService {
           'published_at': FieldValue.serverTimestamp(),
         });
       } catch (e) {
+        _rates = previous;
+        _ratesController.add(_rates);
         return [
           RatesProblem('',
-              'Could not save to Firestore (${e.toString().split('\n').first}).')
+              'Could not save to Firestore (${e.toString().split('\n').first}). The previous rates still stand.')
         ];
       }
     }
@@ -471,9 +503,17 @@ class FirestoreService {
     });
   }
 
-  Future<String?> publishPaymentInformation(Map<String, dynamic> doc) async {
+  /// PIN-tier (ADR-0015). The GCash and bank numbers here go to every
+  /// visitor, and the in-memory copy only moves once Firestore has accepted
+  /// the write — same rollback rule as [publishRates].
+  Future<String?> publishPaymentInformation(Map<String, dynamic> doc,
+      {SecurityTicket? ticket}) async {
     final problem = validatePaymentInformationDocument(doc);
     if (problem != null) return problem;
+    if (ticket == null || !ticket.isValid(DateTime.now())) {
+      return 'Publishing payment information needs a fresh Security PIN. Press Publish again and enter the PIN.';
+    }
+    final previous = _paymentInformation;
     _paymentInformation = Map<String, dynamic>.from(doc);
     _paymentController.add(_paymentInformation);
     if (isCloud) {
@@ -483,13 +523,17 @@ class FirestoreService {
             .doc(AppConstants.docPayment)
             .set({...doc, 'updated_at': FieldValue.serverTimestamp()});
       } catch (e) {
-        return 'Could not save payment information (${e.toString().split('\n').first}).';
+        _paymentInformation = previous;
+        _paymentController.add(_paymentInformation);
+        return 'Could not save payment information (${e.toString().split('\n').first}). The previous instructions still stand.';
       }
     }
     return null;
   }
 
-  Future<void> recordSmartLockEvent(SmartLockEventModel event) async {
+  /// Returns what went wrong, or null — a swallowed failure here used to
+  /// mean a simulator tap that looked recorded and was not.
+  Future<String?> recordSmartLockEvent(SmartLockEventModel event) async {
     _lockLogs.insert(0, event);
     _lockLogsController.add(List.unmodifiable(_lockLogs));
 
@@ -498,11 +542,18 @@ class FirestoreService {
         await _firestore!
             .collection(AppConstants.colSmartLockLogs)
             .add(event.toJson());
-      } catch (_) {}
+      } catch (e) {
+        return 'Could not record the event (${e.toString().split('\n').first}).';
+      }
     }
+    return null;
   }
 
-  Future<void> updateRoomStatus(String roomId, RoomStatus status, [double? newPrice]) async {
+  /// Confirm-tier in the gate (ADR-0015) — the confirm modal is the call
+  /// site's job; the service's job is to say what went wrong instead of
+  /// swallowing it, and the call sites await this and surface it.
+  Future<String?> updateRoomStatus(String roomId, RoomStatus status,
+      [double? newPrice]) async {
     final index = _rooms.indexWhere((r) => r.id == roomId);
     if (index != -1) {
       _rooms[index] = _rooms[index].copyWith(
@@ -517,8 +568,60 @@ class FirestoreService {
         final Map<String, dynamic> data = {'status': status.name};
         if (newPrice != null) data['pricePerNight'] = newPrice;
         await _firestore!.collection(AppConstants.colRooms).doc(roomId).update(data);
-      } catch (_) {}
+      } catch (e) {
+        return 'Could not save the room (${e.toString().split('\n').first}). '
+            'It shows the new status here only.';
+      }
     }
+    return null;
+  }
+
+  // ---- ADMIN SECURITY (admin_security/{uid} — ADR-0015) ----
+  //
+  // FirestoreService is the [PinSecurityRemote]: the device copy of the PIN
+  // record governs the check (it has to work offline); Firestore is the
+  // watermark the rules refuse to lower. Every method below is
+  // best-effort — a missed write costs a reconciliation, never a crash.
+
+  @override
+  Future<Map<String, dynamic>?> fetchAdminSecurity(String uid) async {
+    if (!isCloud) return null;
+    final snap = await _firestore!
+        .collection(AppConstants.colAdminSecurity)
+        .doc(uid)
+        .get();
+    return snap.data();
+  }
+
+  @override
+  Future<void> recordPinFailure(
+    String uid, {
+    required int failedAttempts,
+    required DateTime? lockedUntil,
+  }) async {
+    if (!isCloud) return;
+    await _firestore!
+        .collection(AppConstants.colAdminSecurity)
+        .doc(uid)
+        .update({
+      'failed_attempts': failedAttempts,
+      'locked_until': lockedUntil,
+    });
+  }
+
+  @override
+  Future<void> writeAdminSecurity(String uid, Map<String, dynamic> doc) async {
+    if (!isCloud) return;
+    await _firestore!
+        .collection(AppConstants.colAdminSecurity)
+        .doc(uid)
+        .set({
+      ...doc,
+      // The stamp the rules hold to the writer: rotated now, by this uid.
+      // A server timestamp satisfies `pin_updated_at == request.time`.
+      'pin_updated_at': FieldValue.serverTimestamp(),
+      'pin_updated_by': FirebaseAuth.instance.currentUser?.uid ?? uid,
+    });
   }
 
   void dispose() {

@@ -19,6 +19,10 @@ class AppConstants {
   static const String docRates = 'rates';
   /// Public, non-secret payment instructions shown during booking.
   static const String docPayment = 'payment';
+  /// The Admin's Security PIN server copy — one doc per uid, own-doc-only
+  /// in firestore.rules (ADR-0015). Not a Credential: that word is taken
+  /// by the door RFID / Mobile Key (CONTEXT.md § Access).
+  static const String colAdminSecurity = 'admin_security';
   /// The Guest ↔ Admin conversation, its messages, and the live-location
   /// consent (ADR-0013).
   static const String colConversations = 'conversations';

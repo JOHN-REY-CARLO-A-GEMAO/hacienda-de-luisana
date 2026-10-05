@@ -13,12 +13,14 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compileRules, evaluate, ruleTimestamp, type DocData, type Store } from './engine'
 import {
+  ADMIN_SECURITY_NOW,
   ADMIN_UID,
   BOOKING_ID,
   CONVO_ID,
   GUEST_UID,
   OTHER_GUEST_UID,
   accessLogDoc,
+  adminSecurityDoc,
   adminVerifyPatch,
   allowlistedAdmin,
   anonymousGuest,
@@ -504,6 +506,152 @@ describe('profiles: the collection roles rest on', () => {
     const profile = { uid: ADMIN_UID, role: 'admin' }
     expect(deny({ path: `profiles/${ADMIN_UID}`, method: 'delete', auth: allowlistedAdmin(), resourceData: profile })).toBe(true)
     expect(allow({ path: `profiles/${OTHER_GUEST_UID}`, method: 'delete', auth: allowlistedAdmin(), resourceData: { uid: OTHER_GUEST_UID, role: 'guest' } })).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// admin_security — the Security PIN's server copy (ADR-0015)
+// ---------------------------------------------------------------------------
+
+describe('admin_security: the PIN the app checks sensitive actions against', () => {
+  const at = ADMIN_SECURITY_NOW
+  const doc = adminSecurityDoc()
+  const own = allowlistedAdmin()
+  const ownPath = `admin_security/${ADMIN_UID}`
+
+  const update = (resourceData: DocData, requestData: DocData, auth = own) =>
+    deny({ path: ownPath, method: 'update', auth, resourceData, requestData, time: at })
+      ? 'denied'
+      : 'allowed'
+
+  it('lets an Admin read their own record, and nobody else read it', () => {
+    expect(allow({ path: ownPath, method: 'get', auth: own, resourceData: doc })).toBe(true)
+    expect(deny({ path: ownPath, method: 'get', auth: promotedAdmin(), resourceData: doc })).toBe(true)
+    expect(deny({ path: ownPath, method: 'get', auth: anonymousGuest(), resourceData: doc })).toBe(true)
+    expect(deny({ path: ownPath, method: 'get', auth: emailGuest(), resourceData: doc })).toBe(true)
+    expect(deny({ path: ownPath, method: 'get', auth: null, resourceData: doc })).toBe(true)
+  })
+
+  it('gives an Admin no write on another Admin\'s record', () => {
+    const other = promotedAdmin()
+    expect(deny({
+      path: ownPath, method: 'update', auth: other,
+      resourceData: doc, requestData: adminSecurityDoc({ failed_attempts: 1 }), time: at,
+    })).toBe(true)
+    // Their own first setup is fine.
+    expect(allow({
+      path: `admin_security/${other.uid}`, method: 'create', auth: other,
+      requestData: adminSecurityDoc({ uid: other.uid, pin_updated_by: other.uid }), time: at,
+    })).toBe(true)
+  })
+
+  it('never deletes a record — a lockout is evidence', () => {
+    expect(deny({ path: ownPath, method: 'delete', auth: own, resourceData: doc })).toBe(true)
+  })
+
+  describe('the create', () => {
+    it('accepts the Admin\'s own first setup, counters born zero', () => {
+      expect(allow({ path: ownPath, method: 'create', auth: own, requestData: doc, time: at })).toBe(true)
+    })
+
+    it.each([
+      ['a counter that is not born zero', adminSecurityDoc({ failed_attempts: 3 })],
+      ['a pre-set lockout', adminSecurityDoc({ locked_until: ruleTimestamp(at + 30_000) })],
+      ['an extra key', adminSecurityDoc({ pin_proof: 'nope' })],
+      ['a missing key', (() => { const d = adminSecurityDoc(); delete d.pin_updated_by; return d })()],
+      ['too few rounds', adminSecurityDoc({ iterations: 100 })],
+      ['a short hash', adminSecurityDoc({ pin_hash: 'short' })],
+      ['a short salt', adminSecurityDoc({ salt: 'c2FsdA==' })],
+      ['somebody else\'s stamp', adminSecurityDoc({ pin_updated_by: 'promoted-admin-1' })],
+    ])('refuses %s', (_name, bad) => {
+      expect(deny({ path: ownPath, method: 'create', auth: own, requestData: bad, time: at })).toBe(true)
+    })
+  })
+
+  describe('update door 1 — the counters, forward only', () => {
+    it('records a failure', () => {
+      expect(update(doc, adminSecurityDoc({ failed_attempts: 1 }))).toBe('allowed')
+    })
+
+    it('starts the ladder at five, with a lockout', () => {
+      expect(update(
+        adminSecurityDoc({ failed_attempts: 4 }),
+        adminSecurityDoc({ failed_attempts: 5, locked_until: ruleTimestamp(at + 30_000) }),
+      )).toBe('allowed')
+    })
+
+    it('refuses to lower the counter', () => {
+      expect(update(
+        adminSecurityDoc({ failed_attempts: 6, locked_until: ruleTimestamp(at - 60_000) }),
+        adminSecurityDoc({ failed_attempts: 5 }),
+      )).toBe('denied')
+    })
+
+    it('refuses to clear a live lock, even with the counter unchanged', () => {
+      expect(update(
+        adminSecurityDoc({ failed_attempts: 6, locked_until: ruleTimestamp(at + 30_000) }),
+        adminSecurityDoc({ failed_attempts: 6 }),
+      )).toBe('denied')
+    })
+
+    it('lets a lock be pushed later, and an expired one be cleared', () => {
+      expect(update(
+        adminSecurityDoc({ failed_attempts: 7, locked_until: ruleTimestamp(at + 30_000) }),
+        adminSecurityDoc({ failed_attempts: 8, locked_until: ruleTimestamp(at + 300_000) }),
+      )).toBe('allowed')
+      expect(update(
+        adminSecurityDoc({ failed_attempts: 6, locked_until: ruleTimestamp(at - 30_000) }),
+        adminSecurityDoc({ failed_attempts: 6 }),
+      )).toBe('allowed')
+    })
+
+    it('refuses a counter update that reaches for the pin fields', () => {
+      expect(update(
+        doc,
+        adminSecurityDoc({
+          failed_attempts: 1,
+          pin_hash: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        }),
+      )).toBe('denied')
+    })
+  })
+
+  describe('update door 2 — the rotation', () => {
+    const rotated = (overrides: DocData = {}) =>
+      adminSecurityDoc({
+        pin_hash: 'WFlaWFlaWFlaWFlaWFlaWFlaWFlaWFlaWFlaWFlaWFla',
+        pin_updated_at: ruleTimestamp(at),
+        pin_updated_by: ADMIN_UID,
+        ...overrides,
+      })
+
+    it('accepts a real rotation, stamped now by the writer, counters zero', () => {
+      expect(update(doc, rotated())).toBe('allowed')
+    })
+
+    it('refuses a rotation with a stale or mis-attributed stamp', () => {
+      expect(update(doc, rotated({ pin_updated_at: ruleTimestamp(at - 5_000) }))).toBe('denied')
+      expect(update(doc, rotated({ pin_updated_by: 'promoted-admin-1' }))).toBe('denied')
+    })
+
+    it('refuses a rotation that keeps the old hash', () => {
+      expect(update(doc, rotated({ pin_hash: doc.pin_hash as string }))).toBe('denied')
+    })
+
+    it('refuses a rotation out of a live lock, and accepts one past it', () => {
+      const locked = adminSecurityDoc({ failed_attempts: 6, locked_until: ruleTimestamp(at + 30_000) })
+      expect(update(locked, rotated())).toBe('denied')
+      const expired = adminSecurityDoc({ failed_attempts: 6, locked_until: ruleTimestamp(at - 30_000) })
+      expect(update(expired, rotated())).toBe('allowed')
+    })
+  })
+
+  it('refuses a Guest all of it — the collection does not exist for them', () => {
+    expect(deny({ path: ownPath, method: 'create', auth: anonymousGuest(), requestData: doc, time: at })).toBe(true)
+    expect(deny({
+      path: ownPath, method: 'update', auth: anonymousGuest(),
+      resourceData: doc, requestData: adminSecurityDoc({ failed_attempts: 1 }), time: at,
+    })).toBe(true)
   })
 })
 

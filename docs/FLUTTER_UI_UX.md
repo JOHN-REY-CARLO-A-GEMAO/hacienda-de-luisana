@@ -60,6 +60,15 @@ themes for `Chip`, `Dialog`, `SnackBar`, `BottomSheet`, `Divider`,
 | `AnimatedTabPage` | Wraps each `IndexedStack` tab; fades/slides in the 280 ms the tab becomes active. Paint-only: the child element is passed as `AnimatedBuilder` child so descendants don't rebuild per frame. |
 | `AnimatedBadge` | Bottom-nav count badge that pops in/out (`easeOutBack`). | `AnimatedScale` + `AnimatedOpacity`. |
 
+### Security sheets (`lib/views/security/`, ADR-0015)
+
+| Widget | Purpose | Behaviour |
+|--------|---------|-----------|
+| `showSecurityPinSheet` / `requirePinTicket` | The Security gate's PIN tier. Bottom sheet (radius 24): the action's name in Cinzel, one line of consequence in Inter 12 muted, six dots, a 3×4 keypad. | 64 px targets, haptic per digit, auto-submit at six digits; a fresh ticket (<120 s) answers without a prompt. Wrong PIN → shake + heavy haptic + dots flash `statusAlert`. Lockout (5 wrong → 30 s, doubling, 5-min cap) → live countdown, dead keypad, sheet not dismissible. Every key and the dot row carry `Semantics`. |
+| `PinEntryPad` | The dots + keypad, shared by the PIN sheet and setup/change sheet. | `reset()` shakes and drains the entry; disabled while verifying or locked. |
+| `showSecureConfirm` | The gate's confirm tier — one modal absorbed from the Booking detail screen's private `_confirm`, used at every confirm site (stay transitions, expiry, sign-out, reader grant, room status/price, payment refs). | Cinzel title, consequence body, `Back` / confirm pair; `danger` turns the confirm button `statusAlert`. |
+| `showSetupPinSheet` / `showChangePinSheet` | Forced create-then-confirm on first Admin sign-in (`MainShellScreen` checks `PinGate.setupState`); change from the More sheet after a current-PIN check. Cannot be disabled — a gate that can be turned off is itself a bypass. | Non-dismissible while forced; offline with no cached record refuses rather than failing open. |
+
 ### Motion language (Phase 4 spec)
 
 | Interaction | Curve / duration |
@@ -96,7 +105,9 @@ themes for `Chip`, `Dialog`, `SnackBar`, `BottomSheet`, `Divider`,
   (`CardThemeData`/`TabBarThemeData`/`DialogThemeData` usage is consistent
   with what the repo already compiles with).
 - Dart tests: `test/booking_lifecycle_test.dart`, `test/published_rates_test.dart`,
-  `test/booking_model_test.dart` (pure logic; no widget tests yet).
+  `test/booking_model_test.dart`, plus the security suites —
+  `test/security_gate_test.dart`, `test/pin_policy_test.dart` and the repo's
+  first widget test, `test/pin_sheet_widget_test.dart` (ADR-0015).
 - Run before release: `flutter analyze` and `flutter test` from a Flutter
   3.27+ stable.
 

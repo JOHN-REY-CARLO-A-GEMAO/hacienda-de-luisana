@@ -9,6 +9,7 @@ import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/review_policy.dart';
 import '../../services/review_service.dart';
+import '../security/security_pin_sheet.dart';
 import 'reviews_screen.dart' show StarRow, StatusPillLike;
 
 /// One Review, and the three things only the Admin may do about it.
@@ -105,7 +106,17 @@ class _ReviewDetailScreenState extends ConsumerState<ReviewDetailScreen> {
     return _act(() => _service.setStatus(_review.id, status, _adminUid), 'The review is $what.');
   }
 
-  Future<void> _publish() {
+  Future<void> _publish() async {
+    // PIN-tier (ADR-0015): this puts a Guest's words in front of every
+    // visitor, under a name the Admin chose.
+    final ticket = await requirePinTicket(
+      context,
+      ref: ref,
+      title: 'Publish the testimonial',
+      consequence:
+          'These words go on the public website under “${_name.text.trim().isEmpty ? 'Guest' : _name.text.trim()}”, signed-out visitors included. The Guest\'s identity and your reply stay private.',
+    );
+    if (ticket == null) return;
     return _act(() async {
       await _service.publish(
         reviewId: _review.id,
@@ -118,7 +129,17 @@ class _ReviewDetailScreenState extends ConsumerState<ReviewDetailScreen> {
     }, 'The testimonial is on the website.');
   }
 
-  Future<void> _unpublish() {
+  Future<void> _unpublish() async {
+    // PIN-tier too: taking it down is a hard delete of the public document,
+    // not a status flip (ADR-0014/0015).
+    final ticket = await requirePinTicket(
+      context,
+      ref: ref,
+      title: 'Take the testimonial down',
+      consequence:
+          'This deletes the public document outright. Publishing it again is a new document with a new month.',
+    );
+    if (ticket == null) return;
     return _act(() async {
       await _service.unpublish(_review.id);
       await _loadPublished();

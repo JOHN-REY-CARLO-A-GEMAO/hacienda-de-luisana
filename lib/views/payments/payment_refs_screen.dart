@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_constants.dart';
 import '../../utils/validators.dart';
+import '../security/secure_action_sheet.dart';
 
 /// Admin catalog of valid payment references. OCR never writes here.
 class PaymentRefsScreen extends StatefulWidget {
@@ -26,7 +27,7 @@ class _PaymentRefsScreenState extends State<PaymentRefsScreen> {
     super.dispose();
   }
 
-  void _add() {
+  Future<void> _add() async {
     final ref = _ref.text.trim().toUpperCase();
     final amt = double.tryParse(_amount.text.trim().replaceAll(',', ''));
     if (ref.isEmpty || !RegExp(r'^[A-Z0-9-]{6,40}$').hasMatch(ref)) {
@@ -41,6 +42,16 @@ class _PaymentRefsScreenState extends State<PaymentRefsScreen> {
       _toast('That reference is already on the list.');
       return;
     }
+    // Confirm-tier in the gate (ADR-0015): the list is what a payment
+    // verification is checked against, so adding to it names what is
+    // being added and waits.
+    final ok = await showSecureConfirm(
+      context,
+      title: 'Add the reference?',
+      body: '$ref for ₱${amt.toStringAsFixed(2)} joins the list a proof is checked against.',
+      confirm: 'Add',
+    );
+    if (!ok || !mounted) return;
     setState(() {
       _rows.add(_RefRow(reference: ref, amount: amt, status: 'available'));
       _ref.clear();
@@ -53,18 +64,14 @@ class _PaymentRefsScreenState extends State<PaymentRefsScreen> {
   }
 
   Future<void> _confirmDelete(_RefRow row) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete reference?'),
-        content: Text('Remove ${row.reference} from the valid-payment list?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
-        ],
-      ),
+    final ok = await showSecureConfirm(
+      context,
+      title: 'Delete reference?',
+      body: 'Remove ${row.reference} from the valid-payment list?',
+      confirm: 'Delete',
+      danger: true,
     );
-    if (ok == true) setState(() => _rows.remove(row));
+    if (ok == true && mounted) setState(() => _rows.remove(row));
   }
 
   @override
