@@ -172,7 +172,19 @@ service cloud.firestore {
         : -1;
     }
 
-    function validGuestSchedule(schedule, allowThreeGuestCap) {
+    // The documented A-House occupancy: three guests at the base rate, four in
+    // total, with the fourth charged as excess. It is the one unit with a hard
+    // physical limit, so it alone may publish `max_guests` — and it publishes an
+    // excess rule beside that cap, because the cap admits a guest the base rate
+    // does not cover.
+    function validAHouseSchedule(schedule) {
+      return schedule.get('base_max_guests', 0) == 3
+        && schedule.get('max_guests', 0) == 4
+        && schedule.get('excess_per_guest', -1) is number
+        && schedule.excess_per_guest >= 0;
+    }
+
+    function validGuestSchedule(schedule, isAHouse) {
       return schedule is map
         && !schedule.keys().hasAny(['upper_min_guests', 'upper_max_guests', 'upper_rate', 'excess_after'])
         && schedule.get('min_guests', 0) == 1
@@ -180,13 +192,59 @@ service cloud.firestore {
         && schedule.base_max_guests >= 1
         && schedule.get('base_rate', 0) is number
         && schedule.base_rate > 0
-        && (allowThreeGuestCap
-          ? (schedule.get('base_max_guests', 0) == 3
-             && schedule.get('max_guests', 0) == 3
-             && !schedule.keys().hasAny(['excess_per_guest']))
+        && (isAHouse
+          ? validAHouseSchedule(schedule)
           : (!schedule.keys().hasAny(['max_guests'])
              && schedule.get('excess_per_guest', -1) is number
              && schedule.excess_per_guest >= 0));
+    }
+
+    // ------------------------------------------------------------------
+    // Charges added on top of the published rate
+    //
+    // Pets and a late checkout are part of the stay total rather than a second
+    // payment, so one Booking is one receipt and one 50/50 split. They are
+    // recomputed here from the Admin-owned document exactly as the client
+    // recomputes them; the browser submits the figures and cannot choose them.
+    //
+    // Each is plain integer arithmetic, which the rules language evaluates
+    // directly. A figure priced by a list lookup could not be checked here at
+    // all — the rules language has no lambda — and a rule that cannot check a
+    // figure does not get to require it. That is why the wedding arrangement is
+    // published as an Accommodation rather than as a package.
+    //
+    // An extra nobody has priced refuses the Booking: a pet with no published
+    // fee, or an extension with no hourly rate, is not the guest's to decide.
+    // ------------------------------------------------------------------
+
+    function validPetCount(published, data) {
+      let pets = data.get('pet_count', 0);
+      let policy = published.get('pet_policy', null);
+      return pets is int && pets >= 0
+        && (pets == 0 || (policy is map
+          && policy.get('fee_per_pet', -1) is number
+          && policy.fee_per_pet > 0
+          && pets <= policy.get('max_pets', 100)));
+    }
+
+    function petFee(published, data) {
+      let pets = data.get('pet_count', 0);
+      let policy = published.get('pet_policy', null);
+      return pets > 0 && policy is map && policy.get('fee_per_pet', 0) is number
+        ? int(pets * policy.fee_per_pet * 100 + 0.5) / 100
+        : 0;
+    }
+
+    function validLateCheckout(published, data) {
+      let hours = data.get('late_checkout_hours', 0);
+      let rate = published.get('late_checkout_per_hour', null);
+      return hours is int && hours >= 0 && (hours == 0 || (rate is number && rate >= 0));
+    }
+
+    function lateCheckoutFee(published, data) {
+      let hours = data.get('late_checkout_hours', 0);
+      let rate = published.get('late_checkout_per_hour', 0);
+      return hours > 0 && rate is number ? int(hours * rate * 100 + 0.5) / 100 : 0;
     }
 
     function validAuthoritativeMoney(data) {
@@ -205,7 +263,10 @@ service cloud.firestore {
       let schedule = classification == 'weekend_holiday'
         ? pricing.get('weekend_holiday', {}) : pricing.get('weekday', {});
       let amount = scheduledRate(schedule, data.guests);
-      let total = int(amount * 100 + 0.5) / 100;
+      // `amount` is the accommodation's own published figure. The addons are
+      // recorded separately and `total` is what the 50/50 split is taken from, so
+      // a Booking states what it is paying for rather than one larger number.
+      let total = int((amount + petFee(published, data) + lateCheckoutFee(published, data)) * 100 + 0.5) / 100;
       let due = int(total * 50) / 100;
       return published.keys().hasAny(['holiday_dates'])
         && holidayDates is list
@@ -223,7 +284,9 @@ service cloud.firestore {
         && validStayLength(data)
         && data.nights == 1
         && amount is number && amount > 0
-        && data.rate_amount == total
+        && validPetCount(published, data)
+        && validLateCheckout(published, data)
+        && data.rate_amount == amount
         && data.rate_unit == 'standard_stay'
         && data.rate_classification == classification
         && data.stay_total == total

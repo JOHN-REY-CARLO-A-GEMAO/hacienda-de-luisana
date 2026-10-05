@@ -22,8 +22,8 @@ const valid = {
       rate_unit: 'standard_stay', active: true, security_deposit: 0, down_payment_percent: 50,
       guest_pricing: {
         units_per_booking: 1,
-        weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
-        weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+        weekday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
       },
     },
   },

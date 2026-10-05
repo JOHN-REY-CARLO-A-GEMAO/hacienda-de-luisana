@@ -71,9 +71,12 @@ export {
   classifyRateDate,
   quotedStayTotal,
   validatePublishedRates,
+  stayAddons,
+  WEDDING_PREP_ACCOMMODATION_ID,
   type AccommodationRates,
   type GuestBracketPricing,
   type GuestRateSchedule,
+  type PetPolicy,
   type PropertyQuote,
   type RateClassification,
   type PolicySnapshot,
@@ -81,6 +84,8 @@ export {
   type PublishedRefundPolicy,
   type PublishedRefundTier,
   type RatesProblem,
+  type StayAddons,
+  type StayExtras,
 } from './rates'
 
 export { formatHoldCountdown, unitsForAccommodation, type UnitBearing } from './holds'

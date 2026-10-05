@@ -98,6 +98,33 @@ export type PublishedStayPolicies = {
   optional_charges?: Record<string, OptionalChargePolicy>
 }
 
+/**
+ * The pet fee: a per-pet amount added to the stay total, so one Booking is one
+ * receipt and one 50/50 split rather than a second payment to arrange.
+ */
+export type PetPolicy = {
+  /** Pesos per pet, per stay. */
+  fee_per_pet: number
+  /** Most pets one Booking may declare. Without a policy there are no pets. */
+  max_pets?: number
+}
+
+/**
+ * The wedding-prep arrangement prices a whole event rather than a guest count,
+ * and it is published as an ordinary Accommodation rather than as a special
+ * case: same formula, same validator, same rules arithmetic — `base_rate` for the
+ * included guests plus `excess_per_guest` for each above it.
+ *
+ * That is deliberate. A separate `event_packages` list would have to be looked up
+ * by the Booking inside `firestore.rules`, and the rules language has no lambda,
+ * so a package could not be found by its id at all. Published as an
+ * Accommodation it is priced by the schedule that already works.
+ *
+ * The id is `wedding-prep`; its `guest_pricing` is the published quote, so the
+ * Admin changes the ₱8,500 and the ₱500 in the Rates screen like any other rate.
+ */
+export const WEDDING_PREP_ACCOMMODATION_ID = 'wedding-prep'
+
 export type PublishedRates = {
   /** Which policy version this is. Stamped on the Booking at choice time. */
   version: string
@@ -111,6 +138,10 @@ export type PublishedRates = {
   policies?: PublishedStayPolicies
   /** The cancellation policy; absent means publish nothing and refund nothing. */
   refund?: PublishedRefundPolicy
+  /** The per-pet fee. Absent means the Hacienda takes no pets. */
+  pet_policy?: PetPolicy
+  /** Pesos per hour for keeping the unit past noon check-out. Absent means no extension. */
+  late_checkout_per_hour?: number
 }
 
 /** The one translation from the document's vocabulary to the money module's. */
@@ -167,10 +198,74 @@ export type PropertyQuote = {
   rateCard: RateCard
   policy: RefundPolicy | undefined
   snapshot: PolicySnapshot
+  /** What the guest owes for the stay itself, before pet, event and late fees. */
   stayTotal: number
   classification: RateClassification
   bracket: string
   units: 1
+  /** Pesos added on top of `stayTotal`, and what each was for. */
+  addons: StayAddons
+}
+
+/**
+ * The charges added to a stay total, each kept apart so a Guest is told what
+ * they are paying for rather than handed one larger number.
+ *
+ * `rateAmount` is the accommodation's own published figure from its guest-count
+ * schedule. `stayTotal` is what is owed, and the two differ exactly by the
+ * addons — which is what makes the breakdown explainable.
+ */
+export type StayAddons = {
+  /** `pet_count * pet_policy.fee_per_pet`; zero when no policy or no pets. */
+  petFee: number
+  /** `late_checkout_hours * late_checkout_per_hour`; zero when neither is published. */
+  lateCheckoutFee: number
+  /** The accommodation's own published figure, before any addon. */
+  rateAmount: number
+  /** Pets declared for this Booking. */
+  petCount: number
+  /** Hours kept past noon check-out. */
+  lateCheckoutHours: number
+}
+
+/** What a Guest may add to a stay. Anything absent is simply not offered. */
+export type StayExtras = {
+  /** Pets staying over; a whole number, zero or more. */
+  pet_count?: number
+  /** Whole hours kept past noon check-out. */
+  late_checkout_hours?: number
+}
+
+function positiveWhole(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0
+}
+
+/**
+ * The charges added to a stay total, or `undefined` when a declared extra cannot
+ * be honoured — pets with no published fee, or an extension with no published
+ * hourly rate. `undefined` means the quote is refused: the Guest is never quoted
+ * a stay whose addons nobody has priced, and `firestore.rules` refuses the same
+ * Booking the same way.
+ */
+export function stayAddons(doc: PublishedRates, extras: StayExtras): StayAddons | undefined {
+  const petCount = extras.pet_count ?? 0
+  const lateHours = extras.late_checkout_hours ?? 0
+  if (!positiveWhole(petCount) || !positiveWhole(lateHours)) return undefined
+  if (petCount > 0) {
+    const policy = doc.pet_policy
+    if (!policy || !isFiniteNumber(policy.fee_per_pet) || policy.fee_per_pet < 0) return undefined
+    if (policy.max_pets !== undefined && petCount > policy.max_pets) return undefined
+  }
+  if (lateHours > 0 && (!isFiniteNumber(doc.late_checkout_per_hour) || doc.late_checkout_per_hour < 0)) {
+    return undefined
+  }
+  return {
+    petFee: roundMoney(petCount * (doc.pet_policy?.fee_per_pet ?? 0)),
+    lateCheckoutFee: roundMoney(lateHours * (doc.late_checkout_per_hour ?? 0)),
+    rateAmount: 0,
+    petCount,
+    lateCheckoutHours: lateHours,
+  }
 }
 
 function calendarNights(checkIn: string, checkOut: string): number {
@@ -202,28 +297,43 @@ function scheduledAmount(schedule: GuestRateSchedule, guests: number): { amount:
  * The authoritative quote path for new guest bookings. Tiered rates are per
  * one 22-hour standard stay; multi-stay mixing is refused until the business
  * defines that policy.
+ *
+ * A stay is priced either by the accommodation's guest-count schedule or, when
+ * the Guest names one, by an event package — never both. Pets and a late
+ * checkout are added on top of whichever priced it, and they are added to the
+ * stay total rather than billed separately so the 50/50 split stays one payment.
  */
 export function quoteAccommodation(
   doc: PublishedRates,
   accommodationId: string,
-  input: { check_in: string; check_out: string; guests: number },
+  input: { check_in: string; check_out: string; guests: number } & StayExtras,
 ): PropertyQuote | undefined {
   const figures = doc.accommodations[accommodationId]
   if (!figures || figures.active === false || !figures.guest_pricing
       || figures.rate_unit !== 'standard_stay' || calendarNights(input.check_in, input.check_out) !== 1) return undefined
   const classification = classifyRateDate(input.check_in, doc.holiday_dates)
   if (!classification) return undefined
+  const addons = stayAddons(doc, input)
+  if (!addons) return undefined
+
+  let bracket: string
+  let rateAmount: number
   const scheduled = scheduledAmount(figures.guest_pricing[classification], input.guests)
   if (!scheduled) return undefined
+  rateAmount = scheduled.amount
+  bracket = scheduled.bracket
+
+  const stayTotal = roundMoney(rateAmount + addons.petFee + addons.lateCheckoutFee)
   return {
     policy: doc.refund !== undefined ? refundPolicyFromPublished(doc.refund) : undefined,
     snapshot: { version: doc.version, effectiveDate: doc.effective_date },
     units: 1,
     classification,
-    bracket: scheduled.bracket,
-    stayTotal: scheduled.amount,
+    bracket,
+    stayTotal,
+    addons: { ...addons, rateAmount },
     rateCard: {
-      nightlyRate: scheduled.amount,
+      nightlyRate: rateAmount,
       securityDeposit: figures.security_deposit,
       ...(figures.down_payment_percent !== undefined ? { downPaymentPercent: figures.down_payment_percent } : {}),
     },
@@ -256,8 +366,6 @@ function scheduleProblems(path: string, node: unknown, allowDocumentedCap: boole
   }
   if (requireExcess && schedule.excess_per_guest === undefined) {
     problems.push({ path: `${path}.excess_per_guest`, message: 'is required when there is no absolute guest cap.' })
-  } else if (!requireExcess && schedule.excess_per_guest !== undefined) {
-    problems.push({ path: `${path}.excess_per_guest`, message: 'A-House is a flat per-unit amount through its documented three-guest maximum.' })
   } else if (schedule.excess_per_guest !== undefined && (!isFiniteNumber(schedule.excess_per_guest) || schedule.excess_per_guest < 0)) {
     problems.push({ path: `${path}.excess_per_guest`, message: 'must be a non-negative per-person peso amount.' })
   }
@@ -268,6 +376,17 @@ function scheduleProblems(path: string, node: unknown, allowDocumentedCap: boole
   }
   return problems
 }
+
+/**
+ * The documented occupancy of the A-House camping unit: three people share it,
+ * and a fourth is accommodated for a fee. It is the one unit with a hard
+ * physical limit rather than an open excess rule, which is why it alone may
+ * publish `max_guests` — and why it publishes an excess rule *alongside* that
+ * cap, since the cap admits a guest the base rate does not cover.
+ */
+const A_HOUSE_ID = 'house-a-camping'
+const A_HOUSE_INCLUDED_GUESTS = 3
+const A_HOUSE_MAX_GUESTS = 4
 
 /** Validate one Accommodation's figures. */
 function accommodationProblems(accommodationId: string, node: unknown): RatesProblem[] {
@@ -312,17 +431,30 @@ function accommodationProblems(accommodationId: string, node: unknown): RatesPro
     if (typeof pricing !== 'object' || pricing === null || Array.isArray(pricing)) {
       problems.push({ path: `accommodations.${accommodationId}.guest_pricing`, message: 'must contain weekday and weekend_holiday schedules.' })
     } else {
-      const hasDocumentedCap = accommodationId === 'house-a-camping'
+      const hasDocumentedCap = accommodationId === A_HOUSE_ID
       const weekdayPath = `accommodations.${accommodationId}.guest_pricing.weekday`
       const weekendPath = `accommodations.${accommodationId}.guest_pricing.weekend_holiday`
-      problems.push(...scheduleProblems(weekdayPath, pricing.weekday, hasDocumentedCap, !hasDocumentedCap))
-      problems.push(...scheduleProblems(weekendPath, pricing.weekend_holiday, hasDocumentedCap, !hasDocumentedCap))
+      problems.push(...scheduleProblems(weekdayPath, pricing.weekday, hasDocumentedCap, true))
+      problems.push(...scheduleProblems(weekendPath, pricing.weekend_holiday, hasDocumentedCap, true))
       if (hasDocumentedCap) {
         for (const [path, schedule] of [[weekdayPath, pricing.weekday], [weekendPath, pricing.weekend_holiday]] as const) {
-          if (typeof schedule === 'object' && schedule !== null && !Array.isArray(schedule)
-              && ((schedule as Record<string, unknown>).base_max_guests !== 3
-                  || (schedule as Record<string, unknown>).max_guests !== 3)) {
-            problems.push({ path, message: 'A-House is one unit per booking, with an included and absolute maximum of 3 guests.' })
+          if (typeof schedule === 'object' && schedule !== null && !Array.isArray(schedule)) {
+            const node = schedule as Record<string, unknown>
+            if (node.base_max_guests !== A_HOUSE_INCLUDED_GUESTS || node.max_guests !== A_HOUSE_MAX_GUESTS) {
+              problems.push({
+                path,
+                message: `A-House accommodates ${A_HOUSE_INCLUDED_GUESTS} guests at the base rate and ${A_HOUSE_MAX_GUESTS} in total, with the fourth guest charged as excess.`,
+              })
+            }
+            // A cap with no excess rule would charge the base rate for the fourth
+            // guest — a flat rate wearing a cap's clothes. The two are published
+            // together or not at all.
+            if (node.excess_per_guest === undefined) {
+              problems.push({
+                path: `${path}.excess_per_guest`,
+                message: 'is required alongside max_guests: the fourth A-House guest is charged as excess, not at the base rate.',
+              })
+            }
           }
         }
       }
@@ -391,6 +523,22 @@ function refundProblems(node: unknown): RatesProblem[] {
   return problems
 }
 
+/** The problems with a pet policy, if one is published. */
+function petPolicyProblems(node: unknown): RatesProblem[] {
+  const problems: RatesProblem[] = []
+  if (typeof node !== 'object' || node === null || Array.isArray(node)) {
+    return [{ path: 'pet_policy', message: 'must be an object, or be absent to take no pets.' }]
+  }
+  const policy = node as Record<string, unknown>
+  if (!isFiniteNumber(policy.fee_per_pet) || policy.fee_per_pet <= 0) {
+    problems.push({ path: 'pet_policy.fee_per_pet', message: 'must be a positive peso amount per pet.' })
+  }
+  if (policy.max_pets !== undefined && (!Number.isInteger(policy.max_pets) || (policy.max_pets as number) < 1)) {
+    problems.push({ path: 'pet_policy.max_pets', message: 'must be a whole number of at least 1 when supplied.' })
+  }
+  return problems
+}
+
 /**
  * The problems with a published-rates document, in reading order.
  *
@@ -435,6 +583,14 @@ export function validatePublishedRates(doc: unknown, knownAccommodationIds?: rea
       }
       problems.push(...accommodationProblems(id, node))
     }
+  }
+
+  if (rates.pet_policy !== undefined) {
+    problems.push(...petPolicyProblems(rates.pet_policy))
+  }
+  if (rates.late_checkout_per_hour !== undefined
+      && (!isFiniteNumber(rates.late_checkout_per_hour) || rates.late_checkout_per_hour < 0)) {
+    problems.push({ path: 'late_checkout_per_hour', message: 'must be a non-negative peso amount per hour, or be absent to refuse extensions.' })
   }
 
   if (rates.refund !== undefined) {

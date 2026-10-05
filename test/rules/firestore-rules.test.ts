@@ -111,8 +111,11 @@ describe('official guest-count rates', () => {
           down_payment_percent: 50,
           guest_pricing: {
             units_per_booking: 1,
-            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
-            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+            // The A-House base rate covers three guests and a fourth is
+            // accommodated for a fee — the one unit with a hard physical limit,
+            // so it publishes `max_guests` alongside an excess rule.
+            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
           },
         },
       },
@@ -161,12 +164,122 @@ describe('official guest-count rates', () => {
     expect(allow({ path: 'bookings/official-no-base-cap', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 25, rate_amount: 12500, stay_total: 12500, amount_due: 6250, balance_due: 6250 }) }, officialStore)).toBe(true)
   })
 
-  it('validates one A-House unit at up to three guests', () => {
+  it('adds the published pet fee to the stay total and the 50/50 split', () => {
+    // The rates document publishes a ₱300 per-pet fee; the store the rules read
+    // carries it. A Booking with no pets is unaffected by its presence.
+    const withPets = structuredClone(officialStore)
+    withPets['site_config/rates'].pet_policy = { fee_per_pet: 300, max_pets: 5 }
+
+    // No pets declared: the stay is the published rate and nothing else.
+    expect(allow({
+      path: 'bookings/official-no-pets', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({ pet_count: 0 }),
+    }, withPets)).toBe(true)
+
+    // One pet: ₱300 on top of ₱5,000, so the down payment is on ₱5,300.
+    expect(allow({
+      path: 'bookings/official-one-pet', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({
+        pet_count: 1, rate_amount: 5000, stay_total: 5300, amount_due: 2650, balance_due: 2650,
+      }),
+    }, withPets)).toBe(true)
+
+    // Two pets: the fee is per pet, so ₱600.
+    expect(allow({
+      path: 'bookings/official-two-pets', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({
+        pet_count: 2, rate_amount: 5000, stay_total: 5600, amount_due: 2800, balance_due: 2800,
+      }),
+    }, withPets)).toBe(true)
+
+    // The fee cannot be skipped by declaring no pets while pricing one in.
+    expect(deny({
+      path: 'bookings/official-pet-underreported', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({ pet_count: 0, stay_total: 5300, amount_due: 2650, balance_due: 2650 }),
+    }, withPets)).toBe(true)
+
+    // Nor can it be quietly left out of the stay total.
+    expect(deny({
+      path: 'bookings/official-pet-not-charged', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({
+        pet_count: 1, rate_amount: 5000, stay_total: 5000, amount_due: 2500, balance_due: 2500,
+      }),
+    }, withPets)).toBe(true)
+
+    // A pet with no published fee is not a guest's to price: refused.
+    expect(deny({
+      path: 'bookings/official-pet-unpriced', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({ pet_count: 1, stay_total: 5300, amount_due: 2650, balance_due: 2650 }),
+    }, officialStore)).toBe(true)
+
+    // Past the published cap is refused however it is priced.
+    expect(deny({
+      path: 'bookings/official-pet-over-cap', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({
+        pet_count: 6, rate_amount: 5000, stay_total: 6800, amount_due: 3400, balance_due: 3400,
+      }),
+    }, withPets)).toBe(true)
+  })
+
+  it('adds the published late-checkout rate to the stay total', () => {
+    const withExtension = structuredClone(officialStore)
+    withExtension['site_config/rates'].late_checkout_per_hour = 250
+
+    // Two hours past noon: ₱500 on top of ₱5,000.
+    expect(allow({
+      path: 'bookings/official-two-hours', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({
+        late_checkout_hours: 2, rate_amount: 5000, stay_total: 5500, amount_due: 2750, balance_due: 2750,
+      }),
+    }, withExtension)).toBe(true)
+
+    // The hour cannot be kept for free by leaving it out of the total.
+    expect(deny({
+      path: 'bookings/official-hours-unpaid', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({
+        late_checkout_hours: 2, rate_amount: 5000, stay_total: 5000, amount_due: 2500, balance_due: 2500,
+      }),
+    }, withExtension)).toBe(true)
+
+    // An extension with no published hourly rate is refused.
+    expect(deny({
+      path: 'bookings/official-hours-unpriced', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({
+        late_checkout_hours: 2, stay_total: 5500, amount_due: 2750, balance_due: 2750,
+      }),
+    }, officialStore)).toBe(true)
+
+    // Pet fee and late checkout together, each on the published rate.
+    const combined = structuredClone(officialStore)
+    combined['site_config/rates'].pet_policy = { fee_per_pet: 300 }
+    combined['site_config/rates'].late_checkout_per_hour = 250
+    expect(allow({
+      path: 'bookings/official-pet-and-hours', method: 'create', auth: anonymousGuest(),
+      requestData: officialBooking({
+        pet_count: 1, late_checkout_hours: 2, rate_amount: 5000,
+        stay_total: 5800, amount_due: 2900, balance_due: 2900,
+      }),
+    }, combined)).toBe(true)
+  })
+
+  it('validates one A-House unit at up to four guests, the fourth charged as excess', () => {
+    // Three guests at the base rate.
     expect(allow({ path: 'bookings/official-a-house', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
       accommodation: 'house-a-camping', guests: 3, rate_amount: 1000, rate_classification: 'weekday',
       rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
     }) }, officialStore)).toBe(true)
+    // The fourth guest is accommodated for ₱500 on top of the base rate.
+    expect(allow({ path: 'bookings/official-a-house-fourth', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+      accommodation: 'house-a-camping', guests: 4, rate_amount: 1500, rate_classification: 'weekday',
+      rate_unit: 'standard_stay', stay_total: 1500, amount_due: 750, security_deposit: 0, balance_due: 750,
+    }) }, officialStore)).toBe(true)
+    // A fifth is past the documented cap, whatever the guest claims to have paid.
     expect(deny({ path: 'bookings/official-a-house-over-cap', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+      accommodation: 'house-a-camping', guests: 5, rate_amount: 2000, rate_classification: 'weekday',
+      rate_unit: 'standard_stay', stay_total: 2000, amount_due: 1000, security_deposit: 0, balance_due: 1000,
+    }) }, officialStore)).toBe(true)
+    // And the fourth cannot be had for free by under-reporting the total.
+    expect(deny({ path: 'bookings/official-a-house-fourth-underpaid', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
       accommodation: 'house-a-camping', guests: 4, rate_amount: 1000, rate_classification: 'weekday',
       rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
     }) }, officialStore)).toBe(true)

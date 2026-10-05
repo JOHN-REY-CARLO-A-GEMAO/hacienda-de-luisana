@@ -63,17 +63,23 @@ describe('official guest-count standard-stay pricing', () => {
     expect(quote('annex', '2026-10-05', 25)?.stayTotal).toBe(13500)
   })
 
-  it('refuses invalid counts, A-House counts above 3, inactive properties and unresolved multi-stays', () => {
+  it('refuses invalid counts, A-House counts above its cap, inactive properties and unresolved multi-stays', () => {
     expect(quote('annex', '2026-10-05', 0)).toBeUndefined()
-    expect(quote('house-a-camping', '2026-10-05', 4)).toBeUndefined()
+    // The A-House accommodates four: three at the base rate and a fourth for
+    // ₱500. A fifth is past its documented limit.
+    expect(quote('house-a-camping', '2026-10-05', 5)).toBeUndefined()
     expect(quote('missing', '2026-10-05', 2)).toBeUndefined()
     expect(quoteAccommodation(official, 'annex', { check_in: '2026-10-05', check_out: '2026-10-07', guests: 2 })).toBeUndefined()
     expect(quoteAccommodation({ ...official, accommodations: { annex: { ...official.accommodations.annex, active: false } } }, 'annex', { check_in: '2026-10-05', check_out: '2026-10-06', guests: 2 })).toBeUndefined()
   })
 
-  it('rejects per-person charges on the fixed-price A-House schedule', () => {
+  it('prices the A-House fourth guest as excess, and refuses an excess rule without its cap', () => {
     const aHouse = official.accommodations['house-a-camping']
-    const bad: PublishedRates = {
+    expect(quote('house-a-camping', '2026-10-05', 4)?.stayTotal).toBe(1500)
+
+    // A cap without an excess rule charges the base rate for the fourth guest,
+    // so the two have to be published together.
+    const capWithoutExcess: PublishedRates = {
       ...official,
       accommodations: {
         ...official.accommodations,
@@ -81,12 +87,12 @@ describe('official guest-count standard-stay pricing', () => {
           ...aHouse,
           guest_pricing: {
             ...aHouse.guest_pricing!,
-            weekday: { ...aHouse.guest_pricing!.weekday, excess_per_guest: 500 },
+            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000 },
           },
         },
       },
     }
-    expect(validatePublishedRates(bad).map((problem) => problem.path)).toContain(
+    expect(validatePublishedRates(capWithoutExcess).map((problem) => problem.path)).toContain(
       'accommodations.house-a-camping.guest_pricing.weekday.excess_per_guest',
     )
   })

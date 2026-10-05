@@ -36,11 +36,14 @@ export const OFFICIAL_ACCOMMODATION_RATES: Record<string, Omit<AccommodationRate
     active: true,
     guest_pricing: {
       units_per_booking: 1,
-      weekday: { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 3 },
-      weekend_holiday: { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 3 },
+      // Three guests at the base rate; a fourth is accommodated for ₱500. The cap
+      // and the excess rule are published together, because a cap without an
+      // excess rule would charge the base rate for that fourth guest.
+      weekday: { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500 },
+      weekend_holiday: { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500 },
     },
     down_payment_percent: 50,
-    manual_review_notice: 'One booking represents one A-House (up to 3 guests). Contact the Hacienda if more than one unit is needed.',
+    manual_review_notice: 'One booking represents one A-House (3 guests included, a fourth charged as excess, 4 in total). Contact the Hacienda if more than one unit is needed.',
   },
 }
 
