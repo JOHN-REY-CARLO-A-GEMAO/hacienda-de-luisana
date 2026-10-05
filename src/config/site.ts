@@ -334,9 +334,7 @@ export const ACCOMMODATIONS: Accommodation[] = [
       'wifi', 'parking', 'cooking', 'grill', 'campfire', 'workspace',
       'patio', 'ac', 'rice-cooker', 'tv', 'fridge', 'microwave', 'kettle',
     ],
-    // Client materials supplied the Annex rate and capacity but no Annex-only
-    // photograph. Use the Hacienda overview rather than mislabelling another room.
-    images: ['/images/gmaps/img-07.jpg'],
+    images: ['/images/gmaps/annex_night_lit.jpg'],
     active: true,
     category: 'annex',
   },

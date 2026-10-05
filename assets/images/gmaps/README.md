@@ -32,6 +32,7 @@ they survive a re-run of those scripts.
 | img-01 … img-14 | Google Maps listing photos | `GALLERY`, `ACCOMMODATIONS`, `EXPERIENCES` |
 | main_house_facade.jpg | Front of the main house — HDL sign, bench, parasol | `GALLERY` (Main House) |
 | main_house_night_lit.jpg | The main house lit at night, above the carport | `GALLERY` (Main House) |
+| annex_night_lit.jpg | The Annex lit at night, above its carport and balcony | `ACCOMMODATIONS` (Annex) |
 | hdl_sign_wall.jpg | The round wooden HDL sign on the wall | `GALLERY` (Hacienda) |
 | entrance_porch_sign.jpg | Entrance porch of the main house, through a Norfolk pine | `GALLERY` (Main House) |
 | camping_units_garden.jpg | The two A-frame units seen through the garden | `GALLERY` (Camping) |
