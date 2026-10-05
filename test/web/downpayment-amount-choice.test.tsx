@@ -395,4 +395,41 @@ describe('DownpaymentPage and a claim the screenshot does not show', () => {
     expect(container.textContent).not.toContain('your screenshot shows')
     expect(offReceiptCheckbox(container)).toBeFalsy()
   })
+
+  it('never offers an Admin review for a claim this page refuses to submit', async () => {
+    const container = renderPage()
+    await pump(2)
+    await attachReceipt(container, AGREEING_RECEIPT)
+
+    // The receipt says 1,020 and the down payment is 3,000. Both panels have
+    // something to say about a 500 claim — it is off the screenshot *and* it is
+    // short — and neither may promise a person will read it, because `submit`
+    // stops it. (A claim of 1,020 is on the screenshot, so only the underpayment
+    // note would be talking.)
+    await typeAmount(container, '500')
+    expect(container.textContent).toContain('cannot be submitted')
+    expect(container.textContent).not.toMatch(/Admin will (check it|read it|reads the amount)/)
+
+    const checkbox = offReceiptCheckbox(container)
+    await act(async () => {
+      checkbox!.click()
+    })
+    await pump(1)
+    // Answering the checkbox waives the receipt check. It does not waive the
+    // down payment, and it does not invent an Admin review.
+    expect(container.textContent).toContain('cannot be submitted')
+    expect(container.textContent).not.toMatch(/Admin will (check it|read it|reads the amount)/)
+  })
+
+  it('does offer an Admin review once the claim covers the down payment', async () => {
+    const container = renderPage()
+    await pump(2)
+    await attachReceipt(container, AGREEING_RECEIPT)
+    // Same screenshot, same disagreement — but this claim clears the threshold, so
+    // it is submitted and a person does read it. The promise belongs here.
+    await typeAmount(container, '5000')
+
+    expect(container.textContent).toContain('Admin will read it off your screenshot')
+    expect(container.textContent).not.toContain('cannot be submitted')
+  })
 })

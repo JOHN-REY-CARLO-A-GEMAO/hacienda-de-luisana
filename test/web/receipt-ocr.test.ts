@@ -159,4 +159,28 @@ describe('claimAgainstReceipt', () => {
     expect(claim('abc')).toEqual({ ok: true })
     expect(claim('10.999')).toEqual({ ok: true })
   })
+
+  it('promises an Admin reading of the screenshot only when the claim clears the amount owed', () => {
+    // The promise is about a path that exists. `/book/pay` refuses a claim below
+    // the due-now figure before anything is uploaded, so no Admin is ever involved
+    // and the sentence must not say otherwise.
+    const above = claimAgainstReceipt('2500', receipt, 2000)
+    expect(above.ok).toBe(false)
+    expect(above.ok ? '' : above.message).toContain('the Admin will read it off your screenshot')
+
+    const below = claimAgainstReceipt('2000', receipt, 3000)
+    expect(below.ok).toBe(false)
+    expect(below.ok ? '' : below.message).not.toContain('the Admin will read it')
+    expect(below.ok ? '' : below.message).toContain('cannot be submitted')
+  })
+
+  it('treats an unknown amount owed as reaching the Admin', () => {
+    // No published rate is not a gate — the claim is submitted and a person reads
+    // it. Refusing to promise a review there would invent a block that is not there.
+    for (const owed of [undefined, Number.NaN, 0]) {
+      const out = claimAgainstReceipt('2000', receipt, owed)
+      expect(out.ok).toBe(false)
+      expect(out.ok ? '' : out.message).toContain('the Admin will read it off your screenshot')
+    }
+  })
 })

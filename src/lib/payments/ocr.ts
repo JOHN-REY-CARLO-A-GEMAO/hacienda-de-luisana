@@ -394,6 +394,32 @@ export function matchPaymentReference(input: {
 }
 
 /**
+ * What a page does with a claim below the due-now figure.
+ *
+ * The two places a Guest types a claim treat an underpayment differently, so a
+ * sentence written for one is a lie on the other:
+ *
+ * - `blocks_submit` — `/book/pay`. A new Booking is not submitted with less than
+ *   the published down payment (`DownpaymentPage.submit`), so no Admin ever sees
+ *   the claim and no page may promise that one will.
+ * - `reaches_admin` — `/account`, re-sending a proof for a Booking the Admin
+ *   already has. There is no gate there (`PaymentStep.submit`), so the claim
+ *   does reach a person and the Admin's reading of the receipt is the next step.
+ *
+ * Overpaying lands in the same place on both: the claim clears the threshold and
+ * the Admin checks it against the screenshot.
+ */
+export type UnderpayHandling = 'blocks_submit' | 'reaches_admin'
+
+const peso2 = (n: number): string =>
+  `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+/** Is a claim short of the due-now figure by more than half a centavo? */
+function underpaid(claimed: number, owed: number): boolean {
+  return owed - claimed >= 0.005
+}
+
+/**
  * Whether the amount a Guest is claiming is one of the figures their own
  * screenshot prints.
  *
@@ -410,10 +436,17 @@ export function matchPaymentReference(input: {
  * all validates nothing — there is nothing to compare against — and the caller
  * offers the Guest a way to say, deliberately, that the receipt says something
  * else.
+ *
+ * `owed` decides the closing sentence only. What the Admin reads off a
+ * screenshot is a promise about a path that exists, so it is made when the claim
+ * clears the threshold — or when no threshold is published and the claim will
+ * therefore be submitted at all — and withheld when an underpayment will stop it
+ * before any Admin is involved.
  */
 export function claimAgainstReceipt(
   claimed: string,
   amounts: ReceiptAmount[],
+  owed?: number,
 ): { ok: true } | { ok: false; message: string } {
   if (amounts.length === 0) return { ok: true }
   // `validateAmount` owns the shape of this field — an empty, malformed or
@@ -423,15 +456,17 @@ export function claimAgainstReceipt(
   if (!parsed.ok) return { ok: true }
   const value = Number(parsed.value)
   if (amounts.some((candidate) => Math.abs(Number(candidate.value) - value) < 0.005)) return { ok: true }
+  const shown = amounts.map((a) => `${peso2(Number(a.value))} (${a.label})`).join(', ')
+  // An unknown `owed` is a missing quote, not a clearance — but it is also not a
+  // gate, so the claim reaches a person either way.
+  const reachesAdmin = owed === undefined || !Number.isFinite(owed) || owed <= 0 || !underpaid(value, owed)
   return {
     ok: false,
     message:
-      `You entered ₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ` +
-      `but your screenshot shows ` +
-      `${amounts
-        .map((a) => `₱${Number(a.value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${a.label})`)
-        .join(', ')}. ` +
-      'Use one of those figures, or say so below and the Admin will read it off your screenshot.',
+      `You entered ${peso2(value)} but your screenshot shows ${shown}. ` +
+      (reachesAdmin
+        ? 'Use one of those figures, or say so below and the Admin will read it off your screenshot.'
+        : 'Use one of those figures, or say so below. This amount is also below the down payment this Booking asks for, so it cannot be submitted until it is corrected.'),
   }
 }
 
@@ -439,22 +474,36 @@ export function claimAgainstReceipt(
  * The sentence a Guest sees when the amount they entered is not the amount this
  * Booking asks for.
  *
- * It is a warning, never a block. A Guest who genuinely sent a different figure
- * is allowed to say so — the Admin's verification is what moves money, and a
- * blocked form would only push them into contacting the Hacienda by phone to say
- * exactly this. What must not happen is the mismatch reaching the Admin silently,
- * which is what the old single-guess extraction allowed.
+ * Under `/account` it is a warning and nothing more: a Guest who genuinely sent
+ * a different figure is allowed to say so, the Admin's verification is what
+ * moves money, and a blocked form would only push them into contacting the
+ * Hacienda by phone to say exactly this.
+ *
+ * Under `/book/pay` a claim below the due-now figure is refused before anything
+ * is uploaded, so the same sentence there would promise an Admin review that
+ * cannot happen. `underpay` says which of the two the page is, and the two
+ * sentences differ exactly where that difference is visible to the Guest.
  *
  * Either side being unknown reads as `null`: an unknown owed amount is this
  * historical Booking's missing snapshot, not a discrepancy.
  */
-export function amountMismatchNote(claimed: number, owed: number): string | null {
+export function amountMismatchNote(
+  claimed: number,
+  owed: number,
+  { underpay = 'reaches_admin' }: { underpay?: UnderpayHandling } = {},
+): string | null {
   if (!Number.isFinite(claimed) || !Number.isFinite(owed)) return null
   if (claimed <= 0 || owed <= 0) return null
   if (Math.abs(claimed - owed) < 0.005) return null
+  if (underpay === 'blocks_submit' && underpaid(claimed, owed)) {
+    return (
+      `Your claim of ${peso2(claimed)} is below the ${peso2(owed)} down payment this Booking asks for, ` +
+      'so the booking cannot be submitted with this amount. Please correct it, or contact the Hacienda ' +
+      'if you have already sent the full downpayment.'
+    )
+  }
   return (
-    `You entered ₱${claimed.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ` +
-    `but this Booking asks for ₱${owed.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. ` +
+    `You entered ${peso2(claimed)} but this Booking asks for ${peso2(owed)}. ` +
     'If that is what you sent, the Admin will check it against your receipt — otherwise please correct the amount.'
   )
 }

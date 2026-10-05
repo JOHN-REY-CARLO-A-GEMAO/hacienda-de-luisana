@@ -23,6 +23,10 @@ The due-now figure is a default the Guest may correct, not the claim. `amount_cl
 
 OCR stays the hint engine this ADR already makes it, so this is a question and not a wall. A screenshot that printed no readable figure checks nothing, and a Guest may say on the record that their receipt reads differently from what was read off it — a blurry photo or a GCash, Maya or bank template the engine has not seen is a real and common case. The Admin reads the amount off the screenshot either way; nothing here verifies anything. `firestore.rules` cannot do this part: a Booking create still only requires `amount_claimed > 0`, because the rules cannot read the image.
 
+## What a page may promise about the Admin
+
+The two places a Guest types a claim treat a claim below the due-now figure differently, so what the page says about it has to differ too. `/book/pay` refuses one: nothing is uploaded and no Admin is involved, so its wording says the booking cannot be submitted and offers the two ways out that exist. `/account`, re-sending a proof for a Booking the Admin already has, has no such gate, so there the same claim reaches a person and the wording says the Admin will check it against the receipt. A page that promises an Admin review it will never get is worse than one that refuses: a Guest acts on the promise. A claim at or above the due-now figure reaches the Admin on both, so both say so.
+
 The created document is `Pending`, `payment_status: pending`, and carries no verification marker. OCR may suggest a reference and an amount. It never verifies.
 
 ## What the Admin decides

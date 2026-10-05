@@ -148,12 +148,49 @@ describe('the mismatch a Guest is warned about', () => {
     expect(amountMismatchNote(1020, Number.POSITIVE_INFINITY)).toBeNull()
   })
 
-  it('is a warning and never a block: it returns text, not a verdict', () => {
-    // The Guest may genuinely have sent a different figure. The Admin verifies
-    // (ocr.ts) — a form that refused to submit would only push them to phone the
-    // Hacienda to say the same thing.
+  it('is a warning and never a block where the claim does reach the Admin', () => {
+    // `/account`, re-sending a proof for a Booking the Admin already has. There is
+    // no gate there (`PaymentStep.submit`), so the Guest may genuinely have sent a
+    // different figure and the Admin is the one who resolves it — a form that
+    // refused to submit would only push them to phone the Hacienda to say the same
+    // thing.
     const note = amountMismatchNote(2500, 1020)
     expect(typeof note).toBe('string')
     expect(note).toContain('Admin will check it against your receipt')
+  })
+})
+
+/**
+ * The same sentence on `/book/pay`, where `submit` refuses a claim below the
+ * due-now figure. Promising an Admin review there is a promise about a path that
+ * does not exist: nothing is uploaded and no Admin is involved.
+ */
+describe('the mismatch a Guest is warned about where an underpayment blocks the submit', () => {
+  const blocks = { underpay: 'blocks_submit' } as const
+
+  it('says the booking cannot be submitted, and does not promise an Admin review', () => {
+    const note = amountMismatchNote(500, 1020, blocks)
+    expect(note).toContain('1,020.00')
+    expect(note).toContain('cannot be submitted')
+    // The bug this is for: this sentence used to offer an Admin review that
+    // `submit` refused to let happen.
+    expect(note).not.toContain('Admin will check')
+  })
+
+  it('offers the two ways out that actually exist', () => {
+    const note = amountMismatchNote(500, 1020, blocks)
+    expect(note).toContain('Please correct it')
+    expect(note).toContain('contact the Hacienda')
+  })
+
+  it('still promises the Admin a check once the claim clears the threshold', () => {
+    // Overpaying reaches a person on this page too — the difference between the
+    // two sentences is the underpayment, not the page being strict.
+    expect(amountMismatchNote(2500, 1020, blocks)).toContain('Admin will check it against your receipt')
+  })
+
+  it('says nothing when the claim matches, on this page as on the other', () => {
+    expect(amountMismatchNote(1020, 1020, blocks)).toBeNull()
+    expect(amountMismatchNote(1020, 0, blocks)).toBeNull()
   })
 })

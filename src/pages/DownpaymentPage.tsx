@@ -71,8 +71,14 @@ export function DownpaymentPage() {
    * reads differently from what was read off it — OCR is a hint engine, and only
    * the Admin reads the screenshot for real.
    */
-  const receiptCheck = claimAgainstReceipt(amount, amountCandidates)
+  const receiptCheck = claimAgainstReceipt(amount, amountCandidates, dueNow ?? undefined)
   const offReceipt = claimOffReceipt ? null : receiptCheck.ok ? null : receiptCheck.message
+  /**
+   * Whether this page will accept the claim at all. `submit` refuses one below
+   * the due-now figure, so every sentence on this page that promises an Admin
+   * review has to know whether that promise has a path behind it.
+   */
+  const belowDueNow = dueNow !== null && Number(amount) > 0 && dueNow - Number(amount) >= 0.005
 
   useEffect(() => {
     if (!draft) navigate('/book', { replace: true })
@@ -429,7 +435,9 @@ export function DownpaymentPage() {
                 >
                   <span className={`block text-xs font-medium ${offReceipt ? 'text-red-700' : 'text-amber-900'}`}>
                     {offReceipt ??
-                      `You are claiming an amount this screenshot does not show. The Admin reads the amount off your screenshot before approving this booking.`}
+                      (belowDueNow
+                        ? `You are claiming an amount this screenshot does not show. It is also below the ${peso(dueNow!)} down payment this Booking asks for, so this still cannot be submitted until the amount is corrected.`
+                        : 'You are claiming an amount this screenshot does not show. The Admin reads the amount off your screenshot before approving this booking.')}
                   </span>
                   {offReceipt && (
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
@@ -460,14 +468,13 @@ export function DownpaymentPage() {
                 </div>
               )}
 
-              {/* The underpayment check in `submit` compares this field against `dueNow`, which
-                  the claim-vs-receipt panel above does not: a Guest can hold a
-                  figure their own screenshot prints and still owe more than that,
-                  and the Admin decides what it means. This says so before the
-                  screenshot leaves the device. */}
-              {amountMismatchNote(Number(amount) || 0, dueNow ?? 0) && (
+              {/* `submit` refuses a claim below `dueNow`, so this page says the claim cannot
+                  be submitted rather than promising an Admin review that cannot
+                  happen — and still says it when the claim clears the threshold,
+                  because a claim above `dueNow` does reach a person. */}
+              {amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' }) && (
                 <p className="mt-4 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
-                  {amountMismatchNote(Number(amount) || 0, dueNow ?? 0)}
+                  {amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' })}
                 </p>
               )}
 
