@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart' as legacy;
 import 'core/theme/app_theme.dart';
 import 'firebase_options.dart';
+import 'providers/app_providers.dart';
 import 'services/auth_store.dart';
 import 'services/notification_service.dart';
 import 'tutorial/tutorial_keys.dart';
@@ -70,8 +71,38 @@ class HaciendaAdminApp extends StatelessWidget {
 ///
 /// Signed-out (or non-Admin) sessions see [AdminLoginScreen]; the Admin goes
 /// straight into [MainShellScreen].
-class AuthGate extends StatelessWidget {
+///
+/// It is also the boundary of "signed in" for the Security gate (ADR-0015):
+/// an observer wipes the PIN ticket the moment the app is backgrounded, so
+/// a session left on the table re-asks the PIN after the next suspension —
+/// the same line signing out draws, short of actually signing out.
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  ConsumerState<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends ConsumerState<AuthGate>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      ref.read(pinGateProvider).clearTicket();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

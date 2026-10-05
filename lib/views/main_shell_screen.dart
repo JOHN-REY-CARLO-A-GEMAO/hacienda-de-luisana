@@ -4,7 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart' as legacy;
 import '../core/constants/app_constants.dart';
 import '../services/auth_store.dart';
+import '../services/pin_store.dart';
 import '../providers/app_providers.dart';
+import 'security/secure_action_sheet.dart';
+import 'security/setup_pin_sheet.dart';
 import '../tutorial/tutorial_controller.dart';
 import '../tutorial/tutorial_keys.dart';
 import '../widgets/animated_badge.dart';
@@ -50,9 +53,41 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       _tutorial?.attachTabNavigator(_navigateToTab);
       // Sync the current tab so the tour knows where the app already is.
       TourBus.tab(_currentIndex);
-      // First launch as the Admin: offer the interactive guided tour.
-      _tutorial?.maybeOfferTutorial();
+      // First sign-in as the Admin: the Security PIN is not optional
+      // (ADR-0015). A gate that can be dismissed is not a gate. The guided
+      // tour waits for it — one sheet at a time on a first run.
+      _ensureSecurityPin().then((_) {
+        if (!mounted) return;
+        // First launch as the Admin: offer the interactive guided tour.
+        _tutorial?.maybeOfferTutorial();
+      });
     });
+  }
+
+  /// Create the PIN on first sign-in; seed the cache from Firestore when
+  /// this device has lost it; say plainly when neither is possible so no
+  /// sensitive action silently appears to work.
+  Future<void> _ensureSecurityPin() async {
+    final auth = legacy.Provider.of<AuthStore>(context, listen: false);
+    final uid = auth.uid;
+    if (uid == null || uid.isEmpty) return;
+    final state = await ref.read(pinGateProvider).setupState(uid);
+    if (!mounted) return;
+    switch (state) {
+      case PinSetupState.setUpNeeded:
+        await showSetupPinSheet(context);
+        return;
+      case PinSetupState.unreachable:
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: AppColors.statusAlert,
+          content: Text(
+              'The Security PIN could not be checked on this device yet — you appear to be offline. Sensitive actions stay locked until it can be.'),
+          duration: Duration(seconds: 8),
+        ));
+        return;
+      case PinSetupState.ready:
+        return;
+    }
   }
 
   @override
@@ -282,11 +317,30 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                   },
                 ),
                 ListTile(
+                  leading: const Icon(Icons.shield_outlined, color: AppColors.primaryForest),
+                  title: const Text('Change Security PIN'),
+                  subtitle: const Text('Asked before approvals, publishes and deletes (ADR-0015)'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    showChangePinSheet(context);
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.logout, color: AppColors.statusAlert),
                   title: const Text('Sign out'),
                   subtitle: Text(auth.sessionEmail ?? 'Admin session'),
                   onTap: () async {
                     Navigator.pop(ctx);
+                    // Confirm-tier in the gate (ADR-0015): sign-out ends the
+                    // session, the PIN ticket with it.
+                    final ok = await showSecureConfirm(
+                      context,
+                      title: 'Sign out?',
+                      body: 'The session ends and the Security PIN is asked for again on return.',
+                      confirm: 'Sign out',
+                      danger: true,
+                    );
+                    if (!ok) return;
                     await auth.signOut();
                   },
                 ),

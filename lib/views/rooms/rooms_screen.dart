@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_constants.dart';
 import '../../models/room_model.dart';
 import '../../providers/app_providers.dart';
+import '../../services/firestore_service.dart';
+import '../security/secure_action_sheet.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/status_pill.dart';
@@ -54,7 +56,7 @@ class RoomsScreen extends ConsumerWidget {
   Widget _buildRoomCard(
     BuildContext context,
     RoomModel room,
-    dynamic firestoreService,
+    FirestoreService firestoreService,
     NumberFormat currencyFmt,
   ) {
     Color statusColor;
@@ -168,9 +170,28 @@ class RoomsScreen extends ConsumerWidget {
                                 child: Text(s.displayName, style: GoogleFonts.inter(fontSize: 12)),
                               );
                             }).toList(),
-                            onChanged: (newStatus) {
-                              if (newStatus != null) {
-                                firestoreService.updateRoomStatus(room.id, newStatus);
+                            onChanged: (newStatus) async {
+                              if (newStatus == null || newStatus == room.status) return;
+                              // Confirm-tier in the gate (ADR-0015): a
+                              // mis-set status is what housekeeping and
+                              // the calendar read, so it names the change
+                              // and waits. The write is awaited and its
+                              // failure said out loud — a silent drop
+                              // used to leave the card lying.
+                              final ok = await showSecureConfirm(
+                                context,
+                                title: 'Set ${room.name} to ${newStatus.displayName}?',
+                                body: 'Housekeeping and the booking calendar read this status. The change is saved to Firestore.',
+                                confirm: 'Set status',
+                              );
+                              if (!ok || !context.mounted) return;
+                              final problem = await firestoreService.updateRoomStatus(room.id, newStatus);
+                              if (problem != null && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  backgroundColor: AppColors.statusAlert,
+                                  content: Text(problem),
+                                  duration: const Duration(seconds: 6),
+                                ));
                               }
                             },
                           ),
@@ -196,7 +217,8 @@ class RoomsScreen extends ConsumerWidget {
     );
   }
 
-  void _showPriceOverrideDialog(BuildContext context, RoomModel room, dynamic firestoreService) {
+  void _showPriceOverrideDialog(
+      BuildContext context, RoomModel room, FirestoreService firestoreService) {
     final controller = TextEditingController(text: room.pricePerNight.toInt().toString());
 
     showDialog(
@@ -223,12 +245,32 @@ class RoomsScreen extends ConsumerWidget {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               final newPrice = double.tryParse(controller.text);
-              if (newPrice != null) {
-                firestoreService.updateRoomStatus(room.id, room.status, newPrice);
-              }
+              // Messengers and contexts are captured from the screen, not
+              // the dialog: the dialog's context dies at the pop, the
+              // screen's does not.
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(ctx);
+              if (newPrice == null) return;
+              // Confirm-tier in the gate (ADR-0015), then an awaited write
+              // whose failure is said out loud instead of swallowed.
+              final ok = await showSecureConfirm(
+                context,
+                title: 'Override the rate for ${room.name}?',
+                body: '₱${newPrice.toStringAsFixed(0)} per night until the next published rates. This is the figure the rooms screen shows.',
+                confirm: 'Save Rate',
+              );
+              if (!ok || !context.mounted) return;
+              final problem =
+                  await firestoreService.updateRoomStatus(room.id, room.status, newPrice);
+              if (problem != null) {
+                messenger.showSnackBar(SnackBar(
+                  backgroundColor: AppColors.statusAlert,
+                  content: Text(problem),
+                  duration: const Duration(seconds: 6),
+                ));
+              }
             },
             child: const Text('Save Rate'),
           ),

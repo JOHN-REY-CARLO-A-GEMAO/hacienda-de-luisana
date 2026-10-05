@@ -29,7 +29,7 @@ lib/                    # Flutter app (main.dart, models/, services/, providers/
 android/                # Flutter Android project (Gradle 8.11.1, Kotlin 2.2.20, compileSdk 36)
 assets/                 # Flutter asset images
 pubspec.yaml
-test/*_test.dart        # flutter test — lifecycle rules, published rates, booking model, tour state machine
+test/*_test.dart        # flutter test — lifecycle rules, published rates, booking model, tour state machine, security gate, PIN policy, PIN sheet
 
 # Shared
 CONTEXT.md              # Domain glossary (the vocabulary both apps use)
@@ -52,8 +52,9 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 | Read, answer, moderate and publish Reviews | — | ✅ app ([ADR-0014](./adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md)) |
 | Review a Booking: approve / reject, refuse an ID | — | ✅ app |
 | Verify / reject Payment proof, cancel, settle and mark Refunds | — | ✅ app |
-| Check-in → Staying → Check-out → Complete, purge ID after the stay, revoke a Credential | — | ✅ app |
+| Check-in → Staying → Check-out → Complete, revoke a Credential | — | ✅ app |
 | Publish rates & cancellation policy (`site_config/rates`) | — | ✅ app |
+| A deliberate second input on every sensitive action — a Security PIN (approve, delete, publish, revoke) or a confirm (stay transitions, sign-out, reader grant) | — | ✅ app ([ADR-0015](./adr/0015-a-sensitive-admin-action-needs-a-deliberate-second-input.md)) |
 | Read every Booking, Access log, CRM, analytics | — | ✅ app |
 | Read a Guest's live location while they are sharing it | — | ✅ app ([ADR-0013](./adr/0013-live-location-as-a-stream.md)) |
 
@@ -143,7 +144,7 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 
 ```bash
 flutter pub get
-flutter test              # lifecycle, rates, model tests
+flutter test              # lifecycle, rates, model, security-gate, PIN-policy and PIN-sheet tests
 flutter run               # Android emulator/device
 ```
 

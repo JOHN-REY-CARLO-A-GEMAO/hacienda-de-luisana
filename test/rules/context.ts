@@ -194,6 +194,27 @@ export const accessLogDoc = (overrides: DocData = {}): DocData => ({
   ...overrides,
 })
 
+/**
+ * The Admin's Security PIN record as `FirestoreService.writeAdminSecurity`
+ * writes it (ADR-0015): a PBKDF2 record (base64 hash ≥ 40 chars, base64
+ * salt, ≥ 10,000 rounds) with counters born zero. `pin_updated_at` is a
+ * server timestamp — the rule holds it to `request.time` — so a fixture that
+ * means "rotated now" stamps it with `ruleTimestamp(at)` and evaluates the
+ * request at the same instant.
+ */
+export const ADMIN_SECURITY_NOW = DEFAULT_REQUEST_TIME
+
+export const adminSecurityDoc = (overrides: DocData = {}, at: number = ADMIN_SECURITY_NOW): DocData => ({
+  uid: ADMIN_UID,
+  pin_hash: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=', // 44 chars: 32 bytes, base64
+  salt: 'c2FsdHNhbHRzYWx0c2FsdA==', // 24 chars: 16 bytes, base64
+  iterations: 100000,
+  failed_attempts: 0,
+  pin_updated_at: ruleTimestamp(at),
+  pin_updated_by: ADMIN_UID,
+  ...overrides,
+})
+
 /** A store whose `profiles/{uid}` documents decide roles. */
 export function storeWith(profiles: Record<string, DocData | null>, extra: Store = {}): Store {
   const store: Store = { ...extra }

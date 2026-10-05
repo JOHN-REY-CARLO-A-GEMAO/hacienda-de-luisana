@@ -7,6 +7,7 @@ import '../../core/constants/app_constants.dart';
 import '../../services/auth_store.dart';
 import '../../services/chat_retention.dart';
 import '../../services/live_location_service.dart';
+import '../security/secure_action_sheet.dart';
 import '../../tutorial/tutorial_controller.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
@@ -140,9 +141,22 @@ class ThreadScreenState extends State<ThreadScreen> {
   /// cannot read Firestore, so a Profile-promoted Admin is admitted through a
   /// mirror node that only an address on the bootstrap allowlist may write.
   /// That is `AuthStore.isAllowlisted`, not a second copy of the list.
-  void _toggleLiveLocation() {
-    setState(() => _showLiveLocation = !_showLiveLocation);
-    if (!_showLiveLocation) return;
+  Future<void> _toggleLiveLocation() async {
+    if (_showLiveLocation) {
+      setState(() => _showLiveLocation = false);
+      return;
+    }
+    // Confirm-tier in the gate (ADR-0015): opening the reader is a grant —
+    // it says the Admin chose to watch this Guest's position while they
+    // share it. Nothing is stored (ADR-0013); the consent is the Guest's.
+    final ok = await showSecureConfirm(
+      context,
+      title: 'Read their live location?',
+      body: 'You will see this Guest\'s position for as long as they keep sharing it — up to the 60 minutes they chose. Nothing is written to Firestore, and they can stop at any moment.',
+      confirm: 'Open the reader',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _showLiveLocation = true);
     final service = _liveLocation ??= LiveLocationService();
     final auth = context.read<AuthStore>();
     final uid = auth.uid;

@@ -7,6 +7,7 @@
 | Payment proofs | Cloud Storage `payments/{uid}/…` | none |
 | Payment reference catalog | Cloud `payment_references` | Admin app may keep a working copy on device |
 | Access logs | Cloud `access_logs` | none |
+| Admin Security PIN record (ADR-0015) | Cloud `admin_security/{uid}` — PBKDF2 hash, salt, rounds, lockout counters; own-doc-only in the rules, never deletable | Admin app cache in SharedPreferences (same record shape) so the check works offline; Firestore is the source of truth |
 | Chat | Cloud `conversations` (≤1,000 chars a message, read a page at a time) | website demo cache `hdl:chat` when offline, paginated the same way |
 | Review | Cloud `reviews` | website demo cache `hdl:review:{bookingId}` |
 | Testimonial (public) | Cloud `public_reviews` | website demo cache `hdl:public-reviews` |

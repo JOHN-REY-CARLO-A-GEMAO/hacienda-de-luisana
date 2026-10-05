@@ -514,6 +514,100 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
+    // admin_security — the Security PIN's server copy (ADR-0015)
+    // ------------------------------------------------------------------
+    // The PIN itself is a guard rail, not a trust boundary (ADR-0015): the
+    // money invariants are above, in the bookings block, and a person with
+    // the device can bypass any app. What this collection adds is a server
+    // copy of the PIN record whose lockout cannot be talked out of by the
+    // app that set it:
+    //
+    //   - each Admin reaches only their own document, so one Admin can
+    //     neither read another's hash nor forge their lockout;
+    //   - no Guest can read a hash to take offline;
+    //   - the document is never deletable — a lockout record is evidence;
+    //   - an update takes one of two doors, and neither clears a live
+    //     lockout:
+    //       1. the counter door: only `failed_attempts` / `locked_until`
+    //          move, and only forward — the counter is a ratchet (recording
+    //          a failure, or pushing the lock later), so clearing app data
+    //          or writing Firestore directly does not reset anything. The
+    //          friendly reset-on-success lives on the device.
+    //       2. the rotation door: a real PIN change, stamped by its writer
+    //          at request time, counters born zero — and refused outright
+    //          while a lock is live, so rotating cannot become the way
+    //          around the wait. The app offers rotation only after a
+    //          current-PIN check.
+    match /admin_security/{uid} {
+      function isAdminSecurityShape() {
+        return request.resource.data.uid == uid
+          && request.resource.data.keys().hasAll(['uid', 'pin_hash', 'salt', 'iterations',
+                                                  'failed_attempts', 'pin_updated_at',
+                                                  'pin_updated_by'])
+          && request.resource.data.keys().hasOnly(['uid', 'pin_hash', 'salt', 'iterations',
+                                                   'failed_attempts', 'locked_until',
+                                                   'pin_updated_at', 'pin_updated_by'])
+          && request.resource.data.pin_hash is string
+          && request.resource.data.pin_hash.size() >= 40
+          && request.resource.data.salt is string
+          && request.resource.data.salt.size() >= 20
+          && request.resource.data.iterations is int
+          && request.resource.data.iterations >= 10000
+          && request.resource.data.failed_attempts is int
+          && request.resource.data.failed_attempts >= 0
+          && (request.resource.data.get('locked_until', null) == null
+              || request.resource.data.get('locked_until', null) is timestamp)
+          && request.resource.data.pin_updated_at is timestamp
+          && request.resource.data.pin_updated_by is string
+          && request.resource.data.pin_updated_by.size() > 0;
+      }
+
+      // A lock that has not run out yet. Read through `get` so a document
+      // without the field answers "not locked" instead of erroring.
+      function isStoredLockLive() {
+        return resource.data.get('locked_until', null) != null
+          && resource.data.locked_until > request.time;
+      }
+
+      allow read: if isAdmin() && request.auth.uid == uid;
+
+      // First setup: counters born zero, the stamp naming the writer.
+      allow create: if isAdmin() && request.auth.uid == uid
+        && isAdminSecurityShape()
+        && request.resource.data.pin_updated_by == request.auth.uid
+        && request.resource.data.failed_attempts == 0
+        && request.resource.data.get('locked_until', null) == null;
+
+      allow update: if isAdmin() && request.auth.uid == uid
+        && isAdminSecurityShape()
+        && (
+             // Door 1 — the counters. Nothing else moves, nothing lowers,
+             // and a live lock may only be pushed later.
+             (request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['failed_attempts', 'locked_until'])
+               && request.resource.data.failed_attempts >= resource.data.get('failed_attempts', 0)
+               && (!isStoredLockLive()
+                   || (request.resource.data.get('locked_until', null) != null
+                       && request.resource.data.locked_until >= resource.data.locked_until)))
+             // Door 2 — the rotation. A new hash, stamped now, by the
+             // writer, counters zero, and never out of a live lock.
+             || (request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['pin_hash', 'salt', 'iterations', 'failed_attempts',
+                            'locked_until', 'pin_updated_at', 'pin_updated_by'])
+                 && request.resource.data.pin_updated_at == request.time
+                 && request.resource.data.pin_updated_by == request.auth.uid
+                 && request.resource.data.failed_attempts == 0
+                 && request.resource.data.get('locked_until', null) == null
+                 && request.resource.data.pin_hash != resource.data.get('pin_hash', '')
+                 && !isStoredLockLive())
+           );
+
+      // A lockout record is evidence. Rotation rewrites the hash; nothing
+      // removes that a lock was served.
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------------------------
     // Bookings (shared by web /book, /account and the Flutter app — P2/P3)
     // ------------------------------------------------------------------
     // - CREATE stays public pending-only so a web inquiry works unauthenticated.

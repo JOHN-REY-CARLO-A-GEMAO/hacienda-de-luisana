@@ -11,6 +11,9 @@ import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
 import '../../services/payment_proof_service.dart';
+import '../../services/pin_store.dart';
+import '../security/secure_action_sheet.dart';
+import '../security/security_pin_sheet.dart';
 import 'payment_proof_viewer.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/hacienda_card.dart';
@@ -46,7 +49,9 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   }
 
   Future<void> _run(BookingModel booking, AdminAction action,
-      {ActionInput input = const ActionInput(), Actor? actor}) async {
+      {ActionInput input = const ActionInput(),
+      Actor? actor,
+      SecurityTicket? ticket}) async {
     setState(() => _busy = true);
     final service = ref.read(firestoreServiceProvider);
     final result = await service.applyBookingAction(
@@ -54,6 +59,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       action,
       actor ?? _actor(),
       input: input,
+      ticket: ticket,
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -135,39 +141,52 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     );
   }
 
-  Future<bool> _confirm(String title, String body,
-      {String confirm = 'Confirm', bool danger = false}) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title,
-            style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: Text(body),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Back')),
-          ElevatedButton(
-            style: danger
-                ? ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.statusAlert)
-                : null,
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(confirm),
-          ),
-        ],
-      ),
+  /// One line of consequence, in the sheet, before the Admin commits — the
+  /// gate's whole trick is naming what the tap will do (ADR-0015).
+  String _consequence(BookingModel booking, AdminAction action) {
+    final dates = DateFormatter.formatStayRange(
+        booking.checkInDate, booking.checkOutDate);
+    switch (action) {
+      case AdminAction.approve:
+        final amount = booking.amountClaimed ??
+            (booking.amountDue ?? 0) + (booking.securityDeposit ?? 0);
+        return 'This verifies ₱${amount.toStringAsFixed(0)} and firms the dates '
+            '$dates. The Booking becomes Approved, and it cannot be undone.';
+      case AdminAction.verifyPayment:
+        return 'This says the money actually arrived, and moves the Booking '
+            'to the paid state that amount earns.';
+      case AdminAction.cancel:
+        return 'This frees the dates. A Reserved Booking is settled under the '
+            'published refund policy.';
+      case AdminAction.markRefunded:
+        return '₱${(booking.refundTotal ?? 0).toStringAsFixed(2)} is recorded as '
+            'returned to the Guest.';
+      case AdminAction.rejectPaymentProof:
+        return 'Refusing without a resend cancels the Booking outright. '
+            'There is no verified money, so there is nothing to refund.';
+      case AdminAction.revokeKey:
+        return 'The Guest\'s door Credential stops working at the lock\'s '
+            'next touch. It cannot be undone from here.';
+      default:
+        return '';
+    }
+  }
+
+  Future<SecurityTicket?> _ticket(
+      BookingModel booking, AdminAction action) {
+    return requirePinTicket(
+      context,
+      ref: ref,
+      title: '${action.label} — ${booking.guestName}',
+      consequence: _consequence(booking, action),
     );
-    return ok ?? false;
   }
 
   Future<void> _onAction(BookingModel booking, AdminAction action) async {
     switch (action) {
       case AdminAction.approve:
-        if (await _confirm('Approve Booking',
-            'Accept the downpayment screenshot? The dates are re-checked, and the Booking becomes Approved. It is not confirmed before this.')) {
-          await _run(booking, action);
-        }
+        final ticket = await _ticket(booking, action);
+        if (ticket != null) await _run(booking, action, ticket: ticket);
         return;
       case AdminAction.reject:
         final reason = await _askText('Reject Booking',
@@ -183,8 +202,11 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             'Amount on the proof (₱${owed.toStringAsFixed(2)} due)',
             booking.amountClaimed ?? (owed > 0 ? owed : null));
         if (amount != null) {
-          await _run(booking, action,
-              input: ActionInput(amountVerified: amount));
+          final ticket = await _ticket(booking, action);
+          if (ticket != null) {
+            await _run(booking, action,
+                input: ActionInput(amountVerified: amount), ticket: ticket);
+          }
         }
         return;
       case AdminAction.rejectPaymentProof:
@@ -212,8 +234,16 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           ),
         );
         if (resubmits == null) return;
+        // Cancelling the Booking is the PIN tier; letting them resend is
+        // already covered by the reason dialog (ADR-0015).
+        SecurityTicket? ticket;
+        if (!resubmits) {
+          ticket = await _ticket(booking, action);
+          if (ticket == null) return;
+        }
         await _run(booking, action,
-            input: ActionInput(reason: reason, guestResubmits: resubmits));
+            input: ActionInput(reason: reason, guestResubmits: resubmits),
+            ticket: ticket);
         return;
       case AdminAction.cancel:
         final reason = await _askText('Cancel Booking',
@@ -226,44 +256,83 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               'Deducted from the Security deposit (0 if none)', 0);
           if (damage == null) return;
         }
+        final ticket = await _ticket(booking, action);
+        if (ticket == null) return;
         await _run(booking, action,
             input: ActionInput(
                 reason: reason.isEmpty ? null : reason,
-                damageDeduction: damage));
+                damageDeduction: damage),
+            ticket: ticket);
         return;
       case AdminAction.markRefunded:
-        if (await _confirm('Mark refunded',
-            '₱${(booking.refundTotal ?? 0).toStringAsFixed(2)} has been returned to the Guest?')) {
-          await _run(booking, action);
-        }
+        final ticket = await _ticket(booking, action);
+        if (ticket != null) await _run(booking, action, ticket: ticket);
         return;
       case AdminAction.revokeKey:
-        if (await _confirm('Revoke Credential',
-            'The Guest\'s door Credential is revoked; the lock drops it on its next touch.',
-            confirm: 'Revoke', danger: true)) {
+        final ticket = await _ticket(booking, action);
+        if (ticket != null) await _run(booking, action, ticket: ticket);
+        return;
+      case AdminAction.expire:
+        if (await showSecureConfirm(context,
+            title: 'Record the expired hold?',
+            body: 'The 24-hour Date hold has run out. Recording it frees the dates on every surface and files the expiry on the Activity log.')) {
+          await _run(booking, action, actor: const Actor.system());
+        }
+        return;
+      case AdminAction.checkIn:
+        if (await showSecureConfirm(context,
+            title: 'Check in ${booking.guestName}?',
+            body: 'The Booking becomes Checked-In for the stay recorded on it.')) {
           await _run(booking, action);
         }
         return;
-      case AdminAction.expire:
-        await _run(booking, action, actor: const Actor.system());
-        return;
-      case AdminAction.checkIn:
       case AdminAction.beginStay:
+        if (await showSecureConfirm(context,
+            title: 'Begin the stay?',
+            body: 'The Booking becomes Staying — the Guest is on the property.')) {
+          await _run(booking, action);
+        }
+        return;
       case AdminAction.checkOut:
+        if (await showSecureConfirm(context,
+            title: 'Check out ${booking.guestName}?',
+            body: 'The Booking becomes Checked-Out, which opens the Review window.')) {
+          await _run(booking, action);
+        }
+        return;
       case AdminAction.complete:
-        await _run(booking, action);
+        if (await showSecureConfirm(context,
+            title: 'Complete this Booking?',
+            body: 'The Booking becomes Completed — its last state, and the stay counts as finished.')) {
+          await _run(booking, action);
+        }
         return;
     }
   }
 
   Future<void> _delete(BookingModel booking) async {
-    if (!await _confirm('Delete Booking',
-        'Remove this Booking document entirely? Prefer Reject or Cancel — this is for test entries and duplicates.',
-        confirm: 'Delete', danger: true)) {
+    final ticket = await requirePinTicket(
+      context,
+      ref: ref,
+      title: 'Delete Booking',
+      consequence:
+          'This removes the document entirely — the Activity log with it. Prefer Reject or Cancel; this is for test entries and duplicates.',
+    );
+    if (ticket == null) return;
+    if (!mounted) return;
+    final problem = await ref
+        .read(firestoreServiceProvider)
+        .deleteBooking(booking.id, ticket: ticket);
+    if (!mounted) return;
+    if (problem != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: AppColors.statusAlert,
+        content: Text(problem),
+        duration: const Duration(seconds: 6),
+      ));
       return;
     }
-    await ref.read(firestoreServiceProvider).deleteBooking(booking.id);
-    if (mounted) Navigator.of(context).pop();
+    Navigator.of(context).pop();
   }
 
   Future<void> _open(String url) async {

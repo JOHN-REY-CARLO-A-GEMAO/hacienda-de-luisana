@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart' as legacy;
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../models/smart_lock_event_model.dart';
 import '../../providers/app_providers.dart';
+import '../../services/auth_store.dart';
+import '../../services/firestore_service.dart';
 import '../../services/notification_service.dart';
+import '../security/secure_action_sheet.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/staggered_entrance.dart';
@@ -263,28 +267,50 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: badgeColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: badgeColor.withOpacity(0.4)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.only(right: 5),
-                      decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: badgeColor.withOpacity(0.4)),
                     ),
-                    Text(
-                      log.action.displayName,
-                      style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: badgeColor),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(right: 5),
+                          decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle),
+                        ),
+                        Text(
+                          log.action.displayName,
+                          style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: badgeColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // The simulator's rows say what they are, in the log itself —
+                  // demonstration rows never pass as door history (ADR-0015).
+                  if (log.simulated) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.textMuted.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.textMuted.withOpacity(0.4)),
+                      ),
+                      child: Text(
+                        'SIMULATED',
+                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted),
+                      ),
                     ),
                   ],
-                ),
+                ],
               ),
               Text(
                 DateFormatter.timeAgo(log.timestamp),
@@ -325,7 +351,21 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     );
   }
 
-  void _simulateRfidSwipe(dynamic firestoreService) async {
+  /// The simulator writes demonstration rows into the real Access log —
+  /// the audit trail — so it runs behind a confirm, stamps its rows
+  /// `simulated: true`, and says so when a write fails instead of
+  /// swallowing it (ADR-0015's bundled fixes).
+  Future<void> _simulateRfidSwipe(FirestoreService firestoreService) async {
+    final ok = await showSecureConfirm(
+      context,
+      title: 'Run the RFID simulator?',
+      body: 'Two demonstration rows, marked SIMULATED, are written into the real Access log. They are not door history.',
+      confirm: 'Run it',
+    );
+    if (!ok || !mounted) return;
+
+    final auth = legacy.Provider.of<AuthStore>(context, listen: false);
+    final uid = auth.uid ?? auth.sessionEmail ?? 'admin';
     final now = DateTime.now();
 
     // 1. Record unlock
@@ -334,23 +374,33 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
       doorName: 'Villa LuisAna Front Door',
       action: LockAction.unlock,
       method: LockMethod.rfidKeycard,
-      triggeredBy: 'Juan Dela Cruz (Demo Swipe)',
+      triggeredBy: 'Simulator · Demo Swipe',
       cardUid: 'RFID-A3-89-CF-12',
       timestamp: now,
       isSuccess: true,
-      notes: 'Authorized RFID Keycard tap · 800ms BLE handshake',
+      notes: 'Simulated RFID tap — not a real credential use',
+      uid: uid,
+      refId: 'simulated',
+      simulated: true,
     );
 
-    await firestoreService.recordSmartLockEvent(unlockEvent);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🟢 RFID Swiped: Villa Door UNLOCKED. Auto-relock scheduled in 5s!'),
-          duration: Duration(seconds: 4),
-        ),
-      );
+    final problem = await firestoreService.recordSmartLockEvent(unlockEvent);
+    if (!mounted) return;
+    if (problem != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: AppColors.statusAlert,
+        content: Text(problem),
+        duration: const Duration(seconds: 6),
+      ));
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🟢 SIMULATED swipe recorded (marked as simulation). Auto-relock in 5s.'),
+        duration: Duration(seconds: 4),
+      ),
+    );
 
     // 2. Schedule auto-relock in 5 seconds
     Future.delayed(const Duration(seconds: 5), () async {
@@ -359,12 +409,22 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         doorName: 'Villa LuisAna Front Door',
         action: LockAction.autoRelock,
         method: LockMethod.autoTimer,
-        triggeredBy: 'System Safety Timer',
+        triggeredBy: 'Simulator · Safety Timer',
         timestamp: DateTime.now(),
         isSuccess: true,
-        notes: 'Door securely auto-relocked after 5-second interval',
+        notes: 'Simulated auto-relock after 5-second interval',
+        uid: uid,
+        refId: 'simulated',
+        simulated: true,
       );
-      await firestoreService.recordSmartLockEvent(relockEvent);
+      final relockProblem = await firestoreService.recordSmartLockEvent(relockEvent);
+      if (relockProblem != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: AppColors.statusAlert,
+          content: Text(relockProblem),
+          duration: const Duration(seconds: 6),
+        ));
+      }
     });
   }
 }

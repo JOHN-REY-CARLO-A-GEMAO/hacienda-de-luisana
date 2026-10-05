@@ -106,6 +106,14 @@ _Avoid_: Door log, lock record
 **Check-in**:
 The moment the first Credential use succeeds on the check-in day; it is what moves a Booking to Checked-In.
 
+**Security PIN**:
+The Admin's six-digit second input for a sensitive action (ADR-0015). PBKDF2-hashed at `admin_security/{uid}`, checked offline against the device cache, locked out on a ladder after five wrong entries. A guard rail, not a trust boundary — the rules are the enforcement.
+_Avoid_: Credential (that is the door thing), passcode, password, 2FA, OTP
+
+**Security gate**:
+The two-tier rule that stands between an Admin tap and a sensitive action (ADR-0015): the PIN for what commits money, deletes, or publishes; a confirm modal for what only changes state. Its tier map is `lib/services/security_gate.dart`, re-asked by the service layer so a forgotten call-site check is still refused.
+_Avoid_: Permission, role check, Credential check
+
 ### Trust and records
 
 **Government ID KYC (removed)**:

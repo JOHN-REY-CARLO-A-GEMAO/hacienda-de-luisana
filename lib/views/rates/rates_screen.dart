@@ -6,6 +6,7 @@ import '../../core/constants/app_constants.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/booking_lifecycle.dart';
+import '../security/security_pin_sheet.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/section_header.dart';
@@ -236,27 +237,20 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     setState(() => _problems = problems);
     if (problems.isNotEmpty) return;
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Publish ${doc['version']}?',
-            style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: const Text(
-            'The website starts quoting these figures immediately. Bookings already chosen under an earlier version keep their terms.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Back')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Publish')),
-        ],
-      ),
+    // Publishing is PIN-tier (ADR-0015): the sheet names the consequence and
+    // asks for the PIN instead of the old confirm dialog.
+    final ticket = await requirePinTicket(
+      context,
+      ref: ref,
+      title: 'Publish rates ${doc['version']}',
+      consequence:
+          'The website starts quoting these figures immediately. Bookings already chosen under an earlier version keep their terms.',
     );
-    if (ok != true) return;
+    if (ticket == null) return;
 
     setState(() => _busy = true);
-    final result = await ref.read(firestoreServiceProvider).publishRates(doc);
+    final result =
+        await ref.read(firestoreServiceProvider).publishRates(doc, ticket: ticket);
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -299,6 +293,16 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
   }
 
   Future<void> _publishPayment() async {
+    // PIN-tier (ADR-0015): these numbers go to every visitor the moment the
+    // write lands.
+    final ticket = await requirePinTicket(
+      context,
+      ref: ref,
+      title: 'Publish payment information',
+      consequence:
+          'The GCash and bank numbers become visible to every visitor the moment this saves. They are checked against the published rates page.',
+    );
+    if (ticket == null) return;
     setState(() => _paymentBusy = true);
     final problem = await ref.read(firestoreServiceProvider).publishPaymentInformation({
       'active': _paymentActive,
@@ -319,7 +323,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
       if (_paymentDepositNotes.text.trim().isNotEmpty)
         'security_deposit_notes': _paymentDepositNotes.text.trim(),
       if (_paymentNotes.text.trim().isNotEmpty) 'notes': _paymentNotes.text.trim(),
-    });
+    }, ticket: ticket);
     if (!mounted) return;
     setState(() => _paymentBusy = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(

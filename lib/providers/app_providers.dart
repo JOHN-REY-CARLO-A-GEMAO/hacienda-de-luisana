@@ -6,6 +6,7 @@ import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
 import '../services/firestore_service.dart';
+import '../services/pin_store.dart';
 import '../services/review_service.dart';
 
 // Service provider
@@ -17,6 +18,17 @@ final firestoreServiceProvider = Provider<FirestoreService>((ref) {
   final service = FirestoreService(fs);
   ref.onDispose(() => service.dispose());
   return service;
+});
+
+/// The Security gate (ADR-0015): the PIN check, the lockout ladder and the
+/// session ticket. The device copy lives in [SharedPrefsPinStore];
+/// `FirestoreService` is its [PinSecurityRemote] (a no-op in demo mode, so
+/// the gate works with the app fully offline).
+final pinGateProvider = Provider<PinGate>((ref) {
+  return PinGate(
+    store: SharedPrefsPinStore(),
+    remote: ref.watch(firestoreServiceProvider),
+  );
 });
 
 /// Reviews, for the Guest Reviews screen.
