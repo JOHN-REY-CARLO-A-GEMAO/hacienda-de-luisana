@@ -4,7 +4,7 @@ import { AlertCircle, ArrowRight } from '../lib/icons'
 /**
  * The scam notice: the only places the Hacienda talks to guests or takes
  * money, and the two platform listings it vouches for. Shown wherever money
- * or contact details appear (the booking page, Contact), so a guest reading
+ * or contact details appear (the booking page, /contact), so a guest reading
  * either has the warning in view.
  *
  * `tone` follows the surface it sits on: 'light' on cream/white, 'dark' on

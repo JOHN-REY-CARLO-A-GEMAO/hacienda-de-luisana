@@ -5,20 +5,23 @@ import { Menu, Close } from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
 import { canOpenPage, homeForRole } from '../lib/auth'
 
-// Scene order of the homepage. `wide` links only show from the xl breakpoint
-// so the floating bar never wraps on smaller laptops; the drawer lists all.
-const LINKS: { href: string; label: string; wide?: boolean }[] = [
+// The site's sections, as pages. Every entry is a real route: the homepage
+// carries a preview of each and links here for the detail, so a `/#section`
+// hash would land on a page that no longer holds that section. `wide` links
+// only show from the xl breakpoint so the floating bar never wraps on smaller
+// laptops; the drawer lists all of them.
+export const LINKS: { href: string; label: string; wide?: boolean }[] = [
   { href: '/', label: 'Home' },
-  { href: '/#stay', label: 'Stay' },
-  { href: '/#experience', label: 'Experience' },
-  { href: '/#gallery', label: 'Gallery', wide: true },
-  { href: '/#rates', label: 'Rates' },
-  { href: '/#location', label: 'Location' },
-  { href: '/#reviews', label: 'Reviews' },
-  { href: '/#faqs', label: 'FAQs', wide: true },
-  { href: '/#contact', label: 'Contact' },
+  { href: '/stay', label: 'Stay' },
+  { href: '/experience', label: 'Experience' },
+  { href: '/gallery', label: 'Gallery', wide: true },
+  { href: '/rates', label: 'Rates' },
+  { href: '/location', label: 'Location' },
+  { href: '/reviews', label: 'Reviews' },
+  { href: '/faqs', label: 'FAQs', wide: true },
+  { href: '/contact', label: 'Contact' },
 ]
-const DRAWER_LINKS = [...LINKS, { href: '/legal', label: 'Terms' }]
+const DRAWER_LINKS = [...LINKS, { href: '/house-rules', label: 'House Rules' }, { href: '/legal', label: 'Terms' }]
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false)
@@ -57,15 +60,15 @@ export function Nav() {
 
         <nav className="hidden lg:flex items-center gap-6 xl:gap-7" aria-label="Site">
           {LINKS.map((l) => (
-            <a
+            <Link
               key={l.href}
-              href={l.href}
+              to={l.href}
               className={`${l.wide ? 'hidden xl:inline-flex' : 'inline-flex'} text-[13px] font-medium transition ${
                 transparent ? 'text-cream-100 hover:text-white' : 'text-forest-800 hover:text-forest-950'
               }`}
             >
               {l.label}
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -138,13 +141,13 @@ export function Nav() {
       >
         <div className="px-6 py-6 flex flex-col gap-1 overflow-y-auto max-h-[calc(85vh-1px)]">
           {DRAWER_LINKS.map((l) => (
-            <a
+            <Link
               key={l.href}
-              href={l.href}
+              to={l.href}
               className="text-forest-900 py-2.5 border-b border-forest-900/5 text-base font-serif"
             >
               {l.label}
-            </a>
+            </Link>
           ))}
 
           <div className="mt-4 pt-2 space-y-2">

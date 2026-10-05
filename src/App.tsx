@@ -1,11 +1,20 @@
 import { useEffect } from 'react'
-import { Link, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { homeForRole } from './lib/auth'
 import { useAuth } from './hooks/useAuth'
 import { Nav } from './components/Nav'
 import { Footer } from './components/Footer'
 import { MobileStickyCTA } from './components/MobileStickyCTA'
 import { Home } from './pages/Home'
+import { StayPage } from './pages/StayPage'
+import { RatesPage } from './pages/RatesPage'
+import { GalleryPage } from './pages/GalleryPage'
+import { ExperiencePage } from './pages/ExperiencePage'
+import { LocationPage } from './pages/LocationPage'
+import { ReviewsPage } from './pages/ReviewsPage'
+import { FaqPage } from './pages/FaqPage'
+import { HouseRulesPage } from './pages/HouseRulesPage'
+import { ContactPage } from './pages/ContactPage'
 import { BookingPage } from './pages/BookingPage'
 import { DownpaymentPage } from './pages/DownpaymentPage'
 import { BookingStatusPage } from './pages/BookingStatusPage'
@@ -20,11 +29,35 @@ import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { LoginForm } from './components/Auth/LoginForm'
 import { useReveal } from './lib/reveal'
 
+/**
+ * Homepage anchors that now live on a page of their own.
+ *
+ * These were `/#x` link targets, and they are still addressable: a bookmark, a
+ * search result or a shared link that says `/#faqs` is forwarded to the page
+ * that answers it rather than quietly scrolling to the top of a homepage that no
+ * longer has the section. Anchors the homepage still renders — intro, stay,
+ * rates, experience, gallery, reviews, location — are absent on purpose and
+ * keep scrolling as before.
+ */
+const MOVED_ANCHORS: Readonly<Record<string, string>> = {
+  faqs: '/faqs',
+  'house-rules': '/house-rules',
+  amenities: '/stay',
+  nearby: '/experience',
+  contact: '/contact',
+}
+
 function ScrollHandler() {
   const location = useLocation()
+  const navigate = useNavigate()
   useEffect(() => {
     if (location.hash) {
       const id = location.hash.slice(1)
+      const moved = MOVED_ANCHORS[id]
+      if (moved) {
+        navigate(moved, { replace: true })
+        return
+      }
       const el = document.getElementById(id)
       if (el) {
         setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
@@ -32,7 +65,7 @@ function ScrollHandler() {
       }
     }
     window.scrollTo({ top: 0 })
-  }, [location.pathname, location.hash])
+  }, [location.pathname, location.hash, navigate])
   return null
 }
 
@@ -59,12 +92,30 @@ function WebsiteLayout() {
  * addresses answer with a pointer to it rather than a dashboard.
  */
 export default function App() {
-  useReveal()
+  // Re-armed on every route change: the dedicated pages render their own
+  // `.reveal` blocks, and one observer created at mount would never see them.
+  const location = useLocation()
+  useReveal([location.pathname])
   return (
     <>
       <Routes>
         <Route element={<WebsiteLayout />}>
           <Route path="/" element={<Home />} />
+
+          {/* The dedicated pages the homepage links out to. Each one is the
+              detail behind a preview on `/`, so a visitor who wants more is
+              never more than one click away — and the homepage stays the short
+              version. */}
+          <Route path="/stay" element={<StayPage />} />
+          <Route path="/rates" element={<RatesPage />} />
+          <Route path="/gallery" element={<GalleryPage />} />
+          <Route path="/experience" element={<ExperiencePage />} />
+          <Route path="/location" element={<LocationPage />} />
+          <Route path="/reviews" element={<ReviewsPage />} />
+          <Route path="/faqs" element={<FaqPage />} />
+          <Route path="/house-rules" element={<HouseRulesPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+
           <Route path="/book" element={<BookingPage />} />
           <Route path="/book/pay" element={<DownpaymentPage />} />
           <Route path="/booking/status" element={<BookingStatusPage />} />

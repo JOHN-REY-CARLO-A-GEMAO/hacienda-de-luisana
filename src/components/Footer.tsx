@@ -31,17 +31,18 @@ export function Footer() {
         <div>
           <div className="eyebrow text-cream-100/60 mb-4">Explore</div>
           <ul className="space-y-3 text-sm">
-            <li><a href="/#stay" className="hover:text-white">Stay</a></li>
-            <li><a href="/#rates" className="hover:text-white">Rates &amp; Fees</a></li>
-            <li><a href="/#experience" className="hover:text-white">Experience</a></li>
-            <li><a href="/#gallery" className="hover:text-white">Gallery</a></li>
-            <li><a href="/#location" className="hover:text-white">Location</a></li>
-            <li><a href="/#reviews" className="hover:text-white">Reviews</a></li>
-            <li><a href="/#house-rules" className="hover:text-white">House Rules</a></li>
-            <li><a href="/#faqs" className="hover:text-white">FAQs</a></li>
+            <li><Link to="/stay" className="hover:text-white">Stay</Link></li>
+            <li><Link to="/rates" className="hover:text-white">Rates &amp; Fees</Link></li>
+            <li><Link to="/experience" className="hover:text-white">Experience</Link></li>
+            <li><Link to="/gallery" className="hover:text-white">Gallery</Link></li>
+            <li><Link to="/location" className="hover:text-white">Location</Link></li>
+            <li><Link to="/reviews" className="hover:text-white">Reviews</Link></li>
+            <li><Link to="/faqs" className="hover:text-white">FAQs</Link></li>
+            <li><Link to="/house-rules" className="hover:text-white">House Rules</Link></li>
+            <li><Link to="/contact" className="hover:text-white">Contact</Link></li>
             <li><Link to="/book" className="hover:text-white">Book Your Stay</Link></li>
             <li><Link to="/account" className="hover:text-white">My Bookings</Link></li>
-            <li><Link to="/legal" className="hover:text-white">Terms & policies</Link></li>
+            <li><Link to="/legal" className="hover:text-white">Terms &amp; policies</Link></li>
             <li><Link to="/messages" className="hover:text-white">Message the Admin</Link></li>
           </ul>
         </div>

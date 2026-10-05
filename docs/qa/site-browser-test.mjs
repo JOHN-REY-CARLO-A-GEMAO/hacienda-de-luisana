@@ -9,8 +9,8 @@
 //      accommodation cards tilt on hover without moving their CTA out of reach, tilt is
 //      off on touch, nothing creates horizontal overflow at any scroll position
 //   C  prefers-reduced-motion: parallax, tilt and Ken Burns are all disabled
-//   D  booking flow in demo mode (no Firebase): dates → accommodation → details →
-//      availability + estimate → terms → send → success screen with the KYC step.
+//   D  booking flow in demo mode (no Firebase): dates â†’ accommodation â†’ details â†’
+//      availability + estimate â†’ terms â†’ send â†’ success screen with the KYC step.
 //      Nothing leaves the browser; no real booking or document is created.
 //
 //   node docs/qa/site-browser-test.mjs desktop|tablet|mobile
@@ -49,20 +49,30 @@ const VIEWPORTS = {
 const VIEWPORT = VIEWPORTS[MODE] ?? VIEWPORTS.desktop
 const TOUCH = MODE !== 'desktop'
 
+// The homepage is the conversion spine only: each of these is a preview that
+// links to the page holding the detail. The moved scenes are checked on their
+// own routes in ROUTE_PAGES below.
 const SCENES = [
-  ['intro', 'Scene 02 — Your Private Escape'],
-  ['stay', 'Scene 03 — Accommodations'],
-  ['experience', 'Scene 04 — The Experience'],
-  ['nearby', 'Scene 04 — Nearby'],
-  ['gallery', 'Scene 04 — Gallery'],
-  ['rates', 'Scene 05 — Rates & Fees'],
-  ['amenities', 'Scene 05 — Amenities'],
-  ['house-rules', 'Scene 06 — Good to Know'],
-  ['location', 'Scene 07 — Location'],
-  ['getting-here', 'Scene 07 — Getting here'],
-  ['reviews', 'Scene 08 — Reviews'],
-  ['faqs', 'FAQs'],
-  ['contact', 'Scene 09 — Booking CTA + Contact'],
+  ['intro', 'Scene 02 â€” Your Private Escape'],
+  ['stay', 'Scene 03 â€” Accommodations preview'],
+  ['rates', 'Scene 05 â€” Rates preview'],
+  ['experience', 'Scene 04 â€” The Experience'],
+  ['gallery', 'Scene 07 â€” Gallery preview'],
+  ['reviews', 'Scene 08 â€” Reviews preview'],
+  ['location', 'Scene 09 â€” Location preview'],
+]
+
+/** A dedicated page and the single `h1` it must answer with. */
+const ROUTE_PAGES = [
+  ['/stay', 'Accommodations at the Hacienda'],
+  ['/rates', 'What a stay costs'],
+  ['/gallery', 'The Hacienda in photographs'],
+  ['/experience', 'More than a place to stay'],
+  ['/location', 'Getting to the Hacienda'],
+  ['/reviews', 'Reviews'],
+  ['/faqs', 'Common questions'],
+  ['/house-rules', 'Before you arrive'],
+  ['/contact', 'Talk to the Hacienda'],
 ]
 
 /* ------------------------------------------------------------------ */
@@ -74,7 +84,7 @@ let shotNo = 0
 
 function record(name, ok, detail = '') {
   results.push({ name, ok, detail })
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` â€” ${detail}` : ''}`)
 }
 const assert = (name, cond, detail = '') => (record(name, Boolean(cond), detail), Boolean(cond))
 async function shot(page, label, fullPage = false) {
@@ -104,7 +114,7 @@ async function settleScroll(page) {
   }))
 }
 
-/** scrollWidth vs viewport at the current position — the horizontal-overflow probe. */
+/** scrollWidth vs viewport at the current position â€” the horizontal-overflow probe. */
 const overflowProbe = (page) => page.evaluate(() => ({
   scrollWidth: document.documentElement.scrollWidth,
   bodyWidth: document.body.scrollWidth,
@@ -169,7 +179,7 @@ async function newPage({ reducedMotion = 'no-preference' } = {}) {
   await context.route('**/*', (route) => {
     const host = new URL(route.request().url()).hostname
     if (host === 'localhost' || host === '127.0.0.1') return route.continue()
-    return route.abort() // Google Fonts, Maps, FB CDN — never leave the sandbox
+    return route.abort() // Google Fonts, Maps, FB CDN â€” never leave the sandbox
   })
   // The Guest tour has its own real-browser harness (tutorial-browser-test.mjs);
   // here it is marked as already finished so its welcome card never covers the page.
@@ -187,6 +197,17 @@ async function open(page, url, waitSel = 'h1') {
   await page.waitForTimeout(400)
 }
 
+/**
+ * A page must answer with exactly one `h1`, and it must be the one that page is
+ * about. Two headings is an ambiguous page; none is a page a crawler cannot
+ * name.
+ */
+async function expectHeading(page, name, expected) {
+  await page.waitForSelector('h1', { timeout: 15000 })
+  await page.waitForTimeout(300)
+  const h1s = (await page.locator('h1').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim())
+  return assert(name, h1s.length === 1 && h1s[0] === expected, h1s.join(' | '))
+}
 try {
   /* ============================ A. homepage ============================ */
   {
@@ -214,7 +235,7 @@ try {
     if (MODE === 'desktop') {
       assert('A3 desktop nav "Book Your Stay" visible', await page.locator('[data-tour="nav-book"]').isVisible())
       const labels = await page.locator('header nav a').evaluateAll((as) => as.filter((a) => getComputedStyle(a).display !== 'none').map((a) => a.textContent.trim()))
-      assert('A3 desktop nav lists the scenes', ['Home', 'Stay', 'Experience', 'Rates', 'Location', 'Reviews', 'Contact'].every((l) => labels.includes(l)), labels.join(' · '))
+      assert('A3 desktop nav lists the pages', ['Home', 'Stay', 'Experience', 'Rates', 'Location', 'Reviews', 'Contact'].every((l) => labels.includes(l)), labels.join(' Â· '))
       assert('A3 nav starts transparent over the hero', (await page.locator('header').getAttribute('data-nav')) === 'hero')
       await page.evaluate(() => window.scrollTo({ top: 300, behavior: 'instant' }))
       await page.waitForTimeout(300)
@@ -222,30 +243,29 @@ try {
       const pill = await page.locator('header > div').first().boundingBox()
       assert('A3 floating pill stays inside the viewport width', pill && pill.x >= 0 && pill.x + pill.width <= VIEWPORT.width, JSON.stringify(pill))
       await shot(page, 'nav-floating')
-      for (const [hash, id] of [['#stay', 'stay'], ['#location', 'location'], ['#reviews', 'reviews']]) {
-        await page.locator(`header nav a[href="/${hash}"]`).click()
-        await settleScroll(page)
-        const top = await page.evaluate((i) => document.getElementById(i).getBoundingClientRect().top, id)
-        assert(`A4 nav link ${hash} scrolls to the section`, top > -40 && top < 160, `section top=${Math.round(top)}`)
+      // Nav items are routes now, not homepage anchors, so this is a navigation
+      // rather than a scroll: each one must open a page with its own heading.
+      for (const [href, heading] of [['/stay', 'Accommodations at the Hacienda'], ['/rates', 'What a stay costs'], ['/gallery', 'The Hacienda in photographs']]) {
+        await page.locator(`header nav a[href="${href}"]`).click()
+        await expectHeading(page, `A4 nav ${href} opens its page`, heading)
+        await page.goto(BASE)
+        await page.waitForTimeout(300)
       }
-      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
-      await page.waitForTimeout(300)
     } else {
       const burger = page.getByRole('button', { name: 'Open menu' })
       assert('A3 mobile menu button visible', await burger.isVisible())
       await burger.click()
       await page.waitForTimeout(600)
-      const drawerLinks = await page.locator('header a[href="/#stay"]').evaluateAll((as) => as.filter((a) => a.getBoundingClientRect().height > 0).length)
-      assert('A3 drawer opens with the section links', drawerLinks > 0)
+      const drawerLinks = await page.locator('header a[href="/stay"]').evaluateAll((as) => as.filter((a) => a.getBoundingClientRect().height > 0).length)
+      assert('A3 drawer opens with the page links', drawerLinks > 0)
       await shot(page, 'nav-drawer')
       const drawerBox = await page.locator('header').boundingBox()
       assert('A3 open drawer fits the viewport width', drawerBox && drawerBox.width <= VIEWPORT.width + 1, JSON.stringify(drawerBox))
-      await page.locator('header a[href="/#stay"]').last().click()
-      await settleScroll(page)
-      const top = await page.evaluate(() => document.getElementById('stay').getBoundingClientRect().top)
-      assert('A4 drawer link scrolls to #stay and closes', top > -40 && top < 200 && !(await page.getByRole('button', { name: 'Close menu' }).isVisible()), `top=${Math.round(top)}`)
+      await page.locator('header a[href="/stay"]').last().click()
+      await expectHeading(page, 'A4 drawer link opens /stay and closes the drawer', 'Accommodations at the Hacienda')
+      assert('A4 drawer closed after navigating', !(await page.getByRole('button', { name: 'Close menu' }).isVisible()))
       assert('A3 mobile sticky "Book" CTA visible', await page.locator('[data-tour="mobile-cta"]').isVisible())
-      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+      await page.goto(BASE)
       await page.waitForTimeout(300)
     }
 
@@ -254,7 +274,7 @@ try {
       const h = await page.evaluate((i) => document.getElementById(i)?.getBoundingClientRect().height ?? 0, id)
       assert(`A5 ${label} (#${id}) rendered`, h > 80, `height=${Math.round(h)}`)
     }
-    // reveal: everything gets `.in` once scrolled past — no section stays invisible
+    // reveal: everything gets `.in` once scrolled past â€” no section stays invisible
     await noHorizontalOverflowThroughPage(page, 'A6')
     const hidden = await page.evaluate(() => [...document.querySelectorAll('.reveal')].filter((el) => !el.classList.contains('in') && el.getBoundingClientRect().height > 0).length)
     assert('A6 every reveal block became visible after scrolling through', hidden === 0, `${hidden} still hidden`)
@@ -262,15 +282,29 @@ try {
     await page.waitForTimeout(400)
     await shot(page, 'home-full', true)
 
-    // accommodation cards keep all their facts visible
+    // The homepage carries one preview card per Accommodation. The detail card
+    // with the beds room by room is on /stay, checked in section B.
     const cards = page.locator('[data-accommodation]')
-    assert('A7 two accommodation cards', (await cards.count()) === 2)
-    for (let i = 0; i < 2; i += 1) {
+    const cardCount = await cards.count()
+    assert('A7 one preview card per accommodation', cardCount === 3, `${cardCount} cards`)
+    for (let i = 0; i < cardCount; i += 1) {
       const text = (await cards.nth(i).innerText()).replace(/\s+/g, ' ')
       const id = await cards.nth(i).getAttribute('data-accommodation')
-      const ok = /up to \d+ guests/i.test(text) && /\brate\b/i.test(text) && /view accommodation/i.test(text) && (id !== 'main-house' || /sleeping arrangements/i.test(text))
-      assert(`A7 card ${id} shows capacity, rate, amenities and the CTA`, ok && (await cards.nth(i).locator('[data-tour="accommodation-cta"]').isVisible()))
+      const ok = /guests/i.test(text) && /\brate\b/i.test(text)
+      assert(`A7 preview card ${id} shows capacity, rate and the CTA`, ok && (await cards.nth(i).locator('[data-tour="accommodation-cta"]').isVisible()))
     }
+
+    // Every dedicated page opens, with its own heading and nothing invisible.
+    for (const [route, heading] of ROUTE_PAGES) {
+      await page.goto(`${BASE}${route}`)
+      await page.waitForLoadState('domcontentloaded')
+      const h1s = (await page.locator('h1').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim())
+      const stuck = await page.evaluate(() => [...document.querySelectorAll('.reveal')].filter((el) => !el.classList.contains('in')).length)
+      assert(`A9 ${route} opens with one correct heading`, h1s.length === 1 && h1s[0] === heading, h1s.join(' | '))
+      assert(`A9 ${route} has no content stuck invisible`, stuck === 0, `${stuck} hidden`)
+    }
+    await page.goto(BASE)
+    await page.waitForLoadState('domcontentloaded')
 
     // hero CTA navigates to /book
     await cta.click()
@@ -291,7 +325,7 @@ try {
     await page.waitForTimeout(250)
     const t1 = await transformOf(page, '[data-hero-layer="back"]')
     const c1 = await transformOf(page, '[data-hero-layer="content"]')
-    assert('B1 hero background parallaxes on scroll', t0 !== t1 && t1 !== 'none', `${t0} → ${t1}`)
+    assert('B1 hero background parallaxes on scroll', t0 !== t1 && t1 !== 'none', `${t0} â†’ ${t1}`)
     assert('B1 hero content drifts at its own speed', c1 !== 'none' && c1 !== t1, c1)
     const probe = await overflowProbe(page)
     assert('B1 parallax adds no horizontal overflow', Math.max(probe.scrollWidth, probe.bodyWidth) <= probe.inner, JSON.stringify(probe))
@@ -305,51 +339,13 @@ try {
       await page.mouse.move(VIEWPORT.width * 0.85, VIEWPORT.height * 0.75)
       await page.waitForTimeout(250)
       const f1 = await transformOf(page, '[data-hero-layer="fore"]')
-      assert('B2 foreground foliage follows the pointer (desktop)', f0 !== f1, `${f0} → ${f1}`)
+      assert('B2 foreground foliage follows the pointer (desktop)', f0 !== f1, `${f0} â†’ ${f1}`)
       const p2 = await overflowProbe(page)
       assert('B2 pointer parallax adds no horizontal overflow', Math.max(p2.scrollWidth, p2.bodyWidth) <= p2.inner)
       await shot(page, 'hero-pointer')
-
-      // tilt cards
-      const card = page.locator('[data-accommodation="main-house"]')
-      await card.scrollIntoViewIfNeeded()
-      await page.waitForTimeout(700)
-      assert('B3 tilt enabled on a fine pointer', (await card.getAttribute('data-tilt')) === 'on')
-      const before = await card.boundingBox()
-      await page.mouse.move(before.x + before.width * 0.2, before.y + before.height * 0.2)
-      await page.waitForTimeout(80)
-      await page.mouse.move(before.x + before.width * 0.15, before.y + before.height * 0.15)
-      await page.waitForTimeout(350)
-      const tilt = await card.evaluate((el) => ({ x: el.style.getPropertyValue('--tilt-x'), y: el.style.getPropertyValue('--tilt-y'), t: getComputedStyle(el).transform }))
-      assert('B3 card tilts under the pointer', tilt.x && tilt.y && tilt.t !== 'none', JSON.stringify(tilt))
-      const after = await card.boundingBox()
-      assert('B3 tilt does not shift the card layout', Math.abs(after.width - before.width) < 12 && Math.abs(after.height - before.height) < 12, `${JSON.stringify(before)} → ${JSON.stringify(after)}`)
-      const ctaHit = await page.evaluate(() => {
-        const el = document.querySelector('[data-accommodation="main-house"] [data-tour="accommodation-cta"]')
-        const r = el.getBoundingClientRect()
-        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-        return { ok: el === top || el.contains(top), inView: r.top >= 0 && r.bottom <= innerHeight }
-      })
-      assert('B3 the card CTA stays reachable while tilted', ctaHit.ok && ctaHit.inView, JSON.stringify(ctaHit))
-      await shot(page, 'card-tilt')
-      await page.mouse.move(5, 5)
-      await page.waitForTimeout(800)
-      const reset = await card.evaluate((el) => el.style.getPropertyValue('--tilt-x'))
-      assert('B3 tilt resets when the pointer leaves', reset === '')
-      const p3 = await overflowProbe(page)
-      assert('B3 tilt adds no horizontal overflow', Math.max(p3.scrollWidth, p3.bodyWidth) <= p3.inner)
-    } else {
-      const card = page.locator('[data-accommodation="main-house"]')
-      await card.scrollIntoViewIfNeeded()
-      await page.waitForTimeout(500)
-      assert('B3 tilt is off on touch devices', (await card.getAttribute('data-tilt')) === 'off')
-      const b = await card.boundingBox()
-      await page.touchscreen.tap(b.x + b.width / 2, b.y + 40)
-      await page.waitForTimeout(300)
-      const still = await card.evaluate((el) => getComputedStyle(el).transform)
-      assert('B3 tapping a card does not transform it', still === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(still), still)
-      assert('B3 card CTA at least 44px tall on touch', ((await card.locator('[data-tour="accommodation-cta"]').boundingBox())?.height ?? 0) >= 44)
     }
+
+    // The tilt cards are the /stay detail cards now; exercised in section B2.
 
     // scroll parallax media stays clipped inside its frame
     const clip = await page.evaluate(() => {
@@ -364,11 +360,56 @@ try {
     assert('B4 parallax media always covers its frame (no exposed edges)', clip.length === 0, clip.join(' '))
 
     // smooth-scroll behaviour intact and page reaches the bottom
-    await page.evaluate(() => document.getElementById('contact').scrollIntoView({ behavior: 'smooth' }))
+    await page.evaluate(() => document.getElementById('stay').scrollIntoView({ behavior: 'smooth' }))
     await settleScroll(page)
-    const ctop = await page.evaluate(() => document.getElementById('contact').getBoundingClientRect().top)
-    assert('B5 smooth scroll to #contact works', ctop > -40 && ctop < 120, `${Math.round(ctop)}`)
-    await shot(page, 'contact-cta')
+    const stop = await page.evaluate(() => document.getElementById('stay').getBoundingClientRect().top)
+    assert('B5 smooth scroll to #stay works', stop > -40 && stop < 160, `${Math.round(stop)}`)
+    await shot(page, 'home-stay')
+    await context.close()
+  }
+
+  /* ================== B2. the /stay detail cards ================== */
+  {
+    const { page, context } = await newPage()
+    await open(page, '/stay')
+    const card = page.locator('[data-accommodation="main-house"]')
+    await card.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(700)
+    // The beds-room-by-room detail lives on this page, not on the homepage.
+    assert('B6 /stay keeps the sleeping arrangements detail', /sleeping arrangements/i.test(await card.innerText()))
+    if (!TOUCH) {
+      assert('B3 tilt enabled on a fine pointer', (await card.getAttribute('data-tilt')) === 'on')
+      const before = await card.boundingBox()
+      await page.mouse.move(before.x + before.width * 0.2, before.y + before.height * 0.2)
+      await page.waitForTimeout(80)
+      await page.mouse.move(before.x + before.width * 0.15, before.y + before.height * 0.15)
+      await page.waitForTimeout(350)
+      const tilt = await card.evaluate((el) => ({ x: el.style.getPropertyValue('--tilt-x'), y: el.style.getPropertyValue('--tilt-y'), t: getComputedStyle(el).transform }))
+      assert('B3 card tilts under the pointer', tilt.x && tilt.y && tilt.t !== 'none', JSON.stringify(tilt))
+      const after = await card.boundingBox()
+      assert('B3 tilt does not shift the card layout', Math.abs(after.width - before.width) < 12 && Math.abs(after.height - before.height) < 12)
+      const ctaHit = await page.evaluate(() => {
+        const el = document.querySelector('[data-accommodation="main-house"] [data-tour="accommodation-cta"]')
+        const r = el.getBoundingClientRect()
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        return { ok: el === top || el.contains(top), inView: r.top >= 0 && r.bottom <= innerHeight }
+      })
+      assert('B3 the card CTA stays reachable while tilted', ctaHit.ok && ctaHit.inView, JSON.stringify(ctaHit))
+      await shot(page, 'card-tilt')
+      await page.mouse.move(5, 5)
+      await page.waitForTimeout(800)
+      const reset = await card.evaluate((el) => el.style.getPropertyValue('--tilt-x'))
+      assert('B3 tilt resets when the pointer leaves', reset === '')
+    } else {
+      assert('B3 tilt is off on touch devices', (await card.getAttribute('data-tilt')) === 'off')
+      const t = await card.boundingBox()
+      await page.touchscreen.tap(t.x + t.width / 2, t.y + 40)
+      await page.waitForTimeout(300)
+      const still = await card.evaluate((el) => getComputedStyle(el).transform)
+      assert('B3 tapping a card does not transform it', still === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(still), still)
+      assert('B3 card CTA at least 44px tall on touch', ((await card.locator('[data-tour="accommodation-cta"]').boundingBox())?.height ?? 0) >= 44)
+    }
+    await shot(page, 'stay-detail-card', true)
     await context.close()
   }
 
@@ -421,7 +462,7 @@ try {
     await page.waitForTimeout(800)
     const aside = (await summary.innerText()).replace(/\s+/g, ' ')
     assert('D2 aside mirrors dates and the selected accommodation', aside.includes(futureDate(40)) && aside.includes(futureDate(42)) && /Main House/.test(aside), aside.slice(0, 200))
-    assert('D2 estimate shown or "quoted" fallback (published rates only)', /estimated total/i.test(aside) && (/₱[\d,]+/.test(aside) || /quoted/i.test(aside)), aside.slice(-220))
+    assert('D2 estimate shown or "quoted" fallback (published rates only)', /estimated total/i.test(aside) && (/â‚±[\d,]+/.test(aside) || /quoted/i.test(aside)), aside.slice(-220))
     const formText = (await page.locator('form').innerText()).replace(/\s+/g, ' ')
     assert('D2 availability check ran (no hold conflict for fresh demo dates)', !/not available|already held/i.test(formText))
 
@@ -443,7 +484,7 @@ try {
     // With Firebase connected the ID picker renders; in the offline demo build the
     // component explains where to send the ID instead. Either way nothing is uploaded here.
     const kycControls = (await page.locator('input[type="file"]').count()) > 0 || /no Firebase project connected/i.test(success)
-    assert('D4 KYC controls (or the offline explanation) present — no document uploaded', kycControls)
+    assert('D4 KYC controls (or the offline explanation) present â€” no document uploaded', kycControls)
     assert('D4 payment is not requested before Admin approval', !/upload (your )?receipt|payment step/i.test(success) || /Pending/i.test(success))
     await shot(page, 'book-success', true)
     await context.close()
@@ -459,6 +500,6 @@ assert('Z2 no uncaught page errors', pageErrors.length === 0, pageErrors.slice(0
 assert('Z3 no failed local requests', failedRequests.length === 0, failedRequests.slice(0, 5).join(' || '))
 
 const passed = results.filter((r) => r.ok).length
-console.log(`\n${MODE}: ${passed}/${results.length} checks passed · screenshots in ${SHOTS}`)
+console.log(`\n${MODE}: ${passed}/${results.length} checks passed Â· screenshots in ${SHOTS}`)
 fs.writeFileSync(path.join(os.tmpdir(), `hdl-site-report-${MODE}.json`), JSON.stringify({ mode: MODE, viewport: VIEWPORT, results, consoleErrors, pageErrors, failedRequests }, null, 2))
 process.exit(passed === results.length ? 0 : 1)

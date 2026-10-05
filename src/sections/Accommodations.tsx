@@ -179,7 +179,7 @@ export function Accommodations() {
 
         <p className="mt-6 text-xs text-forest-700/70 max-w-2xl reveal">
           Rates, the refundable security deposit and the down payment are in{' '}
-          <a href="#rates" className="underline underline-offset-2">Rates &amp; Fees</a>. No account is
+          <Link to="/rates" className="underline underline-offset-2">Rates &amp; Fees</Link>. No account is
           required to book. A stay is confirmed only after the Hacienda approves your downpayment screenshot.
         </p>
       </div>

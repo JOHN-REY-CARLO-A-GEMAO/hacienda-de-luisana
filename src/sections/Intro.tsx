@@ -5,9 +5,13 @@ import { BUSINESS } from '../config/site'
 
 /**
  * Scene 02 — "Your Private Escape". Three of the Hacienda's own photographs
- * stacked at different depths (each drifts at its own scroll speed) beside
- * the welcome copy. On phones the stack collapses to one large image plus a
- * small inset so nothing overlaps the text.
+ * stacked at different depths (each drifts at its own scroll speed) beside the
+ * welcome copy. On phones the stack collapses to one large image plus a small
+ * inset so nothing overlaps the text.
+ *
+ * One paragraph, on purpose. This scene answers "what is this place" and hands
+ * over to the accommodations; the longer version it replaced also made the
+ * argument for who the stay suits, which belongs on /stay where the rooms are.
  */
 export function Intro() {
   return (
@@ -65,20 +69,16 @@ export function Intro() {
             }
           />
 
-          <div className="reveal mt-8 space-y-5 text-forest-800/85 leading-relaxed max-w-lg">
+          <div className="reveal mt-8 text-forest-800/85 leading-relaxed max-w-lg">
             <p>
-              Hacienda de LuisAna is a peaceful private getaway in Luisiana, Laguna where guests
-              can step away from the noise and spend quality time with the people who matter.
-            </p>
-            <p>
-              Whether you&rsquo;re planning a family weekend, a small gathering, camping experience,
-              team-building activity, or simply looking for a quiet place to reconnect with nature,
-              the Hacienda is designed around comfort, privacy, and memorable experiences.
+              Hacienda de LuisAna is a peaceful private getaway in Luisiana, Laguna — a private
+              main house for the whole barkada, and A-frame camping units on the same grounds, made
+              for family weekends, small gatherings, and quiet days away from the noise.
             </p>
           </div>
 
           <a href="#stay" className="btn-ghost mt-10 group reveal">
-            Discover the Hacienda
+            See the accommodations
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
           </a>
         </div>
