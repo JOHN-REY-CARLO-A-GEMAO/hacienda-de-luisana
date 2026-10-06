@@ -1237,6 +1237,10 @@ service cloud.firestore {
         return /databases/$(database)/documents/bookings/$(reviewId);
       }
 
+      function reviewStored() {
+        return /databases/$(database)/documents/reviews/$(reviewId);
+      }
+
       // 1..5, or absent. Never 0: a category the Guest skipped is missing, and
       // a zero would be read as the worst rating available rather than as no
       // answer.
@@ -1307,8 +1311,25 @@ service cloud.firestore {
       // own words about their own stay: nobody else's, and no signed-out
       // visitor's. What the website publishes is a different document; see
       // `public_reviews` below.
+      //
+      // And the third door is the Review that is *not* there yet. `submitReview`
+      // asks whether one already exists before it writes one, and the read that
+      // asks arrives at a document id with nothing behind it — so there is no
+      // `resource` to compare a uid against, and the test below turns the one
+      // question the Guest is entitled to an answer to into a refusal. The Guest
+      // is then told Firestore refused the write, for a read that never
+      // happened.
+      //
+      // The absence is opened only to the owner of the Booking the id names —
+      // the same fact `create` checks before accepting the write — and it
+      // discloses nothing: there is no document to read, and a Review that
+      // exists is still reachable only by its author or the Admin.
       allow read: if isAdmin()
-        || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
+        || (isSignedIn() && exists(reviewStored())
+            && resource.data.get('uid', '') == request.auth.uid)
+        || (isSignedIn() && !exists(reviewStored())
+            && exists(bookingReviewed())
+            && get(bookingReviewed()).data.get('uid', '') == request.auth.uid);
 
       // UPDATE — two doors, because these are two different permissions.
       allow update: if (

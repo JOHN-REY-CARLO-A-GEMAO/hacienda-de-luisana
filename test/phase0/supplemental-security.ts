@@ -44,7 +44,7 @@ export const securityCases: SecurityCase[] = [
   fsCase('F16-NEW-AUTH-UID-CANNOT-TAKEOVER', { auth: other, requestData: { ...state, uid: other.uid } }, false, false),
   fsCase('F18-GUEST-FALSE-APPROVAL-EVENT', { path: `bookings/${state.id}/activity/phase0-event`, method: 'create', resourceData: null, requestData: { booking_id: state.id, action: 'Approve', from_status: 'Pending', to_status: 'Approved', actor: 'guest', actor_id: guest.uid, at: '1900-01-01T00:00:00.000Z' } }, true, false),
   fsCase('F20-CLIENT-FORGED-GRANTED-ACCESS', { path: 'access_logs/phase0-client-claim', method: 'create', resourceData: null, requestData: { uid: guest.uid, timestamp: ruleTimestamp(NOW), ref_id: state.ref_id!, result: 'granted', reason: 'Synthetic client claim; no hardware touched' } }, true, false),
-  fsCase('F25-MISSING-REVIEW-GET', { path: `reviews/${state.id}`, method: 'get', resourceData: null, requestData: null }, false, true),
+  fsCase('F25-MISSING-REVIEW-GET', { path: `reviews/${state.id}`, method: 'get', resourceData: null, requestData: null }, true, true),
   ...[
     { id: 'F05-LEGACY-OWN-NAMESPACE', uid: guest.uid, auth: guest, current: true, desired: true, method: 'create' },
     { id: 'F05-LEGACY-FOREIGN-NAMESPACE-CONTROL', uid: other.uid, auth: guest, current: false, desired: false, method: 'create' },

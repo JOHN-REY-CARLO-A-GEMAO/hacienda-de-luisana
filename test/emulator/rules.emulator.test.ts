@@ -811,6 +811,26 @@ describe('reviews', () => {
     await assertSucceeds(getDoc(doc(admin().firestore(), 'reviews', BOOKING_ID)))
   })
 
+  it('answers the first submit\'s question: there is no review of this stay yet', async () => {
+    // `submitReview` reads before it writes, so the very first review of a stay
+    // arrives at an id with nothing behind it. Refusing that read refuses the
+    // write that was never attempted - and the Guest is told Firestore refused.
+    // `booking-mine` is this Guest's own finished stay, with no Review seeded.
+    const missing = await assertSucceeds(getDoc(doc(emailGuest().firestore(), 'reviews', 'booking-mine')))
+    expect(missing.exists()).toBe(false)
+    // The absence belongs to nobody else: this Guest may not ask about another
+    // Guest's stay, may not ask about a stay that never happened, and the
+    // signed-out visitor may not ask at all.
+    await assertFails(getDoc(doc(emailGuest().firestore(), 'reviews', 'booking-2')))
+    await assertFails(getDoc(doc(emailGuest().firestore(), 'reviews', 'booking-nope')))
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'reviews', 'booking-mine')))
+    // And a Review that is there is still nobody else's to read.
+    await assertFails(getDoc(doc(emailGuest(OTHER_GUEST_UID).firestore(), 'reviews', BOOKING_ID)))
+    // And with the door open the create that follows goes through.
+    await assertSucceeds(setDoc(doc(emailGuest().firestore(), 'reviews', 'booking-mine'), review({ booking_id: 'booking-mine' })))
+    await assertSucceeds(getDoc(doc(emailGuest().firestore(), 'reviews', 'booking-mine')))
+  })
+
   it('gives the Admin moderation and a reply, and never the Guest\'s words', async () => {
     await assertSucceeds(updateDoc(doc(admin().firestore(), 'reviews', BOOKING_ID), { status: 'published', published_at: new Date() }))
     await assertSucceeds(updateDoc(doc(admin().firestore(), 'reviews', BOOKING_ID), { admin_response: 'Thank you for staying with us!', admin_response_at: new Date(), admin_response_by: 'admin-uid-1' }))

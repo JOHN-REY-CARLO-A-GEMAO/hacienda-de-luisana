@@ -14,6 +14,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
+import { codeOf } from './firebaseFailure'
 import { activityLogDB } from './firestoreBookings'
 import type { ActivityLogEntry, ReviewActionType } from './booking'
 import { REVIEW_MAX, validateStarRating } from './validation'
@@ -252,6 +253,25 @@ export async function getReviewForBooking(bookingId: string, uid: string): Promi
 // ----------------------------------------------------------------------------
 
 /**
+ * What a Guest is told when the store refuses.
+ *
+ * A refusal arrives as a code and a sentence written for a console — "Missing
+ * or insufficient permissions." — and neither of them says anything the person
+ * who just typed a review can do about it. So the refusal becomes the same
+ * shape as every other one above: a message the form puts on the screen with
+ * their words still in the box, and one thing worth trying.
+ */
+function saveRefused(error: unknown): { ok: false; message: string } {
+  return {
+    ok: false,
+    message:
+      codeOf(error) === 'permission-denied'
+        ? 'We could not save your review just now. Your words are still here — please try again in a moment.'
+        : 'That did not save. Your review is still here — try again.',
+  }
+}
+
+/**
  * Submit the Review for a stay.
  *
  * Three refusals before anything is stored, each of which the rules make again:
@@ -273,15 +293,19 @@ export async function submitReview(input: ReviewSubmission): Promise<{ ok: true 
     return { ok: false, message: `Review must be at most ${REVIEW_MAX} characters` }
   }
 
-  const existing = await getReviewForBooking(input.bookingId, input.uid)
-  if (existing) return { ok: false, message: 'You already reviewed this stay.' }
+  try {
+    const existing = await getReviewForBooking(input.bookingId, input.uid)
+    if (existing) return { ok: false, message: 'You already reviewed this stay.' }
 
-  const record = reviewRecordFor({ ...input, text: input.text, categories: categories.value })
+    const record = reviewRecordFor({ ...input, text: input.text, categories: categories.value })
 
-  if (isFirebaseConfigured && db) {
-    await setDoc(doc(db, 'reviews', reviewDocId(input.bookingId)), toFirestore(record))
-  } else {
-    localStorage.setItem(KEY(input.bookingId), JSON.stringify(record))
+    if (isFirebaseConfigured && db) {
+      await setDoc(doc(db, 'reviews', reviewDocId(input.bookingId)), toFirestore(record))
+    } else {
+      localStorage.setItem(KEY(input.bookingId), JSON.stringify(record))
+    }
+  } catch (error) {
+    return saveRefused(error)
   }
   await recordActivity(input.bookingId, 'ReviewSubmitted', 'pending', 'guest', input.uid)
   return { ok: true }
@@ -338,8 +362,14 @@ export async function updateReview(input: {
   categories?: ReviewCategories
   now?: string
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  const existing = await getReviewForBooking(input.bookingId, input.uid)
-  if (!existing) return { ok: false, message: 'There is no review of this stay to change.' }
+  let existing: ReviewRecord
+  try {
+    const stored = await getReviewForBooking(input.bookingId, input.uid)
+    if (!stored) return { ok: false, message: 'There is no review of this stay to change.' }
+    existing = stored
+  } catch (error) {
+    return saveRefused(error)
+  }
   if (!canEditReview(existing, input.now ?? Date.now())) {
     return {
       ok: false,
@@ -379,7 +409,11 @@ export async function updateReview(input: {
       const stars = existing[key as ReviewCategoryKey]
       patch[key] = stars === undefined ? deleteField() : stars
     }
-    await updateDoc(doc(db, 'reviews', reviewDocId(input.bookingId)), patch)
+    try {
+      await updateDoc(doc(db, 'reviews', reviewDocId(input.bookingId)), patch)
+    } catch (error) {
+      return saveRefused(error)
+    }
   } else {
     localStorage.setItem(KEY(input.bookingId), JSON.stringify(existing))
   }

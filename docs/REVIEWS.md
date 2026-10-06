@@ -131,6 +131,7 @@ The website reads a published aggregate at `site_config/review_summary` (one rea
 | | Guest (author) | Guest (other) | Admin | Signed out |
 | --- | --- | --- | --- | --- |
 | Read a Review | ✅ | ❌ | ✅ | ❌ |
+| Read a Review that does not exist yet (own Booking) | ✅ | ❌ | ✅ | ❌ |
 | Create one | ✅ own finished stay only | ❌ | — | ❌ |
 | Correct one | ✅ 14 days, own words only | ❌ | — | ❌ |
 | Delete one | ❌ | ❌ | ✅ | ❌ |
@@ -141,6 +142,8 @@ The website reads a published aggregate at `site_config/review_summary` (one rea
 | Change the public average | ❌ | ❌ | ✅ | ❌ |
 
 A Guest cannot review an unfinished or cancelled Booking, cannot write a second one, cannot sign another Guest's name, cannot reach the Admin's fields, cannot delete a review to take a rating back, and cannot modify the aggregate. A signed-out visitor can read only `public_reviews`, whose documents cannot contain a uid, a Booking or a private reply.
+
+The one read that is not about a Review is the read that finds there is none: the second step of "one review per stay" is a `getDoc` at an id with nothing behind it, so `allow read` opens an absent document to the owner of the Booking the id names. There is nothing there to disclose, and the rules never compare a uid against a `resource` that is not there — which is what made the first review of a stay unsavable.
 
 ## Tests
 

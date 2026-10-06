@@ -86,7 +86,7 @@ The machine-readable matrix is `docs/phase0/FINDINGS.json`. A test also checks t
 | F22 | PARTIALLY COVERED | Inactive session still publishes | SDK double; two-store canonical test BLOCKED |
 | F23 | PARTIALLY COVERED | Not newly executed | Existing offline tests only |
 | F24 | PARTIALLY COVERED | One-shot status; later states labelled as Pending | Real component with SDK double |
-| F25 | REQUIRES RUNTIME/STAGING | Missing-document review read denied (supplemental) | Application-sequence canonical test written, BLOCKED |
+| F25 | RESOLVED 2026-10-06 | Missing-document review read denied (supplemental) | The read rule compared a uid against a `resource` that is not there when no Review exists yet, so `submitReview`'s pre-read was refused and the first review of a stay could not be filed. `allow read` now also opens an absent Review to the owner of the Booking the document id names — the same fact `create` checks. Covered offline (`test/rules/firestore-rules.test.ts`) and on the emulator (`test/emulator/rules.emulator.test.ts`, `test/phase0/emulator/auth-review.characterization.test.ts`). Deploy with `firebase deploy --only firestore:rules`. |
 | F26 | REQUIRES RUNTIME/STAGING | No review indexes checked in | Deployed indexes unknown |
 | F27 | PARTIALLY COVERED | Privacy copy contradicts location sharing; retention helpers do not delete | Source only |
 | F28 | PARTIALLY COVERED | `nights × 12000` default | Source; Dart test BLOCKED |
@@ -342,11 +342,12 @@ Full reconciliation is in `docs/phase0/CANONICAL_VERIFICATION.md` §6.
 | F13, F14, F15 | BLOCKED | Firestore (and, for F14, Flutter) not run |
 | F16 | **PARTIALLY CONFIRMED** | Auth emulator, using the same SDK calls as `authFirebase.ts`: register and login from an anonymous session both give a new UID and orphan the anonymous one. Firestore impact blocked |
 | F17 | BLOCKED | Core duplicate-booking claim needs Firestore. The storage layer accepts each retry as a new object, which is consistent |
-| F18, F20–F25 | BLOCKED | Firestore/RTDB emulator not run |
+| F18, F20–F24 | BLOCKED | Firestore/RTDB emulator not run |
 | F19, F33 | BLOCKED | Genuinely cannot run: no firmware/gateway or delivery consumer exists in the repository |
 | F26, F27, F30, F32 | BLOCKED | Deployed or runtime state (indexes, purge, load, release device) |
 | F28 | BLOCKED | Flutter not run |
 | F29 | RESOLVED 2026-10-06 | Owner decided: a `rooms` document is a status register keyed to a canonical Accommodation id. |
+| F25 | RESOLVED 2026-10-06 | `allow read` on `reviews/{bookingId}` now answers the pre-read `submitReview` makes when no Review exists yet, for the owner of the Booking the id names. Offline and emulator coverage written; `firebase deploy --only firestore:rules` still required. |
 | F31 | **PARTIALLY CONFIRMED** | Hosted run metadata: Node 20 deploys succeed and run no tests. Gate gap confirmed; **build-break impact NOT reproduced (contradiction recorded)** |
 
 **Totals:** CONFIRMED 0 · PARTIALLY CONFIRMED 3 · NOT REPRODUCED 0 · TEST HARNESS ISSUE 0 · BLOCKED 30.

@@ -25,7 +25,7 @@ So the public review is a **different document**, in a different collection, wit
 
 Unchanged from what was there, and tightened:
 
-- **Read** — the Admin, and the Guest who wrote it. Never a signed-out visitor.
+- **Read** — the Admin, and the Guest who wrote it. Never a signed-out visitor. Amended 2026-10-06: also the owner of the Booking the document id names, *when no Review is there*. `submitReview` asks whether one exists before it writes one, and that ask arrives at an id with no `resource` behind it — so the authorship test had nothing to compare against, refused, and the Guest was told Firestore refused a write that had never been attempted. There is no document to read in that case, and a Review that does exist is still reachable only by its author or the Admin, so the absence discloses nothing.
 - **Create** — signed in, the id is the Booking, the Booking is the author's, the Booking is `Checked-Out` or `Completed`, the stars are an integer 1–5, the written part is at most 1,000 characters and is not blank, any category is 1–5 or absent, the status arrives as `pending`, and `edit_until` is recomputed by the rule from its own clock.
 - **Update** — two doors:
   - the owning Guest, inside the fortnight, moving only `stars`, `text`, the four category ratings and `updated_at`;

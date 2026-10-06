@@ -248,7 +248,7 @@ The gaps are recorded, not filled. New Dart tests that cannot be compiled here w
 | F22 | SDK double: inactive session publishes; stop failures swallowed | RTDB/Firestore not run | BLOCKED | — |
 | F23 | Existing offline tests only | Not run | BLOCKED | — |
 | F24 | Real component + double: status loads once; later stages show the Pending headline | Firestore not run | BLOCKED | Live subscription behaviour needs the emulator. |
-| F25 | Supplemental: missing-review get denied | Firestore not run | BLOCKED | The canonical application-sequence test is written and unexecuted. |
+| F25 | Supplemental: missing-review get denied. **Fixed 2026-10-06** — `allow read` on `reviews/{reviewId}` now opens an absent Review to the owner of the Booking the id names, so the pre-read `submitReview` makes no longer refuses the first review of a stay | Offline rules suite re-run (passes); emulator application-sequence test rewritten to expect success | RESOLVED 2026-10-06 | Canonical emulator still to be run (`npm run test:emulator`, `npm run test:emulator:auth`), and the fix needs `firebase deploy --only firestore:rules` before production sees it. |
 | F26 | Source: no review composite indexes | Deployed index state | BLOCKED | Emulators do not enforce production indexes, so this needs staging/runtime. |
 | F27 | Source: privacy text vs live location; retention deletes nothing | Not run | BLOCKED | Purge requires staging and the owner. |
 | F28 | Source: `totalAmount` defaults to nights×12000 | Flutter not run | BLOCKED | — |

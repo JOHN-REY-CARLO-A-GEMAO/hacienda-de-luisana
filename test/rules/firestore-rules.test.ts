@@ -1542,9 +1542,31 @@ describe('reviews', () => {
   })
 
   it('lets the Guest read their own review and the Admin read any', () => {
-    expect(allow({ path, method: 'get', auth: emailGuest(), resourceData: reviewDoc() })).toBe(true)
-    expect(allow({ path, method: 'get', auth: allowlistedAdmin(), resourceData: reviewDoc() })).toBe(true)
-    expect(deny({ path, method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: reviewDoc() })).toBe(true)
+    // The stored Review is in the store, not only on the request: the rule asks
+    // `exists()` before it reads `resource`, so a fixture that passes
+    // `resourceData` alone would be answering a different question.
+    const filed = storeWith({}, { [`reviews/${BOOKING_ID}`]: reviewDoc({}, at) })
+    expect(allow({ path, method: 'get', auth: emailGuest(), resourceData: reviewDoc({}, at) }, filed)).toBe(true)
+    expect(allow({ path, method: 'get', auth: allowlistedAdmin(), resourceData: reviewDoc({}, at) }, filed)).toBe(true)
+    expect(deny({ path, method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: reviewDoc({}, at) }, filed)).toBe(true)
+  })
+
+  it('answers the question the first submit asks: is there a review of this stay yet?', () => {
+    // No document behind the id, and no `resource` for the uid test to read.
+    // `submitReview` asks this before every write, so refusing it refuses the
+    // write that was never attempted — and told the Guest Firestore had.
+    expect(allow({ path, method: 'get', auth: emailGuest(), resourceData: null })).toBe(true)
+    // The absence discloses nothing and belongs to nobody else: the Guest who
+    // did not stay, and the signed-out visitor, are still refused.
+    expect(deny({ path, method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: null })).toBe(true)
+    expect(deny({ path, method: 'get', auth: null, resourceData: null })).toBe(true)
+    // And it opens nothing: the stay still has to be this Guest's own.
+    expect(deny({ path: 'reviews/booking-nobody-stayed-in', method: 'get', auth: emailGuest(), resourceData: null })).toBe(true)
+    // Once the Review is there, this Guest's read is the authorship test, not
+    // this door.
+    const filed = storeWith({}, { [`reviews/${BOOKING_ID}`]: reviewDoc({}, at) })
+    expect(allow({ path, method: 'get', auth: emailGuest(), resourceData: reviewDoc({}, at) }, filed)).toBe(true)
+    expect(deny({ path, method: 'get', auth: emailGuest(OTHER_GUEST_UID), resourceData: reviewDoc({}, at) }, filed)).toBe(true)
   })
 
   it('refuses a signed-out visitor a review', () => {

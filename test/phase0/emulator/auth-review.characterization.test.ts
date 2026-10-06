@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, signInAnonymously, EmailAuthProvider, linkWithCredential, type Auth } from 'firebase/auth'
-import { connectFirestoreEmulator, getFirestore, doc, setDoc, getDoc, Timestamp, type Firestore } from 'firebase/firestore'
+import { connectFirestoreEmulator, getFirestore, doc, setDoc, getDoc, type Firestore } from 'firebase/firestore'
 import { assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { environment, reset, seed, canonicalPaid, canonicalBooking, denied } from './helpers'
 import { scenarios } from '../fixtures'
@@ -53,17 +53,23 @@ it('F16-CANONICAL-POSITIVE-CONTROL: SDK credential linking preserves UID/ownersh
     await assertSucceeds(getDoc(doc(db, 'bookings', scenarios.booking.id)))
   } finally { await deleteApp(app) }
 })
-it('F25-CANONICAL-CURRENT: real first-submit application pre-read is permission denied; direct own finished-stay create is a separate positive control', async () => {
+it('F25-CANONICAL-FIXED: the real first submit now saves end to end, and only the second one is refused', async () => {
+  // The application reads before it writes, so the first review of a stay arrived
+  // at an id with no document behind it; the read rule compared a uid against a
+  // `resource` that was not there, refused, and the Guest was told Firestore had
+  // refused a write that had never been attempted. The read is now open to the
+  // owner of the Booking the id names, so the whole sequence lands.
   try {
     const user = (await signInAnonymously(auth)).user
     await seed(env, owner => setDoc(doc(owner.firestore(), 'bookings', scenarios.booking.id), canonicalPaid({ uid: user.uid, status: 'Completed' })))
     vi.resetModules()
     vi.doMock('../../../src/lib/firebase', () => ({ auth, db, isFirebaseConfigured: true }))
     const reviews = await import('../../../src/lib/reviewsCloud')
-    await denied(() => reviews.submitReview({ bookingId: scenarios.booking.id, uid: user.uid, bookingStatus: 'Completed', stars: 5, text: 'Synthetic review only' }))
-    await assertSucceeds(setDoc(doc(db, 'reviews', scenarios.booking.id), {
-      booking_id: scenarios.booking.id, uid: user.uid, stars: 5, text: 'Synthetic review only', status: 'pending',
-      created_at: Timestamp.now(), edit_until: Timestamp.fromMillis(Date.now() + 13 * 24 * 60 * 60_000),
-    }))
+    const submitted = await reviews.submitReview({ bookingId: scenarios.booking.id, uid: user.uid, bookingStatus: 'Completed', stars: 5, text: 'Synthetic review only' })
+    expect(submitted.ok).toBe(true)
+    const stored = await assertSucceeds(getDoc(doc(db, 'reviews', scenarios.booking.id)))
+    expect(stored.exists()).toBe(true)
+    // And what that read is for: the second review of one stay, refused.
+    await denied(() => reviews.submitReview({ bookingId: scenarios.booking.id, uid: user.uid, bookingStatus: 'Completed', stars: 4, text: 'Synthetic review only' }))
   } finally { await deleteApp(app) }
 })
