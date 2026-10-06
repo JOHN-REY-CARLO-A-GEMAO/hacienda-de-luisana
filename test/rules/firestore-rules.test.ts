@@ -187,6 +187,49 @@ describe('official guest-count rates', () => {
     expect(allow({ path: 'bookings/official-no-base-cap', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 25, rate_amount: 12500, stay_total: 12500, amount_due: 6250, balance_due: 6250 }) }, officialStore)).toBe(true)
   })
 
+  // The client's money is centavo-exact (roundMoney / downPaymentAmount), and
+  // the Rates screen can publish any positive figure — including odd peso
+  // totals, whose 50% down payment lands on .50, and centavo rates. The rules'
+  // own arithmetic must stay float division (`/ 100.0`): the real runtime is
+  // CEL-based and evaluates int/int as truncated integer division, which made
+  // the rules' total and due whole-peso figures that never matched the
+  // client's centavo snapshot — every such Booking refused as
+  // permission-denied while this offline engine (floating-point `/`) reported
+  // ALLOW. These cases pin the client's exact figures; the emulator companion
+  // is the one that reproduces the refusal under the real runtime.
+  it('agrees with the client’s centavo-exact math on odd and centavo published rates', () => {
+    // [published base_rate, the client's 50% down payment for it]:
+    // an odd peso total halves to .50; a centavo rate keeps its centavos.
+    const cases = [
+      [6001, 3000.5],
+      [6000.5, 3000.25],
+    ] as const
+    for (const [rate, due] of cases) {
+      const store = structuredClone(officialStore)
+      const mainHouse = (store['site_config/rates'].accommodations as DocData)['main-house'] as DocData
+      const pricing = mainHouse.guest_pricing as DocData
+      ;(pricing.weekday as DocData).base_rate = rate
+      ;(pricing.weekend_holiday as DocData).base_rate = rate
+      expect(allow({
+        path: 'bookings/official-centavo-exact', method: 'create', auth: anonymousGuest(),
+        requestData: officialBooking({
+          rate_amount: rate, stay_total: rate,
+          amount_due: due, balance_due: Math.round((rate - due) * 100) / 100,
+          amount_claimed: due,
+        }),
+      }, store)).toBe(true)
+      // One centavo off is still a tampered total.
+      expect(deny({
+        path: 'bookings/official-centavo-tampered', method: 'create', auth: anonymousGuest(),
+        requestData: officialBooking({
+          rate_amount: rate, stay_total: Math.round((rate + 0.01) * 100) / 100,
+          amount_due: due, balance_due: Math.round((rate - due) * 100) / 100,
+          amount_claimed: due,
+        }),
+      }, store)).toBe(true)
+    }
+  })
+
   it('adds the published pet fee to the stay total and the 50/50 split', () => {
     // The rates document publishes a ₱300 per-pet fee; the store the rules read
     // carries it. A Booking with no pets is unaffected by its presence.
