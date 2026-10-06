@@ -896,7 +896,18 @@ firebase deploy --only firestore:rules,firestore:indexes,storage
 Nothing in the repository records which ruleset is live, so a fix that is merged and not
 deployed changes nothing for a Guest — and PR #48 ("Fix Firestore rules let-binding
 limit") implies an earlier ruleset failed to compile, which means production may still
-be running something older than `main`. After deploying:
+be running something older than `main`.
+
+To find out what *is* live: Firebase console → Build → Firestore Database → **Rules**
+shows the current ruleset with its revision history and the date of the last deploy, and
+that text can be diffed against this file. The Firebase CLI has no `rules:get`
+(`firebase firestore` manages databases only); the same answer is available over the
+Rules REST API, `GET
+https://firebaserules.googleapis.com/v1/projects/<project>/releases/cloud.firestore/(default)`
+for the live `rulesetName` and then `GET .../rulesets/<id>` for its source, both needing
+a `gcloud auth print-access-token` bearer.
+
+After deploying:
 
 1. Confirm which project and config the site is talking to at `/status`
    (`src/pages/StatusPage.tsx` names both).
