@@ -82,6 +82,9 @@ export type ActivityLine = {
 /** Read one Activity log entry as the Admin sees it. */
 export function describeActivity(entry: ActivityLogEntry): ActivityLine {
   const role = ROLE_LABELS[entry.actor] ?? LEGACY_ACTOR_LABELS[entry.actor] ?? entry.actor
+  // Activity entries are normally ISO strings, but moderation actions from the
+  // Admin app can carry a Firestore Timestamp. Normalize at the display boundary
+  // so no timestamp object can reach JSX.
   const at = storedInstant(entry.at)
   return {
     headline: HEADLINES[entry.action] ?? entry.action,
@@ -96,31 +99,40 @@ export function describeActivity(entry: ActivityLogEntry): ActivityLine {
   }
 }
 
-/**
- * The entry's instant, as an ISO string.
- *
- * `ActivityLogEntry` declares `at` a string and the Booking lifecycle writes
- * one, but the Admin app stamps a Review's moderation entry with a Firestore
- * `Timestamp`, and the rules accept either. This is the line the log is read
- * aloud through, and its output goes straight into rendered text: an object
- * reaching React as a child is a thrown error, not an ugly date, and it takes
- * the screen showing it down with it. So an instant that is neither a string
- * nor a `Timestamp` reads as none at all, and the line says no time rather than
- * saying something that is not one.
- */
+// A Timestamp and its plain wire shape are the only non-string values the
+// Activity log permits for `at`. This stays inside the pure Booking module so
+// audit rendering does not couple the lifecycle to application-level helpers.
 function storedInstant(value: unknown): string {
   if (typeof value === 'string') return value
-  if (typeof value === 'object' && value !== null && 'seconds' in value && typeof value.seconds === 'number') {
-    const date = new Date(value.seconds * 1000)
+  if (value === null || typeof value !== 'object') return ''
+
+  const timestamp = value as {
+    seconds?: unknown
+    nanoseconds?: unknown
+    toDate?: () => unknown
+  }
+  if (typeof timestamp.toDate === 'function') {
+    try {
+      const date = timestamp.toDate()
+      if (date instanceof Date && !Number.isNaN(date.getTime())) return date.toISOString()
+    } catch {
+      // Try the seconds/nanoseconds wire fields below.
+    }
+  }
+
+  if (typeof timestamp.seconds === 'number' && Number.isFinite(timestamp.seconds)) {
+    const nanoseconds = typeof timestamp.nanoseconds === 'number' && Number.isFinite(timestamp.nanoseconds)
+      ? timestamp.nanoseconds
+      : 0
+    const date = new Date(timestamp.seconds * 1000 + nanoseconds / 1_000_000)
     return Number.isNaN(date.getTime()) ? '' : date.toISOString()
   }
-  const date = (value as { toDate?: () => Date } | null)?.toDate?.()
-  return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : ''
+  return ''
 }
 
 function formatInstant(iso: string): string {
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return iso
+  if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleString('en-PH', {
     month: 'short',
     day: 'numeric',

@@ -63,7 +63,7 @@ describe('PROBE: the live published rates document', () => {
       stayTotal: quoted?.stayTotal,
       version: quoted?.snapshot?.version,
       effectiveDate: quoted?.snapshot?.effectiveDate,
-      deposit: quoted?.securityDeposit,
+      deposit: quoted?.rateCard?.securityDeposit,
     }, null, 2))
     expect(true).toBe(true)
   })

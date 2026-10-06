@@ -90,7 +90,7 @@ describe('a log entry stored as a Firestore Timestamp, not a string', () => {
   it('reads an instant it cannot make sense of as no instant, not as an object', async () => {
     // A fabricated time in an audit log is a claim nothing recorded; a blank is
     // merely unhelpful. Neither may be an object a renderer will choke on.
-    stored([{ ...submit, at: null }, { ...submit, booking_id: 'book-1', seq: 1, at: { seconds: 0 } }])
+    stored([{ ...submit, at: null }, { ...submit, booking_id: 'book-1', seq: 1, at: { seconds: Number.NaN } }])
 
     const history = await activityLogDB.list('book-1')
 

@@ -17,6 +17,7 @@ import {
 import { retentionDaysLeft, retentionElapsed } from '../lib/chatRetention'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { MESSAGE_MAX } from '../lib/validation'
+import { formatDateTime } from '../lib/formatDate'
 
 /** How many older messages one "Load earlier messages" press fetches. */
 const OLDER_PAGE_SIZE = 30
@@ -50,6 +51,7 @@ export function MessagesPage() {
     let unsub = () => {}
     let cancelled = false
     setStatus('loading')
+    setError(null)
     ensureConversation(user.uid, category)
       .then((conversation) => {
         if (cancelled) return
@@ -62,11 +64,19 @@ export function MessagesPage() {
         setStatus('ready')
         // One listener, bounded to the newest page: it is what makes a reply
         // appear. Older pages are fetched once, on request, and hold no listener.
-        unsub = subscribeMessages(conversation.id, user.uid, (page) => {
-          setMessages((current) => mergeMessages(current, page.messages))
-          setHasMore(page.hasMore)
-          if (!pagedBack.current) setCursor(page.cursor)
-        })
+        unsub = subscribeMessages(
+          conversation.id,
+          user.uid,
+          (page) => {
+            setMessages((current) => mergeMessages(current, page.messages))
+            setHasMore(page.hasMore)
+            if (!pagedBack.current) setCursor(page.cursor)
+          },
+          CHAT_PAGE_SIZE,
+          () => {
+            if (!cancelled) setError('Live message updates stopped. Check your connection and try again.')
+          },
+        )
       })
       .catch(() => setStatus('error'))
     return () => {
@@ -181,7 +191,7 @@ export function MessagesPage() {
                     <span className="inline-block rounded-2xl px-3 py-2 bg-cream-100 text-forest-900 max-w-[85%] text-left">
                       {m.text}
                     </span>
-                    <div className="text-[10px] text-forest-600 mt-1">{new Date(m.at).toLocaleString()}</div>
+                    <div className="text-[10px] text-forest-600 mt-1">{formatDateTime(m.at, 'Time unavailable')}</div>
                   </li>
                 ))}
               </ul>
@@ -206,7 +216,7 @@ export function MessagesPage() {
           {text.length}/{MESSAGE_MAX}
         </p>
         <ShareLocationBar sharing={sharing} />
-        {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
       </div>
     </div>
   )

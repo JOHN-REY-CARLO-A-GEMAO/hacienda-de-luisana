@@ -28,6 +28,7 @@ import { describeFirestoreFailure, failureLine } from './firebaseFailure'
 import { ACCOMMODATIONS } from '../config/site'
 import { bookingPolicyDB } from './bookingPolicyDB'
 import { ratesDB } from './ratesDB'
+import { dateToISOString } from './formatDate'
 import {
   applyAction,
   approvalCouplingSet,
@@ -73,14 +74,33 @@ function initialHoldExpiry(now: string | number | Date = Date.now()): string {
   return new Date(new Date(now).getTime() + DATE_HOLD_MS).toISOString()
 }
 
+function storedDateOnly(value: unknown): string {
+  if (typeof value === 'string') return value
+  const iso = dateToISOString(value)
+  return iso ? iso.slice(0, 10) : ''
+}
+
+function storedInstant(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value
+  return dateToISOString(value, fallback)
+}
+
+function nullableStoredInstant(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  const iso = storedInstant(value)
+  return iso || null
+}
+
 function mapDocToBooking(id: string, data: DocumentData): Booking {
   return {
     id,
     guest_name: data.guest_name,
     phone: data.phone,
     email: data.email,
-    check_in: typeof data.check_in === 'string' ? data.check_in : data.check_in?.toDate?.()?.toISOString()?.split('T')[0] || data.check_in,
-    check_out: typeof data.check_out === 'string' ? data.check_out : data.check_out?.toDate?.()?.toISOString()?.split('T')[0] || data.check_out,
+    // Normalize Firestore Timestamp values before they reach page state. In
+    // particular, a plain `{ seconds, nanoseconds }` value must never reach JSX.
+    check_in: storedDateOnly(data.check_in),
+    check_out: storedDateOnly(data.check_out),
     guests: data.guests,
     accommodation: data.accommodation,
     special_requests: data.special_requests || '',
@@ -90,9 +110,9 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
       payment_status: data.payment_status,
       payment_proof_url: data.payment_proof_url ?? data.paymentProofUrl ?? null,
     }),
-    created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at || new Date().toISOString(),
+    created_at: storedInstant(data.created_at, new Date().toISOString()),
     // Booking lifecycle v2 (additive — absent on Bookings stored before it)
-    hold_expires_at: data.hold_expires_at ?? null,
+    hold_expires_at: nullableStoredInstant(data.hold_expires_at),
     rejection_reason: data.rejection_reason ?? null,
     payment_plan: data.payment_plan,
     payment_status: data.payment_status,
@@ -104,7 +124,7 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     payment_reference: data.payment_reference,
     ocr_reference: data.ocr_reference,
     ocr_amount: data.ocr_amount,
-    payment_verified_at: data.payment_verified_at ?? null,
+    payment_verified_at: nullableStoredInstant(data.payment_verified_at),
     payment_verified_by: data.payment_verified_by ?? null,
     nights: typeof data.nights === 'number' ? data.nights : undefined,
     rate_amount: typeof data.rate_amount === 'number' ? data.rate_amount : undefined,
@@ -126,7 +146,7 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     // The policy in force at choice time (additive — absent on Bookings stored
     // before it): nulls on read mean the Admin had published nothing.
     policy_version: data.policy_version ?? null,
-    policy_effective_date: data.policy_effective_date ?? null,
+    policy_effective_date: data.policy_effective_date == null ? null : storedDateOnly(data.policy_effective_date),
     ...(Object.prototype.hasOwnProperty.call(data, 'refund_policy_snapshot')
       ? { refund_policy_snapshot: data.refund_policy_snapshot ?? null }
       : {}),
@@ -151,31 +171,14 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
  * (`lib/services/review_service.dart`). The rules accept either — they require
  * the key, not a type — so both are in the log.
  *
- * Read raw, a `Timestamp` arrives where `ActivityLogEntry` promises a string and
- * reaches `describeActivity`, which formats it with `new Date()`. A `Timestamp`
- * is not a date, so the parse fails, the raw object is handed to React as a
- * child, and the whole Guest's `/account` page is replaced by the error boundary:
- * React error #31, "objects are not valid as a React child", naming the culprit
- * in its own message — `{seconds, nanoseconds}`.
- *
- * So the instant is settled here, at the boundary, the same way
- * `mapDocToBooking` settles `created_at` above. An entry whose instant is
- * neither a string nor a `Timestamp` reads as no instant at all: a blank in an
- * audit log is honest, and a borrowed time is a lie.
+ * The read adapter normalizes that Timestamp to ISO before it leaves this
+ * boundary, so a listener or renderer never receives an object where the
+ * domain promises a string. The display layer also handles Timestamp-shaped
+ * values defensively; an unparseable audit instant stays blank rather than
+ * borrowing the current time.
  */
 function mapDocToActivityEntry(data: DocumentData): ActivityLogEntry {
   return { ...data, at: storedInstant(data.at) } as ActivityLogEntry
-}
-
-/** A stored instant as ISO, whichever of the two shapes it was written in. */
-function storedInstant(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'object' && value !== null && 'seconds' in value && typeof value.seconds === 'number') {
-    const date = new Date(value.seconds * 1000)
-    return Number.isNaN(date.getTime()) ? '' : date.toISOString()
-  }
-  const date = (value as { toDate?: () => Date } | null)?.toDate?.()
-  return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : ''
 }
 
 /**
