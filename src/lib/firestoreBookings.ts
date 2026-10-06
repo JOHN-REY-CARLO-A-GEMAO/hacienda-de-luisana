@@ -661,6 +661,30 @@ export const cloudBookingsDB = {
           e,
         )
         const diagnosed = await explainGuestCreateRefusal(input).catch(() => null)
+        if (!diagnosed) {
+          // The client's mirror of the rules found nothing wrong, so the
+          // disagreement is in something only the server sees: the live
+          // `site_config/rates` document as stored (number types, extra keys),
+          // or the evaluation budget. Dump both sides verbatim so the owner can
+          // replay the create in the Rules Playground without guessing.
+          const published = await ratesDB.get().catch(() => null)
+          console.warn(
+            '[Firestore] rules-refusal diagnostics (copy this whole block):\n' +
+              JSON.stringify(
+                {
+                  signedIn: Boolean(auth?.currentUser),
+                  authUid: auth?.currentUser?.uid ?? null,
+                  anonymous: auth?.currentUser?.isAnonymous ?? null,
+                  payload: withHold,
+                  published,
+                  minimumLeadTimeDays: days,
+                  firebase: lastWriteFailure,
+                },
+                null,
+                2,
+              ),
+          )
+        }
         const message = diagnosed?.message ?? (
           'The booking could not be submitted because the Hacienda’s booking rules refused it. ' +
           'Nothing was saved. Please try again, or send the Hacienda your reference so they can check it.'
