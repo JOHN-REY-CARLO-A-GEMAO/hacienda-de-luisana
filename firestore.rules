@@ -113,7 +113,7 @@ service cloud.firestore {
     // This document is the authoritative setting for both clients and rules.
     // The fallback mirrors MINIMUM_BOOKING_LEAD_TIME_DAYS in booking/leadTime.ts.
     function minimumBookingLeadTimeDays() {
-      let defaultDays = 30;
+      let defaultDays = 1;
       let policy = /databases/$(database)/documents/site_config/booking;
       let days = exists(policy)
         ? get(policy).data.get('minimumBookingLeadTimeDays', defaultDays)
@@ -400,7 +400,7 @@ service cloud.firestore {
         && rate.get('security_deposit', -1) is number
         && rate.security_deposit >= 0
         && validStayLength(data)
-        && data.nights == 1
+        && data.nights >= 1 
         && amount is number && amount > 0
         && validPetCount(published, data)
         && validLateCheckout(published, data)
