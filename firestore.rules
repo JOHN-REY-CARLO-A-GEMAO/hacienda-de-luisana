@@ -196,12 +196,74 @@ service cloud.firestore {
         && validAuthoritativeMoney(data);
     }
 
-    function scheduledRate(schedule, guests) {
+    // ------------------------------------------------------------------
+    // Every peso figure in here is an integer number of centavos
+    // ------------------------------------------------------------------
+    //
+    // The rules runtime keeps two numeric types — `int` and `float` — and it is
+    // stricter about them than any client is:
+    //
+    //   * `int / int` is *integer* division (it truncates), which is why a
+    //     figure halved or divided by 100 in ints loses its centavos.
+    //   * `1 == 1.0` holds, so a scalar money comparison survives a type
+    //     difference between the two sides.
+    //   * `[1] == [1.0]` and `{'a': 1} == {'a': 1.0}` are **false**: a List or
+    //     Map compares element by element *and type by type*. (Captured against
+    //     the Firestore Rules Test API; see test/rules/engine.test.ts.)
+    //   * `>`/`>=`/`<`/`<=` are dispatched on same-type operand pairs: the
+    //     runtime's own refusal for a mixed comparison names `int > int,
+    //     float > float` and no pair across the two. Whether it then raises or
+    //     promotes has never been observed either way (the same message for `+`
+    //     omits `int + float`, which does work), so nothing below depends on the
+    //     answer — and if it raises, one raised condition denies the write.
+    //
+    // Two writers put money into this project: the Admin's Flutter app, which
+    // stores a whole peso figure as an `int`, and the website, which stores a
+    // whole figure as an `int` and a fractional one as a `float`. A rule that
+    // compares their figures as *typed values* therefore agrees or disagrees
+    // according to who happened to write each side — which is not a policy.
+    //
+    // So money is normalised once, to integer centavos, on both sides of every
+    // comparison: `int` against `int`, exactly. That is also what the clients
+    // do (`roundMoney` / `downPaymentAmount` keep centavos, and the down
+    // payment floors at whole centavos), so the two agree by construction
+    // rather than by luck of encoding.
+    // ------------------------------------------------------------------
+
+    /** Integer centavos for a figure that arrived as an `int` or a `float`. */
+    function centavos(value) {
+      // The `is int` branch keeps int arithmetic int; the other branch is
+      // float-only (`* 100.0`, `+ 0.5`), so neither branch mixes types, and
+      // `int()` hands back an int. Half-up, like the clients' roundMoney.
+      return value is int ? value * 100 : int(value * 100.0 + 0.5);
+    }
+
+    /**
+     * Does the snapshot on the Booking carry the published cancellation policy?
+     *
+     * Compared with `diff()` and not with `==`, because `==` on two Maps is
+     * type-strict per element: the same policy written by the Admin app (ints)
+     * and copied back by the website (floats, whenever a percentage carries a
+     * decimal) would read as two different policies and refuse every Booking.
+     * `diff()` compares by value at every depth, which is the question being
+     * asked — did the Guest change a figure — and nothing else.
+     */
+    function samePublishedPolicy(snapshot, publishedPolicy) {
+      return snapshot == null
+        ? publishedPolicy == null
+        : snapshot is map && publishedPolicy is map
+          && snapshot.diff(publishedPolicy).affectedKeys().size() == 0;
+    }
+
+    function scheduledRateCents(schedule, guests) {
+      let base = schedule.get('base_rate', -1);
+      let excess = schedule.get('excess_per_guest', -1);
       return !(guests is int) || guests < schedule.get('min_guests', 0) ? -1
         : (schedule.keys().hasAny(['max_guests']) && guests > schedule.max_guests) ? -1
-        : guests <= schedule.get('base_max_guests', 0) ? schedule.get('base_rate', -1)
-        : schedule.keys().hasAny(['excess_per_guest'])
-          ? schedule.base_rate + (guests - schedule.base_max_guests) * schedule.excess_per_guest
+        : !(base is number) ? -1
+        : guests <= schedule.get('base_max_guests', 0) ? centavos(base)
+        : (schedule.keys().hasAny(['excess_per_guest']) && excess is number)
+          ? centavos(base) + (guests - schedule.base_max_guests) * centavos(excess)
         : -1;
     }
 
@@ -221,13 +283,18 @@ service cloud.firestore {
         && schedule.get('min_guests', 0) == 1
         && schedule.get('base_max_guests', 0) is int
         && schedule.base_max_guests >= 1
+        // `centavos(...) > 0`, not `base_rate > 0`: a published figure with a
+        // decimal is a float, and the runtime's refusal for a mixed comparison
+        // names only same-type pairs (`int > int, float > float`). Whether it
+        // raises is not settled; if it does, one raised condition denies the
+        // write. Both sides of a money comparison are integer centavos here.
         && schedule.get('base_rate', 0) is number
-        && schedule.base_rate > 0
+        && centavos(schedule.get('base_rate', 0)) > 0
         && (isAHouse
           ? validAHouseSchedule(schedule)
           : (!schedule.keys().hasAny(['max_guests'])
              && schedule.get('excess_per_guest', -1) is number
-             && schedule.excess_per_guest >= 0));
+             && centavos(schedule.get('excess_per_guest', -1)) >= 0));
     }
 
     // ------------------------------------------------------------------
@@ -254,35 +321,36 @@ service cloud.firestore {
       return pets is int && pets >= 0
         && (pets == 0 || (policy is map
           && policy.get('fee_per_pet', -1) is number
-          && policy.fee_per_pet > 0
+          && centavos(policy.fee_per_pet) > 0
           && pets <= policy.get('max_pets', 100)));
     }
 
-    function petFee(published, data) {
+    /** The published per-pet charge, in integer centavos; 0 when there is none. */
+    function petFeeCents(published, data) {
       let pets = data.get('pet_count', 0);
       let policy = published.get('pet_policy', null);
-      // `/ 100.0`, not `/ 100`: the rules language is CEL-based, and `/` between
-      // two ints is *integer* division — int(30000) / 100 would be fine, but any
-      // fee with centavos (or an odd peso figure downstream) would truncate and
-      // stop agreeing with the client's roundMoney, refusing every such Booking
-      // as a money mismatch. The float literal forces float division, which is
-      // what the centavo arithmetic below was always meant to be.
-      return pets > 0 && policy is map && policy.get('fee_per_pet', 0) is number
-        ? int(pets * policy.fee_per_pet * 100 + 0.5) / 100.0
+      // `pets is int` first: this runs inside a `let` of validAuthoritativeMoney,
+      // which is evaluated before the conjunction that validates the field, and a
+      // raised expression there denies the whole write rather than one conjunct.
+      return pets is int && pets > 0 && policy is map && policy.get('fee_per_pet', 0) is number
+        ? centavos(pets * policy.fee_per_pet)
         : 0;
     }
 
     function validLateCheckout(published, data) {
       let hours = data.get('late_checkout_hours', 0);
       let rate = published.get('late_checkout_per_hour', null);
-      return hours is int && hours >= 0 && (hours == 0 || (rate is number && rate >= 0));
+      return hours is int && hours >= 0
+        && (hours == 0 || (rate is number && centavos(rate) >= 0));
     }
 
-    function lateCheckoutFee(published, data) {
+    /** The published hourly extension charge, in integer centavos; 0 when none. */
+    function lateCheckoutFeeCents(published, data) {
       let hours = data.get('late_checkout_hours', 0);
       let rate = published.get('late_checkout_per_hour', 0);
-      // `/ 100.0` for the same reason as petFee: int/int division truncates.
-      return hours > 0 && rate is number ? int(hours * rate * 100 + 0.5) / 100.0 : 0;
+      return hours is int && hours > 0 && rate is number
+        ? centavos(hours * rate)
+        : 0;
     }
 
     // The classification of a check-in date under the published holiday list: a
@@ -300,24 +368,23 @@ service cloud.firestore {
       return checkIn.dayOfWeek() in [5, 6] || holiday ? 'weekend_holiday' : 'weekday';
     }
 
-    // The stay total: the accommodation's own published figure plus the charges
-    // published for pets and a late checkout.
+    // The stay total, in integer centavos: the accommodation's own published
+    // figure plus the charges published for pets and a late checkout.
     //
     // Its own function on purpose. Rules cap a function at ten variables and
-    // validAuthoritativeMoney already sits near that ceiling, so the addon
+    // validAuthoritativeMoney already sits at that ceiling, so the addon
     // arithmetic gets names of its own here instead of crowding that one.
-    function stayTotalWithAddons(published, base, data) {
-      let pets = int(petFee(published, data) * 100 + 0.5) / 100.0;
-      let hours = int(lateCheckoutFee(published, data) * 100 + 0.5) / 100.0;
-      // `/ 100.0` — float division — is load-bearing, not style. With `/ 100`
-      // the runtime's integer division truncates the centavos away, so the
-      // total this function returns stops matching the stay_total the client
-      // computed with roundMoney (exact to centavos) whenever the published
-      // figures carry centavos or an odd number of pesos. The Booking is then
-      // refused by `data.stay_total == total` — as a bare permission-denied,
-      // indistinguishable from a policy decision, and invisible to the offline
-      // engine, whose `/` is floating-point. Same for `due` below.
-      return int((base + pets + hours) * 100 + 0.5) / 100.0;
+    //
+    // The sum is int + int + int. It used to be pesos-and-centavos as a float
+    // (`int(x * 100 + 0.5) / 100.0`), which put a float on one side of the
+    // scalar comparisons below and, before that, an int/int division on the
+    // other side of them: either way the figure the rules computed stopped
+    // being the figure the client computed, and the Booking was refused by
+    // `data.stay_total == total` as a bare permission-denied — indistinguishable
+    // from a policy decision, and invisible to an evaluator whose numbers are
+    // all one type. Centavos on both sides ends the question.
+    function stayTotalCents(published, rateCents, data) {
+      return rateCents + petFeeCents(published, data) + lateCheckoutFeeCents(published, data);
     }
 
     // ------------------------------------------------------------------
@@ -354,7 +421,7 @@ service cloud.firestore {
         && node.get('rate_unit', '') == 'standard_stay'
         && !node.keys().hasAny(['nightly_rate', 'reservation_fee_amount'])
         && node.get('security_deposit', -1) is number
-        && node.security_deposit >= 0
+        && centavos(node.security_deposit) >= 0
         && node.get('down_payment_percent', 0) == 50
         && node.get('guest_pricing', {}) is map
         && node.guest_pricing.get('units_per_booking', 1) == 1
@@ -401,20 +468,21 @@ service cloud.firestore {
       let classification = classifyCheckIn(published, data);
       let schedule = classification == 'weekend_holiday'
         ? pricing.get('weekend_holiday', {}) : pricing.get('weekday', {});
-      let amount = scheduledRate(schedule, data.guests);
-      // `amount` is the accommodation's own published figure. The addons are
-      // recorded separately and `total` is what the 50/50 split is taken from, so
-      // a Booking states what it is paying for rather than one larger number.
-      // The sum is its own function: rules cap a function at ten variables, and
-      // validAuthoritativeMoney is already near that ceiling, so the extra names
-      // belong in a function of their own rather than here.
-      let total = stayTotalWithAddons(published, amount, data);
+      let rateCents = scheduledRateCents(schedule, data.guests);
+      // `rateCents` is the accommodation's own published figure. The addons are
+      // recorded separately and `totalCents` is what the 50/50 split is taken
+      // from, so a Booking states what it is paying for rather than one larger
+      // number. The sum is its own function: rules cap a function at ten
+      // variables and this one sits at that ceiling, so the extra names belong
+      // in a function of their own rather than here.
+      let totalCents = stayTotalCents(published, rateCents, data);
       // 50% of the total, floored at whole centavos, exactly as the client's
-      // downPaymentAmount floors it. `/ 100.0` keeps this a float division; the
-      // client's figure keeps its centavos, and the two must agree for
-      // `data.amount_due == due` to hold on every quote the Rates screen can
-      // publish — including odd peso totals and centavo rates.
-      let due = int(total * 50) / 100.0;
+      // downPaymentAmount floors it — and `* 50 / 100` in ints is that floor,
+      // because int division truncates toward zero and every figure here is
+      // non-negative. No float anywhere: the client's figure keeps its centavos
+      // and the two must agree on every quote the Rates screen can publish,
+      // including odd peso totals and centavo rates.
+      let dueCents = totalCents * 50 / 100;
       return published.keys().hasAny(['holiday_dates'])
         && holidayDates is list
         && rate is map
@@ -427,24 +495,33 @@ service cloud.firestore {
         && validGuestSchedule(pricing.get('weekend_holiday', {}), allowThreeGuestCap)
         && rate.get('down_payment_percent', 0) == 50
         && rate.get('security_deposit', -1) is number
-        && rate.security_deposit >= 0
+        && centavos(rate.security_deposit) >= 0
         && validStayLength(data)
         && data.nights >= 1 
-        && amount is number && amount > 0
+        && rateCents > 0
         && validPetCount(published, data)
         && validLateCheckout(published, data)
-        && data.rate_amount == amount
+        // Money, compared in integer centavos: same type on both sides, so the
+        // verdict depends on the figures and not on how each writer encoded them.
+        && data.rate_amount is number
+        && centavos(data.rate_amount) == rateCents
         && data.rate_unit == 'standard_stay'
         && data.rate_classification == classification
-        && data.stay_total == total
+        && data.stay_total is number
+        && centavos(data.stay_total) == totalCents
         && data.payment_plan == 'down-payment'
-        && data.amount_due == due
-        && data.security_deposit == rate.security_deposit
-        && data.balance_due == total - due
-        && data.amount_claimed >= due
+        && data.amount_due is number
+        && centavos(data.amount_due) == dueCents
+        && data.security_deposit is number
+        && centavos(data.security_deposit) == centavos(rate.security_deposit)
+        && data.balance_due is number
+        && centavos(data.balance_due) == totalCents - dueCents
+        && data.amount_claimed is number
+        && centavos(data.amount_claimed) >= dueCents
         && data.policy_version == published.version
         && data.policy_effective_date == published.effective_date
-        && data.get('refund_policy_snapshot', null) == published.get('refund', null);
+        && samePublishedPolicy(data.get('refund_policy_snapshot', null),
+                               published.get('refund', null));
     }
 
     // Payment choices on old `Payment Pending` records must use the total and
@@ -456,10 +533,10 @@ service cloud.firestore {
       let savedRate = resource.data.get('rate_amount', -1);
       let savedNights = resource.data.get('nights', -1);
       let savedUnit = resource.data.get('rate_unit', '');
-      let rateTotal = savedUnit == 'standard_stay' && savedRate is number
-        ? int(savedRate * 100 + 0.5) / 100.0
+      let rateTotalCents = savedUnit == 'standard_stay' && savedRate is number
+        ? centavos(savedRate)
         : savedUnit == 'night' && savedRate is number && savedNights is int && savedNights > 0
-          ? int(savedRate * savedNights * 100 + 0.5) / 100.0
+          ? centavos(savedRate * savedNights)
           : -1;
       // Keep the legacy aliases in one binding: Firestore limits each Rules
       // function to ten `let` bindings, and this function is also used by the
@@ -467,30 +544,34 @@ service cloud.firestore {
       let legacyTotal = resource.data.get('total_amount', null) is number
         ? resource.data.get('total_amount', null)
         : resource.data.get('totalAmount', null);
-      let total = resource.data.keys().hasAny(['stay_total'])
-        ? (savedTotal is number ? savedTotal : -1)
+      let totalCents = resource.data.keys().hasAny(['stay_total'])
+        ? (savedTotal is number ? centavos(savedTotal) : -1)
         : legacyTotal is number
-          ? int(legacyTotal * 100 + 0.5) / 100.0
-          : rateTotal;
+          ? centavos(legacyTotal)
+          : rateTotalCents;
       let plan = data.get('payment_plan', '');
-      let due = plan == 'down-payment' ? int(total * 50) / 100.0
-        : plan == 'full' ? total : -1;
+      let dueCents = plan == 'down-payment' ? totalCents * 50 / 100
+        : plan == 'full' ? totalCents : -1;
       return resource.data.get('status', '') == 'Payment Pending'
         && !resource.data.keys().hasAny(['rate_classification'])
         && resource.data.get('payment_plan', '') in ['', null]
-        && total is number && total > 0
-        && data.get('stay_total', -1) == total
+        && totalCents > 0
+        && data.get('stay_total', -1) is number
+        && centavos(data.get('stay_total', -1)) == totalCents
         && plan in ['down-payment', 'full']
-        && due > 0
+        && dueCents > 0
         && data.get('payment_status', '') == 'pending'
-        && data.get('amount_due', -1) == due
+        && data.get('amount_due', -1) is number
+        && centavos(data.get('amount_due', -1)) == dueCents
         && data.get('security_deposit', 0) is number
-        && data.get('security_deposit', 0) >= 0
-        && data.get('security_deposit', 0) == resource.data.get('security_deposit', 0)
-        && data.get('balance_due', -1) == total - due
+        && centavos(data.get('security_deposit', 0)) >= 0
+        && centavos(data.get('security_deposit', 0)) == centavos(resource.data.get('security_deposit', 0))
+        && data.get('balance_due', -1) is number
+        && centavos(data.get('balance_due', -1)) == totalCents - dueCents
         && data.get('policy_version', null) == resource.data.get('policy_version', null)
         && data.get('policy_effective_date', null) == resource.data.get('policy_effective_date', null)
-        && data.get('refund_policy_snapshot', null) == resource.data.get('refund_policy_snapshot', null)
+        && samePublishedPolicy(data.get('refund_policy_snapshot', null),
+                               resource.data.get('refund_policy_snapshot', null))
         && (!data.keys().hasAny(['nights'])
             || (resource.data.keys().hasAny(['nights']) && data.nights == resource.data.nights))
         && (!data.keys().hasAny(['rate_amount'])
@@ -549,7 +630,9 @@ service cloud.firestore {
         && (!resource.data.keys().hasAny(['balance_due']) || request.resource.data.balance_due == resource.data.balance_due)
         && (!resource.data.keys().hasAny(['policy_version']) || request.resource.data.policy_version == resource.data.policy_version)
         && (!resource.data.keys().hasAny(['policy_effective_date']) || request.resource.data.policy_effective_date == resource.data.policy_effective_date)
-        && (!resource.data.keys().hasAny(['refund_policy_snapshot']) || request.resource.data.get('refund_policy_snapshot', null) == resource.data.get('refund_policy_snapshot', null));
+        && (!resource.data.keys().hasAny(['refund_policy_snapshot'])
+            || samePublishedPolicy(request.resource.data.get('refund_policy_snapshot', null),
+                                   resource.data.get('refund_policy_snapshot', null)));
     }
 
     // ------------------------------------------------------------------
@@ -567,7 +650,8 @@ service cloud.firestore {
     // console cannot sign another Admin's name to a verification, and the
     // fixture fields the Guest may write can never produce this marker.
     function hasVerificationMarker() {
-      return request.resource.data.get('amount_verified', 0) > 0
+      return request.resource.data.get('amount_verified', 0) is number
+        && centavos(request.resource.data.get('amount_verified', 0)) > 0
         && request.resource.data.get('payment_verified_at', '') != ''
         && request.resource.data.get('payment_verified_by', '') == request.auth.uid;
     }
@@ -852,7 +936,7 @@ service cloud.firestore {
         && request.resource.data.payment_proof_url.size() > 0
         && request.resource.data.payment_status == 'pending'
         && request.resource.data.amount_claimed is number
-        && request.resource.data.amount_claimed > 0
+        && centavos(request.resource.data.amount_claimed) > 0
         && request.resource.data.get('amount_verified', 0) == 0
         && request.resource.data.get('payment_verified_by', '') == ''
         && request.resource.data.get('payment_verified_at', '') == ''
@@ -970,9 +1054,10 @@ service cloud.firestore {
           // that money went back — is the Admin's to record.
           && request.resource.data.get('refund_status', resource.data.get('refund_status', 'none')) in ['none', 'initiated']
           && request.resource.data.get('refund_total', 0) is number
-          && request.resource.data.get('refund_total', 0) >= 0
-          && request.resource.data.get('refund_total', 0)
-               <= request.resource.data.get('amount_verified', resource.data.get('amount_verified', 0))
+          && centavos(request.resource.data.get('refund_total', 0)) >= 0
+          && centavos(request.resource.data.get('refund_total', 0))
+               <= centavos(request.resource.data.get('amount_verified',
+                                                     resource.data.get('amount_verified', 0)))
           // Guarded on presence rather than defaulted: `{}` is not a map the
           // runtime will hand back here, and asking a value that is not there
           // for a key is an evaluation error rather than a false. A Guest who

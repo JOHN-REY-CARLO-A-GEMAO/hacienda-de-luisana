@@ -25,6 +25,7 @@ import {
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore'
 import { ref, uploadBytes, deleteObject, getDownloadURL } from 'firebase/storage'
 import { conversationDocId } from '../../src/lib/chatCloud'
+import { downPaymentAmount } from '../../src/lib/booking'
 
 /** `firebase emulators:exec` puts the project id in the environment. */
 const PROJECT = process.env.GCLOUD_PROJECT ?? process.env.FIREBASE_PROJECT ?? 'demo-hacienda'
@@ -1060,14 +1061,16 @@ describe('published guest-count prices: independent Firestore verification', () 
   // downPaymentAmount keep centavos (an odd peso total halves to a .50 down
   // payment; a centavo rate carries centavos through every figure). The rules
   // used to divide two ints (`int(x) / 100`), and the CEL-based runtime
-  // evaluates that as truncated integer division — so the rules' total and
-  // due came out whole-peso while the client's were centavo-exact, and every
-  // such Booking was refused by `data.stay_total == total` /
-  // `data.amount_due == due` as a bare permission-denied. The offline engine
-  // could not catch it: its `/` is floating-point, so it reported ALLOW. This
-  // case is the one that reproduces that production refusal under the real
-  // runtime, and it stays green only while the division stays float
-  // (`/ 100.0`).
+  // evaluates that as truncated integer division — so the rules' total and due
+  // came out whole-peso while the client's were centavo-exact, and every such
+  // Booking was refused by `data.stay_total == total` / `data.amount_due == due`
+  // as a bare permission-denied. The offline engine could not catch it: its `/`
+  // was floating-point, so it reported ALLOW. The gate now works in integer
+  // centavos on both sides (`centavos()` in firestore.rules), which is exact
+  // under either division and independent of how each writer encoded a figure;
+  // `test/rules/engine.test.ts` pins the two numeric types that make the
+  // distinction real, and this case reproduces the refusal under the runtime
+  // that is the only canonical answer.
   it('agrees with the client’s centavo-exact math on odd and centavo published rates', async () => {
     const publishMainHouseRate = (weekday: number, weekend: number) =>
       setDoc(doc(admin().firestore(), 'site_config', 'rates'), {
@@ -1131,6 +1134,124 @@ describe('published guest-count prices: independent Firestore verification', () 
         stay_total: Math.round((total + 0.01) * 100) / 100,
       }))
     }
+  })
+
+  // A figure with centavos reaches Firestore as a `doubleValue` and a whole peso
+  // figure as an `integerValue`, so one published document mixes the runtime's
+  // two numeric types — and the Booking that quotes it is written by a different
+  // client than the one that published it. The gate normalises every figure to
+  // integer centavos before it compares anything, so the verdict turns on the
+  // amounts and not on the encoding. That is what a Guest's ₱3,000 down payment
+  // turned on in production on 2026-10-06: a bare `permission-denied` at
+  // /book/pay, with the published quote on screen and nothing to explain it.
+  //
+  // One half of the asymmetry a JS client cannot write: the Web SDK encodes any
+  // whole number as an integer, so `5000.0` published as a double is not
+  // reachable from here. That half is pinned offline, where a fixture can say
+  // `ruleFloat(5000)` — `test/rules/firestore-rules.test.ts`, 'money as the two
+  // writers encode it'.
+  it('takes a submission quoted from published figures that carry centavos', async () => {
+    // Every figure here is a quarter of a peso, so each one is exact in binary
+    // and the case tests the encoding rather than a rounding accident.
+    const deposit = 2000.5
+    const weekend = 6001.25
+    const perPet = 300.25
+    const perHour = 250.5
+    const refund = {
+      refund_percent: 33.5,
+      deposit_refund_percent: 100,
+      tiers: [{ min_days_before_check_in: 7, refund_percent: 66.5 }],
+    }
+    await assertSucceeds(setDoc(doc(admin().firestore(), 'site_config', 'rates'), {
+      version: 'emulator-v2',
+      effective_date: '2026-10-01',
+      holiday_dates: [],
+      pet_policy: { fee_per_pet: perPet, max_pets: 5 },
+      late_checkout_per_hour: perHour,
+      refund,
+      accommodations: {
+        'main-house': {
+          property_name: 'The Main House', rate_unit: 'standard_stay', active: true,
+          security_deposit: deposit, down_payment_percent: 50, available_units: 1,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 10, base_rate: weekend, excess_per_guest: 500.5 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: weekend, excess_per_guest: 500.5 },
+          },
+        },
+        annex: {
+          property_name: 'HDL Annex', rate_unit: 'standard_stay', active: true,
+          security_deposit: 500, down_payment_percent: 50, available_units: 1,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 },
+          },
+        },
+        'house-a-camping': {
+          property_name: 'A-House', rate_unit: 'standard_stay', active: true,
+          security_deposit: 0, down_payment_percent: 50, available_units: 2,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+          },
+        },
+      },
+    }))
+
+    const guest = anonymousGuest()
+    const date = futureDateForDay(3)
+    /** The client's own money: roundMoney, then the 50% floor at whole centavos. */
+    const quoted = (total: number) => {
+      const due = downPaymentAmount(total, 50)
+      if (due === null) throw new Error('the published percent must price a down payment')
+      return { total, due, balance: Math.round((total - due) * 100) / 100 }
+    }
+
+    // The published rate on its own: ₱6,001.25, ₱3,000.62 down, ₱3,000.63 at
+    // check-in, and the ₱2,000.50 deposit recorded separately.
+    const plain = quoted(weekend)
+    const plainPayload = bookingDoc({
+      check_in: date,
+      check_out: nextCalendarDate(date),
+      guests: 10,
+      rate_amount: plain.total,
+      stay_total: plain.total,
+      amount_due: plain.due,
+      balance_due: plain.balance,
+      amount_claimed: plain.due,
+      security_deposit: deposit,
+      refund_policy_snapshot: refund,
+    })
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'centavo-plain'), plainPayload))
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'centavo-plain-under'), {
+      ...plainPayload, amount_claimed: Math.round((plain.due - 0.01) * 100) / 100,
+    }))
+
+    // The same rate with the two published addons, each priced in centavos:
+    // two pets at ₱300.25 and three hours at ₱250.50.
+    const withAddons = quoted(Math.round((weekend + 2 * perPet + 3 * perHour) * 100) / 100)
+    expect(withAddons.total).toBe(7353.25)
+    const addonsPayload = bookingDoc({
+      check_in: date,
+      check_out: nextCalendarDate(date),
+      guests: 10,
+      pet_count: 2,
+      late_checkout_hours: 3,
+      rate_amount: weekend,
+      stay_total: withAddons.total,
+      amount_due: withAddons.due,
+      balance_due: withAddons.balance,
+      amount_claimed: withAddons.due,
+      security_deposit: deposit,
+      refund_policy_snapshot: refund,
+    })
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'centavo-addons'), addonsPayload))
+    // The addons are recomputed from the published document, not taken on trust.
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'centavo-addons-cheap'), {
+      ...addonsPayload, stay_total: weekend, amount_due: plain.due, balance_due: plain.balance,
+    }))
   })
 })
 

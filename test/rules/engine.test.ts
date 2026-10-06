@@ -15,6 +15,7 @@ import {
   UnsupportedConstructError,
   allows,
   evaluate,
+  ruleFloat,
   ruleTimestamp,
   type RuleRequest,
   type Store,
@@ -68,7 +69,12 @@ describe('evaluator: literals and operators', () => {
     expect(check('1 + 2 * 3 == 7')).toBe(true)
     expect(check('(1 + 2) * 3 == 9')).toBe(true)
     expect(check('7 % 2 == 1')).toBe(true)
-    expect(check('7 / 2 == 3.5')).toBe(true)
+    // `7 / 2` is 3, not 3.5: `/` between two ints is integer division in the
+    // rules language, as it is in the CEL underneath it. This file used to pin
+    // the double-division reading, and that pin is why a rules change that halved
+    // a peso figure looked safe offline and was refused in production. The two
+    // numeric types have their own block below.
+    expect(check('7 / 2 == 3')).toBe(true)
     expect(check('10 - 4 > 5')).toBe(true)
     expect(check('1 <= 1 && 2 >= 2')).toBe(true)
     expect(check("'a' < 'b'")).toBe(true)
@@ -106,6 +112,127 @@ describe('evaluator: literals and operators', () => {
     expect(check('!(1 == 2)')).toBe(true)
     expect(check("!('a' in ['b'])")).toBe(true)
     expect(check('(true ? (false ? 1 : 2) : 3) == 2')).toBe(true)
+  })
+})
+
+/**
+ * `int` and `float` are two types, and a verdict can depend on which one a value
+ * is. Each expectation below is a fact about the deployed runtime rather than a
+ * choice of this evaluator: they were captured against the Firestore Rules Test
+ * API (project `digame-mas`, 2026-09-28, Web SDK 12.13.0) and are the reason
+ * firestore.rules does its money arithmetic in integer centavos.
+ *
+ * The one place the engine picks a reading is ordering across the two types,
+ * where the runtime's own refusal names `int > int, float > float` and no mixed
+ * pair, and no capture has settled whether a mixed comparison raises or
+ * promotes. The strict reading is modelled, so a rule that passes here passes
+ * under either.
+ */
+describe('evaluator: the two numeric types', () => {
+  /** A document whose figures are stored the way each writer would store them. */
+  const moneyStore: Store = {
+    'docs/money': {
+      whole: 3000, // an int on the wire, from either writer
+      fractional: 3000.5, // a double: the Web SDK writes anything with a fraction as one
+      zero: 0,
+      nan: Number.NaN,
+      // `3000.0` cannot be written as a JS literal — it is the same number as
+      // `3000` — so a stored double of a whole value is spelled explicitly.
+      wholeDouble: ruleFloat(3000),
+      tiers: [{ refund_percent: 100 }, { refund_percent: 50 }],
+    },
+  }
+  /** `d()` reads the fixture document, so a case is about stored values. */
+  const moneyHelpers = 'function d() { return get(/databases/$(database)/documents/docs/money).data; }'
+
+  const money = (expression: string): boolean =>
+    check(expression, {}, { store: moneyStore, extra: moneyHelpers })
+
+  it('keeps int arithmetic int, and divides ints by truncation', () => {
+    expect(check('7 / 2 == 3')).toBe(true)
+    expect(check('7 / 2 == 3.5')).toBe(false)
+    expect(check('-7 / 2 == -3')).toBe(true) // toward zero, not toward minus infinity
+    expect(check('(1 + 2) is int')).toBe(true)
+    expect(check('7 % 2 == 1')).toBe(true)
+    // There is no infinity in the rules' int type: the write is refused instead.
+    expect(check('1 / 0 == 0')).toBe(false)
+    expect(check('1 / 0 > 0')).toBe(false)
+  })
+
+  it('promotes to float when either operand is one', () => {
+    expect(check('1.5 + 1 == 2.5')).toBe(true)
+    expect(check('1 + 1.5 == 2.5')).toBe(true)
+    expect(check('(1.5 + 1) is float')).toBe(true)
+    expect(check('7.0 / 2 == 3.5')).toBe(true)
+    expect(check('6000 * 50 / 100 == 3000')).toBe(true) // the down payment, in ints
+    expect(check('6000.0 * 50 / 100 == 3000.0')).toBe(true)
+    expect(check('2.0 is float')).toBe(true)
+    expect(check('2.0 is int')).toBe(false)
+    expect(check('2 is float')).toBe(false)
+    expect(check('2 is number && 2.0 is number')).toBe(true)
+    expect(check('int(1.9) == 1 && int(-1.9) == -1')).toBe(true)
+    expect(check('int(2.0) is int')).toBe(true)
+  })
+
+  it('equals a scalar by value, whatever type each side is', () => {
+    expect(check('1 == 1.0')).toBe(true)
+    expect(check('0 == -0.0')).toBe(true)
+    expect(money('d().whole == 3000.0')).toBe(true)
+    expect(money('d().wholeDouble == 3000')).toBe(true)
+    expect(money('d().fractional == 3000.5')).toBe(true)
+    // NaN is not equal to anything, including itself.
+    expect(money('d().nan == d().nan')).toBe(false)
+    expect(money('d().nan != d().nan')).toBe(true)
+  })
+
+  it('compares a List or a Map element by element, type by type', () => {
+    expect(check('[1] == [1.0]')).toBe(false)
+    expect(check("[1] != [1.0]")).toBe(true)
+    expect(check("[{'a': 1}] == [{'a': 1.0}]")).toBe(false)
+    expect(check("{'a': 1} == {'a': 1.0}")).toBe(false)
+    expect(check("{'a': 1} == {'a': 1}")).toBe(true)
+    expect(check("{'a': [1]} == {'a': [1.0]}")).toBe(false)
+    expect(check("{'a': 1.0} == {'a': 1.0}")).toBe(true)
+    expect(check("[0] == [-0.0]")).toBe(false)
+    // A value read out of a container is a scalar again, so it equals by value.
+    expect(money('d().tiers[0].refund_percent == 100.0')).toBe(true)
+    expect(money("[d().whole] == [3000.0]")).toBe(false)
+  })
+
+  it('orders within a type, and refuses to order across them', () => {
+    expect(check('1 < 2 && 2.5 > 1.5')).toBe(true)
+    expect(check('1 >= 1 && 1.5 <= 1.5')).toBe(true)
+    // The strict reading: a rule whose verdict turns on this is a rule that
+    // depends on how two writers encoded one figure, so it fails offline.
+    expect(check('1 < 1.5')).toBe(false)
+    expect(check('1.5 > 1')).toBe(false)
+    expect(money('d().whole >= 3000.0')).toBe(false)
+    expect(money('d().whole >= 3000')).toBe(true)
+  })
+
+  it('keeps List membership typed, and Set membership by value', () => {
+    expect(check('1.0 in [1]')).toBe(false)
+    expect(check('1 in [1.0]')).toBe(false)
+    expect(check('1 in [1]')).toBe(true)
+    expect(check("[1].hasAny([1.0])")).toBe(false)
+    expect(check("[1].hasAll([1.0])")).toBe(false)
+    expect(check("[1].hasOnly([1.0])")).toBe(false)
+    expect(check("[1, 2].removeAll([2.0]) == [1, 2]")).toBe(true)
+    expect(check('1.0 in [1].toSet()')).toBe(true)
+    expect(check("[1].toSet().hasAny([1.0])")).toBe(true)
+    expect(check("[1].toSet().intersection([1.0].toSet()).size() == 1")).toBe(true)
+  })
+
+  it('diff()s two Maps by value at every depth', () => {
+    // The comparison firestore.rules uses for the cancellation-policy snapshot a
+    // Booking carries, because `==` on the same two Maps is false.
+    expect(check("{'a': 1}.diff({'a': 1.0}).affectedKeys().size() == 0")).toBe(true)
+    expect(check("{'a': 1}.diff({'a': 2}).affectedKeys().size() == 1")).toBe(true)
+    expect(check("{'a': 1}.diff({'a': 1}).affectedKeys().size() == 0")).toBe(true)
+    expect(check("{'a': [1]}.diff({'a': [1.0]}).affectedKeys().size() == 0")).toBe(true)
+    expect(check("{'a': {'b': 1}}.diff({'a': {'b': 1.0}}).affectedKeys().size() == 0")).toBe(true)
+    expect(check("{'a': 1}.diff({'b': 1}).affectedKeys().size() == 2")).toBe(true)
+    expect(money('d().tiers[0].diff({\'refund_percent\': 100.0}).affectedKeys().size() == 0')).toBe(true)
   })
 })
 

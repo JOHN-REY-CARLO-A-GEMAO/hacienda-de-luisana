@@ -45,6 +45,16 @@
  *     `timestamp - timestamp` and `keys().hasAny([...])` are modelled; the rules
  *     that use them (`location_sessions`) are what those cases exercise, and
  *     `engine.test.ts` pins their semantics.
+ *   - `int` and `float` are the two numeric types the runtime keeps, not one JS
+ *     number, because a verdict can turn on which one a value is: `/` between two
+ *     ints truncates, `1 == 1.0` holds while `[1] == [1.0]` does not, a float
+ *     anywhere in an operand list promotes the result, and `diff()` and Sets
+ *     compare by value where Lists and Maps compare by type. Ordering *across* the
+ *     two is refused here: the runtime's own message for a mixed comparison names
+ *     `int > int, float > float` and no mixed pair, and no capture has settled
+ *     whether it raises or promotes, so the strict reading is the one that cannot
+ *     make a broken rule look like a working one. `engine.test.ts` pins each of
+ *     these with the evidence it came from.
  *   It is never modified to make a failing case pass: a case this file gets
  *   wrong is a case to take to the emulator, not a case to loosen.
  */
@@ -62,6 +72,42 @@ export type DocData = { [key: string]: unknown }
 
 /** The simulated database: canonical path → document body (or null for a tombstone). */
 export type Store = Record<string, DocData | null>
+
+/**
+ * Firestore rules' `float` — a numeric type of its own, not a JS number.
+ *
+ * The runtime keeps `int` and `float` apart, and a rule's verdict can depend on
+ * which one a value is: `int / int` truncates, mixed arithmetic promotes to
+ * float, ordering is dispatched on same-type operand pairs (the runtime's own
+ * refusal names `int > int, float > float` and nothing across the two), and two
+ * Lists or Maps are equal only when every element has the same numeric type
+ * *and* value — `[1] == [1.0]` is false, while `1 == 1.0` is true. An evaluator
+ * with one number type cannot see any of that, and it reported `allow` for a
+ * Booking the deployed rules refused.
+ *
+ * Ints stay plain JS numbers, so the arithmetic that used to work still reads
+ * as arithmetic; only a fractional value — a float literal in the rules text, or
+ * a fractional figure in a document — becomes one of these. That is also how the
+ * value reaches Firestore: the Web SDK writes a whole number as `integerValue`
+ * and anything with a fraction as `doubleValue`, so a fixture's JS number says
+ * what the wire would say.
+ *
+ * No `valueOf`: an accidental arithmetic use is a loud failure, not a silent
+ * coercion back to the one-number-type world this replaces.
+ */
+export type RuleFloat = { readonly __float: number }
+
+const isFloat = (value: unknown): value is RuleFloat =>
+  !!value && typeof value === 'object' && '__float' in value
+
+/** A float, as a suite spells one (`ruleFloat(1500.5)`); `1500.5` in a fixture works too. */
+export const ruleFloat = (value: number): RuleFloat => ({ __float: value })
+
+/** Either numeric type, as the rules language's `number`. */
+const isNumeric = (value: unknown): boolean => typeof value === 'number' || isFloat(value)
+
+/** The double underneath either numeric type. */
+const numericOf = (value: unknown): number => (isFloat(value) ? value.__float : (value as number))
 
 /** Firestore rules' Set type. */
 export type RuleSet = { readonly __set: unknown[] }
@@ -412,9 +458,28 @@ function storageMetadata(input: RuleRequest, data: DocData | null | undefined): 
   return metadata
 }
 
+/**
+ * Read a suite's plain JS data the way the service would store it: a whole
+ * number is an `int`, a fractional one a `float`, containers recursively.
+ * Applied to the store, to `request.resource.data`, to the existing `resource`
+ * and to the auth token, so a fixture's `{ base_rate: 6000 }` and its
+ * `{ base_rate: 6000.5 }` are the two different wire values they are.
+ */
+function fromJs(value: unknown): unknown {
+  if (typeof value === 'number') return Number.isInteger(value) ? value : ruleFloat(value)
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(fromJs)
+  if (isFloat(value) || isTimestamp(value) || isDuration(value) || isSet(value) || isDiff(value) || isPath(value)) {
+    return value
+  }
+  const out: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) out[key] = fromJs(item)
+  return out
+}
+
 function requestObject(input: RuleRequest, service: string): Record<string, unknown> {
   const request: Record<string, unknown> = {
-    auth: input.auth ? { uid: input.auth.uid, token: input.auth.token } : null,
+    auth: input.auth ? { uid: input.auth.uid, token: fromJs(input.auth.token) as DocData } : null,
     method: input.method,
     path: '/' + input.path,
     time: ruleTimestamp(input.time ?? DEFAULT_REQUEST_TIME),
@@ -425,7 +490,7 @@ function requestObject(input: RuleRequest, service: string): Record<string, unkn
     if (service === 'firebase.storage') {
       request.resource = storageMetadata(input, input.requestData)
     } else {
-      request.resource = { data: input.requestData ?? {} }
+      request.resource = { data: fromJs(input.requestData ?? {}) }
     }
   }
   return request
@@ -478,7 +543,7 @@ function evaluateCompiled(
   service: string,
   options: { store?: Store; semantics?: Semantics; bucket?: string },
 ): Decision {
-  const store = options.store ?? {}
+  const store = fromJs(options.store ?? {}) as Store
   const semantics = options.semantics ?? DEFAULT_SEMANTICS
 
   // Clients address `bookings/abc`, but `match` declarations in both rule
@@ -516,7 +581,7 @@ function evaluateCompiled(
   const statements: Decision['statements'] = []
   const scope: Scope = {
     request: requestObject(input, service),
-    resource: input.resourceData ? resourceObject(input, input.resourceData, service) : null,
+    resource: input.resourceData ? resourceObject(input, fromJs(input.resourceData) as DocData, service) : null,
     vars: {},
     functions: new Map(),
     store,
@@ -727,7 +792,9 @@ function evalBinaryOrUnary(node: Node, scope: Scope): unknown {
   if (operands.length === 1) {
     const value = evalExpr(operands[0], scope)
     // A lone operand is either a parenthesised expression or a signed one.
-    return operators.includes('-') ? -number(value) : value
+    // Negating a float gives a float: the sign is not a conversion.
+    if (operators.includes('-')) return isFloat(value) ? ruleFloat(-value.__float) : -number(value)
+    return value
   }
 
   // A chain of `&&`/`||` follows CEL, the language underneath Security Rules:
@@ -813,24 +880,59 @@ function binary(op: string, left: unknown, right: unknown): unknown {
       if (isTimestamp(left) || isDuration(right) || isDuration(left)) {
         throw new RuleEvaluationError('Unsupported operation error. Received: timestamp + int. Expected: timestamp + duration.')
       }
-      return number(left) + number(right)
+      return numericBinary('+', left, right)
     case '-':
       if (isTimestamp(left) && isTimestamp(right)) return left.__timestamp - right.__timestamp
-      return number(left) - number(right)
+      return numericBinary('-', left, right)
     case '*':
-      return number(left) * number(right)
+      return numericBinary('*', left, right)
     case '/':
-      return number(left) / number(right)
+      return numericBinary('/', left, right)
     case '%':
-      return number(left) % number(right)
+      return numericBinary('%', left, right)
     default:
       return unsupported(`the operator ${op}`)
   }
 }
 
+/**
+ * Arithmetic on the two numeric types.
+ *
+ * A float anywhere in the operands promotes the result to a float, which is
+ * what the runtime does (`1.5 + 1` is `2.5`, and the value stays a float). Two
+ * ints stay ints — and for `/` and `%` that is load-bearing, because integer
+ * division truncates: `7 / 2` is `3`, not `3.5`. An evaluator that divided in
+ * doubles computed a different down payment from the one the rules compute, and
+ * every case about a figure with an odd centavo was testing the evaluator rather
+ * than the rule. Dividing by zero is an error rather than an infinity: there is
+ * no infinity in the rules' int type, and the runtime refuses the write.
+ */
+function numericBinary(op: string, left: unknown, right: unknown): unknown {
+  if (!isNumeric(left) || !isNumeric(right)) {
+    throw new RuleEvaluationError(
+      `Unsupported operation error. Received: ${describe(left)} ${op} ${describe(right)}`,
+    )
+  }
+  const a = numericOf(left)
+  const b = numericOf(right)
+  const floating = isFloat(left) || isFloat(right)
+  if (floating) {
+    const result = op === '+' ? a + b : op === '-' ? a - b : op === '*' ? a * b : op === '/' ? a / b : a % b
+    if (op === '/' && b === 0) throw new RuleEvaluationError('division by zero')
+    return ruleFloat(result)
+  }
+  if ((op === '/' || op === '%') && b === 0) throw new RuleEvaluationError('division by zero')
+  const result = op === '+' ? a + b : op === '-' ? a - b : op === '*' ? a * b : op === '/' ? Math.trunc(a / b) : a % b
+  // An int result that a double cannot hold exactly (past 2^53) is outside
+  // anything these rules compute; it is kept as the double says.
+  return Number.isInteger(result) ? result : ruleFloat(result)
+}
+
 function membership(needle: unknown, haystack: unknown): boolean {
-  if (Array.isArray(haystack)) return haystack.some((item) => deepEqual(item, needle))
-  if (isSet(haystack)) return haystack.__set.some((item) => deepEqual(item, needle))
+  // A List asks about its elements, and elements carry their numeric type:
+  // `1.0 in [1]` is false. A Set asks about values, so it does not.
+  if (Array.isArray(haystack)) return haystack.some((item) => strictEqual(item, needle))
+  if (isSet(haystack)) return haystack.__set.some((item) => valueEqual(item, needle))
   if (typeof haystack === 'string' && typeof needle === 'string') return haystack.includes(needle)
   if (isMap(haystack)) return Object.prototype.hasOwnProperty.call(haystack, String(needle))
   throw new RuleEvaluationError(`\`in\` does not apply to ${describe(haystack)}`)
@@ -843,9 +945,12 @@ function isType(value: unknown, type: string): boolean {
     case 'int':
       return typeof value === 'number' && Number.isInteger(value)
     case 'float':
-      return typeof value === 'number' && !Number.isInteger(value)
+      // `3.0` is a float in the rules language, whatever JS makes of it: the
+      // type is how the value was written or stored, not whether it has a
+      // fraction.
+      return isFloat(value)
     case 'number':
-      return typeof value === 'number'
+      return isNumeric(value)
     case 'bool':
       return typeof value === 'boolean'
     case 'list':
@@ -871,12 +976,31 @@ function truthy(value: unknown): boolean {
 }
 
 const number = (value: unknown): number => {
-  if (typeof value === 'number') return value
+  if (isNumeric(value)) return numericOf(value)
   throw new RuleEvaluationError(`expected a number, got ${describe(value)}`)
 }
 
+/**
+ * Ordering, which the runtime dispatches on same-type operand pairs: its own
+ * refusal for a mixed comparison names `int > int, float > float` and no pair
+ * across the two. Whether a mixed comparison raises or promotes has never been
+ * observed either way, so the engine models the strict reading — the one that
+ * cannot make a broken rule look like a working one. A rule that has to compare
+ * an int against a float converts first (`centavos()` in firestore.rules), and a
+ * suite that hits this error is being told about a rule whose verdict depends on
+ * how two different writers encoded a figure.
+ */
 function compare(left: unknown, right: unknown): number {
-  if (typeof left === 'number' && typeof right === 'number') return left === right ? 0 : left < right ? -1 : 1
+  if (isNumeric(left) && isNumeric(right)) {
+    if (isFloat(left) !== isFloat(right)) {
+      throw new RuleEvaluationError(
+        `Unsupported operation error. Received: ${describe(left)} > ${describe(right)}. Expected: int > int, float > float.`,
+      )
+    }
+    const a = numericOf(left)
+    const b = numericOf(right)
+    return a === b ? 0 : a < b ? -1 : 1
+  }
   if (typeof left === 'string' && typeof right === 'string') return left === right ? 0 : left < right ? -1 : 1
   if (isTimestamp(left) && isTimestamp(right)) {
     return left.__timestamp === right.__timestamp ? 0 : left.__timestamp < right.__timestamp ? -1 : 1
@@ -888,6 +1012,7 @@ const isMap = (value: unknown): value is Record<string, unknown> =>
   !!value &&
   typeof value === 'object' &&
   !Array.isArray(value) &&
+  !isFloat(value) &&
   !isSet(value) &&
   !isDiff(value) &&
   !isPath(value) &&
@@ -903,23 +1028,75 @@ function describe(value: unknown): string {
   if (isTimestamp(value)) return 'timestamp'
   if (isDuration(value)) return 'duration'
   if (isMap(value)) return 'map'
+  if (isFloat(value)) return 'float'
+  if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float'
   return typeof value
 }
 
+/**
+ * Equality as the `==` operator applies it: two scalars are equal by value
+ * (`1 == 1.0` holds, and so does `0 == -0.0`), while two Lists or Maps are equal
+ * only when every element matches in type as well as value (`[1] == [1.0]` is
+ * false, and so is `{'a': 1} == {'a': 1.0}`). NaN is never equal to NaN.
+ *
+ * That difference is not trivia in these rules. A Booking carries a copy of the
+ * published cancellation policy, and comparing the copy with `==` would have made
+ * the verdict depend on whether the Admin's app and the website each encoded a
+ * percentage as an int or a double — which is why firestore.rules compares the
+ * two with `diff()` instead, and why this file has to model the trap for the
+ * comparison to mean anything offline.
+ */
 function deepEqual(left: unknown, right: unknown): boolean {
+  if (isNumeric(left) && isNumeric(right)) return numericOf(left) === numericOf(right) && !Number.isNaN(numericOf(left))
+  return strictEqual(left, right)
+}
+
+/** Equality inside a List, a Map, or a List membership test: numeric type matters. */
+function strictEqual(left: unknown, right: unknown): boolean {
   if (left === right) return true
   if (isTimestamp(left) && isTimestamp(right)) return left.__timestamp === right.__timestamp
-  if (typeof left === 'number' && typeof right === 'number') return left === right
+  if (isNumeric(left) && isNumeric(right)) {
+    if (isFloat(left) && isFloat(right)) {
+      // Two floats are equal only if they are the same value *and* the same zero:
+      // `{'a': 0.0} == {'a': -0.0}` is false. NaN is false against everything.
+      const a = left.__float
+      const b = right.__float
+      return a === b && !(a === 0 && 1 / a !== 1 / b)
+    }
+    // One int and one float are never the same element, whatever the value.
+    if (isFloat(left) || isFloat(right)) return false
+    return numericOf(left) === numericOf(right)
+  }
   if (Array.isArray(left) && Array.isArray(right)) {
-    return left.length === right.length && left.every((item, index) => deepEqual(item, right[index]))
+    return left.length === right.length && left.every((item, index) => strictEqual(item, right[index]))
   }
   if (isSet(left) && isSet(right)) {
-    return left.__set.length === right.__set.length && left.__set.every((item) => right.__set.some((other) => deepEqual(item, other)))
+    // A Set holds values, not typed elements, so its members match by value.
+    return left.__set.length === right.__set.length && left.__set.every((item) => right.__set.some((other) => valueEqual(item, other)))
   }
   if (isMap(left) && isMap(right)) {
     const keys = Object.keys(left)
     if (keys.length !== Object.keys(right).length) return false
-    return keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && deepEqual(left[key], right[key]))
+    return keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && strictEqual(left[key], right[key]))
+  }
+  return false
+}
+
+/** Equality by value at every depth — what a Set and `Map.diff()` compare with. */
+function valueEqual(left: unknown, right: unknown): boolean {
+  if (isNumeric(left) && isNumeric(right)) return numericOf(left) === numericOf(right) && !Number.isNaN(numericOf(left))
+  if (left === right) return true
+  if (isTimestamp(left) && isTimestamp(right)) return left.__timestamp === right.__timestamp
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((item, index) => valueEqual(item, right[index]))
+  }
+  if (isSet(left) && isSet(right)) {
+    return left.__set.length === right.__set.length && left.__set.every((item) => right.__set.some((other) => valueEqual(item, other)))
+  }
+  if (isMap(left) && isMap(right)) {
+    const keys = Object.keys(left)
+    if (keys.length !== Object.keys(right).length) return false
+    return keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && valueEqual(left[key], right[key]))
   }
   return false
 }
@@ -1076,13 +1253,14 @@ function method(base: unknown, name: string, args: unknown[]): unknown {
       if (isSet(base) && isSet(args[0])) return setOf([...base.__set, ...args[0].__set])
       break
     case 'intersection':
-      if (isSet(base) && isSet(firstArgument)) return setOf(base.__set.filter((item) => firstArgument.__set.some((other) => deepEqual(item, other))))
+      if (isSet(base) && isSet(firstArgument)) return setOf(base.__set.filter((item) => firstArgument.__set.some((other) => valueEqual(item, other))))
       break
     case 'difference':
-      if (isSet(base) && isSet(firstArgument)) return setOf(base.__set.filter((item) => !firstArgument.__set.some((other) => deepEqual(item, other))))
+      if (isSet(base) && isSet(firstArgument)) return setOf(base.__set.filter((item) => !firstArgument.__set.some((other) => valueEqual(item, other))))
       break
     case 'removeAll':
-      if (Array.isArray(base) && Array.isArray(firstArgument)) return base.filter((item) => !firstArgument.some((other) => deepEqual(item, other)))
+      // A List operation, so the elements keep their numeric type.
+      if (Array.isArray(base) && Array.isArray(firstArgument)) return base.filter((item) => !firstArgument.some((other) => strictEqual(item, other)))
       break
   }
   return unsupported(`the method \`.${name}()\` on ${describe(base)}`)
@@ -1095,9 +1273,21 @@ function itemsOf(value: unknown): unknown[] {
   throw new RuleEvaluationError(`expected a list, set or map, got ${describe(value)}`)
 }
 
+/**
+ * How one item of a container is matched against another: a Set compares by
+ * value, a List compares its elements by type as well (`1.0 in [1]` is false).
+ * `keys()` is a Set, which is why the rules' key allowlists are unaffected by
+ * any of this.
+ */
+const matchesItem = (own: unknown, item: unknown, byValue: boolean): boolean =>
+  byValue ? valueEqual(own, item) : strictEqual(own, item)
+
+const byValueContainer = (base: unknown, other: unknown): boolean => isSet(base) || isSet(other)
+
 function hasAll(base: unknown, other: unknown): boolean {
   const mine = itemsOf(base)
-  return itemsOf(other).every((item) => mine.some((own) => deepEqual(own, item)))
+  const byValue = byValueContainer(base, other)
+  return itemsOf(other).every((item) => mine.some((own) => matchesItem(own, item, byValue)))
 }
 
 /**
@@ -1108,12 +1298,14 @@ function hasAll(base: unknown, other: unknown): boolean {
  */
 function hasAny(base: unknown, other: unknown): boolean {
   const mine = itemsOf(base)
-  return itemsOf(other).some((item) => mine.some((own) => deepEqual(own, item)))
+  const byValue = byValueContainer(base, other)
+  return itemsOf(other).some((item) => mine.some((own) => matchesItem(own, item, byValue)))
 }
 
 function hasOnly(base: unknown, other: unknown): boolean {
   const allowed = itemsOf(other)
-  return itemsOf(base).every((item) => allowed.some((own) => deepEqual(own, item)))
+  const byValue = byValueContainer(base, other)
+  return itemsOf(base).every((item) => allowed.some((own) => matchesItem(own, item, byValue)))
 }
 
 function mapDiff(next: Record<string, unknown>, previous: Record<string, unknown>): MapDiff {
@@ -1123,7 +1315,9 @@ function mapDiff(next: Record<string, unknown>, previous: Record<string, unknown
   const unchanged: string[] = []
   for (const key of Object.keys(next)) {
     if (!Object.prototype.hasOwnProperty.call(previous, key)) added.push(key)
-    else if (deepEqual(next[key], previous[key])) unchanged.push(key)
+    // `diff()` reports what changed by value at every depth: a policy figure
+    // stored as an int and read back as a float is not a change.
+    else if (valueEqual(next[key], previous[key])) unchanged.push(key)
     else changed.push(key)
   }
   for (const key of Object.keys(previous)) {
@@ -1167,10 +1361,17 @@ function pathOf(node: Node, scope: Scope): RulePath {
 function interpolated(node: Node, scope: Scope): string {
   if (kind(node) === 'MemberLookupSimpleExpression' || kind(node) === 'VariableSimpleExpression') {
     const value = evalExpr(node, scope)
-    if (typeof value === 'string' || typeof value === 'number') return String(value)
+    if (typeof value === 'string' || isNumeric(value)) return stringOf(value)
     throw new RuleEvaluationError(`a path interpolation produced ${describe(value)}`)
   }
   const value = evalExpr(node, scope)
+  return stringOf(value)
+}
+
+/** A value as the rules language prints it: a float keeps its decimal point. */
+function stringOf(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (isFloat(value)) return Number.isInteger(value.__float) ? `${value.__float}.0` : String(value.__float)
   return String(value)
 }
 
@@ -1194,6 +1395,14 @@ function globalCall(name: string, args: unknown[], scope: Scope, node: Node): un
     case 'int': {
       const value = args[0]
       if (typeof value === 'string' && /^[+-]?[0-9]+$/.test(value)) return Number(value)
+      if (isFloat(value)) {
+        const raw = value.__float
+        // Truncation toward zero, and the runtime's own edges: NaN becomes 0 and
+        // an out-of-range float saturates at the int64 bounds.
+        if (Number.isNaN(raw)) return 0
+        if (!Number.isFinite(raw)) return raw > 0 ? Number.MAX_SAFE_INTEGER : Number.MIN_SAFE_INTEGER
+        return Math.trunc(raw)
+      }
       if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
       throw new RuleEvaluationError('int() takes a number or an integer string')
     }
@@ -1271,7 +1480,10 @@ function literal(node: Node): unknown {
   if (raw === 'false') return false
   if (raw === 'null') return null
   if (/^-?\d+$/.test(raw)) return Number.parseInt(raw, 10)
-  if (/^-?\d*\.\d+$/.test(raw)) return Number.parseFloat(raw)
+  // Written with a point or an exponent, so it is a float even when the value is
+  // whole: `100.0` is not `100`, and `/` on the two sides of it behaves
+  // differently.
+  if (/^-?\d*\.\d+$/.test(raw) || /^[+-]?\d+(\.\d+)?[eE][+-]?\d+$/.test(raw)) return ruleFloat(Number.parseFloat(raw))
   return unsupported(`the literal \`${raw}\``)
 }
 

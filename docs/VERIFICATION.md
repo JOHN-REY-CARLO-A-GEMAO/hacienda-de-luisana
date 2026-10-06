@@ -181,9 +181,23 @@ Known differences between them, i.e. why a green offline suite is not a substitu
 4. **Out of scope entirely**: resource limits and timeouts, Storage metadata and
    content-type edge cases beyond what `storage.rules` reads, and anything that
    needs a running Auth emulator (custom claims propagation, token refresh).
+5. **Ordering across the two numeric types.** The evaluator models `int` and
+   `float` as the runtime does (§15.2) — truncating `int / int`, promoting mixed
+   arithmetic, comparing a scalar by value and a List or Map element by type —
+   with one deliberate exception: it *refuses* `int > float` and its three
+   siblings. The runtime's own message for a mixed comparison names `int > int,
+   float > float` and no mixed pair, but that message has been observed to omit
+   combinations that do work (`int + float` promotes, and the same message lists
+   no such pair), so it is not proof either way and no capture has settled it.
+   The strict reading is modelled on purpose: a rule that passes here passes
+   under both readings, and `firestore.rules` now converts every figure to
+   integer centavos so that no gate depends on the answer.
 
 The evaluator is **never modified to make a failing case pass**: a case it gets
-wrong is a case to take to the emulator, not a case to loosen.
+wrong is a case to take to the emulator, not a case to loosen. It has been
+corrected once, in §15.2, where a pin of its own contradicted the deployed
+runtime — `7 / 2` was pinned as `3.5`, which is JS division and not the rules
+language's — and the correction is recorded there with the evidence.
 
 ## 3. P1 — Firestore / Storage rules verification
 
@@ -741,12 +755,157 @@ Two real defects surfaced this way rather than by reading:
    passed" and the first tests said "allowed at exactly 24 h". Both were wrong and
    are corrected.
 
-### 14.4 A pre-existing failure, not caused by this pass
+### 14.4 A pre-existing failure, not caused by this pass — fixed in §15
 
-`adminSecurityDoc()` in `test/rules/context.ts` carries a 36-character `pin_hash`
-while `isAdminSecurityShape()` requires `size() >= 40`, and its own comment claims
-44. The suite's existing `admin_security` **create** case therefore fails on the
+`adminSecurityDoc()` in `test/rules/context.ts` carried a 36-character `pin_hash`
+while `isAdminSecurityShape()` requires `size() >= 40`, and its own comment claimed
+44. The suite's existing `admin_security` **create** case therefore failed on the
 unmodified repository. Confirmed by evaluating `HEAD`'s rules with the unmodified
 fixture: `create` denied; padding the hash to 47 characters allowed. Left unfixed
-here because it predates ADR-0016 and belongs to the ADR-0015 doors, but the rules
-suite is red on that case until the constant is padded.
+at the time because it predates ADR-0016 and belongs to the ADR-0015 doors.
+
+**Fixed on 2026-10-06** (§15.4): the fixture now carries the base64 of 32 bytes,
+44 characters, which is the shape a SHA-256 PIN hash has and what the app writes.
+Five cases turned green. A sixth then changed meaning rather than colour, and is
+recorded there too.
+
+---
+
+## 15. Guest downpayment refusal pass — money as two numeric types (2026-10-06)
+
+A Guest reported that submitting a booking at `/book/pay` (step 2 of 3) failed. The
+page showed a correct quote — ₱6,000 for one 22-hour standard stay for two on a
+Saturday, ₱3,000 due now, a ₱2,000 refundable deposit listed separately, ₱3,000 at
+check-in, `v1-guest-v3` rates — the screenshot uploaded, the OCR read a reference off
+it, and the write came back as a bare `permission-denied` with nothing to explain it.
+No Booking was created.
+
+### 15.1 What the evidence ruled out, and what it left
+
+Read off the live project over REST (`site_config/rates` is publicly readable, which
+is how the website quotes a price to a signed-out visitor): the published figures were
+whole pesos, `holiday_dates` was empty, the policy version and effective date the page
+echoed matched the document, the 30-day lead-time default applied on both sides, and
+the document passed the repository's own `validatePublishedRates`. The offline suite,
+run against that exact document and that exact payload, said **allow**. The client's
+mirror said **ok**. So the refusal was not the money, not the dates, not the identity,
+not the proof upload, and not the availability check — it was either something the
+offline evaluator could not see, or a ruleset that is not the one in this repository.
+
+Both are addressed below. Neither is claimed as proven: the emulator that could settle
+it is still blocked (§3.1), and the deployed ruleset cannot be read from here.
+
+### 15.2 The finding: `int` and `float` are two types, and equality is one of them
+
+The rules runtime keeps two numeric types. Captured against the Firestore Rules Test
+API (project `digame-mas`, observed 2026-09-28, Web SDK 12.13.0):
+
+| Expression | Verdict |
+| --- | --- |
+| `1.5 + 1 == 2.5` | **allow** — mixed arithmetic promotes to float |
+| `1 == 1.0`, `0 == -0.0` | **allow** — a scalar compares by value |
+| `[1] == [1.0]`, `{'a': 1} == {'a': 1.0}` | **deny** — a List or Map compares elements by type *and* value |
+| `1.0 in [1]`, `[1].hasAny([1.0])`, `removeAll()` | **deny / false** — membership is typed |
+| `[1].toSet().hasAny([1.0])`, `{'a': 1}.diff({'a': 1.0})` | **allow / no affected keys** — Sets and `diff()` compare by value at every depth |
+| `NaN == NaN` | **deny**, at every depth |
+| `int > float` and siblings | **not settled** — see below |
+
+Two consequences for this repository, and they are why the Guest was refused or one
+refresh away from being refused:
+
+1. **A Booking carries a copy of the published cancellation policy**
+   (`refund_policy_snapshot`), and the gate compared that copy with `==`. Map equality
+   is type-strict per element, so the moment one figure in the published policy is a
+   double — the Admin's Flutter app writes Dart `double`s, and a whole Dart double
+   reaches Firestore as a `doubleValue` while the Web SDK writes the same whole number
+   as an `integerValue` — *every* Guest submission reads as a tampered policy and is
+   refused. Invisibly: the page shows `permission-denied` and nothing else. It now
+   compares with `diff().affectedKeys().size() == 0`, which asks the question that was
+   meant — did the Guest change a figure — and nothing about encoding.
+2. **Every money comparison in the gate could mix the two types.** `firestore.rules`
+   now normalises both sides to integer centavos through one function, `centavos()`,
+   so no gate orders or equates an int against a float anywhere: not the rate, the
+   stay total, the down payment, the deposit, the balance, the claim, the pet fee, the
+   late-checkout fee, the refund ceiling on a withdrawal, or the published figures the
+   Admin write door validates. `dueCents = totalCents * 50 / 100` is the client's own
+   floor-at-whole-centavos (`downPaymentAmount`), and it is exact under integer
+   division rather than depending on a `/ 100.0` to rescue it.
+
+`int > float` is the one question the captures do not answer. The runtime's message for
+a mixed comparison names `int > int, float > float` and no mixed pair — but the same
+message for `+` omits `int + float`, which *does* work, so the message is not evidence.
+The rules no longer depend on the answer, and the evaluator models the strict reading
+(§2.1 item 5) so that a green offline suite means the same thing under either.
+
+To make any of that provable offline, `test/rules/engine.ts` had to stop having one
+number type. It now carries `float` as a distinct value, converts a suite's JS data the
+way the wire would (a whole number is an int, a fractional one a double), truncates
+`int / int`, promotes mixed arithmetic, and applies the equality and membership rules in
+the table above. `test/rules/engine.test.ts` pins each row, with its source.
+
+**One pin of the evaluator's own was wrong and is corrected here**, against the standing
+rule that it is never modified to make a case pass: `7 / 2 == 3.5` was pinned as true,
+which is JS division. In the rules language it is `3`. That pin is why the earlier
+version of this gate looked safe offline while it divided two ints and produced
+whole-peso figures in production — the defect PR #49 fixed by forcing float division
+with `/ 100.0`. The correction tightens the evaluator; it does not loosen a case.
+
+### 15.3 What ran
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Rules, offline | `npm run test:rules` | **330 / 330** — was 315 with 5 failing (§15.4) |
+| Web | `npm test` | **892 / 892** |
+| TypeScript | `npm run check:phase0` | 3 errors, all pre-existing in `test/phase0/*` and untouched here (confirmed by re-running with this pass stashed) |
+| Rules, emulator | `npm run test:emulator` | **NOT RUN — blocked** (§3.1: the emulator JARs cannot be downloaded here). A new case was added to `test/emulator/rules.emulator.test.ts` and has never executed. |
+
+New offline cases, in `test/rules/firestore-rules.test.ts` under *money as the two
+writers encode it*: the production rates document and the production payload; the same
+document with every whole figure published as a double; a submission whose own figures
+are doubles; the policy snapshot in all four encoding combinations, with a changed
+figure and a dropped tier still refused; an under-claim in either encoding still
+refused; a centavo off still refused; an odd published rate floored at centavos; and
+published addons priced in centavos in a document that mixes both encodings.
+
+The emulator case that was added but not run publishes fractional figures — a JS client
+cannot write a whole number as a double, so the encoding asymmetry itself is only
+reachable offline, where a fixture can say `ruleFloat(5000)`, and that half is stated in
+the case's own comment.
+
+### 15.4 The `admin_security` fixture, and a case that changed meaning
+
+§14.4's 36-character `pin_hash` is padded to the base64 of 32 bytes, so the five
+`admin_security` cases that were red on `HEAD` are green. One case then stopped passing
+for the wrong reason: *refuses a rotation that keeps the old hash* submitted a document
+identical to the stored one, which the shape check had been refusing wholesale. With a
+valid hash, an identical document is a no-op write and door 1 has nothing to refuse — no
+key moved. The case now says what it means: an unchanged hash may not re-stamp
+`pin_updated_at` and may not lower `failed_attempts`, and a write that moves nothing is
+recorded as allowed because that is what the doors do.
+
+### 15.5 What only the owner can do
+
+**The rules are not deployed by anything automatic.** `.github/workflows/deploy.yml`
+publishes the website to Pages and never touches `firestore.rules`; the documented step
+is manual (`docs/FIREBASE_SETUP.md` §5):
+
+```
+firebase deploy --only firestore:rules,firestore:indexes,storage
+```
+
+Nothing in the repository records which ruleset is live, so a fix that is merged and not
+deployed changes nothing for a Guest — and PR #48 ("Fix Firestore rules let-binding
+limit") implies an earlier ruleset failed to compile, which means production may still
+be running something older than `main`. After deploying:
+
+1. Confirm which project and config the site is talking to at `/status`
+   (`src/pages/StatusPage.tsx` names both).
+2. `npm run prepare:phase0:emulators && npm run test:emulator` on a machine that can
+   download the emulator JARs — the canonical suite, including the case added here, has
+   still never run anywhere.
+3. Submit one real booking at `/book/pay` and confirm it lands as **Pending**, not
+   confirmed, awaiting the Admin's verification of the proof.
+4. If it is refused again, the browser console now carries a copy-pasteable
+   `rules-refusal diagnostics` block (PR #50) with the payload, the published document
+   and the resolved lead time. That block settles in one reading whether the live
+   ruleset is the one in this repository.

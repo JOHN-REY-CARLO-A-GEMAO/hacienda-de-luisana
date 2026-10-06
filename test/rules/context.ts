@@ -206,7 +206,12 @@ export const ADMIN_SECURITY_NOW = DEFAULT_REQUEST_TIME
 
 export const adminSecurityDoc = (overrides: DocData = {}, at: number = ADMIN_SECURITY_NOW): DocData => ({
   uid: ADMIN_UID,
-  pin_hash: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=', // 44 chars: 32 bytes, base64
+  // base64 of 32 bytes — the shape a SHA-256 PIN hash actually has, and 44
+  // characters, which is what the rules' `size() >= 40` floor is asking for. The
+  // value here used to decode to 26 bytes (36 characters): a placeholder that
+  // had lost its tail, so every case that submitted this document was refused on
+  // the hash's length and read as a rules failure instead of a fixture one.
+  pin_hash: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=',
   salt: 'c2FsdHNhbHRzYWx0c2FsdA==', // 24 chars: 16 bytes, base64
   iterations: 100000,
   failed_attempts: 0,

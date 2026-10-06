@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { compileRules, evaluate, ruleTimestamp, type DocData, type Store } from './engine'
+import { compileRules, evaluate, ruleFloat, ruleTimestamp, type DocData, type Store } from './engine'
 import {
   ADMIN_SECURITY_NOW,
   ADMIN_UID,
@@ -189,14 +189,15 @@ describe('official guest-count rates', () => {
 
   // The client's money is centavo-exact (roundMoney / downPaymentAmount), and
   // the Rates screen can publish any positive figure — including odd peso
-  // totals, whose 50% down payment lands on .50, and centavo rates. The rules'
-  // own arithmetic must stay float division (`/ 100.0`): the real runtime is
-  // CEL-based and evaluates int/int as truncated integer division, which made
-  // the rules' total and due whole-peso figures that never matched the
-  // client's centavo snapshot — every such Booking refused as
-  // permission-denied while this offline engine (floating-point `/`) reported
-  // ALLOW. These cases pin the client's exact figures; the emulator companion
-  // is the one that reproduces the refusal under the real runtime.
+  // totals, whose 50% down payment lands on .50, and centavo rates. The rules
+  // do that arithmetic in integer centavos, so `totalCents * 50 / 100` is the
+  // same floor-at-whole-centavos the client applies and no figure is ever
+  // halved in ints (`/` between two ints truncates in the rules language, which
+  // is what made an earlier version of this gate compute whole-peso figures
+  // that never matched the client's snapshot). These cases pin the client's
+  // exact figures; `engine.test.ts` pins the two numeric types the arithmetic
+  // depends on, and the emulator companion reproduces the refusal under the
+  // real runtime.
   it('agrees with the client’s centavo-exact math on odd and centavo published rates', () => {
     // [published base_rate, the client's 50% down payment for it]:
     // an odd peso total halves to .50; a centavo rate keeps its centavos.
@@ -475,6 +476,260 @@ describe('official guest-count rates', () => {
     expect(deny({ path: 'bookings/historical-rate', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, rate_amount: 9999 } }, officialStore)).toBe(true)
     expect(deny({ path: 'bookings/historical-classification', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, rate_classification: 'weekend_holiday' } }, officialStore)).toBe(true)
     expect(deny({ path: 'bookings/historical-refund-policy', method: 'update', auth: allowlistedAdmin(), resourceData: original, requestData: { ...original, refund_policy_snapshot: { refund_percent: 100 } } }, officialStore)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// One policy, two writers: the numeric type of a published figure
+// ---------------------------------------------------------------------------
+
+/**
+ * `site_config/rates` exactly as production serves it, and the Booking the
+ * payment page submits against it.
+ *
+ * The published figures are ints because the Admin's app wrote whole pesos and
+ * Firestore stores a whole number as an `integerValue`. The website writes the
+ * same way for the same reason — until a figure carries a decimal, and then it
+ * writes a `doubleValue`. Two writers, one policy, and a rules gate that
+ * compares their figures: if the comparison is typed rather than by value, the
+ * verdict depends on who happened to publish the rate. That is what refused a
+ * Guest's ₱3,000 down payment on 2026-10-06 with a bare `permission-denied`.
+ */
+describe('money as the two writers encode it', () => {
+  /** The published cancellation policy, which a Booking carries a copy of. */
+  const publishedRefund: DocData = {
+    tiers: [
+      { min_days_before_check_in: 30, refund_percent: 100 },
+      { min_days_before_check_in: 14, refund_percent: 50 },
+      { min_days_before_check_in: 7, refund_percent: 25 },
+    ],
+    deposit_refund_percent: 100,
+  }
+
+  const productionRates: DocData = {
+    version: 'v1-guest-v3',
+    effective_date: '2026-10-05',
+    holiday_dates: [],
+    refund: publishedRefund,
+    accommodations: {
+      'main-house': {
+        property_name: 'The Main House', rate_unit: 'standard_stay', active: true,
+        security_deposit: 2000, down_payment_percent: 50, available_units: 1,
+        guest_pricing: {
+          units_per_booking: 1,
+          weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+          weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+        },
+      },
+      annex: {
+        property_name: 'HDL Annex', rate_unit: 'standard_stay', active: true,
+        security_deposit: 0, down_payment_percent: 50, available_units: 1,
+        guest_pricing: {
+          units_per_booking: 1,
+          weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
+          weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 },
+        },
+      },
+      'house-a-camping': {
+        property_name: 'A-House', rate_unit: 'standard_stay', active: true,
+        security_deposit: 1000, down_payment_percent: 50, available_units: 1,
+        guest_pricing: {
+          units_per_booking: 1,
+          weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+          weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+        },
+      },
+    },
+  }
+
+  /** The money keys a rates document carries; its counts and dates are ints in both writers. */
+  const MONEY_KEYS = new Set([
+    'base_rate', 'excess_per_guest', 'security_deposit',
+    'fee_per_pet', 'late_checkout_per_hour', 'refund_percent', 'deposit_refund_percent',
+  ])
+
+  /**
+   * The same document as the Admin's Flutter app publishes it. Dart's money is a
+   * `double`, so a whole figure reaches Firestore as a double too — `5000.0`,
+   * which is a different numeric type from the int the website writes for the
+   * same figure, and equal to it only where the runtime compares by value.
+   */
+  function asPublishedByTheApp(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(asPublishedByTheApp)
+    if (value !== null && typeof value === 'object') {
+      const out: Record<string, unknown> = {}
+      for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+        out[key] = MONEY_KEYS.has(key) && typeof item === 'number' ? ruleFloat(item) : asPublishedByTheApp(item)
+      }
+      return out
+    }
+    return value
+  }
+
+  const published = (rates: DocData): Store => ({ ...profiles, 'site_config/rates': rates })
+  const asAppStore = (): Store => published(asPublishedByTheApp(productionRates) as DocData)
+
+  /** What `DownpaymentPage.submit()` hands to `cloudBookingsDB.add()`. */
+  const downpayment = (overrides: DocData = {}) =>
+    bookingDoc({
+      security_deposit: 2000,
+      payment_status: 'pending',
+      payment_proof_url: 'payments/guest-uid-1/HDL-4821/receipt.png',
+      amount_claimed: 3000,
+      policy_version: 'v1-guest-v3',
+      policy_effective_date: '2026-10-05',
+      refund_policy_snapshot: publishedRefund,
+      ...overrides,
+    })
+
+  const submit = (id: string, overrides: DocData = {}, store: Store = published(structuredClone(productionRates))) =>
+    allow({ path: `bookings/${id}`, method: 'create', auth: anonymousGuest(), requestData: downpayment(overrides) }, store)
+
+  it('takes the payment page’s own submission, at the quote the page shows', () => {
+    // One 22-hour standard stay for two on a Saturday: ₱6,000, ₱3,000 down now,
+    // a ₱2,000 refundable deposit recorded separately, ₱3,000 at check-in.
+    expect(submit('production-downpayment')).toBe(true)
+  })
+
+  it('takes the same submission when the app published every figure as a double', () => {
+    // The regression this whole block exists for. Against a double-encoded
+    // rates document the gate used to compare an int the website wrote against a
+    // float the app published — `amount_claimed >= due` ordered two different
+    // numeric types, which the runtime refuses to do, and one raised condition
+    // denies the write. The Guest saw `permission-denied` and nothing else.
+    expect(submit('production-downpayment-doubles', {}, asAppStore())).toBe(true)
+  })
+
+  it('takes a submission whose own figures are doubles, against ints published', () => {
+    // The other side of the same asymmetry: a Booking whose money arrived as
+    // doubles (a fractional down payment, or a client that wrote 3000.0).
+    expect(submit('production-downpayment-guest-doubles', {
+      amount_claimed: ruleFloat(3000),
+      amount_due: ruleFloat(3000),
+      stay_total: ruleFloat(6000),
+      rate_amount: ruleFloat(6000),
+      balance_due: ruleFloat(3000),
+      security_deposit: ruleFloat(2000),
+    })).toBe(true)
+  })
+
+  it('reads a cancellation-policy snapshot by value, not by how each side was encoded', () => {
+    // The page copies the published policy into the Booking verbatim, so the two
+    // are the same figures — but only the same *type* if one writer never
+    // republished them. Compared with `==`, a policy the app published as doubles
+    // made every Guest Booking a tampered one and refused the lot invisibly.
+    expect(submit('production-refund-doubles', {}, asAppStore())).toBe(true)
+    expect(submit('production-refund-mixed', {
+      refund_policy_snapshot: asPublishedByTheApp(publishedRefund) as DocData,
+    }, asAppStore())).toBe(true)
+    // Still not a loophole: a changed figure is a changed policy.
+    expect(deny({
+      path: 'bookings/production-refund-tampered', method: 'create', auth: anonymousGuest(),
+      requestData: downpayment({
+        refund_policy_snapshot: { ...publishedRefund, deposit_refund_percent: 50 },
+      }),
+    }, published(structuredClone(productionRates)))).toBe(true)
+    expect(deny({
+      path: 'bookings/production-refund-tampered-doubles', method: 'create', auth: anonymousGuest(),
+      requestData: downpayment({
+        refund_policy_snapshot: { ...publishedRefund, deposit_refund_percent: ruleFloat(50) },
+      }),
+    }, asAppStore())).toBe(true)
+    // A tier dropped is a policy changed.
+    expect(deny({
+      path: 'bookings/production-refund-short', method: 'create', auth: anonymousGuest(),
+      requestData: downpayment({
+        refund_policy_snapshot: { ...publishedRefund, tiers: (publishedRefund.tiers as DocData[]).slice(0, 2) },
+      }),
+    }, published(structuredClone(productionRates)))).toBe(true)
+  })
+
+  it('still refuses a Guest who claims less than the published down payment', () => {
+    const store = published(structuredClone(productionRates))
+    expect(deny({ path: 'bookings/production-underpaid', method: 'create', auth: anonymousGuest(), requestData: downpayment({ amount_claimed: 2999 }) }, store)).toBe(true)
+    expect(deny({ path: 'bookings/production-underpaid-doubles', method: 'create', auth: anonymousGuest(), requestData: downpayment({ amount_claimed: ruleFloat(2999.99) }) }, store)).toBe(true)
+    expect(deny({ path: 'bookings/production-underpaid-app', method: 'create', auth: anonymousGuest(), requestData: downpayment({ amount_claimed: 2999 }) }, asAppStore())).toBe(true)
+    // Paying more than the quote is the Guest's own choice, and is allowed: the
+    // Admin verifies the proof against the claim.
+    expect(submit('production-overpaid', { amount_claimed: 3500 }, store)).toBe(true)
+  })
+
+  it('still refuses a figure one centavo off, in either encoding', () => {
+    expect(deny({ path: 'bookings/production-centavo-off', method: 'create', auth: anonymousGuest(), requestData: downpayment({ stay_total: 6000.01 }) }, published(structuredClone(productionRates)))).toBe(true)
+    expect(deny({ path: 'bookings/production-centavo-off-doubles', method: 'create', auth: anonymousGuest(), requestData: downpayment({ stay_total: ruleFloat(6000.01) }) }, asAppStore())).toBe(true)
+  })
+
+  it('prices published addons in centavos, in a document that mixes both encodings', () => {
+    // One rates document with a fractional stay rate, a fractional pet fee and a
+    // fractional hourly rate — doubles on the wire — next to whole-peso figures
+    // that the app published as doubles and the website would publish as ints.
+    // ₱6,001.25 + two pets at ₱300.25 + three hours at ₱250.50 = ₱7,353.25, and
+    // 50% of that floors at ₱3,676.62 with ₱3,676.63 at check-in.
+    const fractional = (previous: DocData): DocData => {
+      const rates = structuredClone(previous)
+      rates.pet_policy = { fee_per_pet: 300.25, max_pets: 5 }
+      rates.late_checkout_per_hour = 250.5
+      const mainHouse = (rates.accommodations as DocData)['main-house'] as DocData
+      mainHouse.security_deposit = typeof mainHouse.security_deposit === 'number' ? 2000 : ruleFloat(2000)
+      const pricing = mainHouse.guest_pricing as DocData
+      for (const schedule of [pricing.weekday, pricing.weekend_holiday] as DocData[]) {
+        schedule.base_rate = 6001.25
+        schedule.excess_per_guest = typeof schedule.excess_per_guest === 'number' ? 500 : ruleFloat(500)
+      }
+      return rates
+    }
+    const addons = {
+      pet_count: 2,
+      late_checkout_hours: 3,
+      rate_amount: 6001.25,
+      stay_total: 7353.25,
+      amount_due: 3676.62,
+      balance_due: 3676.63,
+      amount_claimed: 3676.62,
+      security_deposit: 2000,
+    }
+    for (const store of [
+      published(fractional(productionRates)),
+      published(fractional(asPublishedByTheApp(productionRates) as DocData)),
+    ]) {
+      expect(allow({
+        path: 'bookings/production-addons', method: 'create', auth: anonymousGuest(),
+        requestData: downpayment(addons),
+      }, store)).toBe(true)
+      // The addons are recomputed from the published document, not taken on
+      // trust: quoting the stay without them is a smaller total than published.
+      expect(deny({
+        path: 'bookings/production-addons-cheap', method: 'create', auth: anonymousGuest(),
+        requestData: downpayment({ ...addons, stay_total: 6001.25, amount_due: 3000.62, balance_due: 3000.63, amount_claimed: 3000.62 }),
+      }, store)).toBe(true)
+    }
+  })
+
+  it('prices an odd published rate the same way whichever writer published it', () => {
+    // A rate with centavos, and the 50% of it floored at whole centavos — the
+    // client's downPaymentAmount, computed here in integer centavos.
+    for (const store of [published(structuredClone(productionRates)), asAppStore()]) {
+      const rates = store['site_config/rates'] as DocData
+      const mainHouse = (rates.accommodations as DocData)['main-house'] as DocData
+      const pricing = mainHouse.guest_pricing as DocData
+      // Republished at ₱6,001.01 by the same writer that published ₱6,000, so
+      // the figure keeps the numeric type it had: an int store stays int, a
+      // double store stays double.
+      const republished = (previous: unknown): unknown =>
+        typeof previous === 'number' ? 6001.01 : ruleFloat(6001.01)
+      for (const schedule of [pricing.weekday, pricing.weekend_holiday] as DocData[]) {
+        schedule.base_rate = republished(schedule.base_rate)
+      }
+      // ₱6,001.01 → 600101 centavos → down payment floor(600101 * 50 / 100) =
+      // 300050 centavos = ₱3,000.50, and ₱3,000.51 at check-in.
+      expect(allow({
+        path: 'bookings/production-odd-rate', method: 'create', auth: anonymousGuest(),
+        requestData: downpayment({
+          rate_amount: 6001.01, stay_total: 6001.01, amount_due: 3000.5,
+          balance_due: 3000.51, amount_claimed: 3000.5,
+        }),
+      }, store)).toBe(true)
+    }
   })
 })
 
@@ -854,8 +1109,28 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
       expect(update(doc, rotated({ pin_updated_by: 'promoted-admin-1' }))).toBe('denied')
     })
 
-    it('refuses a rotation that keeps the old hash', () => {
-      expect(update(doc, rotated({ pin_hash: doc.pin_hash as string }))).toBe('denied')
+    // What this case is about: an unchanged hash may not be used to move a field
+    // door 2 owns. It used to pass for the wrong reason — the fixture's hash was
+    // 36 characters, so the shape check refused the whole document and every
+    // door denied everything. With a hash of the length a SHA-256 has, an
+    // identical document is a no-op write, and door 1 has nothing to refuse.
+    it('refuses a rotation that keeps the old hash and moves anything else', () => {
+      // Re-stamped without a new hash: `pin_updated_at` is not a field door 1
+      // owns, and door 2 requires the hash to have changed.
+      expect(update(doc, rotated({
+        pin_hash: doc.pin_hash as string,
+        pin_updated_at: ruleTimestamp(at + 1_000),
+      }))).toBe('denied')
+      // Counters lowered behind an unchanged hash: door 1 refuses the descent,
+      // door 2 refuses the hash.
+      const counted = adminSecurityDoc({ failed_attempts: 5 })
+      expect(update(counted, rotated({
+        pin_hash: counted.pin_hash as string,
+        failed_attempts: 0,
+      }))).toBe('denied')
+      // Nothing moved at all, so there is no rotation to refuse: an empty diff
+      // satisfies "nothing else moves, nothing lowers".
+      expect(update(doc, rotated({ pin_hash: doc.pin_hash as string }))).toBe('allowed')
     })
 
     it('refuses a rotation out of a live lock, and accepts one past it', () => {

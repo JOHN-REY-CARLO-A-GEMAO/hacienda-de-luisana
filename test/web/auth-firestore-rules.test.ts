@@ -202,7 +202,12 @@ describe('Bookings', () => {
     const create = allow(bookings, 'create:')
     expect(create).toContain("request.resource.data.status == 'Pending'")
     expect(create).toContain("request.resource.data.payment_status == 'pending'")
-    expect(create).toContain('request.resource.data.amount_claimed > 0')
+    // A claim of nothing is no claim. Compared in integer centavos, like every
+    // other figure in these rules: `> 0` against a raw field would order an int
+    // against a float whenever the two writers of a Booking encoded the same
+    // amount differently, and the runtime does not order across its two numeric
+    // types — it raises, and a raised condition denies the write.
+    expect(create).toContain('centavos(request.resource.data.amount_claimed) > 0')
     expect(create).toContain('request.resource.data.payment_proof_url.size() > 0')
   })
 
