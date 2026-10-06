@@ -8,7 +8,12 @@ import { clearBookingDraft, loadBookingDraft, rememberBookingId, type BookingDra
 import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { ensureGuestUid } from '../lib/guestAuth'
 import { ArrowRight, Calendar, Sparkle, Users } from '../lib/icons'
-import { paymentOptionsForTotal, quoteAccommodation } from '../lib/booking'
+import {
+  paymentOptionsForTotal,
+  quoteAccommodation,
+  validateBookingPayload,
+  validateBookingSelection,
+} from '../lib/booking'
 import { uploadPaymentProof } from '../lib/payments'
 import { usePaymentInformation } from '../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from '../components/Booking/PaymentInformationPanel'
@@ -155,6 +160,25 @@ export function DownpaymentPage() {
         setError(dates.reason)
         return
       }
+
+      // Re-run the complete selection rules before the screenshot leaves the
+      // device. `/book/pay` can be opened from a stale or hand-edited session
+      // draft, so checking only the lead-time date is not enough: property
+      // status, one-night support, guest count and the current published quote
+      // all have to agree first.
+      const rules = validateBookingSelection(
+        {
+          accommodation: draft.accommodation,
+          check_in: draft.check_in,
+          check_out: draft.check_out,
+          guests: Number(draft.guests),
+        },
+        { published, checkLeadTime: false },
+      )
+      if (!rules.ok) {
+        setError(rules.failure.message)
+        return
+      }
       if (!quoted || stayTotal === null || dueNow === null || !published) {
         setError('This property does not have an active published rate. Please choose another property or contact the Hacienda.')
         return
@@ -216,6 +240,55 @@ export function DownpaymentPage() {
         setError(uploadDates.reason)
         return
       }
+      const uploadRules = validateBookingSelection(
+        {
+          accommodation: draft.accommodation,
+          check_in: draft.check_in,
+          check_out: draft.check_out,
+          guests: Number(draft.guests),
+        },
+        { published, checkLeadTime: false },
+      )
+      if (!uploadRules.ok) {
+        setError(uploadRules.failure.message)
+        return
+      }
+
+      const balance = Math.max(0, Math.round((stayTotal - dueNow) * 100) / 100)
+      // Validate the complete create payload while the proof is still on the
+      // device. The storage URL is not known until after upload, so a non-empty
+      // provisional marker is enough for this pure shape check; the real URL is
+      // inserted immediately below. This catches stale money/policy snapshots
+      // before an otherwise doomed proof upload.
+      if (cloudBookingsDB.isCloud) {
+        const payloadRules = validateBookingPayload(
+          {
+            ...draft,
+            uid: uid ?? undefined,
+            payment_proof_url: 'pending-proof',
+            amount_claimed: claimed,
+            payment_status: 'pending',
+            nights,
+            stay_total: stayTotal,
+            amount_due: dueNow,
+            security_deposit: deposit,
+            balance_due: balance,
+            rate_amount: quoted.rateCard.nightlyRate,
+            rate_unit: 'standard_stay',
+            rate_classification: quoted.classification,
+            payment_plan: paymentPlan,
+            policy_version: quoted.snapshot.version,
+            policy_effective_date: quoted.snapshot.effectiveDate,
+            refund_policy_snapshot: published.refund ?? null,
+          },
+          { published, checkLeadTime: false },
+        )
+        if (!payloadRules.ok) {
+          setError(payloadRules.failure.message)
+          return
+        }
+      }
+
       const provisionalRef = `HDL-${Math.floor(1000 + Math.random() * 9000)}`
       const uploaded = await uploadPaymentProof({ file: proofFile, bookingRefId: provisionalRef })
       if (!uploaded.ok) {
@@ -225,7 +298,6 @@ export function DownpaymentPage() {
       // Financial fields are a historical snapshot of the authoritative rate,
       // not of what OCR/the Guest says the receipt contains. Firestore rules
       // independently derive and verify this same snapshot.
-      const balance = Math.max(0, Math.round((stayTotal - dueNow) * 100) / 100)
       const booking = await cloudBookingsDB.add(
         {
           guest_name: draft.name.trim(),

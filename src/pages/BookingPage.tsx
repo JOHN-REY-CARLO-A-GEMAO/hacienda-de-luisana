@@ -20,7 +20,12 @@ import { LEGAL_VERSION } from '../lib/legal'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { useBookingPolicy } from '../hooks/useBookingPolicy'
-import { quoteAccommodation, validateMinimumBookingLeadTime } from '../lib/booking'
+import {
+  quoteAccommodation,
+  validateBookingSelection,
+  validateMinimumBookingLeadTime,
+  type BookingRuleFailure,
+} from '../lib/booking'
 
 type FormState = {
   check_in: string
@@ -180,27 +185,104 @@ export function BookingPage() {
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
     if (!validate()) return
-    const limited = checkRateLimit('booking:create', LIMITS.booking)
-    if (!limited.ok) {
+
+    // A successful synchronous form check is not enough to open the payment
+    // step. The policy document may have changed since the page mounted, and a
+    // rate/availability read may have completed for an older selection. Keep the
+    // rule failure attached to the field where the Guest can fix it instead of
+    // letting /book/pay discover it after a screenshot has been uploaded.
+    let stopped = false
+    const failRule = (rule: BookingRuleFailure) => {
+      stopped = true
+      const field = rule.field === 'check_in' || rule.field === 'check_out' || rule.field === 'guests' || rule.field === 'accommodation'
+        ? rule.field
+        : undefined
+      if (field) setErrors((current) => ({ ...current, [field]: rule.message }))
       setStatus('error')
-      setErrorMsg(limited.message)
-      return
+      setErrorMsg(rule.message)
     }
-    setStatus('idle')
+
+    setStatus('submitting')
     setErrorMsg('')
-    // The form does not create a Booking. The downpayment screenshot is
-    // mandatory, and the Booking is born Pending only after that upload.
-    saveBookingDraft({
-      check_in: form.check_in,
-      check_out: form.check_out,
-      guests: Number(form.guests),
-      accommodation: form.accommodation,
-      name: form.name.trim(),
-      phone: form.phone.trim(),
-      email: form.email.trim(),
-      special_requests: form.special_requests.trim(),
-    })
-    navigate('/book/pay')
+    try {
+      // This is a server-backed read in cloud mode. The native `min` and the
+      // hook subscription are useful UX, but neither is authoritative after a
+      // tab has been left open or the Admin has changed the policy.
+      const currentDates = await cloudBookingsDB.validateGuestCheckIn(form.check_in)
+      if (!currentDates.ok) {
+        failRule({ code: currentDates.code, message: currentDates.reason, field: 'check_in' })
+        return
+      }
+
+      const rules = validateBookingSelection(
+        {
+          accommodation: form.accommodation,
+          check_in: form.check_in,
+          check_out: form.check_out,
+          guests: Number(form.guests),
+        },
+        {
+          published,
+          minimumBookingLeadTimeDays,
+          // The fresh check above supplies the current policy boundary. The pure
+          // validator still checks dates, stay length, property and rates here.
+          checkLeadTime: false,
+        },
+      )
+      if (!rules.ok) {
+        failRule(rules.failure)
+        return
+      }
+
+      // Always perform one fresh availability read at the gate. Demo mode can
+      // report the actual holding Booking; cloud mode deliberately returns an
+      // empty conflict set because Guests cannot read another Guest's private
+      // Booking. In cloud mode the Admin approval transaction remains the final
+      // overlap guard, but every client-known rule is now settled before payment.
+      const currentAvailability = await cloudBookingsDB.checkAvailability({
+        accommodation: form.accommodation,
+        check_in: form.check_in,
+        check_out: form.check_out,
+      })
+      if (!currentAvailability.available) {
+        setAvailability({ available: false, heldBy: currentAvailability.conflicts.length })
+        failRule({
+          code: 'DATE_UNAVAILABLE',
+          message: currentAvailability.conflicts.length > 0
+            ? `${currentAvailability.conflicts.length === 1 ? 'Those dates are already held by another Booking' : 'Those dates are already held by other Bookings'} for ${selectedAcc?.name || 'this property'}. Please choose different dates before continuing.`
+            : `Those dates are no longer available for ${selectedAcc?.name || 'this property'}. Please choose different dates before continuing.`,
+        })
+        return
+      }
+
+      const limited = checkRateLimit('booking:create', LIMITS.booking)
+      if (!limited.ok) {
+        stopped = true
+        setStatus('error')
+        setErrorMsg(limited.message)
+        return
+      }
+
+      // The form does not create a Booking. The downpayment screenshot is
+      // mandatory, and the Booking is born Pending only after that upload.
+      saveBookingDraft({
+        check_in: form.check_in,
+        check_out: form.check_out,
+        guests: Number(form.guests),
+        accommodation: form.accommodation,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        special_requests: form.special_requests.trim(),
+      })
+      navigate('/book/pay')
+    } catch (err) {
+      stopped = true
+      setStatus('error')
+      setErrorMsg(err instanceof Error ? err.message : 'Booking rules could not be checked right now. Please try again.')
+    } finally {
+      if (!stopped) setStatus('idle')
+    }
   }
 
   return (
