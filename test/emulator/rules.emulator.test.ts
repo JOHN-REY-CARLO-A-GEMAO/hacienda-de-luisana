@@ -998,6 +998,69 @@ function manilaDatePlus(days: number): string {
 }
 
 describe('published guest-count prices: independent Firestore verification', () => {
+  it('allows an authenticated Guest to submit the protected production Main House quote', async () => {
+    // This mirrors the refused production create: a Friday standard stay for
+    // two Guests at ₱6,000, 50% due now, and the exact published policy stamp
+    // and refund snapshot. Keep this as an email-backed Guest rather than an
+    // anonymous fixture: the outage was reported for an authenticated Guest.
+    const refund = {
+      deposit_refund_percent: 100,
+      tiers: [
+        { min_days_before_check_in: 30, refund_percent: 100 },
+        { min_days_before_check_in: 14, refund_percent: 50 },
+        { min_days_before_check_in: 7, refund_percent: 25 },
+      ],
+    }
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'site_config', 'rates'), {
+      version: 'v1-guest-v3',
+      effective_date: '2026-10-05',
+      refund,
+      'accommodations.main-house.security_deposit': 2000,
+    }))
+
+    const productionFields = {
+      security_deposit: 2000,
+      amount_claimed: 3000,
+      policy_version: 'v1-guest-v3',
+      policy_effective_date: '2026-10-05',
+      refund_policy_snapshot: refund,
+    }
+    // A normal email sign-up owns this stored Guest role, so the create also
+    // traverses `storedRole()` / `profiles/{uid}` before it reaches the guest
+    // gate. That is the production access pattern, not the anonymous shortcut.
+    await seed(async (db) => setDoc(doc(db.firestore(), 'profiles', GUEST_UID), {
+      uid: GUEST_UID, role: 'guest',
+    }))
+    const guest = emailGuest()
+    const checkIn = futureDateForDay(5)
+    const booking = quotedBooking(checkIn, 2, { overrides: productionFields })
+    expect(booking).toMatchObject({
+      check_out: nextCalendarDate(checkIn), guests: 2, accommodation: 'main-house',
+      rate_amount: 6000, rate_unit: 'standard_stay', rate_classification: 'weekend_holiday',
+      stay_total: 6000, amount_due: 3000, security_deposit: 2000, balance_due: 3000,
+      payment_plan: 'down-payment', payment_status: 'pending', amount_claimed: 3000,
+      policy_version: 'v1-guest-v3', policy_effective_date: '2026-10-05',
+      refund_policy_snapshot: refund,
+    })
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'production-valid'), booking))
+
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'production-money-tampered'), {
+      ...booking, stay_total: 6000.01,
+    }))
+
+    const tooSoon = quotedBooking(manilaDatePlus(29), 2, { overrides: productionFields })
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'production-too-soon'), tooSoon))
+
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'production-multi-stay'), {
+      ...booking, check_out: nextCalendarDate(nextCalendarDate(checkIn)), nights: 2,
+    }))
+
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'production-refund-tampered'), {
+      ...booking,
+      refund_policy_snapshot: { ...refund, deposit_refund_percent: 0 },
+    }))
+  })
+
   it('recomputes weekday, Friday/Saturday, Sunday, holiday, and excess totals with 50% due now', async () => {
     const cases = [
       ['weekday-monday', futureDateForDay(1), 10, 'weekday', 5000, 2500],
