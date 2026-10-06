@@ -432,9 +432,12 @@ service cloud.firestore {
         : savedUnit == 'night' && savedRate is number && savedNights is int && savedNights > 0
           ? int(savedRate * savedNights * 100 + 0.5) / 100
           : -1;
-      let legacySnakeTotal = resource.data.get('total_amount', null);
-      let legacyCamelTotal = resource.data.get('totalAmount', null);
-      let legacyTotal = legacySnakeTotal is number ? legacySnakeTotal : legacyCamelTotal;
+      // Keep the legacy aliases in one binding: Firestore limits each Rules
+      // function to ten `let` bindings, and this function is also used by the
+      // Guest's payment-plan update path.
+      let legacyTotal = resource.data.get('total_amount', null) is number
+        ? resource.data.get('total_amount', null)
+        : resource.data.get('totalAmount', null);
       let total = resource.data.keys().hasAny(['stay_total'])
         ? (savedTotal is number ? savedTotal : -1)
         : legacyTotal is number
