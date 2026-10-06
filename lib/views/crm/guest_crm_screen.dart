@@ -165,37 +165,46 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
               color: AppColors.surfaceLight,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                Column(
-                  children: [
-                    Text('TOTAL VISITS', style: GoogleFonts.inter(fontSize: 9, color: AppColors.textMuted)),
-                    Text('${guest.totalBookings} Stays', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                Container(height: 20, width: 1, color: AppColors.cardBorder),
-                Column(
-                  children: [
-                    Text('LIFETIME VALUE', style: GoogleFonts.inter(fontSize: 9, color: AppColors.textMuted)),
-                    Text(currencyFmt.format(guest.lifetimeRevenue),
-                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primaryForest)),
-                  ],
-                ),
-              ],
-            ),
+            child: guest.hasHistory
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Column(
+                        children: [
+                          Text('TOTAL VISITS', style: GoogleFonts.inter(fontSize: 9, color: AppColors.textMuted)),
+                          Text('${guest.totalBookings} Stays', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      Container(height: 20, width: 1, color: AppColors.cardBorder),
+                      Column(
+                        children: [
+                          Text('LIFETIME VALUE', style: GoogleFonts.inter(fontSize: 9, color: AppColors.textMuted)),
+                          Text(currencyFmt.format(guest.lifetimeRevenue),
+                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primaryForest)),
+                        ],
+                      ),
+                    ],
+                  )
+                // No recorded stay and no recorded spend, so no figure is shown.
+                // This used to print the ₱15,000 this model defaulted to, which
+                // read as a real lifetime value on a profile with no history.
+                : Text(
+                    'No recorded stays yet.',
+                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
+                  ),
           ),
           const SizedBox(height: 10),
 
           // Admin notes
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.sticky_note_2_outlined, size: 14, color: AppColors.accentGoldDark),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  guest.notes,
+          if (guest.notes.trim().isNotEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.sticky_note_2_outlined, size: 14, color: AppColors.accentGoldDark),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    guest.notes,
                   style: GoogleFonts.inter(
                     fontSize: 12,
                     fontStyle: FontStyle.italic,

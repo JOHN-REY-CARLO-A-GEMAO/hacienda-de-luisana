@@ -34,21 +34,40 @@ export function formatHoldCountdown(msRemaining: number): string {
 /** An Accommodation as far as availability is concerned. */
 export type UnitBearing = {
   id: string
-  /** Units that can be held at once; absent means the whole Accommodation is one. */
+  /**
+   * Units that can be held at once; absent means the whole Accommodation is one.
+   *
+   * The build-time catalogue figure. The published rates document is preferred
+   * where there is one — see `unitsForAccommodation`.
+   */
   availableUnits?: number
 }
 
 /**
  * How many Bookings an Accommodation can hold at once.
  *
- * One, unless the Admin has published more: the Main House is a single house, and
- * an Accommodation nobody published a unit count for is not a number of units, so
- * neither can be double-sold on a figure that was never written down.
+ * Read from the published rates document's `available_units` when one is
+ * published, because that is where the Admin states a Accommodation's physical
+ * inventory and both apps read it from there. The build-time catalogue is the
+ * fallback for demo mode and for a document published before the field existed.
+ *
+ * One unit is the floor, never zero: an Accommodation nobody published a unit
+ * count for is not a number of units, so it cannot be double-sold on a figure
+ * that was never written down.
+ *
+ * Distinct from `units_per_booking`, which is how many units one Booking takes.
+ * The A-House is two units and one unit per Booking, and the two must not be
+ * read as one number.
  */
 export function unitsForAccommodation(
   accommodationId: string,
   accommodations: readonly UnitBearing[],
+  published?: { accommodations?: Record<string, { available_units?: number }> } | null,
 ): number {
+  const publishedUnits = published?.accommodations?.[accommodationId]?.available_units
+  if (Number.isInteger(publishedUnits) && (publishedUnits as number) >= 1) {
+    return publishedUnits as number
+  }
   const found = accommodations.find((a) => a.id === accommodationId)
   return Math.max(1, found?.availableUnits ?? 1)
 }

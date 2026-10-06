@@ -504,7 +504,11 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            booking.accommodation,
+                            // The stored id, named from the published rates document. Showing the raw id
+                            // is the fallback, not a fourth spelling of a property.
+                            BookingModel.accommodationLabel(
+                                booking.accommodation,
+                                ref.watch(accommodationsProvider)),
                             style: GoogleFonts.inter(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,

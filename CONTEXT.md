@@ -39,8 +39,12 @@ _Avoid_: Owner app, guest app, client app, staff app
 ### Stay
 
 **Accommodation**:
-A rentable unit: the Main House, the Annex, or one A-House camping unit.
+A rentable unit: the Main House, the Annex, or one A-House camping unit. There are exactly three, and their identities — the ids `main-house`, `annex` and `house-a-camping`, their display names, their included occupancy, and how many units the estate holds — come from the published rates document (`site_config/rates`), which both apps read and only the Admin writes. A Booking stores the id, never the name. `firestore.rules` `isCanonicalAccommodation()` is where the set of three is enforced.
 _Avoid_: Room, villa, property (the property is the whole estate)
+
+**Unit**:
+One rentable instance of an Accommodation. Three numbers stay apart and are not interchangeable: `available_units` is how many the estate holds at once (the A-House has 2), `units_per_booking` is how many one Booking takes (the A-House takes 1), and `max_guests` is how many guests fit in that unit (the A-House takes 3).
+_Avoid_: Room, inventory count, "a house"
 
 **Booking**:
 A Guest's request for one Accommodation over a date range, tracked from submission through to a completed stay.

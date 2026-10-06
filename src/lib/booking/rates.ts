@@ -35,8 +35,22 @@ export type GuestBracketPricing = {
 }
 
 export type AccommodationRates = {
-  /** Display name managed by the Admin. Optional on legacy documents. */
+  /**
+   * Display name managed by the Admin. Optional on legacy documents.
+   *
+   * This is the canonical Accommodation name for both apps and for Booking
+   * display. A Booking stores the id; the name is resolved from here.
+   */
   property_name?: string
+  /**
+   * How many units of this Accommodation the estate holds at once.
+   *
+   * Physical inventory, and a different fact from `units_per_booking`, which is
+   * how many units one Booking takes: the A-House publishes `available_units: 2`
+   * and `units_per_booking: 1`, because there are two units and a Booking takes
+   * one of them. Availability counts committed Bookings against this number.
+   */
+  available_units?: number
   /** `night` is the legacy flat model; official rates are per 22-hour standard stay. */
   rate_unit?: 'night' | 'standard_stay'
   /** Whether this property can receive new bookings. Optional means active for legacy documents. */
@@ -379,14 +393,17 @@ function scheduleProblems(path: string, node: unknown, allowDocumentedCap: boole
 
 /**
  * The documented occupancy of the A-House camping unit: three people share it,
- * and a fourth is accommodated for a fee. It is the one unit with a hard
- * physical limit rather than an open excess rule, which is why it alone may
- * publish `max_guests` — and why it publishes an excess rule *alongside* that
- * cap, since the cap admits a guest the base rate does not cover.
+ * and three is the ceiling. It is the one Accommodation with a hard physical
+ * limit rather than an open excess rule, which is why it alone may publish
+ * `max_guests`.
+ *
+ * Because the cap equals the included count, an A-House schedule carries no
+ * `excess_per_guest`: there is no guest it could charge. Publishing one would
+ * state a price for a fourth person the unit cannot take.
  */
 const A_HOUSE_ID = 'house-a-camping'
 const A_HOUSE_INCLUDED_GUESTS = 3
-const A_HOUSE_MAX_GUESTS = 4
+const A_HOUSE_MAX_GUESTS = 3
 
 /** Validate one Accommodation's figures. */
 function accommodationProblems(accommodationId: string, node: unknown): RatesProblem[] {
@@ -421,6 +438,13 @@ function accommodationProblems(accommodationId: string, node: unknown): RatesPro
       message: 'legacy flat nightly pricing cannot be published for new bookings; use guest_pricing.',
     })
   }
+  if (rates.available_units !== undefined
+      && (!Number.isInteger(rates.available_units) || (rates.available_units as number) < 1)) {
+    problems.push({
+      path: `accommodations.${accommodationId}.available_units`,
+      message: 'must be a whole number of units, at least 1.',
+    })
+  }
   if (rates.guest_pricing === undefined) {
     problems.push({
       path: `accommodations.${accommodationId}.guest_pricing`,
@@ -434,8 +458,11 @@ function accommodationProblems(accommodationId: string, node: unknown): RatesPro
       const hasDocumentedCap = accommodationId === A_HOUSE_ID
       const weekdayPath = `accommodations.${accommodationId}.guest_pricing.weekday`
       const weekendPath = `accommodations.${accommodationId}.guest_pricing.weekend_holiday`
-      problems.push(...scheduleProblems(weekdayPath, pricing.weekday, hasDocumentedCap, true))
-      problems.push(...scheduleProblems(weekendPath, pricing.weekend_holiday, hasDocumentedCap, true))
+      // The Main House and the Annex have no documented ceiling, so a guest
+      // above the included count is priced rather than refused — hence the
+      // excess rule they must publish. The A-House caps that guest instead.
+      problems.push(...scheduleProblems(weekdayPath, pricing.weekday, hasDocumentedCap, !hasDocumentedCap))
+      problems.push(...scheduleProblems(weekendPath, pricing.weekend_holiday, hasDocumentedCap, !hasDocumentedCap))
       if (hasDocumentedCap) {
         for (const [path, schedule] of [[weekdayPath, pricing.weekday], [weekendPath, pricing.weekend_holiday]] as const) {
           if (typeof schedule === 'object' && schedule !== null && !Array.isArray(schedule)) {
@@ -443,16 +470,16 @@ function accommodationProblems(accommodationId: string, node: unknown): RatesPro
             if (node.base_max_guests !== A_HOUSE_INCLUDED_GUESTS || node.max_guests !== A_HOUSE_MAX_GUESTS) {
               problems.push({
                 path,
-                message: `A-House accommodates ${A_HOUSE_INCLUDED_GUESTS} guests at the base rate and ${A_HOUSE_MAX_GUESTS} in total, with the fourth guest charged as excess.`,
+                message: `A-House is one unit per booking and takes up to ${A_HOUSE_MAX_GUESTS} guests, at the base rate.`,
               })
             }
-            // A cap with no excess rule would charge the base rate for the fourth
-            // guest — a flat rate wearing a cap's clothes. The two are published
-            // together or not at all.
-            if (node.excess_per_guest === undefined) {
+            // The cap equals the included count, so an excess rule would price a
+            // guest the unit cannot hold. Reject it rather than publish a figure
+            // that can never be charged.
+            if (node.excess_per_guest !== undefined) {
               problems.push({
                 path: `${path}.excess_per_guest`,
-                message: 'is required alongside max_guests: the fourth A-House guest is charged as excess, not at the base rate.',
+                message: 'A-House is a flat per-unit amount through its three-guest maximum; it prices no guest beyond it.',
               })
             }
           }

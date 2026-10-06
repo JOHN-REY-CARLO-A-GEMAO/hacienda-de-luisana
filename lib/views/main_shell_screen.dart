@@ -280,7 +280,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                   },
                   child: const ListTile(
                     leading: Icon(Icons.hotel_outlined),
-                    title: Text('Rooms & Accommodations'),
+                    title: Text('Accommodation Status'),
                     subtitle: Text('Manage status (Available/Occupied) & pricing'),
                   ),
                 ),

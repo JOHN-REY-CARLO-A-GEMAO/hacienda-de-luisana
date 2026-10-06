@@ -156,7 +156,8 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
                       ),
                     ),
                     Text(
-                      stay.accommodation,
+                      BookingModel.accommodationLabel(
+                          stay.accommodation, ref.watch(accommodationsProvider)),
                       style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
                     ),
                   ],

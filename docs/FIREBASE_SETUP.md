@@ -105,7 +105,7 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
   `position`/`points` on it is refused — capped at a 60-minute window checked against
   `request.time`; read by the Admin and by the sharing Guest
 - `tracking_sessions`: **closed** — no create, read or update by anybody (ADR-0009)
-- `rooms`, `guest_profiles`, `gallery` writes: Admin
+- `rooms` is a status register, not a catalogue: the Admin may read it and update a document's `status` and nothing else, and cannot create or delete one. `guest_profiles` and `gallery`: Admin writes
 - Everything else is denied by a final catch-all
 - `test/web/auth-firestore-rules.test.ts` asserts all of the above, and that the rules and
   `src/lib/auth` keep the same bootstrap addresses

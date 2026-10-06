@@ -146,7 +146,7 @@ void main() {
       expect(LiveFix.fromData(fix(), stopped), isNull);
     });
 
-    test('words a fix\\'s age the way the panel shows it', () {
+    test("words a fix's age the way the panel shows it", () {
       final fresh = LiveFix.fromData(fix(), session)!;
       expect(fresh.isStale, isFalse);
       final old = LiveFix(lat: 14.1, lng: 121.3, accuracyM: 12, at: now.subtract(const Duration(minutes: 3)), seq: 9);

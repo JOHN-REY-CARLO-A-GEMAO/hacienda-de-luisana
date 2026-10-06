@@ -82,6 +82,12 @@ export function getStayProgress(checkIn: string, checkOut: string) {
 }
 
 // Generate realistic default bookings so the app and admin are immediately populated
+//
+// Every sample names one of the three canonical Accommodations
+// (`src/config/site.ts`): main-house, annex, house-a-camping. A sample naming
+// anything else rendered its raw id to a Guest, because the pages that resolve an
+// id to a name had nothing to resolve it against. A retired fourth property used
+// to sit here and leaked exactly that way.
 function generateSampleBookings(): Booking[] {
   const d = (offsetDays: number) => {
     const target = new Date()
@@ -112,7 +118,7 @@ function generateSampleBookings(): Booking[] {
       check_in: d(1),
       check_out: d(4), // 3 nights
       guests: 4,
-      accommodation: 'casita-del-rio',
+      accommodation: 'annex',
       special_requests: 'Bringing 1 small friendly corgi dog. Inquiring about bonfire setup on evening.',
       status: 'Pending',
       created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),

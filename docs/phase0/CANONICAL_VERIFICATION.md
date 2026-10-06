@@ -252,7 +252,7 @@ The gaps are recorded, not filled. New Dart tests that cannot be compiled here w
 | F26 | Source: no review composite indexes | Deployed index state | BLOCKED | Emulators do not enforce production indexes, so this needs staging/runtime. |
 | F27 | Source: privacy text vs live location; retention deletes nothing | Not run | BLOCKED | Purge requires staging and the owner. |
 | F28 | Source: `totalAmount` defaults to nights×12000 | Flutter not run | BLOCKED | — |
-| F29 | Source: room status separate from capacity | — | BLOCKED | Needs an owner decision (room-to-unit mapping). |
+| F29 | Source: room status separate from capacity | — | RESOLVED 2026-10-06 | Owner decision taken: a `rooms` document is a status register keyed to a canonical Accommodation id (`accommodationId`), never a catalogue. Capacity, occupancy and money moved to the published rates document, and availability reads `available_units` from there. |
 | F30 | Source: unbounded approval query | Not run | BLOCKED | Load test not available. |
 | F31 | Source: deploy on Node 20 vs locked dependency ≥22; no test gate. Local Node 22 build PASS. | Hosted CI metadata, read only: the last 3 `Deploy to GitHub Pages` runs on `main` (e.g. run 36808897623) succeeded through `npm ci` and `npm run build` on Node 20, and contain no test step | PARTIALLY CONFIRMED | **Contradiction recorded:** the Node-version mismatch does **not** currently break the hosted build, so the impact is not reproduced. The missing test gate is confirmed. |
 | F32 | Source: debug release signing | Device/release not run | BLOCKED | — |

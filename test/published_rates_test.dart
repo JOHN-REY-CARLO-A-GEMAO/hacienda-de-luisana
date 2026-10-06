@@ -19,15 +19,16 @@ Map<String, dynamic> schedule({
       if (cap != null) 'max_guests': cap,
     };
 
-Map<String, dynamic> good() => {
+Map<String, dynamic> good() => <String, dynamic>{
       'version': 'guest-count-v2',
       'effective_date': '2026-10-04',
       'holiday_dates': <String>[],
-      'accommodations': {
-        'main-house': {
+      'accommodations': <String, dynamic>{
+        'main-house': <String, dynamic>{
           'rate_unit': 'standard_stay',
           'security_deposit': 500,
           'down_payment_percent': 50,
+          'available_units': 1,
           'guest_pricing': {
             'units_per_booking': 1,
             'weekday': schedule(included: 10, rate: 5000, extra: 500),
@@ -38,6 +39,7 @@ Map<String, dynamic> good() => {
           'rate_unit': 'standard_stay',
           'security_deposit': 500,
           'down_payment_percent': 50,
+          'available_units': 1,
           'guest_pricing': {
             'units_per_booking': 1,
             'weekday': schedule(included: 6, rate: 4000, extra: 500),
@@ -48,6 +50,7 @@ Map<String, dynamic> good() => {
           'rate_unit': 'standard_stay',
           'security_deposit': 0,
           'down_payment_percent': 50,
+          'available_units': 2,
           'guest_pricing': {
             'units_per_booking': 1,
             'weekday': schedule(included: 3, rate: 1000, cap: 3),
@@ -68,7 +71,7 @@ List<String> paths(List<RatesProblem> problems) => problems.map((p) => p.path).t
 
 void main() {
   test('a complete configurable guest-count schedule has no problems', () {
-    expect(validatePublishedRates(good(), kKnownAccommodationIds), isEmpty);
+    expect(validatePublishedRates(good()), isEmpty);
   });
 
   test('refund terms can be read without requiring a legacy nightly rate card', () {
@@ -98,7 +101,7 @@ void main() {
 
   test('base occupancy is not a minimum, and Main/Annex have no unsupported caps', () {
     final doc = good();
-    final main = (doc['accommodations'] as Map)['main-house'] as Map;
+    final main = (doc['accommodations'] as Map<String, dynamic>)['main-house'] as Map;
     final gp = Map<String, dynamic>.from(main['guest_pricing'] as Map);
     gp['weekday'] = {
       ...Map<String, dynamic>.from(gp['weekday'] as Map),
@@ -106,7 +109,10 @@ void main() {
       'max_guests': 10,
       'upper_rate': 5500,
     };
-    (doc['accommodations'] as Map)['main-house'] = {...main, 'guest_pricing': gp};
+    (doc['accommodations'] as Map<String, dynamic>)['main-house'] = <String, dynamic>{
+      ...main,
+      'guest_pricing': gp,
+    };
     expect(
       paths(validatePublishedRates(doc)),
       containsAll([
@@ -119,17 +125,20 @@ void main() {
 
   test('A-House remains one unit with an included and absolute maximum of three guests', () {
     final doc = good();
-    final house = (doc['accommodations'] as Map)['house-a-camping'] as Map;
+    final house = (doc['accommodations'] as Map<String, dynamic>)['house-a-camping'] as Map;
     final gp = Map<String, dynamic>.from(house['guest_pricing'] as Map);
     gp['weekday'] = schedule(included: 4, rate: 1000, cap: 4);
-    (doc['accommodations'] as Map)['house-a-camping'] = {...house, 'guest_pricing': gp};
+    (doc['accommodations'] as Map<String, dynamic>)['house-a-camping'] = <String, dynamic>{
+      ...house,
+      'guest_pricing': gp,
+    };
     expect(paths(validatePublishedRates(doc)), contains('accommodations.house-a-camping.guest_pricing'));
   });
 
   test('fixed reservation fees and down-payment percentages other than 50 are refused', () {
     final doc = good();
-    final main = (doc['accommodations'] as Map)['main-house'] as Map;
-    (doc['accommodations'] as Map)['main-house'] = {
+    final main = (doc['accommodations'] as Map<String, dynamic>)['main-house'] as Map;
+    (doc['accommodations'] as Map<String, dynamic>)['main-house'] = <String, dynamic>{
       ...main,
       'reservation_fee_amount': 750,
       'down_payment_percent': 30,
@@ -145,7 +154,7 @@ void main() {
 
   test('legacy flat nightly rate documents cannot be published as new rates', () {
     final doc = good();
-    (doc['accommodations'] as Map)['main-house'] = {
+    (doc['accommodations'] as Map<String, dynamic>)['main-house'] = {
       'rate_unit': 'night',
       'nightly_rate': 6000,
       'security_deposit': -1,
@@ -163,19 +172,30 @@ void main() {
     );
   });
 
-  test('unknown Accommodation ids are flagged when a known list is supplied', () {
+  test('an id outside the canonical set is refused by the rules, not by a list here', () {
+    // This validator used to take a `knownAccommodationIds` list and refuse
+    // anything outside it. That list was a hand-copy of the website's, in a
+    // second language, and it had already drifted — the app went on publishing
+    // an A-House the rules refused.
+    //
+    // The canonical set now lives in one place, `firestore.rules`
+    // `isCanonicalAccommodation()`, which names the three ids and refuses a
+    // publication that differs. `test/rules/firestore-rules.test.ts` asserts
+    // that; this test asserts only that a document is validated on its own shape.
     final doc = good();
-    (doc['accommodations'] as Map)['pool-villa'] = {
+    (doc['accommodations'] as Map<String, dynamic>)['pool-villa'] = <String, dynamic>{
       'rate_unit': 'standard_stay',
       'security_deposit': 0,
       'down_payment_percent': 50,
-      'guest_pricing': {
+      'guest_pricing': <String, dynamic>{
         'weekday': schedule(included: 2, rate: 1000, extra: 100),
         'weekend_holiday': schedule(included: 2, rate: 1000, extra: 100),
       },
     };
-    expect(paths(validatePublishedRates(doc, kKnownAccommodationIds)), contains('accommodations.pool-villa'));
-    expect(validatePublishedRates(doc), isEmpty, reason: 'without a known list any id passes');
+    expect(validatePublishedRates(doc), isEmpty);
+    expect(kKnownAccommodationIds, isNull,
+        reason: 'the id whitelist lives in firestore.rules, not in this app');
+    expect(knownAccommodationIdsFrom(good()), ['main-house', 'annex', 'house-a-camping']);
   });
 
   test('refund percentages stay within 0–100 and tiers are well-formed', () {

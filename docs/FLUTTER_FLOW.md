@@ -38,7 +38,7 @@ flowchart LR
     T5 --> M1[Rates & Cancellation Policy]
     T5 --> M2[Smart Lock Security Logs]
     T5 --> M3[Revenue & Stay Analytics]
-    T5 --> M4[Rooms & Accommodations]
+    T5 --> M4[Accommodation Status]
     T5 --> M5[Guest CRM & History]
     T5 --> M6[Sign out]
     T1 -->|Review Bookings| T2
@@ -113,7 +113,7 @@ Every accepted action writes one Activity entry (`bookings/{id}/activity/{seq}`)
 | **Stays** | Stay durations, progress, days remaining | — | No stays |
 | **Analytics** | Confirmed vs projected revenue, conversion, average length of stay, duration buckets, top Accommodation | — | Zeros |
 | **Smart lock** | `access_logs` newest first, per-door filter, simulator | Record an event | No events |
-| **Rooms** | Accommodation status and nightly price | Mark available / occupied, edit price | "Publish rates first" |
+| **Accommodation Status** | Operational status per Accommodation, listed from the published rates document | Mark available / occupied / under maintenance | "Publish rates first" |
 | **CRM** | Guest history, VIP badges, notes | — | No profiles |
 | **Rates** | The live `site_config/rates` version; editors for Main House, Annex and one-unit A-House weekday/weekend-holiday guest schedules, included occupancy, confirmed Security deposit, explicit holiday dates, fixed 50% down payment and refund policy | **Publish to website** (validated first; problems listed inline; retired flat-nightly rates require review) | "Nothing published yet" |
 
@@ -154,7 +154,7 @@ The app reads and writes the **same** Firestore documents the website does.
 | `bookings/{id}/activity` | oldest first | one entry per action, id = `seq` | append-only; `actor` must be the writer's role (`system` allowed for the Admin) |
 | `site_config/rates` | live | `publishRates` (validated) | public read, Admin write |
 | `access_logs` | all | simulator events | Admin read / correct |
-| `rooms`, `guest_profiles` | all | status, price | Admin |
+| `rooms`, `guest_profiles` | all | status | Admin |
 | `profiles/{uid}` | own (role check) | — | own read; Admin may write anybody's role |
 
 Model mapping lives in `lib/models/booking_model.dart`: `rawStatus` keeps the exact status, `status` buckets it into five stages for filters and KPIs, and `toLifecycleDoc()` hands the rules the stored document. `BookingModel.accommodationLabel` turns the website's ids into names.

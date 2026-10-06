@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ACCOMMODATIONS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { useAuth } from '../hooks/useAuth'
+import { usePublishedRates } from '../hooks/usePublishedRates'
 import { unitsForAccommodation } from '../lib/booking'
 import { readLocalPaymentProof, type Booking } from '../lib/storage'
 import { ArrowRight } from '../lib/icons'
@@ -21,6 +22,7 @@ function referenceOf(booking: Booking): string {
  */
 export function ReviewDeskPage() {
   const { role, user } = useAuth()
+  const published = usePublishedRates()
   const demo = !cloudBookingsDB.isCloud
   const allowed = demo || role === 'admin'
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -61,7 +63,11 @@ export function ReviewDeskPage() {
                 type: 'Approve',
                 availability: {
                   bookings: await cloudBookingsDB.list(),
-                  unitsAvailable: unitsForAccommodation(selected.accommodation, ACCOMMODATIONS),
+                  unitsAvailable: unitsForAccommodation(
+                    selected.accommodation,
+                    ACCOMMODATIONS,
+                    published,
+                  ),
                 },
               },
               actor,

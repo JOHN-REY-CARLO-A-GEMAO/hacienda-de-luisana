@@ -27,6 +27,7 @@ import { activityLogStorage, bookingsDB, type Booking } from './storage'
 import { describeFirestoreFailure } from './firebaseFailure'
 import { ACCOMMODATIONS } from '../config/site'
 import { bookingPolicyDB } from './bookingPolicyDB'
+import { ratesDB } from './ratesDB'
 import {
   applyAction,
   approvalCouplingSet,
@@ -609,8 +610,13 @@ export const cloudBookingsDB = {
     if (this.isCloud) return { available: true, conflicts: [] }
 
     const bookings = await this.list()
+    // The unit count comes from the published rates document, which is where the
+    // Admin states an Accommodation's physical inventory. Without one published
+    // there is no booking to accept either, so the catalogue fallback below only
+    // ever runs in demo mode.
+    const published = await ratesDB.get().catch(() => null)
     const conflicts = findDateConflicts(request, bookings, {
-      unitsAvailable: unitsForAccommodation(request.accommodation, ACCOMMODATIONS),
+      unitsAvailable: unitsForAccommodation(request.accommodation, ACCOMMODATIONS, published),
       now,
     })
     return { available: conflicts.length === 0, conflicts }

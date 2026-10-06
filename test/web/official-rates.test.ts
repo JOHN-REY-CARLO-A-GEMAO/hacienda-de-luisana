@@ -65,21 +65,25 @@ describe('official guest-count standard-stay pricing', () => {
 
   it('refuses invalid counts, A-House counts above its cap, inactive properties and unresolved multi-stays', () => {
     expect(quote('annex', '2026-10-05', 0)).toBeUndefined()
-    // The A-House accommodates four: three at the base rate and a fourth for
-    // ₱500. A fifth is past its documented limit.
+    // The A-House takes three. Four is already past its documented limit, so it
+    // is refused rather than priced.
+    expect(quote('house-a-camping', '2026-10-05', 4)).toBeUndefined()
     expect(quote('house-a-camping', '2026-10-05', 5)).toBeUndefined()
     expect(quote('missing', '2026-10-05', 2)).toBeUndefined()
     expect(quoteAccommodation(official, 'annex', { check_in: '2026-10-05', check_out: '2026-10-07', guests: 2 })).toBeUndefined()
     expect(quoteAccommodation({ ...official, accommodations: { annex: { ...official.accommodations.annex, active: false } } }, 'annex', { check_in: '2026-10-05', check_out: '2026-10-06', guests: 2 })).toBeUndefined()
   })
 
-  it('prices the A-House fourth guest as excess, and refuses an excess rule without its cap', () => {
+  it('charges the A-House a flat per-unit amount, and refuses an excess rule it could never charge', () => {
     const aHouse = official.accommodations['house-a-camping']
-    expect(quote('house-a-camping', '2026-10-05', 4)?.stayTotal).toBe(1500)
+    // One unit, three at the flat rate. The included count is the cap, so every
+    // accepted headcount is the same price.
+    expect(quote('house-a-camping', '2026-10-05', 1)?.stayTotal).toBe(1000)
+    expect(quote('house-a-camping', '2026-10-05', 3)?.stayTotal).toBe(1000)
 
-    // A cap without an excess rule charges the base rate for the fourth guest,
-    // so the two have to be published together.
-    const capWithoutExcess: PublishedRates = {
+    // An excess rule on the A-House would price a fourth guest the unit cannot
+    // take, so it is refused.
+    const withExcess: PublishedRates = {
       ...official,
       accommodations: {
         ...official.accommodations,
@@ -87,12 +91,12 @@ describe('official guest-count standard-stay pricing', () => {
           ...aHouse,
           guest_pricing: {
             ...aHouse.guest_pricing!,
-            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000 },
+            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000, excess_per_guest: 500 },
           },
         },
       },
     }
-    expect(validatePublishedRates(capWithoutExcess).map((problem) => problem.path)).toContain(
+    expect(validatePublishedRates(withExcess).map((problem) => problem.path)).toContain(
       'accommodations.house-a-camping.guest_pricing.weekday.excess_per_guest',
     )
   })

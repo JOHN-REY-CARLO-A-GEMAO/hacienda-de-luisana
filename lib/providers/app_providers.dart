@@ -5,6 +5,7 @@ import '../models/booking_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
+import '../services/accommodations.dart';
 import '../services/firestore_service.dart';
 import '../services/pin_store.dart';
 import '../services/review_service.dart';
@@ -71,6 +72,22 @@ final guestProfilesStreamProvider = StreamProvider<List<GuestCrmModel>>((ref) {
 final publishedRatesProvider = StreamProvider<Map<String, dynamic>?>((ref) {
   final service = ref.watch(firestoreServiceProvider);
   return service.streamPublishedRates();
+});
+
+/// The canonical Accommodations, read from the published rates document.
+///
+/// Empty until the Admin publishes one. There is no fallback list: the point of
+/// this provider is that the Rates screen, the Rooms screen and every Booking
+/// label all answer "which Accommodations are there?" from the same document, so
+/// a screen with nothing published says so rather than showing the app's own
+/// idea of the estate.
+final accommodationsProvider = Provider<List<Accommodation>>((ref) {
+  final ratesAsync = ref.watch(publishedRatesProvider);
+  return ratesAsync.when(
+    data: (rates) => Accommodation.fromRatesDocument(rates) ?? const [],
+    loading: () => const [],
+    error: (_, __) => const [],
+  );
 });
 
 /// Public payment instructions (`site_config/payment`) managed by the Admin.
@@ -204,7 +221,14 @@ class AnalyticsKpis {
   final double averageLengthOfStay;
   final double conversionRate;
   final Map<int, int> stayDurationBuckets;
-  final String topAccommodation;
+
+  /// The Accommodation id with the most Bookings, or null when there are none.
+  ///
+  /// An id, never a name: the name is resolved from the published rates
+  /// document by whichever screen shows this. Null when there is no Booking to
+  /// rank, so a screen can say "no bookings yet" instead of naming whichever
+  /// property happened to sort first.
+  final String? topAccommodationId;
 
   const AnalyticsKpis({
     required this.confirmedRevenue,
@@ -212,7 +236,7 @@ class AnalyticsKpis {
     required this.averageLengthOfStay,
     required this.conversionRate,
     required this.stayDurationBuckets,
-    required this.topAccommodation,
+    required this.topAccommodationId,
   });
 }
 
@@ -228,7 +252,7 @@ final analyticsKpisProvider = Provider<AnalyticsKpis>((ref) {
           averageLengthOfStay: 0,
           conversionRate: 0,
           stayDurationBuckets: {1: 0, 2: 0, 3: 0, 5: 0},
-          topAccommodation: 'Villa LuisAna',
+          topAccommodationId: null,
         );
       }
 
@@ -272,8 +296,12 @@ final analyticsKpisProvider = Provider<AnalyticsKpis>((ref) {
               100)
           : 0.0;
 
-      String topAcc = 'Villa LuisAna (Main House)';
-      int maxCount = -1;
+      // Ranked on Bookings that actually exist. This used to start at
+      // `maxCount = -1` seeded with a named property, so an Accommodation with
+      // zero bookings always won and "TOP PERFORMING PROPERTY" reported that
+      // name whatever the data said.
+      String? topAcc;
+      var maxCount = 0;
       accCounts.forEach((acc, count) {
         if (count > maxCount) {
           maxCount = count;
@@ -287,7 +315,7 @@ final analyticsKpisProvider = Provider<AnalyticsKpis>((ref) {
         averageLengthOfStay: (alos * 10).roundToDouble() / 10.0,
         conversionRate: (convRate * 10).roundToDouble() / 10.0,
         stayDurationBuckets: buckets,
-        topAccommodation: topAcc,
+        topAccommodationId: maxCount > 0 ? topAcc : null,
       );
     },
     loading: () => const AnalyticsKpis(
@@ -296,7 +324,7 @@ final analyticsKpisProvider = Provider<AnalyticsKpis>((ref) {
       averageLengthOfStay: 0,
       conversionRate: 0,
       stayDurationBuckets: {1: 0, 2: 0, 3: 0, 5: 0},
-      topAccommodation: 'Villa LuisAna',
+      topAccommodationId: null,
     ),
     error: (_, __) => const AnalyticsKpis(
       confirmedRevenue: 0,
@@ -304,7 +332,7 @@ final analyticsKpisProvider = Provider<AnalyticsKpis>((ref) {
       averageLengthOfStay: 0,
       conversionRate: 0,
       stayDurationBuckets: {1: 0, 2: 0, 3: 0, 5: 0},
-      topAccommodation: 'Villa LuisAna',
+      topAccommodationId: null,
     ),
   );
 });

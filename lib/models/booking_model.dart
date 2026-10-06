@@ -75,6 +75,12 @@ class BookingModel {
   final String guestName;
   final String guestPhone;
   final String guestEmail;
+  /// The canonical Accommodation **id**, exactly as the document stores it.
+  ///
+  /// Never a display name. The website writes an id here and `firestore.rules`
+  /// checks it against the published rates document, so a name written into
+  /// this field would match no published rate and could never be booked.
+  /// Resolve a name for display with [accommodationLabel].
   final String accommodation;
   final DateTime checkInDate;
   final DateTime checkOutDate;
@@ -174,6 +180,10 @@ class BookingModel {
         ...raw,
         'id': id,
         'status': rawStatus,
+        // The id, never a name. Falling back to the typed field is now safe because
+        // that field holds the id too — previously it held a display label, so a
+        // mock Booking without this key reached availability as 'The Main House'
+        // and matched no other Booking's dates.
         'accommodation': raw['accommodation'] ?? accommodation,
         'check_in': raw['check_in'] ?? _dateOnly(checkInDate),
         'check_out': raw['check_out'] ?? _dateOnly(checkOutDate),
@@ -193,6 +203,17 @@ class BookingModel {
 
   static String? _str(Object? v) => v == null ? null : v.toString();
   static double? _dbl(Object? v) => v is num ? v.toDouble() : null;
+
+  /// The Accommodation id, verbatim.
+  ///
+  /// An absent or blank value becomes an empty string rather than a stand-in
+  /// Accommodation: [accommodationLabel] turns that into 'Not recorded', so a
+  /// Booking with no Accommodation reads as having none instead of reading as
+  /// the Main House.
+  static String _accommodationId(Object? raw) {
+    if (raw is! String) return '';
+    return raw.trim();
+  }
 
   /// The Admin-facing summary of what is waiting on this Booking.
   String get nextStep {
@@ -246,21 +267,23 @@ class BookingModel {
     }
   }
 
-  /// The website stores the Accommodation *id* (`src/config/site.ts`); the
-  /// Admin reads the name. Unknown values (mock data, 'other') pass through.
-  static String accommodationLabel(String idOrName) {
-    switch (idOrName) {
-      case 'main-house':
-        return 'The Main House';
-      case 'annex':
-        return 'HDL Annex';
-      case 'house-a-camping':
-        return 'A-House';
-      case 'other':
-        return 'Other / Ask Us';
-      default:
-        return idOrName;
-    }
+  /// The display name for an Accommodation id.
+  ///
+  /// Resolved from the published rates document, which is the one place an
+  /// Accommodation is named. This used to be a `switch` here mapping the three
+  /// ids to 'The Main House' / 'HDL Annex' / 'A-House' — a fourth copy of the
+  /// name, next to the website's, next to the published `property_name`, and it
+  /// had drifted: 'HDL Main House' was published while this said 'The Main
+  /// House'.
+  ///
+  /// With no published document, or an id the document does not carry, this
+  /// returns the id itself. Showing `main-house` is honest; showing a
+  /// hardcoded name that might not be the published one is not.
+  static String accommodationLabel(String accommodationId,
+      [Iterable<Accommodation> published = const []]) {
+    final trimmed = accommodationId.trim();
+    if (trimmed.isEmpty) return 'Not recorded';
+    return Accommodation.byId(published, trimmed)?.name ?? trimmed;
   }
 
   factory BookingModel.fromJson(Map<String, dynamic> json, [String? docId]) {
@@ -304,8 +327,11 @@ class BookingModel {
       guestName: json['guestName'] ?? json['guest_name'] ?? 'Guest',
       guestPhone: json['guestPhone'] ?? json['phone'] ?? '',
       guestEmail: json['guestEmail'] ?? json['email'] ?? '',
-      accommodation: accommodationLabel(
-          (json['accommodation'] ?? 'The Main House').toString()),
+      // The stored document says which Accommodation this is, by id. A missing
+      // value is missing, not the Main House: silently attributing an unnamed
+      // Booking to the largest property on the estate is the kind of default
+      // that reaches a refund.
+      accommodation: _accommodationId(json['accommodation']),
       checkInDate: checkIn,
       checkOutDate: checkOut,
       guestCount: (json['guestCount'] ?? json['guests'] ?? 2) as int,

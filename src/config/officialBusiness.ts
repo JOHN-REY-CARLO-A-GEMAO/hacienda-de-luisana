@@ -3,7 +3,8 @@ import type { PaymentInformation } from '../lib/paymentInfoDB'
 
 export const OFFICIAL_ACCOMMODATION_RATES: Record<string, Omit<AccommodationRates, 'security_deposit'>> = {
   'main-house': {
-    property_name: 'HDL Main House',
+    property_name: 'The Main House',
+    available_units: 1,
     rate_unit: 'standard_stay',
     active: true,
     guest_pricing: {
@@ -20,6 +21,7 @@ export const OFFICIAL_ACCOMMODATION_RATES: Record<string, Omit<AccommodationRate
   },
   annex: {
     property_name: 'HDL Annex',
+    available_units: 1,
     rate_unit: 'standard_stay',
     active: true,
     guest_pricing: {
@@ -32,18 +34,19 @@ export const OFFICIAL_ACCOMMODATION_RATES: Record<string, Omit<AccommodationRate
   },
   'house-a-camping': {
     property_name: 'A-House',
+    available_units: 2,
     rate_unit: 'standard_stay',
     active: true,
     guest_pricing: {
       units_per_booking: 1,
-      // Three guests at the base rate; a fourth is accommodated for ₱500. The cap
-      // and the excess rule are published together, because a cap without an
-      // excess rule would charge the base rate for that fourth guest.
-      weekday: { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500 },
-      weekend_holiday: { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500 },
+      // Three is both the included count and the ceiling, so the schedule is a
+      // flat per-unit amount with a cap and no excess rule: there is no fourth
+      // guest it could price.
+      weekday: { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 3 },
+      weekend_holiday: { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 3 },
     },
     down_payment_percent: 50,
-    manual_review_notice: 'One booking represents one A-House (3 guests included, a fourth charged as excess, 4 in total). Contact the Hacienda if more than one unit is needed.',
+    manual_review_notice: 'One booking represents one A-House, for up to 3 guests at the flat per-unit rate. The estate has 2 A-House units; contact the Hacienda if a Booking needs more than one.',
   },
 }
 

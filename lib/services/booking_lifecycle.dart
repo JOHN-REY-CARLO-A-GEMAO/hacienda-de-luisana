@@ -10,6 +10,12 @@
 //
 // No Flutter or Firebase imports: `test/booking_lifecycle_test.dart` runs it
 // with `dart test`-style unit tests.
+
+import 'accommodations.dart';
+
+// Re-exported so callers importing this module keep working: how many Bookings
+// an Accommodation can hold at once, and the canonical Accommodation it reads.
+export 'accommodations.dart' show Accommodation, unitsForAccommodation;
 // ----------------------------------------------------------------------------
 
 import 'dart:math' as math;
@@ -254,16 +260,13 @@ List<Map<String, dynamic>> findDateConflicts(
   return overlapping;
 }
 
-/// How many Bookings an Accommodation can hold at once. Mirrors
-/// `src/config/site.ts`: the Main House is one house; camping has two units.
-int unitsForAccommodation(String accommodationId) {
-  switch (accommodationId) {
-    case 'house-a-camping':
-      return 2;
-    default:
-      return 1;
-  }
-}
+/// How many Bookings an Accommodation can hold at once.
+///
+/// [unitsForAccommodation] in `accommodations.dart` answers this from the
+/// published `available_units`. It used to be a `switch` in this file returning
+/// a hardcoded 2 for camping and 1 for everything else — a second answer to a
+/// question the published document also answered, in a file that could not see
+/// it.
 
 // ----------------------------------------------------------------------------
 // Money — refund settlement and published rates
@@ -430,8 +433,29 @@ class RatesProblem {
   String toString() => path.isEmpty ? message : '$path $message';
 }
 
-/// The Accommodation ids the website lists (`src/config/site.ts`).
-const List<String> kKnownAccommodationIds = ['main-house', 'annex', 'house-a-camping'];
+/// The canonical Accommodation ids.
+///
+/// There is deliberately no list here. It used to be
+/// `['main-house', 'annex', 'house-a-camping']`, a hand-copy of the website's
+/// `src/config/site.ts` that nothing kept in step: the app went on publishing an
+/// A-House the rules refused.
+///
+/// The set is the published rates document's own keys, and
+/// `firestore.rules` `validPublishedAccommodations()` is where the three ids are
+/// now written down — it names them one by one and requires exactly those three,
+/// so a document naming a fourth or dropping the Annex never reaches either app.
+/// Pass `knownAccommodationIds: null` (the default) to validate a document
+/// against its own shape.
+const List<String>? kKnownAccommodationIds = null;
+
+/// The canonical Accommodation ids a published document is checked against.
+///
+/// Null when there is no published document to check against — see
+/// [kKnownAccommodationIds]. Reads `Accommodation.fromRatesDocument`.
+List<String>? knownAccommodationIdsFrom(Object? ratesDocument) {
+  final parsed = Accommodation.fromRatesDocument(ratesDocument);
+  return parsed?.map((a) => a.id).toList();
+}
 
 bool _isValidDate(Object? v) {
   if (v is! String) return false;
@@ -535,6 +559,15 @@ List<RatesProblem> validatePublishedRates(Object? doc,
       if (node.containsKey('nightly_rate')) {
         problems.add(RatesProblem('accommodations.$key.nightly_rate',
             'legacy flat nightly pricing cannot be published for new bookings; use guest_pricing.'));
+      }
+      // Physical inventory: units the estate holds at once. Distinct from
+      // `units_per_booking`, which is how many units one Booking takes — the
+      // A-House publishes 2 and 1.
+      final availableUnits = node['available_units'];
+      if (node.containsKey('available_units') &&
+          (availableUnits is! int || availableUnits < 1)) {
+        problems.add(RatesProblem('accommodations.$key.available_units',
+            'must be a whole number of units, at least 1.'));
       }
       if (node['rate_unit'] != 'standard_stay') {
         problems.add(RatesProblem('accommodations.$key.rate_unit',
@@ -988,10 +1021,14 @@ ActionResult applyAdminAction(
             'The proof covers $claimed but $owed is due — approve only a downpayment that covers it.');
       }
       final accommodation = (booking['accommodation'] ?? '').toString();
+      // The unit count comes from the published rates document, which is where
+      // the Admin states an Accommodation's physical inventory. Absent a
+      // published count this is one unit, which refuses rather than overbooks.
       final conflicts = findDateConflicts(
         booking,
         input.otherBookings,
-        unitsAvailable: unitsForAccommodation(accommodation),
+        unitsAvailable: unitsForAccommodation(
+            accommodation, Accommodation.fromRatesDocument(input.publishedRates) ?? const []),
         now: at,
         excludeId: id,
         forApproval: true,

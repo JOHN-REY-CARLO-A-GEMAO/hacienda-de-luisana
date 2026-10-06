@@ -90,7 +90,7 @@ The machine-readable matrix is `docs/phase0/FINDINGS.json`. A test also checks t
 | F26 | REQUIRES RUNTIME/STAGING | No review indexes checked in | Deployed indexes unknown |
 | F27 | PARTIALLY COVERED | Privacy copy contradicts location sharing; retention helpers do not delete | Source only |
 | F28 | PARTIALLY COVERED | `nights × 12000` default | Source; Dart test BLOCKED |
-| F29 | PARTIALLY COVERED | Room status is separate from capacity | Source; owner decision required |
+| F29 | RESOLVED 2026-10-06 | Room status is separate from capacity | Owner decision: a `rooms` document is a status register keyed to a canonical Accommodation id, never a catalogue. Capacity, occupancy and money live in `site_config/rates`; availability reads `available_units` from there. The rate control the Rooms screen offered was removed because nothing read `rooms.pricePerNight`. |
 | F30 | PARTIALLY COVERED | Unbounded approval query | Source only |
 | F31 | PARTIALLY COVERED | Node 20 vs locked ≥22; local Node 22 build passes | Local only |
 | F32 | REQUIRES RUNTIME/STAGING | Debug release signing | Static configuration |
@@ -198,7 +198,7 @@ There is no staging Firebase or Supabase project in the repository. Supabase has
 | Firestore | `bookings/{id}/activity/{seq}` | `booking_id`, `action`, `from_status`, `to_status`, `actor`, `actor_id`, `at`, `seq`. Append-only. |
 | Firestore | `payment_references/{ref}` | `reference`, `amount`, `status` (`available`/`used`/`void`). Admin only. Status is resettable. The mobile screen uses local rows instead. |
 | Firestore | `site_config/rates`, `site_config/booking`, `site_config/review_summary` | Published rates/policy, lead time, summary. Public read; Admin write. Rates are overwritten in place; history is not kept. |
-| Firestore | `rooms/{id}`, `guest_profiles/{id}` | Room status/price and CRM. Not linked to capacity. |
+| Firestore | `rooms/{id}`, `guest_profiles/{id}` | Accommodation operational status (`accommodationId` + `status`, Admin-writable, status-only) and CRM. Capacity, occupancy and rates are read from `site_config/rates`, not from here. |
 | Firestore | `access_logs/{id}` | `timestamp`, `uid`, `ref_id`, `result`, `reason`. Any signed-in user may write under their own UID. |
 | Firestore | `conversations/{id}`, `/messages/{id}` | Member-scoped chat; retention stamp field. |
 | Firestore | `location_sessions/{convoId}` | Consent metadata plus `stream_secret`; no coordinates. |
@@ -346,7 +346,7 @@ Full reconciliation is in `docs/phase0/CANONICAL_VERIFICATION.md` §6.
 | F19, F33 | BLOCKED | Genuinely cannot run: no firmware/gateway or delivery consumer exists in the repository |
 | F26, F27, F30, F32 | BLOCKED | Deployed or runtime state (indexes, purge, load, release device) |
 | F28 | BLOCKED | Flutter not run |
-| F29 | BLOCKED | Owner decision (room-to-unit mapping) |
+| F29 | RESOLVED 2026-10-06 | Owner decided: a `rooms` document is a status register keyed to a canonical Accommodation id. |
 | F31 | **PARTIALLY CONFIRMED** | Hosted run metadata: Node 20 deploys succeed and run no tests. Gate gap confirmed; **build-break impact NOT reproduced (contradiction recorded)** |
 
 **Totals:** CONFIRMED 0 · PARTIALLY CONFIRMED 3 · NOT REPRODUCED 0 · TEST HARNESS ISSUE 0 · BLOCKED 30.
@@ -395,7 +395,7 @@ No approved requirement for any of these was found in the repository. They remai
 4. Downpayment vs full-payment requirements.
 5. Deposit rules.
 6. Refund rules.
-7. Room-to-bookable-unit mapping.
+7. ~~Room-to-bookable-unit mapping.~~ Resolved: `rooms/{id}` carries `accommodationId` (one of `main-house`, `annex`, `house-a-camping`) and `status` only; the rules refuse any other field.
 8. Guest recovery authority: who may re-attach a booking to a new identity.
 9. Deployment gating policy: whether deploys must wait for tests.
 

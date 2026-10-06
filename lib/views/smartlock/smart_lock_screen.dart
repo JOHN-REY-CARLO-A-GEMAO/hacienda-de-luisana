@@ -24,13 +24,21 @@ class SmartLockScreen extends ConsumerStatefulWidget {
 class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
   String _doorFilter = 'All Doors';
 
-  final List<String> _doors = [
-    'All Doors',
-    'Villa LuisAna Front Door',
-    'Resort Main Entrance Gate',
-    'Casita Suite Entrance',
-    'Swimming Pool Safety Gate',
-  ];
+  /// The door filter is built from the doors the logs actually name.
+  ///
+  /// It used to be a fixed list of four — including 'Villa LuisAna Front Door',
+  /// 'Casita Suite Entrance' and a 'Swimming Pool Safety Gate' that no event in
+  /// the system used, and which named a pool the Hacienda has no documented
+  /// Accommodation for. A filter option for a door that does not exist is a
+  /// claim that it does.
+  List<String> _doorOptions(List<SmartLockEventModel> logs) {
+    final names = <String>{
+      for (final log in logs)
+        if (log.doorName.isNotEmpty && log.doorName != 'Unrecorded door') log.doorName,
+    }.toList()
+      ..sort();
+    return ['All Doors', ...names];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +68,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
 
           final filteredLogs = _doorFilter == 'All Doors'
               ? logs
-              : logs.where((l) => l.doorName.toLowerCase().contains(_doorFilter.toLowerCase().split(' ').first)).toList();
+              : logs.where((l) => l.doorName == _doorFilter).toList();
 
           return ListView(
             padding: const EdgeInsets.only(bottom: 84),
@@ -116,7 +124,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children: _doors.map((d) {
+                    children: _doorOptions(logs).map((d) {
                       final isSelected = _doorFilter == d;
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
@@ -371,7 +379,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     // 1. Record unlock
     final unlockEvent = SmartLockEventModel(
       id: 'lock-sim-${now.millisecondsSinceEpoch}',
-      doorName: 'Villa LuisAna Front Door',
+      doorName: 'Simulated door',
       action: LockAction.unlock,
       method: LockMethod.rfidKeycard,
       triggeredBy: 'Simulator · Demo Swipe',
@@ -406,7 +414,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     Future.delayed(const Duration(seconds: 5), () async {
       final relockEvent = SmartLockEventModel(
         id: 'lock-sim-relock-${DateTime.now().millisecondsSinceEpoch}',
-        doorName: 'Villa LuisAna Front Door',
+        doorName: 'Simulated door',
         action: LockAction.autoRelock,
         method: LockMethod.autoTimer,
         triggeredBy: 'Simulator · Safety Timer',

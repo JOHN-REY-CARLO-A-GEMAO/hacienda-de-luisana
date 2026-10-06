@@ -132,7 +132,7 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 | Stays | `stays/stay_duration_screen.dart` | Stay durations and progress |
 | Analytics | `analytics/analytics_screen.dart` | Revenue, conversion, length of stay, top Accommodation |
 | Smart lock | `smartlock/smart_lock_screen.dart` | `access_logs` audit trail + simulator |
-| Rooms | `rooms/rooms_screen.dart` | Accommodation status and pricing |
+| Accommodation Status | `rooms/rooms_screen.dart` | Operational status per Accommodation, listed from the published rates document |
 | CRM | `crm/guest_crm_screen.dart` | Guest history, VIP badges, notes |
 | Rates | `rates/rates_screen.dart` | Publish `site_config/rates` — weekday/weekend-holiday guest-count standard-stay schedules, holiday dates, Security deposit, fixed 50% down payment and cancellation policy — validated with the same rules the website applies |
 

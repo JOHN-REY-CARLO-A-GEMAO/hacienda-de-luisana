@@ -24,10 +24,11 @@ const published: PublishedRates = {
     },
     'house-a-camping': {
       rate_unit: 'standard_stay', security_deposit: 0, down_payment_percent: 50,
+      available_units: 2,
       guest_pricing: {
         units_per_booking: 1,
-        weekday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
-        weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
+        weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
       },
     },
   },
@@ -128,6 +129,36 @@ describe('validatePublishedRates', () => {
       },
     }, KNOWN)
     expect(problems.map((p) => p.path)).toContain('accommodations.house-a-camping.guest_pricing.weekday')
+  })
+
+  it('rejects an A-House that publishes an excess rule its own cap can never charge', () => {
+    const house = published.accommodations['house-a-camping']
+    const problems = validatePublishedRates({
+      ...published,
+      accommodations: {
+        'house-a-camping': {
+          ...house,
+          guest_pricing: {
+            ...house.guest_pricing!,
+            weekday: { ...house.guest_pricing!.weekday, excess_per_guest: 500 },
+          },
+        },
+      },
+    }, KNOWN)
+    expect(problems.map((p) => p.path)).toContain(
+      'accommodations.house-a-camping.guest_pricing.weekday.excess_per_guest',
+    )
+  })
+
+  it('rejects a physical inventory that is not a whole number of units', () => {
+    const house = published.accommodations['house-a-camping']
+    for (const bad of [0, -1, 1.5]) {
+      const problems = validatePublishedRates({
+        ...published,
+        accommodations: { 'house-a-camping': { ...house, available_units: bad } },
+      }, KNOWN)
+      expect(problems.map((p) => p.path)).toContain('accommodations.house-a-camping.available_units')
+    }
   })
 
   it('rejects flat nightly rates, fixed reservation fees, and any down-payment percentage other than 50', () => {

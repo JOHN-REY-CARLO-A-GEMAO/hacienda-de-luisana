@@ -77,21 +77,30 @@ beforeEach(async () => {
       holiday_dates: [],
       accommodations: {
         'main-house': {
-          property_name: 'Main House', rate_unit: 'standard_stay', active: true,
-          security_deposit: 500, down_payment_percent: 50,
+          property_name: 'The Main House', rate_unit: 'standard_stay', active: true,
+          security_deposit: 500, down_payment_percent: 50, available_units: 1,
           guest_pricing: {
             units_per_booking: 1,
             weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
             weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
           },
         },
-        'house-a-camping': {
-          property_name: 'A-House', rate_unit: 'standard_stay', active: true,
-          security_deposit: 0, down_payment_percent: 50,
+        annex: {
+          property_name: 'HDL Annex', rate_unit: 'standard_stay', active: true,
+          security_deposit: 500, down_payment_percent: 50, available_units: 1,
           guest_pricing: {
             units_per_booking: 1,
-            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
-            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
+            weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 },
+          },
+        },
+        'house-a-camping': {
+          property_name: 'A-House', rate_unit: 'standard_stay', active: true,
+          security_deposit: 0, down_payment_percent: 50, available_units: 2,
+          guest_pricing: {
+            units_per_booking: 1,
+            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
           },
         },
       },
@@ -178,13 +187,11 @@ function quotedBooking(
   const classification = options.holiday || day === 5 || day === 6 ? 'weekend_holiday' : 'weekday'
   const accommodation = options.accommodation ?? 'main-house'
   const isAHouse = accommodation === 'house-a-camping'
-  // A-House has its own included occupancy: three guests inside the base rate,
-  // and a fourth accommodated for a fee. It is the one unit with a hard cap, so
-  // the guest count has to reach the total — quoting a flat ₱1000 would underpay
-  // every stay above three and the rules would refuse it as a tampered total
-  // rather than as a breach of the cap, which is a different assertion entirely.
+  // The A-House has its own included occupancy: three guests at the flat per-unit
+  // rate, and three in total. It is the one unit with a hard cap, so a guest count
+  // above it is refused on the cap rather than priced.
   const total = isAHouse
-    ? 1000 + Math.max(0, guests - 3) * 500
+    ? 1000
     : (classification === 'weekend_holiday' ? 6000 : 5000) + Math.max(0, guests - 10) * 500
   const due = Math.floor(total * 50) / 100
   return bookingDoc({
@@ -993,16 +1000,16 @@ describe('published guest-count prices: independent Firestore verification', () 
     await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'configured-holiday'), quotedBooking(holiday, 10, { holiday: true })))
   })
 
-  it('prices one A-House up to four guests and refuses a fifth', async () => {
+  it('prices one A-House up to three guests and refuses a fourth', async () => {
     const guest = anonymousGuest()
     const date = futureDateForDay(3)
-    // Three guests sit inside the published base rate.
+    // Three is both the included count and the cap, so the stay is the flat
+    // per-unit rate whatever the headcount inside it.
     await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'a-house-three'), quotedBooking(date, 3, { accommodation: 'house-a-camping' })))
-    // The fourth is accommodated for ₱500 on top of it. This is the case the cap
-    // exists for: `max_guests` admits a guest the base rate does not cover, so the
-    // excess rule has to be published and priced or the stay cannot be booked.
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'a-house-four'), quotedBooking(date, 4, { accommodation: 'house-a-camping' })))
-    // A fifth is past the documented cap, whatever the guest claims to have paid.
+    // A fourth is past what the unit can hold. There is no excess rule to price
+    // it, so the Booking is refused whatever the guest claims to have paid.
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'a-house-four'), quotedBooking(date, 4, { accommodation: 'house-a-camping' })))
+    // And so is a fifth.
     await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'a-house-five'), quotedBooking(date, 5, { accommodation: 'house-a-camping' })))
   })
 

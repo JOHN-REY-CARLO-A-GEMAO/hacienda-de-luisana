@@ -93,35 +93,56 @@ const deny = (partial: Parameters<typeof request>[0], store: Store = profiles) =
 // ---------------------------------------------------------------------------
 // Official guest-count pricing is independently recomputed by Firestore rules
 // ---------------------------------------------------------------------------
+
+/**
+ * The canonical published rates document: the three Accommodations the estate
+ * has, their money, and each one's physical inventory.
+ *
+ * Three facts that are easy to confuse and are all present here on purpose:
+ *   `available_units`     units the estate holds at once — the A-House has 2
+ *   `units_per_booking`  units one Booking takes — the A-House takes 1
+ *   `max_guests`          guests that fit in that unit — the A-House takes 3
+ */
+const canonicalRatesDocument: DocData = {
+  version: 'official-v2', effective_date: '2026-10-04', holiday_dates: ['2026-10-27'],
+  accommodations: {
+    'main-house': {
+      rate_unit: 'standard_stay', active: true, security_deposit: 500,
+      down_payment_percent: 50, available_units: 1,
+      guest_pricing: {
+        units_per_booking: 1,
+        weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
+      },
+    },
+    'house-a-camping': {
+      rate_unit: 'standard_stay', active: true, security_deposit: 0,
+      down_payment_percent: 50, available_units: 2,
+      guest_pricing: {
+        units_per_booking: 1,
+        // Three is both the included count and the ceiling, so the A-House is a
+        // flat per-unit amount with a cap and no excess rule: there is no fourth
+        // guest it could price.
+        weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+      },
+    },
+    annex: {
+      rate_unit: 'standard_stay', active: true, security_deposit: 500,
+      down_payment_percent: 50, available_units: 1,
+      guest_pricing: {
+        units_per_booking: 1,
+        weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 },
+      },
+    },
+  },
+}
+
 describe('official guest-count rates', () => {
   const officialStore: Store = {
     ...profiles,
-    'site_config/rates': {
-      version: 'official-v2', effective_date: '2026-10-04', holiday_dates: ['2026-10-27'],
-      accommodations: {
-        'main-house': {
-          rate_unit: 'standard_stay', active: true, security_deposit: 500,
-          down_payment_percent: 50,
-          guest_pricing: {
-            units_per_booking: 1,
-            weekday: { min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500 },
-            weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
-          },
-        },
-        'house-a-camping': {
-          rate_unit: 'standard_stay', active: true, security_deposit: 0,
-          down_payment_percent: 50,
-          guest_pricing: {
-            units_per_booking: 1,
-            // The A-House base rate covers three guests and a fourth is
-            // accommodated for a fee — the one unit with a hard physical limit,
-            // so it publishes `max_guests` alongside an excess rule.
-            weekday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
-            weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 4, base_rate: 1000, excess_per_guest: 500 },
-          },
-        },
-      },
-    },
+    'site_config/rates': structuredClone(canonicalRatesDocument),
   }
 
   const officialBooking = (overrides: DocData = {}) => {
@@ -264,26 +285,22 @@ describe('official guest-count rates', () => {
     }, combined)).toBe(true)
   })
 
-  it('validates one A-House unit at up to four guests, the fourth charged as excess', () => {
-    // Three guests at the base rate.
+  it('validates one A-House unit for up to three guests at a flat per-unit rate', () => {
+    // Three guests at the base rate, which is also the cap.
     expect(allow({ path: 'bookings/official-a-house', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
       accommodation: 'house-a-camping', guests: 3, rate_amount: 1000, rate_classification: 'weekday',
       rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
     }) }, officialStore)).toBe(true)
-    // The fourth guest is accommodated for ₱500 on top of the base rate.
-    expect(allow({ path: 'bookings/official-a-house-fourth', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
+    // A fourth is past the documented limit: the unit cannot hold it, so the
+    // Booking is refused whatever the guest claims to have paid for it.
+    expect(deny({ path: 'bookings/official-a-house-fourth', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
       accommodation: 'house-a-camping', guests: 4, rate_amount: 1500, rate_classification: 'weekday',
       rate_unit: 'standard_stay', stay_total: 1500, amount_due: 750, security_deposit: 0, balance_due: 750,
     }) }, officialStore)).toBe(true)
-    // A fifth is past the documented cap, whatever the guest claims to have paid.
+    // Nor can a fifth.
     expect(deny({ path: 'bookings/official-a-house-over-cap', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
       accommodation: 'house-a-camping', guests: 5, rate_amount: 2000, rate_classification: 'weekday',
       rate_unit: 'standard_stay', stay_total: 2000, amount_due: 1000, security_deposit: 0, balance_due: 1000,
-    }) }, officialStore)).toBe(true)
-    // And the fourth cannot be had for free by under-reporting the total.
-    expect(deny({ path: 'bookings/official-a-house-fourth-underpaid', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
-      accommodation: 'house-a-camping', guests: 4, rate_amount: 1000, rate_classification: 'weekday',
-      rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
     }) }, officialStore)).toBe(true)
   })
 
@@ -300,7 +317,7 @@ describe('official guest-count rates', () => {
   // smallest one too. One `it` per drift, so a weakened rule names the drift it
   // let through instead of only the first.
   describe('an A-House schedule that drifts from the documented occupancy', () => {
-    const documented = { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500 }
+    const documented = { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 3 }
 
     // The smallest stay the A-House sells: three guests, no pets, no extension,
     // weekday. Nothing about it is contentious, so a refusal can only come from
@@ -333,22 +350,31 @@ describe('official guest-count rates', () => {
       expect(stay('ahouse-documented')).toBe(true)
     })
 
-    // The cap pulled down onto the base occupancy. The fourth guest would then be
-    // refused, and so is the third, because the shape is not the documented one.
-    it('refuses a cap pulled down onto the base occupancy', () => {
-      expect(refuse('ahouse-cap-lowered', { ...documented, max_guests: 3 })).toBe(true)
+    // The cap pulled down below the included occupancy, so the third guest would
+    // be refused by `scheduledRate`. The shape is not the documented one, so the
+    // whole schedule is.
+    it('refuses a cap pulled below the included occupancy', () => {
+      expect(refuse('ahouse-cap-lowered', { ...documented, max_guests: 2 })).toBe(true)
     })
 
-    // The excess rule dropped while the cap stands: a cap admitting a guest the
-    // base rate does not cover, which is the pair `validAHouseSchedule` exists to
-    // refuse, and which would price that fourth guest for nothing.
-    it('refuses a cap left without an excess rule', () => {
-      expect(refuse('ahouse-no-excess', { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4 })).toBe(true)
+    // The cap stretched to admit a fourth guest the unit cannot hold, together
+    // with the excess rule that would price it. This is the pair
+    // `validAHouseSchedule` exists to refuse.
+    it('refuses a cap and excess rule that admit a fourth guest', () => {
+      expect(refuse('ahouse-fourth-allowed', {
+        min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500,
+      })).toBe(true)
+    })
+
+    // An excess rule on a cap that already equals the included count: it prices a
+    // guest the unit cannot take, so nothing can ever charge it.
+    it('refuses an excess rule on the flat per-unit rate', () => {
+      expect(refuse('ahouse-excess-on-flat', { ...documented, excess_per_guest: 500 })).toBe(true)
     })
 
     // The base occupancy stretched up to the cap: the cap stops meaning anything
     // and the fourth guest becomes free rather than ₱500.
-    it('refuses a base occupancy stretched up to the cap', () => {
+    it('refuses a base occupancy stretched past three', () => {
       expect(refuse('ahouse-base-stretched', { ...documented, base_max_guests: 4 })).toBe(true)
     })
 
@@ -356,7 +382,7 @@ describe('official guest-count rates', () => {
     // booking, so both are checked: a weekday stay is refused over a drifted
     // weekend schedule, which is how a half-finished console edit hides.
     it('refuses a stay when only the other schedule has drifted', () => {
-      expect(refuse('ahouse-weekend-behind', { ...documented, max_guests: 3 }, 'weekend_holiday')).toBe(true)
+      expect(refuse('ahouse-weekend-behind', { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4 }, 'weekend_holiday')).toBe(true)
     })
   })
 
@@ -2041,13 +2067,85 @@ describe('collections with no rule', () => {
   it('keeps public read on the site content, and only the Admin writing it', () => {
     expect(allow({ path: 'gallery/img-1', method: 'get', auth: null, resourceData: { url: 'x' } })).toBe(true)
     expect(allow({ path: 'site_config/rates', method: 'get', auth: null, resourceData: { rates: {} } })).toBe(true)
-    expect(allow({ path: 'site_config/rates', method: 'update', auth: allowlistedAdmin(), resourceData: { rates: {} }, requestData: { rates: { v: 2 } } })).toBe(true)
+    // Publishing rates is a statement of which Accommodations exist, so it has to
+    // be the canonical three and nothing else.
+    expect(allow({
+      path: 'site_config/rates', method: 'update', auth: allowlistedAdmin(),
+      resourceData: canonicalRatesDocument, requestData: canonicalRatesDocument,
+    })).toBe(true)
     expect(deny({ path: 'site_config/rates', method: 'update', auth: anonymousGuest(), resourceData: { rates: {} }, requestData: { rates: { v: 2 } } })).toBe(true)
   })
 
-  it('keeps rooms and guest_profiles to the Admin', () => {
+  it('refuses a published rates document that invents or drops an Accommodation', () => {
+    const rates = () => structuredClone(canonicalRatesDocument)
+    const publish = (requestData: DocData) =>
+      deny({
+        path: 'site_config/rates', method: 'update', auth: allowlistedAdmin(),
+        resourceData: canonicalRatesDocument, requestData,
+      })
+
+    // A fourth property. The estate has three, and an invented one is not a
+    // figure either app may publish.
+    const invented = rates()
+    ;(invented.accommodations as DocData)['poolside-casita-b'] = {
+      rate_unit: 'standard_stay', active: true, security_deposit: 0, down_payment_percent: 50,
+      guest_pricing: {
+        units_per_booking: 1,
+        weekday: { min_guests: 1, base_max_guests: 2, base_rate: 7500, excess_per_guest: 500 },
+        weekend_holiday: { min_guests: 1, base_max_guests: 2, base_rate: 7500, excess_per_guest: 500 },
+      },
+    }
+    expect(publish(invented)).toBe(true)
+
+    // Silently dropping the Annex would leave the website quoting an Accommodation
+    // no published rate exists for.
+    const dropped = rates()
+    delete (dropped.accommodations as DocData).annex
+    expect(publish(dropped)).toBe(true)
+  })
+
+  it('refuses a physical inventory that is not a whole number of units', () => {
+    const rates = structuredClone(canonicalRatesDocument)
+    ;(rates.accommodations as DocData)['house-a-camping'].available_units = 0
+    expect(deny({
+      path: 'site_config/rates', method: 'update', auth: allowlistedAdmin(),
+      resourceData: canonicalRatesDocument, requestData: rates,
+    })).toBe(true)
+  })
+
+  it('keeps rooms to the Admin, and lets it record only a status', () => {
     expect(allow({ path: 'rooms/1', method: 'get', auth: allowlistedAdmin(), resourceData: { name: 'Main House' } })).toBe(true)
     expect(deny({ path: 'rooms/1', method: 'get', auth: anonymousGuest(), resourceData: { name: 'Main House' } })).toBe(true)
     expect(deny({ path: 'guest_profiles/1', method: 'create', auth: anonymousGuest(), requestData: { name: 'x' } })).toBe(true)
+
+    // The one thing the register exists for.
+    expect(allow({
+      path: 'rooms/1', method: 'update', auth: allowlistedAdmin(),
+      resourceData: { status: 'available' }, requestData: { status: 'maintenance' },
+    })).toBe(true)
+
+    // A price typed here changed no Booking: nothing on the booking or website
+    // path reads `rooms`, so the write is refused rather than believed.
+    expect(deny({
+      path: 'rooms/1', method: 'update', auth: allowlistedAdmin(),
+      resourceData: { status: 'available', pricePerNight: 16000 },
+      requestData: { status: 'available', pricePerNight: 7500 },
+    })).toBe(true)
+
+    // As would a name, a capacity or an invented accommodation reference.
+    for (const invented of [
+      { status: 'available', name: 'Poolside Casita B' },
+      { status: 'available', capacity: 6 },
+      { status: 'available', accommodationId: 'poolside-casita-b' },
+    ]) {
+      expect(deny({
+        path: 'rooms/1', method: 'update', auth: allowlistedAdmin(),
+        resourceData: { status: 'available' }, requestData: invented,
+      })).toBe(true)
+    }
+
+    // And it cannot grow or be pruned into the list of Accommodations.
+    expect(deny({ path: 'rooms/new', method: 'create', auth: allowlistedAdmin(), requestData: { status: 'available', accommodationId: 'annex' } })).toBe(true)
+    expect(deny({ path: 'rooms/1', method: 'delete', auth: allowlistedAdmin() })).toBe(true)
   })
 })

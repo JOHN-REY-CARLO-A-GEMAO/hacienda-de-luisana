@@ -25,6 +25,82 @@ Map<String, dynamic> booking({
     };
 
 final now = DateTime.utc(2026, 10, 1, 12);
+
+/// A published rates document whose A-House holds [units] units.
+///
+/// The unit count the approval re-check uses is read from here, not from a list
+/// in the app: this is the whole reason the A-House's inventory can be stated
+/// once and mean the same thing to both apps and the rules.
+Map<String, dynamic> ratesWithAHouseUnits(int units) => <String, dynamic>{
+      'version': 'test-v1',
+      'effective_date': '2026-09-01',
+      'holiday_dates': <String>[],
+      'accommodations': <String, dynamic>{
+        'main-house': <String, dynamic>{
+          'rate_unit': 'standard_stay',
+          'available_units': 1,
+          'security_deposit': 500,
+          'down_payment_percent': 50,
+          'guest_pricing': <String, dynamic>{
+            'units_per_booking': 1,
+            'weekday': <String, dynamic>{
+              'min_guests': 1,
+              'base_max_guests': 10,
+              'base_rate': 5000,
+              'excess_per_guest': 500,
+            },
+            'weekend_holiday': <String, dynamic>{
+              'min_guests': 1,
+              'base_max_guests': 10,
+              'base_rate': 6000,
+              'excess_per_guest': 500,
+            },
+          },
+        },
+        'annex': <String, dynamic>{
+          'rate_unit': 'standard_stay',
+          'available_units': 1,
+          'security_deposit': 500,
+          'down_payment_percent': 50,
+          'guest_pricing': <String, dynamic>{
+            'units_per_booking': 1,
+            'weekday': <String, dynamic>{
+              'min_guests': 1,
+              'base_max_guests': 6,
+              'base_rate': 4000,
+              'excess_per_guest': 500,
+            },
+            'weekend_holiday': <String, dynamic>{
+              'min_guests': 1,
+              'base_max_guests': 6,
+              'base_rate': 5000,
+              'excess_per_guest': 500,
+            },
+          },
+        },
+        'house-a-camping': <String, dynamic>{
+          'rate_unit': 'standard_stay',
+          'available_units': units,
+          'security_deposit': 0,
+          'down_payment_percent': 50,
+          'guest_pricing': <String, dynamic>{
+            'units_per_booking': 1,
+            'weekday': <String, dynamic>{
+              'min_guests': 1,
+              'base_max_guests': 3,
+              'max_guests': 3,
+              'base_rate': 1000,
+            },
+            'weekend_holiday': <String, dynamic>{
+              'min_guests': 1,
+              'base_max_guests': 3,
+              'max_guests': 3,
+              'base_rate': 1000,
+            },
+          },
+        },
+      },
+    };
 const admin = Actor.admin('admin-uid', 'The Admin');
 const proof = {
   'payment_proof_url': 'payments/g/proof.jpg',
@@ -138,16 +214,55 @@ void main() {
       expect(r.ok, isTrue);
     });
 
-    test('camping has two units', () {
+    test('the A-House publishes two units, so one other Booking does not fill it', () {
       final other = booking(id: 'bk-2', status: 'Reserved', accommodation: 'house-a-camping');
       final r = applyAdminAction(
         booking(accommodation: 'house-a-camping', extra: proof),
         AdminAction.approve,
         admin,
-        input: ActionInput(otherBookings: [other]),
+        input: ActionInput(
+          otherBookings: [other],
+          publishedRates: ratesWithAHouseUnits(2),
+        ),
         now: now,
       );
       expect(r.ok, isTrue);
+    });
+
+    test('and a second overlapping Booking fills it, because it is the second of two', () {
+      final rivals = [
+        booking(id: 'bk-2', status: 'Reserved', accommodation: 'house-a-camping'),
+        booking(id: 'bk-3', status: 'Reserved', accommodation: 'house-a-camping'),
+      ];
+      final r = applyAdminAction(
+        booking(accommodation: 'house-a-camping', extra: proof),
+        AdminAction.approve,
+        admin,
+        input: ActionInput(
+          otherBookings: rivals,
+          publishedRates: ratesWithAHouseUnits(2),
+        ),
+        now: now,
+      );
+      expect(r.ok, isFalse);
+      expect(r.reason, contains('already held'));
+    });
+
+    test('one unit unless the document publishes more, so an absent count cannot overbook', () {
+      // With no published `available_units` the count is one, not "as many as
+      // turn up". A single committed rival is then enough to refuse.
+      final r = applyAdminAction(
+        booking(accommodation: 'house-a-camping', extra: proof),
+        AdminAction.approve,
+        admin,
+        input: ActionInput(
+          otherBookings: [
+            booking(id: 'bk-2', status: 'Reserved', accommodation: 'house-a-camping'),
+          ],
+        ),
+        now: now,
+      );
+      expect(r.ok, isFalse);
     });
 
     test('refuses once the Date hold ran out', () {
@@ -392,7 +507,7 @@ void main() {
       expect(r.patch['refund_total'], 6750);
     });
 
-    test('MarkRefunded needs an initiated refund', () => {
+    test('MarkRefunded needs an initiated refund', () {
       expect(applyAdminAction(booking(status: 'Cancelled'), AdminAction.markRefunded, admin, now: now).ok, isFalse);
     });
   });

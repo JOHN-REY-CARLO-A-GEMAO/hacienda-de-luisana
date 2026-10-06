@@ -172,16 +172,14 @@ service cloud.firestore {
         : -1;
     }
 
-    // The documented A-House occupancy: three guests at the base rate, four in
-    // total, with the fourth charged as excess. It is the one unit with a hard
-    // physical limit, so it alone may publish `max_guests` — and it publishes an
-    // excess rule beside that cap, because the cap admits a guest the base rate
-    // does not cover.
+    // The documented A-House occupancy: three guests, at the base rate, and
+    // three in total. It is the one unit with a hard physical limit, so it alone
+    // may publish `max_guests` — and because that cap equals its included count,
+    // it publishes no excess rule: there is no fourth guest it could price.
     function validAHouseSchedule(schedule) {
       return schedule.get('base_max_guests', 0) == 3
-        && schedule.get('max_guests', 0) == 4
-        && schedule.get('excess_per_guest', -1) is number
-        && schedule.excess_per_guest >= 0;
+        && schedule.get('max_guests', 0) == 3
+        && !schedule.keys().hasAny(['excess_per_guest']);
     }
 
     function validGuestSchedule(schedule, isAHouse) {
@@ -272,6 +270,69 @@ service cloud.firestore {
       let pets = int(petFee(published, data) * 100 + 0.5) / 100;
       let hours = int(lateCheckoutFee(published, data) * 100 + 0.5) / 100;
       return int((base + pets + hours) * 100 + 0.5) / 100;
+    }
+
+    // ------------------------------------------------------------------
+    // The canonical Accommodation set
+    //
+    // One Accommodation identity, shared by the website and the Admin app, is
+    // these three ids and no others. The rule layer is where that list lives
+    // because the rules are the enforcement: neither app may invent a name, a
+    // capacity or a price for an Accommodation, and neither may publish a
+    // fourth. A Booking that names anything else fails `hasConfiguredRate`
+    // below, so this list and the Booking write agree by construction.
+    //
+    // `Villa LuisAna` is the estate, not an Accommodation — the Hacienda's own
+    // name appears in no member of this list.
+    // ------------------------------------------------------------------
+
+    function isCanonicalAccommodation(id) {
+      return id in ['main-house', 'annex', 'house-a-camping'];
+    }
+
+    // Physical inventory: how many units of this Accommodation exist at once.
+    // Distinct from `guest_pricing.units_per_booking`, which is how many units
+    // one Booking takes. The A-House publishes 2 units and 1 unit per Booking.
+    function validAvailableUnits(node) {
+      return !node.keys().hasAny(['available_units'])
+        || (node.available_units is int && node.available_units >= 1);
+    }
+
+    function validPublishedAccommodation(id, node) {
+      return isCanonicalAccommodation(id)
+        && node is map
+        && validAvailableUnits(node)
+        && node.get('rate_unit', '') == 'standard_stay'
+        && !node.keys().hasAny(['nightly_rate', 'reservation_fee_amount'])
+        && node.get('security_deposit', -1) is number
+        && node.security_deposit >= 0
+        && node.get('down_payment_percent', 0) == 50
+        && node.get('guest_pricing', {}) is map
+        && node.guest_pricing.get('units_per_booking', 1) == 1
+        && validGuestSchedule(node.guest_pricing.get('weekday', {}), id == 'house-a-camping')
+        && validGuestSchedule(node.guest_pricing.get('weekend_holiday', {}), id == 'house-a-camping');
+    }
+
+    // Every Accommodation in a published document is canonical, and every
+    // canonical Accommodation is present, so a document cannot quietly drop the
+    // Annex and leave the website quoting it, nor grow a fourth.
+    //
+    // The three ids are named one by one rather than folded into a
+    // `keys().all(id, ...)` over the map: this list is the whole point of the
+    // function, so it should be readable, and a lambda over the document's own
+    // keys would read the answer out of the very map it is meant to check.
+    function validPublishedAccommodations(accommodations) {
+      return accommodations is map
+        && accommodations.size() == 3
+        && validPublishedAccommodation('main-house', accommodations.get('main-house', null))
+        && validPublishedAccommodation('annex', accommodations.get('annex', null))
+        && validPublishedAccommodation('house-a-camping', accommodations.get('house-a-camping', null));
+    }
+
+    function validRatesDocument() {
+      let data = request.resource.data;
+      return data.get('accommodations', null) != null
+        && validPublishedAccommodations(data.accommodations);
     }
 
     function validAuthoritativeMoney(data) {
@@ -866,11 +927,19 @@ service cloud.firestore {
 
     // Site config — including the published rates at site_config/rates that
     // the app's Rates screen writes (public read, Admin write).
+    //
+    // The rates document carries the canonical Accommodation identities as its
+    // own keys, so a publication is also the statement of which Accommodations
+    // exist. The rules refuse a document that names anything outside the
+    // canonical three, that drops one of them, or that prices a unit's physical
+    // inventory nonsensically. That is the one place the id list is written down,
+    // so the website, the Admin app and this file cannot disagree about it.
     match /site_config/{docId} {
       allow read: if true;
       allow write: if isAdmin()
         && (docId != 'booking' || request.resource == null || validBookingPolicy())
-        && (docId != 'payment' || request.resource == null || validPaymentConfig());
+        && (docId != 'payment' || request.resource == null || validPaymentConfig())
+        && (docId != 'rates' || request.resource == null || validRatesDocument());
     }
 
     // The retired tracking module's collection (ADR-0009). Superseded for
@@ -1236,11 +1305,24 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Rooms + guest CRM (operations reference data, seeded by the Admin).
-    // No public writer: the Admin reads and writes. Until seeded, the app
-    // shows its local reference copy.
+    // Operations status per Accommodation. Admin read and write, no public reader.
+    //
+    // `rooms` is a *status register*, not a catalogue. It may record whether an
+    // Accommodation is available, occupied or under maintenance, and nothing
+    // else: a name, a capacity or a price here would be an Accommodation fact
+    // invented outside the canonical rates document, and nothing on the website
+    // or in the booking lifecycle ever read such a value — which is why a rate
+    // typed here once looked authoritative and changed nothing.
+    //
+    // `accommodationId` is a reference to one of the canonical ids, never free
+    // text. It is optional so that a status register seeded before the canonical
+    // ids existed keeps working; a document carrying one must carry a real id.
     match /rooms/{roomId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in ['available', 'occupied', 'maintenance'];
+      allow create, delete: if false;
     }
 
     match /guest_profiles/{profileId} {

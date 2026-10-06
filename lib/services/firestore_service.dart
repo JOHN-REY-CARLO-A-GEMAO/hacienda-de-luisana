@@ -552,24 +552,21 @@ class FirestoreService implements PinSecurityRemote {
   /// Confirm-tier in the gate (ADR-0015) — the confirm modal is the call
   /// site's job; the service's job is to say what went wrong instead of
   /// swallowing it, and the call sites await this and surface it.
-  Future<String?> updateRoomStatus(String roomId, RoomStatus status,
-      [double? newPrice]) async {
+  Future<String?> updateRoomStatus(String roomId, RoomStatus status) async {
     final index = _rooms.indexWhere((r) => r.id == roomId);
     if (index != -1) {
-      _rooms[index] = _rooms[index].copyWith(
-        status: status,
-        pricePerNight: newPrice ?? _rooms[index].pricePerNight,
-      );
+      _rooms[index] = _rooms[index].copyWith(status: status);
       _roomsController.add(List.unmodifiable(_rooms));
     }
 
     if (_isFirebaseReady && _firestore != null) {
       try {
-        final Map<String, dynamic> data = {'status': status.name};
-        if (newPrice != null) data['pricePerNight'] = newPrice;
-        await _firestore!.collection(AppConstants.colRooms).doc(roomId).update(data);
+        await _firestore!
+            .collection(AppConstants.colRooms)
+            .doc(roomId)
+            .update({'status': status.name});
       } catch (e) {
-        return 'Could not save the room (${e.toString().split('\n').first}). '
+        return 'Could not save the status (${e.toString().split('\n').first}). '
             'It shows the new status here only.';
       }
     }

@@ -568,7 +568,11 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _kv('Accommodation', booking.accommodation),
+          // The stored id, named from the published rates document.
+          _kv(
+              'Accommodation',
+              BookingModel.accommodationLabel(
+                  booking.accommodation, ref.watch(accommodationsProvider))),
           _kv('Dates',
               '${DateFormatter.formatStayRange(booking.checkInDate, booking.checkOutDate)} · ${DateFormatter.formatStayDuration(booking.checkInDate, booking.checkOutDate)}'),
           _kv('Guests', '${booking.guestCount}'),

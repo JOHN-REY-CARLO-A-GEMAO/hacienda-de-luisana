@@ -152,7 +152,10 @@ class SmartLockEventModel {
 
     return SmartLockEventModel(
       id: docId ?? json['id'] ?? 'log-${DateTime.now().millisecondsSinceEpoch}',
-      doorName: json['doorName'] ?? json['door_name'] ?? 'Villa LuisAna Front Door',
+      // An event with no door recorded says so. Defaulting to a named door invented
+      // one the lock never opened, and the Access log is the record of which
+      // doors a Credential actually opened.
+      doorName: _doorName(json),
       action: action,
       method: LockMethodX.fromString((json['method'] ?? 'mobile_ble').toString()),
       triggeredBy: json['triggeredBy'] ?? json['guest_name'] ?? 'Guest',
@@ -189,5 +192,16 @@ class SmartLockEventModel {
       // historical shape stays the historical shape.
       if (simulated) 'simulated': true,
     };
+  }
+
+  /// The door this event names, or an explicit "not recorded".
+  ///
+  /// A door is an operational fact, not something to infer. This used to fall
+  /// back to a named door that no lock in the system opens.
+  static String _doorName(Map<String, dynamic> json) {
+    final raw = json['doorName'] ?? json['door_name'];
+    if (raw is! String) return 'Unrecorded door';
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? 'Unrecorded door' : trimmed;
   }
 }

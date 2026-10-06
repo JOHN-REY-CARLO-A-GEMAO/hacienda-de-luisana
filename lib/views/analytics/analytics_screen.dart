@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_constants.dart';
+import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/staggered_entrance.dart';
 
@@ -225,17 +226,28 @@ class AnalyticsScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'TOP PERFORMING PROPERTY',
+                          'MOST BOOKED ACCOMMODATION',
                           style: GoogleFonts.inter(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          kpis.topAccommodation,
-                          style: GoogleFonts.cinzel(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark),
+                          // Ranked on Bookings that exist. With none there is no
+                          // top Accommodation, and the card says so rather than
+                          // naming a property.
+                          kpis.topAccommodationId == null
+                              ? 'No bookings yet'
+                              : BookingModel.accommodationLabel(
+                                  kpis.topAccommodationId!, ref.watch(accommodationsProvider)),
+                          style: GoogleFonts.cinzel(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: kpis.topAccommodationId == null
+                                  ? AppColors.textMuted
+                                  : AppColors.textDark),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Highest occupancy & direct guest inquiry rate',
+                          'Most Bookings among current Accommodations',
                           style: GoogleFonts.inter(fontSize: 11, color: AppColors.statusSuccess),
                         ),
                       ],

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_constants.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
+import '../../services/accommodations.dart';
 import '../../services/booking_lifecycle.dart';
 import '../security/security_pin_sheet.dart';
 import '../../tutorial/tutorial_keys.dart';
@@ -28,10 +29,15 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
   final _holidayDates = TextEditingController();
   final _refundPercent = TextEditingController();
   final _depositRefundPercent = TextEditingController(text: '100');
-  final Map<String, _AccommodationFields> _acc = {
-    for (final id in kKnownAccommodationIds)
-      id: _AccommodationFields(BookingModel.accommodationLabel(id)),
-  };
+
+  /// One editable card per Accommodation.
+  ///
+  /// Populated from the published document — its keys are the Accommodations,
+  /// their `property_name` the names — with the canonical ids used only to draw
+  /// the cards for a first publication. It used to be built from
+  /// `kKnownAccommodationIds` with `accommodationLabel()`, which is a fourth copy
+  /// of both the id list and the names, and it seeded the numbers too.
+  final Map<String, _AccommodationFields> _acc = {};
   final List<_TierFields> _tiers = [];
   final _paymentMethod = TextEditingController();
   final _paymentRecipient = TextEditingController();
@@ -77,27 +83,38 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     super.dispose();
   }
 
-  void _seedOfficialSchedules() {
-    void official(String id, Map<String, num> weekday, Map<String, num> weekend) {
-      final f = _acc[id]!;
-      f.weekday.seed(weekday);
-      f.weekend.seed(weekend);
+  /// Draw one card per Accommodation, from the published document when there is
+  /// one.
+  ///
+  /// With no published document there are no figures to carry over, so the cards
+  /// come up empty and the screen says so. This used to call
+  /// `_seedOfficialSchedules()`, which typed the whole rate card into the app —
+  /// ₱5,000/₱6,000 for the Main House, ₱4,000/₱5,000 for the Annex, ₱1,000 for the
+  /// A-House — as the starting point for every publish. Those were a hand-copy of
+  /// the rate card living in a UI file, and the A-House one (`max_guests: 3`
+  /// with no excess rule) is the shape `firestore.rules` refused, so an Admin
+  /// publishing it could not have.
+  void _ensureAccommodationCards(Map<String, dynamic>? doc) {
+    if (_acc.isNotEmpty) return;
+    final published = Accommodation.fromRatesDocument(doc);
+    for (final id in kCanonicalAccommodationIds) {
+      final existing = published == null ? null : Accommodation.byId(published, id);
+      _acc[id] = _AccommodationFields(
+        // The published name when there is one; otherwise the id, left for the
+        // Admin to type. Never a name invented here.
+        existing?.name ?? id,
+        availableUnits: existing?.availableUnits ?? 1,
+      );
+      if (existing != null) {
+        _acc[id]!.unitsPerBooking = existing.unitsPerBooking;
+      }
     }
-    official('main-house',
-      {'base_max_guests': 10, 'base_rate': 5000, 'excess_per_guest': 500},
-      {'base_max_guests': 10, 'base_rate': 6000, 'excess_per_guest': 500});
-    official('annex',
-      {'base_max_guests': 6, 'base_rate': 4000, 'excess_per_guest': 500},
-      {'base_max_guests': 6, 'base_rate': 5000, 'excess_per_guest': 500});
-    official('house-a-camping',
-      {'base_max_guests': 3, 'base_rate': 1000, 'max_guests': 3},
-      {'base_max_guests': 3, 'base_rate': 1000, 'max_guests': 3});
   }
 
   void _seedFrom(Map<String, dynamic>? doc) {
     if (_seeded) return;
     _seeded = true;
-    _seedOfficialSchedules();
+    _ensureAccommodationCards(doc);
     if (doc == null) {
       final today = DateTime.now().toIso8601String().substring(0, 10);
       _version.text = 'official-v2';
@@ -116,7 +133,15 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
       acc.forEach((id, node) {
         final f = _acc['$id'];
         if (f == null || node is! Map) return;
-        f.name.text = '${node['property_name'] ?? BookingModel.accommodationLabel('$id')}';
+        f.name.text = '${node['property_name'] ?? id}';
+        // Physical inventory and units-per-booking are published facts, carried
+        // through so a re-publish cannot quietly change either.
+        final units = node['available_units'];
+        if (units is int && units >= 1) f.availableUnits = units;
+        final gpUnits = (node['guest_pricing'] is Map)
+            ? (node['guest_pricing'] as Map)['units_per_booking']
+            : null;
+        if (gpUnits is int && gpUnits >= 1) f.unitsPerBooking = gpUnits;
         f.active = node['active'] != false;
         f.deposit.text = _numText(node['security_deposit']);
         if (node['manual_review_notice'] is String) {
@@ -188,8 +213,13 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
         'property_name': f.name.text.trim(),
         'rate_unit': 'standard_stay',
         'active': f.active,
+        // Physical inventory, carried over from whatever is published so a
+        // re-publish does not silently change how many units the estate has.
+        // A fresh Accommodation defaults to one, which is the safe reading:
+        // an Accommodation nobody stated a count for is one unit.
+        'available_units': f.availableUnits,
         'guest_pricing': {
-          'units_per_booking': 1,
+          'units_per_booking': f.unitsPerBooking,
           'weekday': f.weekday.toMap(),
           'weekend_holiday': f.weekend.toMap(),
         },
@@ -228,7 +258,10 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
 
   Future<void> _publish() async {
     final doc = _buildDoc();
-    final problems = [...validatePublishedRates(doc, kKnownAccommodationIds)];
+    // No id whitelist is passed: `firestore.rules` `isCanonicalAccommodation()` is
+    // where the canonical set is enforced, and it refuses a publication naming
+    // anything else. This screen validates the document's own shape.
+    final problems = [...validatePublishedRates(doc)];
     if (doc['accommodations'] is Map &&
         (doc['accommodations'] as Map).isEmpty) {
       problems.add(const RatesProblem(
@@ -613,7 +646,12 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
           Row(
             children: [
               Expanded(
-                child: Text(BookingModel.accommodationLabel(id),
+                // The Accommodation's published name — the same `property_name`
+                // the website shows and the Booking labels resolve. Not the raw
+                // id: `accommodationLabel` with no published document returns the
+                // id, which would head every card "main-house".
+                child: Text(
+                    f.name.text.trim().isEmpty ? id : f.name.text.trim(),
                     style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold)),
               ),
               Switch.adaptive(
@@ -687,9 +725,23 @@ class _AccommodationFields {
   final weekend = _ScheduleFields();
   String? manualReviewNotice;
   bool active = true;
-  _AccommodationFields(String initialName) {
+
+  /// Units of this Accommodation the estate holds at once. Physical inventory,
+  /// and a different fact from [unitsPerBooking] below.
+  ///
+  /// One unless stated otherwise. Carried over from whatever is published so a
+  /// re-publish cannot quietly change how many units the estate has — this is
+  /// the A-House's 2.
+  int availableUnits = 1;
+
+  /// Units one Booking takes. One until quantity booking is defined.
+  int unitsPerBooking = 1;
+
+  _AccommodationFields(String initialName, {int availableUnits = 1}) {
     name.text = initialName;
+    this.availableUnits = availableUnits < 1 ? 1 : availableUnits;
   }
+
   void dispose() {
     name.dispose();
     deposit.dispose();

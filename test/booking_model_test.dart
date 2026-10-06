@@ -5,6 +5,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hacienda_de_luisana/models/booking_model.dart';
+import 'package:hacienda_de_luisana/services/accommodations.dart';
 
 void main() {
   final webDoc = <String, dynamic>{
@@ -28,7 +29,9 @@ void main() {
     final b = BookingModel.fromJson(webDoc, 'doc-1');
     expect(b.id, 'doc-1');
     expect(b.guestName, 'Ana Santos');
-    expect(b.accommodation, 'The Main House');
+    // The stored id, not a name. A display name here would match no published
+    // rate: `firestore.rules` checks this field against the rates document's keys.
+    expect(b.accommodation, 'main-house');
     expect(b.rawStatus, 'Pending');
     expect(b.status, BookingStatus.pending);
     expect(b.refId, 'HDL-2026-0001');
@@ -37,6 +40,82 @@ void main() {
     expect(b.totalAmount, 12000);
     expect(b.totalNights, 2);
     expect(b.holdExpiresAt, DateTime.parse('2026-10-02T00:00:00.000Z'));
+  });
+
+  group('the Accommodation label', () {
+    // The canonical published document, as the Admin app reads it.
+    final published = Accommodation.fromRatesDocument(<String, dynamic>{
+      'accommodations': <String, dynamic>{
+        'main-house': <String, dynamic>{
+          'property_name': 'The Main House',
+          'rate_unit': 'standard_stay',
+          'available_units': 1,
+          'guest_pricing': <String, dynamic>{
+            'units_per_booking': 1,
+            'weekday': <String, dynamic>{'min_guests': 1, 'base_max_guests': 10, 'base_rate': 5000},
+          },
+        },
+        'annex': <String, dynamic>{
+          'property_name': 'HDL Annex',
+          'rate_unit': 'standard_stay',
+          'available_units': 1,
+          'guest_pricing': <String, dynamic>{
+            'units_per_booking': 1,
+            'weekday': <String, dynamic>{'min_guests': 1, 'base_max_guests': 6, 'base_rate': 4000},
+          },
+        },
+        'house-a-camping': <String, dynamic>{
+          'property_name': 'A-House',
+          'rate_unit': 'standard_stay',
+          'available_units': 2,
+          'guest_pricing': <String, dynamic>{
+            'units_per_booking': 1,
+            'weekday': <String, dynamic>{'min_guests': 1, 'base_max_guests': 3, 'max_guests': 3, 'base_rate': 1000},
+          },
+        },
+      },
+    })!;
+
+    test('names an Accommodation from the published document', () {
+      expect(BookingModel.accommodationLabel('main-house', published), 'The Main House');
+      expect(BookingModel.accommodationLabel('annex', published), 'HDL Annex');
+      expect(BookingModel.accommodationLabel('house-a-camping', published), 'A-House');
+    });
+
+    test('shows the id rather than inventing a name when nothing is published', () {
+      // This used to be a `switch` in this file mapping the three ids to three
+      // names, next to the published `property_name` and the website's own list —
+      // and the three had already drifted apart.
+      expect(BookingModel.accommodationLabel('main-house'), 'main-house');
+      expect(BookingModel.accommodationLabel('house-a-camping'), 'house-a-camping');
+    });
+
+    test('treats a missing Accommodation as missing, not as the Main House', () {
+      // The old default wrote 'The Main House' into an unnamed Booking, which
+      // then reached availability as a name that matched no other Booking's dates.
+      final b = BookingModel.fromJson(
+          <String, dynamic>{...webDoc}..remove('accommodation'), 'doc-1');
+      expect(b.accommodation, isEmpty);
+      expect(BookingModel.accommodationLabel(b.accommodation, published), 'Not recorded');
+      expect(b.toLifecycleDoc()['accommodation'], isEmpty);
+    });
+
+    test('reads the A-House as two units of three guests, one per booking', () {
+      final aHouse = Accommodation.byId(published, 'house-a-camping')!;
+      expect(aHouse.availableUnits, 2);
+      expect(aHouse.unitsPerBooking, 1);
+      expect(aHouse.includedGuests, 3);
+      expect(aHouse.maxGuests, 3);
+      expect(unitsForAccommodation('house-a-camping', published), 2);
+      expect(unitsForAccommodation('main-house', published), 1);
+      // The Main House has no ceiling: a guest above the included count is priced.
+      expect(Accommodation.byId(published, 'main-house')!.maxGuests, isNull);
+    });
+
+    test('an unknown Accommodation is one unit, never unlimited inventory', () {
+      expect(unitsForAccommodation('nobody-published-this', published), 1);
+      expect(unitsForAccommodation('main-house', const []), 1);
+    });
   });
 
   test('uses the stored total or saved legacy rate snapshot rather than inventing a per-night price', () {
