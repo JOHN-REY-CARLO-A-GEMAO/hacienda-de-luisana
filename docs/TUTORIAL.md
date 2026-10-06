@@ -40,12 +40,17 @@ Interactive steps also offer "Skip this step"; every step offers Skip tour
 
 | Piece | Where | Job |
 | --- | --- | --- |
-| Step script | `lib/tutorial/tutorial_steps.dart` | Same lifecycle order and vocabulary as the web script. `TutorialAdvance`: `tab`, `event`, `input`, `none`. |
+| Step script | `lib/tutorial/tutorial_steps.dart` | Same lifecycle order and vocabulary as the web script. `TutorialAdvance`: `tab`, `event`, `input`, `none`. Copy is one or two sentences per step, because the card is read on a phone while the real control waits behind the spotlight. |
 | Controller | `lib/tutorial/tutorial_controller.dart` | ChangeNotifier + `tutorialControllerProvider`. Switches shell tabs, pops routes between rooms, floats the overlay in the **root navigator's overlay** (above pushed detail screens and the More sheet), re-floats on route changes via `TourKeys.routeObserver`. |
 | Keys | `lib/tutorial/tutorial_keys.dart` | `GlobalKey` registry — one key per real control the tour highlights. |
 | Bus | `TourBus` (in the controller file) | One-line reports from existing handlers: `TourBus.tab(i)`, `TourBus.event('more-opened')`, `TourBus.input('search-typed', v)`. The tour never wraps a control; the control's own callback reports the gesture. |
-| Overlay | `lib/tutorial/tutorial_overlay.dart` | Same four-blocker hole design; card docks near the highlight when it fits, else to the bottom (with keyboard inset). |
+| Overlay | `lib/tutorial/tutorial_overlay.dart` | Same four-blocker hole design. The card picks whichever band beside the highlight is taller and is capped at 340 px, so it never covers the control it points at or the shell's tab bar (`TourKeys.bottomNav` reserves that band). One control per direction: × exits, Back steps back, the primary button moves forward — it keeps a step's own label where one reads better ("Start the tour", "Got it"). |
 | Store | `lib/tutorial/tutorial_store.dart` | SharedPreferences flag `hdl_admin_tutorial_done`, with an in-memory fallback (`MemoryTutorialStore`) for tests. |
+
+The Flutter overlay offers no separate "Skip tour" or "Skip this step": × is the
+one way out of the tour, and the primary button doubles as the escape hatch on an
+interactive step so a control that never appears cannot strand the Admin. The web
+tour still carries both Skip links (see above).
 
 The shell (`main_shell_screen.dart`) offers the tour on first launch after the
 Admin signs in, and the More sheet carries "Replay the guided tour". The same

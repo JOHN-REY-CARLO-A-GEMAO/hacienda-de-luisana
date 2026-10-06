@@ -95,6 +95,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
         children: screens,
       ),
       bottomNavigationBar: Container(
+        key: TourKeys.bottomNav,
         decoration: BoxDecoration(
           color: AppColors.primaryDark,
           border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),

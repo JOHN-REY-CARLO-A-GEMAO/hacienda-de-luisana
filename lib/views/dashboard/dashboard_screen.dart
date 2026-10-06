@@ -145,7 +145,7 @@ class DashboardScreen extends ConsumerWidget {
                     mainAxisSpacing: 12,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: columns == 4 ? 1.25 : 1.35,
+                    childAspectRatio: 1.25,
                     children: [
                       for (int i = 0; i < metricCards.length; i++)
                         StaggeredEntrance(index: 1 + i, child: metricCards[i]),

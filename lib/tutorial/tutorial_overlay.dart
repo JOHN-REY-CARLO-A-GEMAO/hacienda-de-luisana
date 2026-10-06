@@ -4,8 +4,9 @@
 /// so the real widget underneath keeps receiving touches exactly as usual
 /// while the rest of the screen is shielded from stray taps. The card
 /// explains what the control does and why, and holds the tour's navigation
-/// (Skip tour / Back / Continue / Exit). It docks near the highlight when
-/// there is room, otherwise to the bottom of the screen — phones first.
+/// (× to exit, Back, Next). It docks in whichever band beside the highlight
+/// is taller — never over the highlight, never over the shell's tab bar —
+/// and phones first.
 library;
 
 import 'dart:async';
@@ -28,11 +29,9 @@ class TutorialOverlay extends StatefulWidget {
 
 class _TutorialOverlayState extends State<TutorialOverlay>
     with SingleTickerProviderStateMixin {
-  final GlobalKey _cardKey = GlobalKey();
   Timer? _ticker;
   late final AnimationController _pulse;
   Rect? _rect;
-  double _cardHeight = 300;
 
   TutorialController get tour => widget.controller;
 
@@ -59,20 +58,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
   void _remeasure() {
     if (!mounted || !tour.running) return;
     final rect = tour.targetRect(tour.current.targetKey);
-    final changed = rect != _rect;
-    final cardBox = _cardKey.currentContext?.findRenderObject();
-    double? cardHeight;
-    if (cardBox is RenderBox && cardBox.attached && cardBox.hasSize) {
-      cardHeight = cardBox.size.height;
-    }
-    if (changed || (cardHeight != null && (cardHeight - _cardHeight).abs() > 4)) {
-      setState(() {
-        _rect = rect;
-        if (cardHeight != null) _cardHeight = cardHeight;
-      });
-    } else if (_rect != rect) {
-      setState(() => _rect = rect);
-    }
+    if (rect != _rect) setState(() => _rect = rect);
   }
 
   @override
@@ -162,43 +148,46 @@ class _TutorialOverlayState extends State<TutorialOverlay>
   ) {
     final width = size.width - 24 < 420.0 ? size.width - 24 : 420.0;
     const gap = 14.0;
-    final maxCardHeight = size.height * 0.55;
+    const edge = 12.0;
     final keyboard = media.viewInsets.bottom;
 
-    double left;
-    double? top;
-    double? bottom;
+    // The tab bar is part of the tour's vocabulary — several steps wait for a
+    // tap on it — so the card is never allowed to cover it. It also keeps the
+    // dashboard's metric cards visible behind the spotlight.
+    final navTop = tour.targetRect('bottomNav')?.top ?? size.height;
+    final floor = navTop - edge - keyboard;
+    final ceiling = media.padding.top + edge;
+
+    final maxLeft = size.width - width - edge;
+    var left = rect == null
+        ? maxLeft / 2
+        : (rect.center.dx - width / 2).clamp(edge, maxLeft > edge ? maxLeft : edge);
+    final right = left + width;
+
+    Rect slot;
     if (rect == null) {
-      left = (size.width - width) / 2;
-      top = (size.height - _cardHeight) / 2.4;
-      if (top < media.padding.top + 12) top = media.padding.top + 12;
+      slot = Rect.fromLTRB(left, ceiling, right, floor);
     } else {
-      left = rect.center.dx - width / 2;
-      final maxLeft = size.width - width - 12;
-      if (left < 12) left = 12;
-      if (left > maxLeft && maxLeft > 12) left = maxLeft;
-      final fitsBelow = rect.bottom + gap + _cardHeight + keyboard < size.height - 12;
-      final fitsAbove = rect.top - gap - _cardHeight > media.padding.top + 8;
-      if (fitsBelow) {
-        top = rect.bottom + gap;
-      } else if (fitsAbove) {
-        top = rect.top - gap - _cardHeight;
-      } else {
-        bottom = (media.padding.bottom > 0 ? media.padding.bottom : 12.0) + keyboard;
+      final below = Rect.fromLTRB(left, rect.bottom + gap, right, floor);
+      final above = Rect.fromLTRB(left, ceiling, right, rect.top - gap);
+      slot = below.height >= above.height ? below : above;
+      // Both bands are cramped: fall back to the whole column, but stay short
+      // so the highlighted control is never buried.
+      if (slot.height < 140) {
+        slot = Rect.fromLTRB(left, ceiling, right, floor);
       }
+      left = slot.left;
     }
+
+    final maxCardHeight = slot.height > 340.0 ? 340.0 : slot.height;
 
     final body = tour.missing && step.fallbackBody != null ? step.fallbackBody! : step.body;
 
-    return Positioned(
-      left: left,
-      top: top,
-      bottom: bottom,
-      width: width,
+    return Positioned.fromRect(
+      rect: Rect.fromLTWH(left, slot.top, width, maxCardHeight),
       child: Material(
         color: Colors.transparent,
         child: Container(
-          key: _cardKey,
           constraints: BoxConstraints(maxHeight: maxCardHeight),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -213,7 +202,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
             ],
           ),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,7 +211,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                   children: [
                     Expanded(
                       child: Text(
-                        'ADMIN TOUR · STEP ${tour.index + 1} OF ${tour.total}',
+                        'STEP ${tour.index + 1} OF ${tour.total}',
                         style: GoogleFonts.inter(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
@@ -235,27 +224,39 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                       onTap: tour.exit,
                       borderRadius: BorderRadius.circular(20),
                       child: const Padding(
-                        padding: EdgeInsets.all(2),
+                        padding: EdgeInsets.all(4),
                         child: Icon(Icons.close, size: 18, color: AppColors.textMuted),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: (tour.index + 1) / tour.total,
+                    minHeight: 3,
+                    backgroundColor: AppColors.cardBorder,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      AppColors.primaryForest,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Text(
                   step.title,
                   style: GoogleFonts.cinzel(
-                    fontSize: 17,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: AppColors.textDark,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   body,
                   style: GoogleFonts.inter(
                     fontSize: 13,
-                    height: 1.45,
+                    height: 1.4,
                     color: AppColors.textDark.withOpacity(0.9),
                   ),
                 ),
@@ -282,13 +283,14 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                 if (tour.awaiting && step.actionHint != null) ...[
                   const SizedBox(height: 10),
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: AppColors.primaryForest,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '👉 ${step.actionHint!}',
+                      step.actionHint!,
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -300,72 +302,38 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                 if (tour.missing && step.targetKey != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'The control this step highlights isn’t on this screen right now — read along and continue whenever you’re ready.',
+                    'That control isn’t on this screen right now — read along and continue.',
                     style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
                   ),
                 ],
                 const SizedBox(height: 12),
+                // One way out per direction: × leaves the tour, Back steps back,
+                // the primary button moves forward. Interactive steps use it as
+                // their escape hatch so a missing control can never strand
+                // the Admin — which is why "Skip tour" and "Skip this step" are
+                // not needed alongside it.
                 Row(
-                  children: List.generate(
-                    tour.total,
-                    (i) => Container(
-                      margin: const EdgeInsets.only(right: 4),
-                      height: 4,
-                      width: i == tour.index ? 18 : 8,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(4),
-                        color: i == tour.index
-                            ? AppColors.primaryForest
-                            : i < tour.index
-                                ? AppColors.primaryForestLight
-                                : AppColors.cardBorder,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    if (!tour.isLast)
-                      TextButton(
-                        onPressed: tour.skip,
-                        child: Text('Skip tour',
-                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
-                      ),
                     if (tour.index > 0)
                       TextButton(
                         onPressed: tour.back,
                         child: Text('Back',
-                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
+                            style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
                       ),
-                    const SizedBox(width: 4),
-                    if (tour.awaiting)
-                      TextButton(
-                        onPressed: tour.next,
-                        child: Text('Skip this step',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              decoration: TextDecoration.underline,
-                              color: AppColors.primaryForest,
-                            )),
-                      )
-                    else
-                      ElevatedButton(
-                        onPressed: tour.next,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryForest,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        ),
-                        child: Text(
-                          tour.isLast ? 'Finish' : step.continueLabel,
-                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
+                    const Spacer(),
+                    ElevatedButton(
+                      onPressed: tour.next,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryForest,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                       ),
+                      child: Text(
+                        tour.isLast ? 'Finish' : step.continueLabel,
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
                   ],
                 ),
               ],

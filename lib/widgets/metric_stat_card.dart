@@ -44,6 +44,7 @@ class MetricStatCard extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Text(
@@ -51,33 +52,30 @@ class MetricStatCard extends StatelessWidget {
                   style: GoogleFonts.inter(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6,
+                    height: 1.2,
+                    letterSpacing: 0.3,
                     color: AppColors.textMuted,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  // "Today's check-ins" and "Pending requests" are the longest
+                  // titles and must wrap rather than ellipsize — a cut-off
+                  // label reads as a broken layout.
+                  maxLines: 2,
+                  overflow: TextOverflow.visible,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
                   color: accentColor.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, size: 14, color: accentColor),
+                child: Icon(icon, size: 13, color: accentColor),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: GoogleFonts.cinzel(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textDark,
-            ),
-          ),
+          const SizedBox(height: 6),
+          _MetricValue(text: value, color: AppColors.textDark),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -107,6 +105,51 @@ class MetricStatCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The big number on a [MetricStatCard].
+///
+/// The digits keep the display face (Cinzel), but a leading currency symbol is
+/// set in the UI face instead: Cinzel has no glyph for the peso sign (U+20B1),
+/// so it silently fell back to another font and left "₱41,107" with a symbol
+/// that sat off the digits' baseline.
+class _MetricValue extends StatelessWidget {
+  const _MetricValue({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  static final RegExp _leadingSymbol = RegExp(r'^([^\d]*)(.*)$', dotAll: true);
+
+  @override
+  Widget build(BuildContext context) {
+    final digits = GoogleFonts.cinzel(
+      fontSize: 22,
+      fontWeight: FontWeight.bold,
+      color: color,
+    );
+    final match = _leadingSymbol.firstMatch(text);
+    final symbol = match?.group(1) ?? '';
+    final amount = match?.group(2) ?? text;
+    if (symbol.isEmpty) return Text(text, style: digits);
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: symbol,
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+          TextSpan(text: amount, style: digits),
+        ],
+      ),
+      textAlign: TextAlign.left,
     );
   }
 }

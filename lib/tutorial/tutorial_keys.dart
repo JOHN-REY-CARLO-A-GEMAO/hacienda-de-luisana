@@ -42,6 +42,10 @@ class TourKeys {
   static final GlobalKey tabStays = GlobalKey(debugLabel: 'tour.tabStays');
   static final GlobalKey tabMore = GlobalKey(debugLabel: 'tour.tabMore');
 
+  /// The tab bar itself, so the tour's card can stay above it and leave the
+  /// tabs tappable. Not a step target.
+  static final GlobalKey bottomNav = GlobalKey(debugLabel: 'tour.bottomNav');
+
   // "More" sheet
   static final GlobalKey moreRates = GlobalKey(debugLabel: 'tour.moreRates');
   static final GlobalKey moreSmartLock = GlobalKey(debugLabel: 'tour.moreSmartLock');
@@ -64,6 +68,7 @@ class TourKeys {
     'tabChat': tabChat,
     'tabStays': tabStays,
     'tabMore': tabMore,
+    'bottomNav': bottomNav,
     'moreRates': moreRates,
     'moreSmartLock': moreSmartLock,
     'firstThread': firstThread,
