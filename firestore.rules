@@ -112,8 +112,11 @@ service cloud.firestore {
     // Guest advance-booking policy, in the existing Admin-owned site_config.
     // This document is the authoritative setting for both clients and rules.
     // The fallback mirrors MINIMUM_BOOKING_LEAD_TIME_DAYS in booking/leadTime.ts.
+    // It has to be the same 30: a Guest is told a date is bookable by the
+    // client's copy of this default, and a rules fallback of anything smaller
+    // quietly allows direct-to-Firestore writes the website itself refuses.
     function minimumBookingLeadTimeDays() {
-      let defaultDays = 1;
+      let defaultDays = 30;
       let policy = /databases/$(database)/documents/site_config/booking;
       let days = exists(policy)
         ? get(policy).data.get('minimumBookingLeadTimeDays', defaultDays)
@@ -153,7 +156,13 @@ service cloud.firestore {
       let checkOut = timestamp.date(int(end[0]), int(end[1]), int(end[2]));
       return data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && data.check_out.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
-        && data.nights is int && data.nights > 0 && data.nights <= 365
+        // One 22-hour standard stay is the only length a Guest may book online:
+        // the website quotes nothing else (quoteAccommodation refuses a
+        // multi-night range), so a longer `nights` here can only be a direct
+        // Firestore write trying to buy many nights at one stay's price.
+        // Admin-created records never reach this function (isAdmin() short
+        // -circuits the whole guest gate), so a manual longer stay is unaffected.
+        && data.nights is int && data.nights == 1
         && checkOut == checkIn + duration.value(data.nights, 'd');
     }
 
@@ -252,8 +261,14 @@ service cloud.firestore {
     function petFee(published, data) {
       let pets = data.get('pet_count', 0);
       let policy = published.get('pet_policy', null);
+      // `/ 100.0`, not `/ 100`: the rules language is CEL-based, and `/` between
+      // two ints is *integer* division — int(30000) / 100 would be fine, but any
+      // fee with centavos (or an odd peso figure downstream) would truncate and
+      // stop agreeing with the client's roundMoney, refusing every such Booking
+      // as a money mismatch. The float literal forces float division, which is
+      // what the centavo arithmetic below was always meant to be.
       return pets > 0 && policy is map && policy.get('fee_per_pet', 0) is number
-        ? int(pets * policy.fee_per_pet * 100 + 0.5) / 100
+        ? int(pets * policy.fee_per_pet * 100 + 0.5) / 100.0
         : 0;
     }
 
@@ -266,7 +281,8 @@ service cloud.firestore {
     function lateCheckoutFee(published, data) {
       let hours = data.get('late_checkout_hours', 0);
       let rate = published.get('late_checkout_per_hour', 0);
-      return hours > 0 && rate is number ? int(hours * rate * 100 + 0.5) / 100 : 0;
+      // `/ 100.0` for the same reason as petFee: int/int division truncates.
+      return hours > 0 && rate is number ? int(hours * rate * 100 + 0.5) / 100.0 : 0;
     }
 
     // The classification of a check-in date under the published holiday list: a
@@ -291,9 +307,17 @@ service cloud.firestore {
     // validAuthoritativeMoney already sits near that ceiling, so the addon
     // arithmetic gets names of its own here instead of crowding that one.
     function stayTotalWithAddons(published, base, data) {
-      let pets = int(petFee(published, data) * 100 + 0.5) / 100;
-      let hours = int(lateCheckoutFee(published, data) * 100 + 0.5) / 100;
-      return int((base + pets + hours) * 100 + 0.5) / 100;
+      let pets = int(petFee(published, data) * 100 + 0.5) / 100.0;
+      let hours = int(lateCheckoutFee(published, data) * 100 + 0.5) / 100.0;
+      // `/ 100.0` — float division — is load-bearing, not style. With `/ 100`
+      // the runtime's integer division truncates the centavos away, so the
+      // total this function returns stops matching the stay_total the client
+      // computed with roundMoney (exact to centavos) whenever the published
+      // figures carry centavos or an odd number of pesos. The Booking is then
+      // refused by `data.stay_total == total` — as a bare permission-denied,
+      // indistinguishable from a policy decision, and invisible to the offline
+      // engine, whose `/` is floating-point. Same for `due` below.
+      return int((base + pets + hours) * 100 + 0.5) / 100.0;
     }
 
     // ------------------------------------------------------------------
@@ -385,7 +409,12 @@ service cloud.firestore {
       // validAuthoritativeMoney is already near that ceiling, so the extra names
       // belong in a function of their own rather than here.
       let total = stayTotalWithAddons(published, amount, data);
-      let due = int(total * 50) / 100;
+      // 50% of the total, floored at whole centavos, exactly as the client's
+      // downPaymentAmount floors it. `/ 100.0` keeps this a float division; the
+      // client's figure keeps its centavos, and the two must agree for
+      // `data.amount_due == due` to hold on every quote the Rates screen can
+      // publish — including odd peso totals and centavo rates.
+      let due = int(total * 50) / 100.0;
       return published.keys().hasAny(['holiday_dates'])
         && holidayDates is list
         && rate is map
@@ -428,9 +457,9 @@ service cloud.firestore {
       let savedNights = resource.data.get('nights', -1);
       let savedUnit = resource.data.get('rate_unit', '');
       let rateTotal = savedUnit == 'standard_stay' && savedRate is number
-        ? int(savedRate * 100 + 0.5) / 100
+        ? int(savedRate * 100 + 0.5) / 100.0
         : savedUnit == 'night' && savedRate is number && savedNights is int && savedNights > 0
-          ? int(savedRate * savedNights * 100 + 0.5) / 100
+          ? int(savedRate * savedNights * 100 + 0.5) / 100.0
           : -1;
       // Keep the legacy aliases in one binding: Firestore limits each Rules
       // function to ten `let` bindings, and this function is also used by the
@@ -441,10 +470,10 @@ service cloud.firestore {
       let total = resource.data.keys().hasAny(['stay_total'])
         ? (savedTotal is number ? savedTotal : -1)
         : legacyTotal is number
-          ? int(legacyTotal * 100 + 0.5) / 100
+          ? int(legacyTotal * 100 + 0.5) / 100.0
           : rateTotal;
       let plan = data.get('payment_plan', '');
-      let due = plan == 'down-payment' ? int(total * 50) / 100
+      let due = plan == 'down-payment' ? int(total * 50) / 100.0
         : plan == 'full' ? total : -1;
       return resource.data.get('status', '') == 'Payment Pending'
         && !resource.data.keys().hasAny(['rate_classification'])

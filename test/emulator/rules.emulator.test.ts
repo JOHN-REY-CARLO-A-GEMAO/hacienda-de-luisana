@@ -1054,6 +1054,84 @@ describe('published guest-count prices: independent Firestore verification', () 
       refund_policy_snapshot: { ...refund, refund_percent: 100 },
     }))
   })
+
+  // The Rates screen accepts any positive peso figure, so the rules have to
+  // verify money the way the client computes it: roundMoney and
+  // downPaymentAmount keep centavos (an odd peso total halves to a .50 down
+  // payment; a centavo rate carries centavos through every figure). The rules
+  // used to divide two ints (`int(x) / 100`), and the CEL-based runtime
+  // evaluates that as truncated integer division — so the rules' total and
+  // due came out whole-peso while the client's were centavo-exact, and every
+  // such Booking was refused by `data.stay_total == total` /
+  // `data.amount_due == due` as a bare permission-denied. The offline engine
+  // could not catch it: its `/` is floating-point, so it reported ALLOW. This
+  // case is the one that reproduces that production refusal under the real
+  // runtime, and it stays green only while the division stays float
+  // (`/ 100.0`).
+  it('agrees with the client’s centavo-exact math on odd and centavo published rates', async () => {
+    const publishMainHouseRate = (weekday: number, weekend: number) =>
+      setDoc(doc(admin().firestore(), 'site_config', 'rates'), {
+        version: 'emulator-v2',
+        effective_date: '2026-10-01',
+        holiday_dates: [],
+        accommodations: {
+          'main-house': {
+            property_name: 'The Main House', rate_unit: 'standard_stay', active: true,
+            security_deposit: 500, down_payment_percent: 50, available_units: 1,
+            guest_pricing: {
+              units_per_booking: 1,
+              weekday: { min_guests: 1, base_max_guests: 10, base_rate: weekday, excess_per_guest: 500 },
+              weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: weekend, excess_per_guest: 500 },
+            },
+          },
+          annex: {
+            property_name: 'HDL Annex', rate_unit: 'standard_stay', active: true,
+            security_deposit: 500, down_payment_percent: 50, available_units: 1,
+            guest_pricing: {
+              units_per_booking: 1,
+              weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
+              weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 },
+            },
+          },
+          'house-a-camping': {
+            property_name: 'A-House', rate_unit: 'standard_stay', active: true,
+            security_deposit: 0, down_payment_percent: 50, available_units: 2,
+            guest_pricing: {
+              units_per_booking: 1,
+              weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+              weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
+            },
+          },
+        },
+      })
+
+    const guest = anonymousGuest()
+    const date = futureDateForDay(3)
+    // The client's figures, exactly as /book/pay computes them:
+    // stayTotal = roundMoney(rate); dueNow = floor-at-centavos of 50%.
+    const cases = [
+      ['odd-peso', 6001, 3000.5],
+      ['centavo', 6000.5, 3000.25],
+    ] as const
+    for (const [id, total, due] of cases) {
+      await assertSucceeds(publishMainHouseRate(total, total))
+      const payload = quotedBooking(date, 10, {
+        overrides: {
+          rate_amount: total,
+          stay_total: total,
+          amount_due: due,
+          balance_due: total - due,
+          amount_claimed: due,
+        },
+      })
+      await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', id), payload))
+      // One centavo off is still a tampered total: the money check stays exact.
+      await assertFails(setDoc(doc(guest.firestore(), 'bookings', `${id}-tampered`), {
+        ...payload,
+        stay_total: Math.round((total + 0.01) * 100) / 100,
+      }))
+    }
+  })
 })
 
 describe('historical payment choices retain their stored quote', () => {
