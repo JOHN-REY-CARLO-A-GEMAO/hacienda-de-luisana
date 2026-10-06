@@ -67,9 +67,12 @@ const AUTH_ADVICE: Record<string, string> = {
 
 const FIRESTORE_ADVICE: Record<string, string> = {
   'permission-denied':
-    'Firestore refused the write. Two usual causes: the rules in firestore.rules were never ' +
-    `deployed to this project (firebase deploy --only firestore:rules), or Anonymous sign-in is ` +
-    `off in ${CONSOLE_AUTH}, so the Booking carries no Guest identity for the rules to recognise.`,
+    'Firestore refused the write. For a Booking create, this error does not identify which ' +
+    'firestore.rules condition failed: the deployed rules may be outdated, the Booking may be ' +
+    'missing its Guest identity, or its payment/rate snapshot may not match the current ' +
+    'site_config/rates policy. Check /status for sign-in and reads, then compare the current ' +
+    'published quote. If the browser also reports ERR_BLOCKED_BY_CLIENT for firestore.googleapis.com, ' +
+    'retry without privacy or ad-blocking extensions; that blocked channel may be separate.',
   unauthenticated:
     `The request reached Firestore with no usable sign-in. Enable Anonymous sign-in in ` +
     `${CONSOLE_AUTH} so the website can attach an identity to a Booking.`,

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const firestoreSdk = vi.hoisted(() => ({
+  initializeFirestore: vi.fn(() => ({})),
+  connectFirestoreEmulator: vi.fn(),
+}))
+vi.mock('firebase/firestore', () => firestoreSdk)
+
 // The regression this file exists for: `src/lib/firebase.ts` builds the object it
 // hands `resolveFirebaseConfig`, and the resolver looks each value up by its
 // *variable* name (`env['VITE_FIREBASE_API_KEY']`). Keying that object by field
@@ -20,6 +26,8 @@ describe('the environment src/lib/firebase.ts hands the resolver', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.resetModules()
+    firestoreSdk.initializeFirestore.mockClear()
+    firestoreSdk.connectFirestoreEmulator.mockClear()
   })
 
   it('is keyed by variable name, so the resolver finds every value', async () => {
@@ -35,6 +43,11 @@ describe('the environment src/lib/firebase.ts hands the resolver', () => {
     expect(firebaseConfigReport.refusedEnvKeys).toEqual([])
     expect(isFirebaseConfigured).toBe(true)
     expect(firebaseConfigSource).toBe('env')
+    expect(firestoreSdk.initializeFirestore).toHaveBeenCalledTimes(1)
+    expect(firestoreSdk.initializeFirestore).toHaveBeenCalledWith(
+      expect.anything(),
+      { experimentalAutoDetectLongPolling: true },
+    )
 
     const apiKey = firebaseConfigReport.fields.find((f) => f.field === 'apiKey')
     expect(apiKey?.state).toBe('env')
