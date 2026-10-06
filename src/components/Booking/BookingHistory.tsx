@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
 import { describeActivity } from '../../lib/booking'
 import { renderSafeText } from '../../lib/renderSafeText'
+import { formatDateTime } from '../../lib/formatDate'
 
 /**
  * A Booking's Activity log, in the order it happened.
@@ -56,7 +57,9 @@ export function BookingHistory({ bookingId }: { bookingId: string }) {
                 {line.reason ? (
                   <div className="text-[11px] text-forest-800/80 italic mt-0.5">“{renderSafeText(line.reason)}”</div>
                 ) : null}
-                <div className="text-[10px] text-forest-600/70 mt-0.5">{renderSafeText(line.atLabel)}</div>
+                <div className="text-[10px] text-forest-600/70 mt-0.5">
+                  {renderSafeText(formatDateTime(line.at, line.atLabel))}
+                </div>
               </div>
             </li>
           ))}

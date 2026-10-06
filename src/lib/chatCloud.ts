@@ -48,6 +48,7 @@ import {
 import { db, isFirebaseConfigured } from './firebase'
 import { validateMessage } from './validation'
 import { isActiveCategory } from './categories'
+import { dateToISOString, parseDate } from './formatDate'
 
 export type ChatMessage = {
   id: string
@@ -125,7 +126,7 @@ function messagesOf(convoId: string) {
 
 function toMessage(snap: QueryDocumentSnapshot<DocumentData>, uid: string): ChatMessage {
   const data = snap.data()
-  const at = data.created_at?.toDate?.()?.toISOString?.() ?? new Date().toISOString()
+  const at = dateToISOString(data.created_at, new Date().toISOString())
   return {
     id: snap.id,
     text: String(data.text ?? ''),
@@ -203,7 +204,7 @@ export async function ensureConversation(uid: string, category: string): Promise
     if (snap.data().guest_uid !== uid) {
       throw new Error('That conversation belongs to somebody else.')
     }
-    const expires = snap.data().messages_expires_at?.toDate?.() ?? null
+    const expires = parseDate(snap.data().messages_expires_at)
     return { id, retentionExpiresAt: expires }
   }
   await setDoc(ref, {
@@ -269,6 +270,7 @@ export function subscribeMessages(
   uid: string,
   onPage: (page: MessagePage) => void,
   pageSize: number = CHAT_PAGE_SIZE,
+  onError?: (error: unknown) => void,
 ): () => void {
   const size = Math.min(CHAT_MAX_PAGE_SIZE, pageSize)
   if (offline() || isLocal(convoId)) {
@@ -276,16 +278,23 @@ export function subscribeMessages(
     return () => {}
   }
   const q = query(messagesOf(convoId), orderBy('created_at', 'desc'), limit(size + 1))
-  return onSnapshot(q, (snap) => {
-    const docs = snap.docs.slice(0, size)
-    const messages = docs.map((d) => toMessage(d, uid)).reverse()
-    const oldest = docs.length ? docs[docs.length - 1] : null
-    onPage({
-      messages,
-      cursor: oldest ? { at: toMessage(oldest, uid).at, id: oldest.id } : null,
-      hasMore: snap.docs.length > size,
-    })
-  })
+  return onSnapshot(
+    q,
+    (snap) => {
+      const docs = snap.docs.slice(0, size)
+      const messages = docs.map((d) => toMessage(d, uid)).reverse()
+      const oldest = docs.length ? docs[docs.length - 1] : null
+      onPage({
+        messages,
+        cursor: oldest ? { at: toMessage(oldest, uid).at, id: oldest.id } : null,
+        hasMore: snap.docs.length > size,
+      })
+    },
+    (error) => {
+      console.error('[Chat] messages listener failed', error)
+      onError?.(error)
+    },
+  )
 }
 
 /**
