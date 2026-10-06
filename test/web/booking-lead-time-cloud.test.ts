@@ -18,7 +18,7 @@ vi.mock('firebase/firestore', () => ({
   runTransaction: sdk.transaction,
 }))
 
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
+import { cloudBookingsDB, lastCloudWriteFailure } from '../../src/lib/firestoreBookings'
 
 const request = {
   guest_name: 'Ana Reyes', phone: '09171234567', email: 'ana@example.com', guests: 2,
@@ -72,11 +72,35 @@ describe('cloud creation: lead-time guard before addDoc', () => {
     expect(localStorage.length).toBe(0)
   })
 
-  it.each(['permission-denied', 'unauthenticated'])('never replays a server %s refusal into local persistence', async (code) => {
+  // A refusal on a date that clears the lead time is NOT a lead-time failure.
+  // `request.check_in` is 2026-10-31 against a system clock of 2026-10-01, so
+  // the post-refusal re-check passes and the date is legal: saying otherwise
+  // sends the Guest to move a date that was never the problem. This used to
+  // assert the opposite.
+  it.each(['permission-denied', 'unauthenticated'])('names a server %s refusal as a rules refusal, never as the date', async (code) => {
     sdk.addDoc.mockRejectedValue(Object.assign(new Error('internal rules evaluation detail'), { code }))
-    await expect(cloudBookingsDB.add(request)).rejects.toThrow('Check-in must be at least 30 days from today.')
+    const thrown = await cloudBookingsDB.add(request).catch((e: unknown) => e)
+    expect(thrown).toMatchObject({ code })
+    expect((thrown as Error).message).toMatch(/rules refused it/)
+    expect((thrown as Error).message).not.toMatch(/30 days/)
     expect(sdk.transaction).not.toHaveBeenCalled()
     expect(localStorage.length).toBe(0)
+  })
+
+  it('keeps the refusal reason for the owner, not just a sentence for the Guest', async () => {
+    sdk.addDoc.mockRejectedValue(
+      Object.assign(new Error('internal rules evaluation detail'), { code: 'permission-denied' }),
+    )
+    const thrown = (await cloudBookingsDB.add(request).catch((e: unknown) => e)) as {
+      advice: string
+      firebaseMessage: string
+    }
+    expect(thrown.advice).toMatch(/firestore\.rules/)
+    expect(thrown.firebaseMessage).toBe('internal rules evaluation detail')
+    expect(lastCloudWriteFailure()).toMatchObject({
+      code: 'permission-denied',
+      message: 'internal rules evaluation detail',
+    })
   })
 
   it('preserves the existing labelled fallback for a non-policy infrastructure failure', async () => {

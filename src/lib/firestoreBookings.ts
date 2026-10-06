@@ -24,7 +24,7 @@ import {
 } from 'firebase/firestore'
 import { auth, db, isFirebaseConfigured } from './firebase'
 import { activityLogStorage, bookingsDB, type Booking } from './storage'
-import { describeFirestoreFailure } from './firebaseFailure'
+import { describeFirestoreFailure, failureLine } from './firebaseFailure'
 import { ACCOMMODATIONS } from '../config/site'
 import { bookingPolicyDB } from './bookingPolicyDB'
 import { ratesDB } from './ratesDB'
@@ -142,6 +142,39 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
 }
 
 /**
+ * One stored Activity entry, read back in the shape the domain declares.
+ *
+ * `at` is the one field with two shapes in the same collection. The Booking
+ * lifecycle writes an ISO string (`instantOf` here, `at.toIso8601String()` in
+ * `lib/services/booking_lifecycle.dart`), and the Admin app stamps a Review's
+ * moderation entry with `FieldValue.serverTimestamp()` instead
+ * (`lib/services/review_service.dart`). The rules accept either — they require
+ * the key, not a type — so both are in the log.
+ *
+ * Read raw, a `Timestamp` arrives where `ActivityLogEntry` promises a string and
+ * reaches `describeActivity`, which formats it with `new Date()`. A `Timestamp`
+ * is not a date, so the parse fails, the raw object is handed to React as a
+ * child, and the whole Guest's `/account` page is replaced by the error boundary:
+ * React error #31, "objects are not valid as a React child", naming the culprit
+ * in its own message — `{seconds, nanoseconds}`.
+ *
+ * So the instant is settled here, at the boundary, the same way
+ * `mapDocToBooking` settles `created_at` above. An entry whose instant is
+ * neither a string nor a `Timestamp` reads as no instant at all: a blank in an
+ * audit log is honest, and a borrowed time is a lie.
+ */
+function mapDocToActivityEntry(data: DocumentData): ActivityLogEntry {
+  return { ...data, at: storedInstant(data.at) } as ActivityLogEntry
+}
+
+/** A stored instant as ISO, whichever of the two shapes it was written in. */
+function storedInstant(value: unknown): string {
+  if (typeof value === 'string') return value
+  const date = (value as { toDate?: () => Date } | null)?.toDate?.()
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : ''
+}
+
+/**
  * The Activity log: every state change to a Booking, with its actor and
  * timestamp, in the order it happened.
  *
@@ -157,7 +190,7 @@ export const activityLogDB = {
         orderBy('at', 'asc'),
       )
       const snap = await getDocs(q)
-      const entries = snap.docs.map((d) => d.data() as ActivityLogEntry)
+      const entries = snap.docs.map((d) => mapDocToActivityEntry(d.data()))
       // Two entries can share an instant; the sequence says which came first.
       return entries.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
     } catch (e) {
@@ -328,10 +361,16 @@ const isCloud = isFirebaseConfigured && Boolean(db)
  */
 export type SubmittedBooking = Booking & { storage: 'cloud' | 'local' }
 
-/** Why the last cloud write fell back to this browser, if it did. */
+/**
+ * Why the last cloud write was refused, or fell back to this browser.
+ *
+ * Read by `/status` (`connectionCheck.ts`). A Guest is told that the rules
+ * refused their Booking; who has to fix it, and what Firebase actually said, is
+ * the owner's question and this is where the answer is kept.
+ */
 let lastWriteFailure: ReturnType<typeof describeFirestoreFailure> | null = null
 
-/** Why the last cloud write fell back to this browser, or null if it landed. */
+/** Why the last cloud write was refused, or null if it landed. */
 export function lastCloudWriteFailure(): ReturnType<typeof describeFirestoreFailure> | null {
   return lastWriteFailure
 }
@@ -543,12 +582,35 @@ export const cloudBookingsDB = {
       // time/policy can reject a stale or manipulated client check. Never replay
       // that rejected create into localStorage or append an Activity entry.
       if (['permission-denied', 'unauthenticated'].includes(lastWriteFailure.code)) {
-        // Surface a changed policy / midnight boundary as the domain message,
-        // not Firebase's technical permission error. Other refusals stay generic.
+        // The rules refused the create. There are a dozen conditions on
+        // `bookings` create and only one of them is the lead time, so the cause
+        // is re-derived here rather than guessed at.
         const days = await bookingPolicyDB.getMinimumLeadTimeDays()
         const currentDates = validateMinimumBookingLeadTime(input.check_in, new Date(), days)
         if (!currentDates.ok) throw Object.assign(new Error(currentDates.reason), { code: currentDates.code })
-        throw new Error(`The booking could not be submitted. Check-in must be at least ${days} days from today. Please check your downpayment details and try again.`)
+        // The dates are legal as of this browser's fresh clock, so the lead time
+        // is NOT what the server refused. Saying otherwise sends the Guest to
+        // move a date that was never the problem, and hides the one thing that
+        // would fix it. This happened: a 31-day check-in was reported as a
+        // 30-day failure while `validAuthoritativeMoney` refused the booking.
+        //
+        // So the refusal is named as a rules refusal, and the reason itself goes
+        // to the console and to `/status` (`lastCloudWriteFailure`) rather than
+        // to the Guest. `advice` is the owner's sentence — which switch to turn
+        // back on — and Firebase's own words ride along with it.
+        console.warn(
+          `[Firestore] add() was refused by firestore.rules (not the lead time: ${input.check_in} clears ${days} days). ` +
+            `${failureLine(lastWriteFailure)}` +
+            (lastWriteFailure.message ? ` Firebase said: ${lastWriteFailure.message}` : ''),
+          e,
+        )
+        throw Object.assign(
+          new Error(
+            'The booking could not be submitted because the Hacienda’s booking rules refused it. ' +
+              'Nothing was saved. Please try again, or send the Hacienda your reference so they can check it.',
+          ),
+          { code: lastWriteFailure.code, advice: lastWriteFailure.advice, firebaseMessage: lastWriteFailure.message },
+        )
       }
       console.warn(
         `[Firestore] add() failed, falling back to local. ${lastWriteFailure.advice}`,

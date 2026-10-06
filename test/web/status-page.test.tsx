@@ -90,10 +90,13 @@ describe('the connection check with no project in the build', () => {
   it('fails the build step and skips the two that need a project', async () => {
     const checks = await runConnectionCheck()
 
-    expect(checks.map((c) => c.id)).toEqual(['build', 'identity', 'database'])
+    // `write` is here too: it reports what this browser has already been refused,
+    // and a build with no project has refused nothing.
+    expect(checks.map((c) => c.id)).toEqual(['build', 'identity', 'database', 'write'])
     expect(checks[0].status).toBe('fail')
     expect(checks[0].detail).toMatch(/committed defaults|no project|every request stays in this browser/i)
     expect(checks[1].status).toBe('skip')
     expect(checks[2].status).toBe('skip')
+    expect(checks[3].status).toBe('ok')
   })
 })

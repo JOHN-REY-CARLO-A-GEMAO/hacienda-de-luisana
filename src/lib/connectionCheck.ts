@@ -15,6 +15,12 @@
 //   3. Can it read Firestore? (A public read of `site_config/rates` — the rules
 //      grant it, so a refusal means the rules are not deployed.)
 //
+// Plus the fourth, which is only knowable after something has gone wrong: did
+// firestore.rules refuse a Booking write? That refusal is never recoverable from
+// the Guest's screen — they are told the rules said no, not why — so the reason
+// is remembered by `firestoreBookings` and reported here, with Firebase's own
+// words. It is the difference between hunting for the cause and reading it.
+//
 // It signs in anonymously, which is exactly what sending a booking does; it
 // writes nothing. `src/pages/StatusPage.tsx` is the surface, and it only runs
 // when somebody presses the button.
@@ -32,11 +38,12 @@ import {
 } from './firebase'
 import { describeAuthFailure, describeFirestoreFailure, codeOf } from './firebaseFailure'
 import { describeSource } from './firebaseConfig'
+import { lastCloudWriteFailure } from './firestoreBookings'
 
 export type CheckStatus = 'ok' | 'warn' | 'fail' | 'skip'
 
 export type Check = {
-  id: 'build' | 'identity' | 'database' | 'emulators'
+  id: 'build' | 'identity' | 'database' | 'write' | 'emulators'
   label: string
   status: CheckStatus
   detail: string
@@ -144,7 +151,34 @@ export async function runConnectionCheck(): Promise<Check[]> {
     }
   }
 
-  // 4. A pointer at the emulator suite on a visitor's machine is a mistake.
+  // 4. Has firestore.rules refused a Booking write from this browser? Nothing else
+  // in the app reports this, and it is the failure a Guest cannot act on: the
+  // rules refused the create for one of a dozen reasons and the screen can only
+  // say so. `validAuthoritativeMoney` recomputing a money field out of
+  // `site_config/rates`, a `uid` the Guest identity never produced, a shape the
+  // rules refuse — all of them arrive as the same `permission-denied`, and all of
+  // them are fixed somewhere else entirely.
+  const refused = lastCloudWriteFailure()
+  checks.push(
+    refused
+      ? {
+          id: 'write',
+          label: 'Last refused Booking write',
+          status: 'fail',
+          detail:
+            `Firestore refused a Booking write from this browser (${refused.code}). ` +
+            `${refused.advice}` +
+            (refused.message ? ` Firebase said: ${refused.message}` : ''),
+        }
+      : {
+          id: 'write',
+          label: 'Last refused Booking write',
+          status: 'ok',
+          detail: 'No Booking write has been refused by the rules in this browser session.',
+        },
+  )
+
+  // 5. A pointer at the emulator suite on a visitor's machine is a mistake.
   if (isUsingEmulators) {
     checks.push({
       id: 'emulators',

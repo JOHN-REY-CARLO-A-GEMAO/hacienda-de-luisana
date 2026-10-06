@@ -196,6 +196,19 @@ export function DownpaymentPage() {
         return
       }
       const uid = (await ensureGuestUid()) ?? undefined
+      // firestore.rules refuses a Booking that arrives without a `uid`
+      // (firestore.rules, bookings create), so a missing identity is a certain
+      // refusal, not a risk of one — and going on to upload the screenshot and
+      // attempt the write would spend the Guest's 5 MB and tell them the rules
+      // said no for a reason they could never see. Demo mode writes to
+      // localStorage and is untouched.
+      if (cloudBookingsDB.isCloud && !uid) {
+        setError(
+          'We could not attach this booking to you, so it was not sent. Nothing was saved and your ' +
+            'screenshot is still here — please try again in a moment.',
+        )
+        return
+      }
       // Availability/auth can take time. Check again immediately before the
       // screenshot leaves the device (e.g. if Manila midnight passed).
       const uploadDates = await cloudBookingsDB.validateGuestCheckIn(draft.check_in)

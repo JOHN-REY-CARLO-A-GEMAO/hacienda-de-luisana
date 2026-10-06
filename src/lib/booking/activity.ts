@@ -82,6 +82,7 @@ export type ActivityLine = {
 /** Read one Activity log entry as the Admin sees it. */
 export function describeActivity(entry: ActivityLogEntry): ActivityLine {
   const role = ROLE_LABELS[entry.actor] ?? LEGACY_ACTOR_LABELS[entry.actor] ?? entry.actor
+  const at = storedInstant(entry.at)
   return {
     headline: HEADLINES[entry.action] ?? entry.action,
     // A Review's statuses are moderation states, not Booking stages, and there
@@ -89,10 +90,28 @@ export function describeActivity(entry: ActivityLogEntry): ActivityLine {
     // than printing an arrow out of a status that never existed.
     change: entry.action in REVIEW_ACTIONS ? `review is ${entry.to_status}` : `${entry.from_status} → ${entry.to_status}`,
     actor: entry.actor_name ? `${entry.actor_name} (${role})` : role,
-    at: entry.at,
-    atLabel: formatInstant(entry.at),
+    at,
+    atLabel: formatInstant(at),
     ...(entry.reason ? { reason: entry.reason } : {}),
   }
+}
+
+/**
+ * The entry's instant, as an ISO string.
+ *
+ * `ActivityLogEntry` declares `at` a string and the Booking lifecycle writes
+ * one, but the Admin app stamps a Review's moderation entry with a Firestore
+ * `Timestamp`, and the rules accept either. This is the line the log is read
+ * aloud through, and its output goes straight into rendered text: an object
+ * reaching React as a child is a thrown error, not an ugly date, and it takes
+ * the screen showing it down with it. So an instant that is neither a string
+ * nor a `Timestamp` reads as none at all, and the line says no time rather than
+ * saying something that is not one.
+ */
+function storedInstant(value: unknown): string {
+  if (typeof value === 'string') return value
+  const date = (value as { toDate?: () => Date } | null)?.toDate?.()
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : ''
 }
 
 function formatInstant(iso: string): string {

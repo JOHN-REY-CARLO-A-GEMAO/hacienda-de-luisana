@@ -56,7 +56,12 @@ it('F20-SOURCE: mobile simulator toJson omits required booking/UID/result fields
 it('F21-SOURCE: mobile consent reader asks for session_secret; the actual web writer uses stream_secret', () => {
   expect(source('lib/services/live_location_service.dart')).toContain("data['session_secret']")
   expect(source('src/lib/liveLocation.ts')).toContain('stream_secret: secret')
-  expect(source('database.rules.json')).toContain('now + 90000')
+  // The stream's expiry bound is the longest share a Guest may start — the same
+  // figure `MAX_SHARE_MINUTES` gives the web client and `firestore.rules` caps the
+  // consent with. It read `now + 90000` until this was fixed, which no session the
+  // Guest can pick fits inside, so the first fix of every share was refused.
+  const cap = Number(source('src/lib/liveLocationPolicy.ts').match(/MAX_SHARE_MINUTES = (\d+)/)?.[1])
+  expect(source('database.rules.json')).toContain(`now + ${cap * 60_000}`)
 })
 it('F26-SOURCE: checked-in Firestore indexes contain no reviews composites (deployment remains unknown)', () => {
   const indexes = JSON.parse(source('firestore.indexes.json'))

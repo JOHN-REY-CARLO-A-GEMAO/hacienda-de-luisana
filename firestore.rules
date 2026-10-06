@@ -157,10 +157,34 @@ service cloud.firestore {
         && checkOut == checkIn + duration.value(data.nights, 'd');
     }
 
-    function hasConfiguredRate(data) {
-      let path = /databases/$(database)/documents/site_config/rates;
-      return exists(path)
-        && get(path).data.get('accommodations', {}).keys().hasAny([data.accommodation]);
+    // ------------------------------------------------------------------
+    // The whole Guest-side gate for a create, in one call
+    // ------------------------------------------------------------------
+    //
+    // The create rule used to ask `isAdmin()` twice: once before the lead time
+    // and once before the money. `isAdmin()` is not a comparison — it resolves a
+    // role, which costs an `exists()` and a `get()` on `profiles/{uid}` — so a
+    // Guest's Booking spent four document reads deciding it was a Guest before
+    // any policy was checked at all.
+    //
+    // It matters because of the evaluation budget. Firestore counts the
+    // expressions a request evaluates, capped at 1000, and refuses the whole
+    // request when it is spent — as `permission-denied`, indistinguishable from a
+    // policy decision. This ruleset crossed that line and every Guest booking was
+    // refused while the offline suite reported ALLOW, because the offline engine
+    // does not model the budget. Deduplicating the read is therefore a security
+    // fix as much as a size one: it is the same question asked once.
+    //
+    // The conjunction is unchanged. A Guest had to satisfy the date shape AND the
+    // lead time AND the authoritative money; it is the same three conditions,
+    // written next to each other. An Admin still short-circuits before any of
+    // them, because `isAdmin()` is the left side of the `||` at the call site.
+    // ------------------------------------------------------------------
+
+    function validGuestCreate(data) {
+      return data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && meetsMinimumBookingLeadTime(data.check_in)
+        && validAuthoritativeMoney(data);
     }
 
     function scheduledRate(schedule, guests) {
@@ -279,8 +303,9 @@ service cloud.firestore {
     // these three ids and no others. The rule layer is where that list lives
     // because the rules are the enforcement: neither app may invent a name, a
     // capacity or a price for an Accommodation, and neither may publish a
-    // fourth. A Booking that names anything else fails `hasConfiguredRate`
-    // below, so this list and the Booking write agree by construction.
+    // fourth. A Booking that names anything else reads as no rate and is refused
+    // by the `rate is map` check in validAuthoritativeMoney below, so this list
+    // and the Booking write agree by construction.
     //
     // `Villa LuisAna` is the estate, not an Accommodation — the Hacienda's own
     // name appears in no member of this list.
@@ -337,7 +362,15 @@ service cloud.firestore {
 
     function validAuthoritativeMoney(data) {
       let published = get(/databases/$(database)/documents/site_config/rates).data;
-      let rate = published.accommodations[data.accommodation];
+      // Resolved off the document already read above, rather than through
+      // hasConfiguredRate, which read it twice more (`exists` + `get`) to ask
+      // whether the Accommodation was present. A Booking naming anything else
+      // now reads as `null` and is refused by the `rate is map` check below,
+      // which is the same refusal as an evaluation error and cheaper.
+      //
+      // Inlined rather than held in a `let`: this function is at the rules
+      // language's ceiling of ten bindings, and an eleventh does not compile.
+      let rate = published.get('accommodations', {}).get(data.accommodation, null);
       let pricing = rate.get('guest_pricing', {});
       let allowThreeGuestCap = data.accommodation == 'house-a-camping';
       let holidayDates = published.get('holiday_dates', []);
@@ -355,7 +388,7 @@ service cloud.firestore {
       let due = int(total * 50) / 100;
       return published.keys().hasAny(['holiday_dates'])
         && holidayDates is list
-        && hasConfiguredRate(data)
+        && rate is map
         && rate.get('active', true) == true
         && rate.get('rate_unit', '') == 'standard_stay'
         && !rate.keys().hasAny(['nightly_rate', 'reservation_fee_amount'])
@@ -778,11 +811,6 @@ service cloud.firestore {
         && request.resource.data.email is string
         && request.resource.data.check_in is string
         && request.resource.data.check_out is string
-        // Guest/public creates obey the lead time; only a backend-resolved
-        // Admin may create a manual booking sooner. No existing update/action
-        // is gated, including review of previously submitted bookings.
-        && (isAdmin() || (request.resource.data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
-                         && meetsMinimumBookingLeadTime(request.resource.data.check_in)))
         && request.resource.data.status == 'Pending'
         && request.resource.data.get('uid', '') != ''
         // ADR-0012: a Booking is born Pending, and only with a downpayment
@@ -798,7 +826,18 @@ service cloud.firestore {
         && request.resource.data.get('payment_verified_at', '') == ''
         // Admin-created manual/legacy records remain possible. Every Guest
         // create must exactly match the currently published property rate.
-        && (isAdmin() || validAuthoritativeMoney(request.resource.data));
+        //
+        // This is the one gate, and it is last, and it resolves the role once.
+        // Guest/public creates obey the lead time; only a backend-resolved
+        // Admin may create a manual booking sooner, so the Admin bypasses both
+        // the date rules and the money rules together. No existing update or
+        // action is gated, including review of a previously submitted Booking.
+        //
+        // It used to be two gates, each opening with its own `isAdmin()`, which
+        // cost a Guest four reads of `profiles/{uid}` before any policy was
+        // checked. See validGuestCreate for why that stopped a whole ruleset
+        // being evaluated at all.
+        && (isAdmin() || validGuestCreate(request.resource.data));
 
       // Cheapest check first: a Guest reading their own Booking should not pay
       // for a Profile read to find out they are allowed.

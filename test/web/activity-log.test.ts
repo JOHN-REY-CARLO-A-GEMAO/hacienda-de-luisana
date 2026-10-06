@@ -186,6 +186,51 @@ describe('describeActivity', () => {
   })
 })
 
+// The Admin app stamps a Review's moderation entry with `serverTimestamp()` and
+// the rules accept it, so a real `Timestamp` sits in this log beside the ISO
+// strings the Booking lifecycle writes. That mixed-shape log is what the web
+// reads back, and it is why the instant is settled on the way out of storage:
+// an object handed to React as a child is a thrown error, and it took the
+// Guest's whole /account page down with it (React error #31).
+describe('an entry written by the Admin app as a Firestore Timestamp', () => {
+  const stored = new Date('2026-09-20T01:00:00.000Z')
+  const timestamp = { toDate: () => stored } as unknown as ActivityLogEntry['at']
+  const base = {
+    booking_id: 'book-1',
+    action: 'ReviewPublished',
+    from_status: 'none',
+    to_status: 'published',
+    actor: 'admin',
+    actor_id: 'admin-1',
+    seq: 3,
+  }
+
+  it('reads as the same ISO instant the Booking lifecycle writes', () => {
+    const entry = { ...base, at: timestamp } as unknown as ActivityLogEntry
+
+    const line = describeActivity(entry)
+
+    expect(line.at).toBe('2026-09-20T01:00:00.000Z')
+    expect(line.atLabel).toBe(describeActivity({ ...base, at: stored.toISOString() } as ActivityLogEntry).atLabel)
+  })
+
+  it('never hands an object to the renderer, whatever the log was written as', () => {
+    for (const at of [timestamp, null, undefined, 0, { seconds: 0, nanoseconds: 0 }]) {
+      const line = describeActivity({ ...base, at } as unknown as ActivityLogEntry)
+      // React error #31 is thrown by rendering one of these as a child, and the
+      // log is rendered as text, so both fields have to be strings.
+      expect(typeof line.at).toBe('string')
+      expect(typeof line.atLabel).toBe('string')
+    }
+  })
+
+  it('says no time rather than borrowing one for an instant it cannot read', () => {
+    // A fabricated timestamp in an audit log is worse than a blank one: it is a
+    // claim about when something happened that nothing recorded.
+    expect(describeActivity({ ...base, at: null } as unknown as ActivityLogEntry).atLabel).toBe('')
+  })
+})
+
 // Spec #9: "The Activity log is append-only and written by the state change
 // itself, not by the UI that triggered it, so a transition cannot happen
 // unlogged." The Admin dashboard still sets a status directly today (moving it

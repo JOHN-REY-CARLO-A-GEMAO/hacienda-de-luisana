@@ -30,6 +30,7 @@ const ADMIN_EMAIL = 'haciendadeluisiana@gmail.com'
 const GUEST_UID = 'guest-uid-1'
 const OTHER_GUEST_UID = 'guest-uid-2'
 const CONVO_ID = 'convo-1'
+const OTHER_CONVO_ID = 'convo-2'
 const SECRET = 'a'.repeat(32)
 
 let env: RulesTestEnvironment
@@ -72,13 +73,16 @@ function fix(overrides: Record<string, unknown> = {}) {
   // error that has nothing to do with the rules. Expiry is the rules' job, and
   // it is asserted below.
   //
-  // The window is 60 seconds, NOT the session's length. `.validate` refuses any
-  // `expires_at_ms` more than 90 seconds ahead of `now` — a client cannot stamp
-  // a node with a long life, it re-asserts the real window on every fix — so a
-  // fixture claiming the full half-hour contradicted the rule it was written to
-  // test, and the two cases that expected a write to succeed were the two that
-  // failed. (This suite had never been executed: the Database emulator had
-  // never been downloaded.)
+  // The window is 60 seconds here only so that one fixture can be reused by the
+  // cases that care about something else. `.validate` refuses any
+  // `expires_at_ms` more than an hour ahead of `now` — the longest share a Guest
+  // may start — so a fixture may claim a full session window as well; the cases
+  // below that exercise the lease do exactly that, for every window the Guest is
+  // offered. (This bound read 90 seconds until it was fixed, which no session
+  // fits inside: `publishFix` sends the session's own expiry on every fix, so the
+  // first fix of every share was refused. The suite had never been executed —
+  // the Database emulator had never been downloaded — and its fixture was quietly
+  // shrunk to 60 seconds to fit the wrong number instead of failing.)
   const expiresAtMs = Date.now() + 60_000
   return {
     lat: 14.1,
@@ -155,6 +159,92 @@ describe('live location, the ephemeral stream', () => {
   it('refuses a fix whose window has already closed', async () => {
     const past = Date.now() - 1000
     await assertDenied(() => guest().ref(path()).set(fix({ expires_at_ms: past })), 'a closed window')
+  })
+
+  // The regression this file would not have caught, written out per window.
+  //
+  // `publishFix` re-asserts the *session's* expiry on every fix rather than a
+  // short lease, because the Admin's `.read` decides whether a position is still
+  // live by comparing this number against the clock. The bound in `.validate`
+  // therefore has to be the longest share the Guest may start, not some smaller
+  // figure of the rule author's choosing: it read `now + 90000`, no session the
+  // Guest is offered fits inside that, and the first fix of every share was
+  // refused — which the web client reported as the hacienda refusing the update.
+  for (const minutes of [1, 5, 15, 30, 60]) {
+    it(`accepts the first fix of a ${minutes}-minute share`, async () => {
+      // The exact payload shape `publishFix` sends for that window.
+      await assertSucceeds(
+        guest().ref(path()).set(fix({ expires_at_ms: Date.now() + minutes * 60_000 })),
+      )
+    })
+  }
+
+  it('accepts a fix restating the same window, and a window being shortened', async () => {
+    // The real cadence: one node, overwritten in place, every few seconds for
+    // the life of the share. Same expiry on each write, and the Admin's Stop
+    // shortening what is left of it.
+    const expiry = Date.now() + 60 * 60_000
+    await assertSucceeds(guest().ref(path()).set(fix({ expires_at_ms: expiry, seq: 1 })))
+    await assertSucceeds(
+      guest().ref(path()).set(fix({ expires_at_ms: expiry, seq: 2, lat: 14.1001 })),
+    )
+    await assertSucceeds(
+      guest().ref(path()).set(fix({ expires_at_ms: Date.now() + 5_000, seq: 3 })),
+    )
+  })
+
+  it('refuses a fix that would push the window out past the one already stored', async () => {
+    // "A client cannot extend its own session." The first write sets the ceiling
+    // and every later one may only restate it or shorten it. Without this the
+    // hourly cap above bounds any *single* write only: a client could re-stamp
+    // `now + 3600000` every thirty seconds and keep one node readable forever,
+    // which outlives the Firestore consent that authorised it.
+    const first = Date.now() + 15 * 60_000
+    await assertSucceeds(guest().ref(path()).set(fix({ expires_at_ms: first })))
+    await assertDenied(
+      () => guest().ref(path()).set(fix({ expires_at_ms: first + 60 * 60_000 })),
+      'a window an hour beyond the one already stored',
+    )
+    // Even by a minute. A Guest who chose 15 minutes does not get 16 because the
+    // rule's comparator is `<=` rather than `<`.
+    await assertDenied(
+      () => guest().ref(path()).set(fix({ expires_at_ms: first + 60_000 })),
+      'a window one minute beyond the one already stored',
+    )
+    // And restating the very same window is still fine, so this is a ceiling and
+    // not a one-shot write lock.
+    await assertSucceeds(guest().ref(path()).set(fix({ expires_at_ms: first, seq: 2 })))
+  })
+
+  it('refuses a very first fix claiming more than the longest session', async () => {
+    // On a node holding nothing there is no stored window to compare against, so
+    // the cap is the only ceiling. Asserted on a second conversation, because a
+    // Guest who already opened a 15-minute node may not start an hour here — that
+    // refusal is the no-extend clause above, and mixing the two in one case hid
+    // which rule had refused it.
+    const other = `live_location/${OTHER_CONVO_ID}/${GUEST_UID}`
+    await assertSucceeds(
+      guest().ref(other).set(
+        fix({ conversation_id: OTHER_CONVO_ID, expires_at_ms: Date.now() + 60 * 60_000 }),
+      ),
+    )
+    await assertDenied(
+      () =>
+        guest()
+          .ref(other)
+          .set(fix({ conversation_id: OTHER_CONVO_ID, expires_at_ms: Date.now() + 61 * 60_000 })),
+      'a first write an hour and a minute past the maximum session',
+    )
+  })
+
+  it('lets the owning Guest remove their own node', async () => {
+    // `.validate` is not applied to a delete, so the window rules above cannot
+    // stand in the way of the one deletion that must always work: `stopSharing`
+    // on Stop, and the `onDisconnect().remove()` armed when the share opened.
+    await assertSucceeds(guest().ref(path()).set(fix()))
+    await assertSucceeds(guest().ref(path()).remove())
+    await assertSucceeds(guest().ref(path()).set(fix()))
+    await assertDenied(() => other().ref(path()).remove(), "another Guest removing it")
   })
 
   it('refuses a fix claiming a window far beyond its own', async () => {

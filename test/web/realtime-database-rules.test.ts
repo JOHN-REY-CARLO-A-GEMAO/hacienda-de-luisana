@@ -100,12 +100,43 @@ describe('the stream is a position, and nothing else', () => {
     expect(validate).toContain("newData.child('lng').val() <= 126.5")
   })
 
-  it('refuses a fix whose window has closed, or claims to outlive its own', () => {
+  it('refuses a fix whose window has closed, or outlives the longest session', () => {
     expect(validate).toContain("newData.child('expires_at_ms').val() > now")
-    // A client cannot stamp a node with an hour-long life: the window it claims
-    // has to be the session's, and the session's is capped at an hour.
-    expect(validate).toContain('newData.child(\'expires_at_ms\').val() <= now + 90000')
+    // The bound is the longest session the Guest may start, and nothing longer.
+    //
+    // This used to read `now + 90000`, which no session the Guest can choose ever
+    // fits inside: `publishFix` sends the session's own expiry on every fix, and
+    // the shortest window `firestore.rules` will accept is a minute while the
+    // choices offered are 15/30/60. So the *first* fix of *every* share was
+    // refused, `useLiveLocation` read that as "the server ended the session", and
+    // the panel said the hacienda refused the update. Nothing had ever published
+    // a position. The figure that belongs here is the cap, which is what
+    // `firestore.rules` already enforces on the consent with
+    // `request.time + duration.value(1, 'h')`.
+    expect(validate).toContain('newData.child(\'expires_at_ms\').val() <= now + 3600000')
     expect(MAX_SHARE_MINUTES).toBe(60)
+    // Held against the whole maximum, so the two stores cannot drift apart again:
+    // the cap is the policy module's, written out in the rule language's units.
+    expect(3600000).toBe(MAX_SHARE_MINUTES * 60_000)
+  })
+
+  it('refuses a fix that would push the node\'s window out past the one already there', () => {
+    // The other half of "a client cannot extend its own session". `data` is the
+    // node as it stands and `newData` is what this write would leave behind, so
+    // the first fix sets the ceiling and every later fix may only shorten it or
+    // restate it. Without this clause the 60-minute cap above is only a cap on
+    // any *one* write: a client could re-stamp `now + 3600000` every thirty
+    // seconds and keep a node readable forever, which is a strictly longer
+    // life than the session the Firestore consent ended.
+    //
+    // `data.child(...)` is absent on the creating write, which is what the
+    // `.exists()` guard is for — comparing a number against a missing child would
+    // refuse the very first fix of a share. And `.validate` is not applied to
+    // deletes at all, so this clause cannot stand in the way of `stopSharing`
+    // removing the node.
+    expect(validate).toContain(
+      "!data.child('expires_at_ms').exists() || newData.child('expires_at_ms').val() <= data.child('expires_at_ms').val()",
+    )
   })
 
   it('refuses a fix carrying a movement log beside the position', () => {
