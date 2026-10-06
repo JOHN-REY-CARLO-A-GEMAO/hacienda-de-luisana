@@ -21,7 +21,7 @@
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, type Auth, GoogleAuthProvider } from 'firebase/auth'
-import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore'
+import { connectFirestoreEmulator, initializeFirestore, type Firestore } from 'firebase/firestore'
 import { connectStorageEmulator, getStorage, type FirebaseStorage } from 'firebase/storage'
 import type { Database } from 'firebase/database'
 import {
@@ -181,7 +181,12 @@ if (isFirebaseConfigured) {
     // Avoid re-initializing during HMR
     app = getApps().length ? getApp() : initializeApp(firebaseConfig as any)
     auth = getAuth(app)
-    db = getFirestore(app)
+    // Some browser privacy filters and restrictive networks break Firestore's
+    // streaming transport (`ERR_BLOCKED_BY_CLIENT` / WebChannel failures). Let
+    // the SDK detect that and fall back to long-polling automatically; this
+    // keeps normal environments on the default transport and does not alter the
+    // authorization enforced by firestore.rules.
+    db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true })
     storage = getStorage(app)
     if (isUsingEmulators && !emulatorsConnected) {
       emulatorsConnected = true
