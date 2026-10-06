@@ -110,6 +110,10 @@ export function describeActivity(entry: ActivityLogEntry): ActivityLine {
  */
 function storedInstant(value: unknown): string {
   if (typeof value === 'string') return value
+  if (typeof value === 'object' && value !== null && 'seconds' in value && typeof value.seconds === 'number') {
+    const date = new Date(value.seconds * 1000)
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString()
+  }
   const date = (value as { toDate?: () => Date } | null)?.toDate?.()
   return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : ''
 }

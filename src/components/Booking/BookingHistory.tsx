@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
 import { describeActivity } from '../../lib/booking'
+import { renderSafeText } from '../../lib/renderSafeText'
 
 /**
  * A Booking's Activity log, in the order it happened.
@@ -48,14 +49,14 @@ export function BookingHistory({ bookingId }: { bookingId: string }) {
             <li key={`${line.at}-${index}`} className="flex gap-2.5 text-xs">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-olive" />
               <div className="min-w-0">
-                <div className="font-semibold text-forest-900 leading-snug">{line.headline}</div>
+                <div className="font-semibold text-forest-900 leading-snug">{renderSafeText(line.headline)}</div>
                 <div className="text-[11px] text-forest-700/80">
-                  {line.change} · {line.actor}
+                  {renderSafeText(line.change)} · {renderSafeText(line.actor)}
                 </div>
                 {line.reason ? (
-                  <div className="text-[11px] text-forest-800/80 italic mt-0.5">“{line.reason}”</div>
+                  <div className="text-[11px] text-forest-800/80 italic mt-0.5">“{renderSafeText(line.reason)}”</div>
                 ) : null}
-                <div className="text-[10px] text-forest-600/70 mt-0.5">{line.atLabel}</div>
+                <div className="text-[10px] text-forest-600/70 mt-0.5">{renderSafeText(line.atLabel)}</div>
               </div>
             </li>
           ))}
