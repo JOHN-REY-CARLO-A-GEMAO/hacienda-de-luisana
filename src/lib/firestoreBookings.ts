@@ -42,7 +42,9 @@ import {
   normalizeStatus,
   unitsForAccommodation,
   validateMinimumBookingLeadTime,
+  validateBookingPayload,
   type BookingDateValidation,
+  type BookingRuleFailure,
   DATE_HOLD_MS,
   type ActionAccepted,
   type ActionRefused,
@@ -356,6 +358,36 @@ async function logStatusChange(
 const isCloud = isFirebaseConfigured && Boolean(db)
 
 /**
+ * Firestore returns only `permission-denied` for a failed compound rule. Re-run
+ * the explainable portion of that rule against the latest browser-visible policy
+ * so a stale quote, unsupported stay or missing proof gets a useful message.
+ *
+ * `null` means the client could not establish a trustworthy diagnosis (for
+ * example, the rates document was unavailable). In that case the caller keeps
+ * the safe server-refusal wording rather than guessing.
+ */
+async function explainGuestCreateRefusal(
+  input: Omit<Booking, 'id' | 'status' | 'created_at'>,
+): Promise<BookingRuleFailure | null> {
+  if (!input.uid?.trim()) {
+    return {
+      code: 'GUEST_IDENTITY_REQUIRED',
+      message: 'We could not attach this booking to a Guest identity, so nothing was saved. Please try again in a moment.',
+      field: 'payment',
+    }
+  }
+
+  const published = await ratesDB.get().catch(() => null)
+  if (!published) return null
+  const minimumBookingLeadTimeDays = await bookingPolicyDB.getMinimumLeadTimeDays().catch(() => undefined)
+  const result = validateBookingPayload(input, {
+    published,
+    ...(minimumBookingLeadTimeDays !== undefined ? { minimumBookingLeadTimeDays } : {}),
+  })
+  return result.ok ? null : result.failure
+}
+
+/**
  * A Booking that has just been submitted, and where it actually landed.
  *
  * `storage` is not decoration. A cloud write can fail when the Guest is offline
@@ -549,6 +581,23 @@ export const cloudBookingsDB = {
     void _amountVerified
     void _verifiedAt
     void _verifiedBy
+
+    // New website submissions carry `source: web`. When the cloud project is
+    // available, run the explainable selection/rate/payload checks here as well
+    // as in the pages. This keeps a stale or hand-edited draft from reaching
+    // Firestore. The payment page runs the same check before uploading; this
+    // adapter copy also protects direct callers, while leaving historical and
+    // Admin-created records on their existing path.
+    if (isCloud && rest.source === 'web') {
+      const diagnosed = await explainGuestCreateRefusal(rest)
+      if (diagnosed) {
+        throw Object.assign(new Error(diagnosed.message), {
+          code: diagnosed.code,
+          ruleFailure: diagnosed,
+        })
+      }
+    }
+
     const submitter: Actor = actor ?? { actor: 'guest', actor_id: rest.uid ?? 'guest' }
     const at = instantOf(submitter)
     const holdExpiresAt = initialHoldExpiry(at)
@@ -611,12 +660,19 @@ export const cloudBookingsDB = {
             (lastWriteFailure.message ? ` Firebase said: ${lastWriteFailure.message}` : ''),
           e,
         )
+        const diagnosed = await explainGuestCreateRefusal(input).catch(() => null)
+        const message = diagnosed?.message ?? (
+          'The booking could not be submitted because the Hacienda’s booking rules refused it. ' +
+          'Nothing was saved. Please try again, or send the Hacienda your reference so they can check it.'
+        )
         throw Object.assign(
-          new Error(
-            'The booking could not be submitted because the Hacienda’s booking rules refused it. ' +
-              'Nothing was saved. Please try again, or send the Hacienda your reference so they can check it.',
-          ),
-          { code: lastWriteFailure.code, advice: lastWriteFailure.advice, firebaseMessage: lastWriteFailure.message },
+          new Error(message),
+          {
+            code: diagnosed?.code ?? lastWriteFailure.code,
+            ruleFailure: diagnosed,
+            advice: lastWriteFailure.advice,
+            firebaseMessage: lastWriteFailure.message,
+          },
         )
       }
       console.warn(

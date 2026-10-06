@@ -104,6 +104,20 @@ export {
 } from './leadTime'
 
 export {
+  genericRulesRefusal,
+  validateBookingPayload,
+  validateBookingSelection,
+  type BookingPayloadForValidation,
+  type BookingPayloadValidation,
+  type BookingRuleFailure,
+  type BookingRuleFailureCode,
+  type BookingRuleField,
+  type BookingSelection,
+  type BookingSelectionOptions,
+  type BookingSelectionValidation,
+} from './validation'
+
+export {
   applyAction,
   instantOf,
   type ActionAccepted,
