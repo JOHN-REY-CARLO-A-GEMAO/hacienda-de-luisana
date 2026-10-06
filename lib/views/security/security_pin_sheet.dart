@@ -43,6 +43,11 @@ Future<SecurityTicket?> showSecurityPinSheet(
     backgroundColor: Colors.white,
     isDismissible: true,
     enableDrag: false,
+    // Size to the keypad rather than to 9/16 of the screen. The default cap
+    // is what four 64px rows and the lockout countdown do not fit inside, and
+    // a sheet that overflows takes the lockout message — the one line telling
+    // the Admin how long is left — with it.
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -69,6 +74,8 @@ class _SecurityPinSheetBody extends ConsumerStatefulWidget {
 
 class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
   final GlobalKey<PinEntryPadState> _pad = GlobalKey<PinEntryPadState>();
+  final GlobalKey<PinKeyboardInputState> _keyboard =
+      GlobalKey<PinKeyboardInputState>();
   bool _busy = false;
 
   /// Non-null while the ladder holds the sheet open; a live countdown runs
@@ -107,6 +114,23 @@ class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
     });
   }
 
+  /// The pad's own keys. The hidden field is emptied so the two routes cannot
+  /// both hold digits — the pad is what the Admin sees, so it is what the
+  /// entry is read from once a key has been tapped.
+  void _onPadChanged(String digits) {
+    _keyboard.currentState?.clear();
+  }
+
+  /// The platform keyboard. Pushed into the pad so the dots fill the same way
+  /// a tap fills them, and a full entry submits the same way too.
+  void _onKeyboardChanged(String digits) {
+    final complete = _pad.currentState?.typeFromKeyboard(digits) ?? false;
+    if (complete) {
+      _keyboard.currentState?.clear();
+      _submit(digits);
+    }
+  }
+
   Future<void> _submit(String pin) async {
     if (_busy || _locked) return;
     setState(() => _busy = true);
@@ -120,6 +144,18 @@ class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
     }
     setState(() => _busy = false);
     switch (result.outcome) {
+      case PinVerifyOutcome.verified:
+        // Reached only when the store reports a correct PIN but mints no
+        // ticket — the shape the pad above cannot act on. Fail closed rather
+        // than pop a null ticket the call site would treat as "cancelled".
+        _pad.currentState?.reset();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: AppColors.statusAlert,
+          content: Text(
+              'The Security PIN was accepted but no session ticket was issued. Run the action again.'),
+          duration: Duration(seconds: 6),
+        ));
+        return;
       case PinVerifyOutcome.wrongPin:
         HapticFeedback.heavyImpact();
         _pad.currentState?.reset();
@@ -159,63 +195,279 @@ class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
       // The countdown is the way out, and it is the point of the lockout.
       canPop: !_locked,
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.cardBorder,
-                  borderRadius: BorderRadius.circular(10),
-                ),
+        // Same arrangement as the gate: the keyboard layer underneath, so the
+        // keys keep their own taps and empty space raises the keyboard.
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: PinKeyboardInput(
+                key: _keyboard,
+                enabled: !_busy && !_locked,
+                // Off: this sheet is opened by a tap on a sensitive control,
+                // and raising a keyboard the Admin did not ask for covers the
+                // control they are answering for. A tap on empty space still
+                // brings it up.
+                autofocus: false,
+                onChanged: _onKeyboardChanged,
               ),
-              const SizedBox(height: 16),
-              Row(
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Icon(Icons.lock_outline_rounded,
-                      size: 18, color: AppColors.primaryForest),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      widget.title,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.cinzel(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
-                      ),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBorder,
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.lock_outline_rounded,
+                          size: 18, color: AppColors.primaryForest),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          widget.title,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.cinzel(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.consequence,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      height: 1.5,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  PinEntryPad(
+                    key: _pad,
+                    enabled: !_busy && !_locked,
+                    message: _lockMessage,
+                    messageColor: AppColors.statusAlert,
+                    onChanged: _onPadChanged,
+                    onComplete: _submit,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                widget.consequence,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  height: 1.5,
-                  color: AppColors.textMuted,
-                ),
-              ),
-              const SizedBox(height: 16),
-              PinEntryPad(
-                key: _pad,
-                enabled: !_busy && !_locked,
-                message: _lockMessage,
-                messageColor: AppColors.statusAlert,
-                onComplete: _submit,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+/// A transparent field that holds the platform keyboard open for a
+/// [PinEntryPad].
+///
+/// The pad draws its own keys, which on a phone means no keyboard ever opens
+/// and the digits have to be tapped one at a time. This is the other route:
+/// an invisible field sitting underneath the pad keeps focus — and therefore
+/// the numeric keyboard — up, and turns typed digits into the same entry a tap
+/// would have made. Both routes stay live; nothing here replaces the pad.
+///
+/// Put it *below* the pad in a [Stack] and fill the space: the keys sit on
+/// top and take their own taps, while a tap on any empty part of the screen
+/// falls through to this and raises the keyboard.
+class PinKeyboardInput extends StatefulWidget {
+  /// Digits typed so far, oldest first. Only digits are ever reported.
+  final ValueChanged<String> onChanged;
+
+  /// False while verifying or locked out — the field is unfocused and the
+  /// keyboard closes, so a PIN cannot be typed into a gate that is not asking.
+  final bool enabled;
+
+  /// Raise the keyboard as soon as the gate appears. On for the standing
+  /// gate; off for a sheet, where the Admin has just tapped a control and
+  /// raising a keyboard would cover the question they are answering.
+  final bool autofocus;
+
+  const PinKeyboardInput({
+    super.key,
+    required this.onChanged,
+    this.enabled = true,
+    this.autofocus = true,
+  });
+
+  @override
+  State<PinKeyboardInput> createState() => PinKeyboardInputState();
+}
+
+class PinKeyboardInputState extends State<PinKeyboardInput> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  /// True while [clear] is emptying the field, so the resulting `onChanged('')`
+  /// is not mistaken for the Admin deleting a digit.
+  bool _suppress = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autofocus) {
+      // After the first frame, so the field is mounted and the keyboard has a
+      // window to come up over.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.enabled) _focus.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(PinKeyboardInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled) {
+      if (_focus.hasFocus) {
+        // A wrong PIN or a lockout: put the keyboard away rather than leave a
+        // digit field the gate is not currently reading.
+        _focus.unfocus();
+      }
+      return;
+    }
+    if (_focus.hasFocus || !widget.autofocus) return;
+    // The gate asks while it is still `checking`, so the field is born
+    // disabled and a disabled TextField refuses focus. Ask again after the
+    // rebuild that enables it — a request on a node whose field is not
+    // attached yet is dropped, not queued.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.enabled) _focus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// Clear the field without telling the parent — used after a submission, so
+  /// the next attempt starts from empty whichever route typed the last one.
+  void clear() {
+    if (_controller.text.isEmpty) return;
+    _suppress = true;
+    _controller.clear();
+    _suppress = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      // Invisible, not absent: the field has to hold a real connection to the
+      // platform IME, which a removed widget does not have.
+      opacity: 0,
+      child: TextField(
+        key: const Key('pin-keyboard-input'),
+        controller: _controller,
+        focusNode: _focus,
+        enabled: widget.enabled,
+        autofocus: false,
+        showCursor: false,
+        enableSuggestions: false,
+        autocorrect: false,
+        keyboardType: TextInputType.number,
+        textInputAction: TextInputAction.done,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(PinEntryPadState.pinLength),
+        ],
+        style: const TextStyle(
+          height: 0.01,
+          fontSize: 1,
+          color: Colors.transparent,
+        ),
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          isDense: true,
+        ),
+        onChanged: (value) {
+          if (_suppress) return;
+          widget.onChanged(value);
+        },
+      ),
+    );
+  }
+}
+
+/// The colours one PIN entry surface uses.
+///
+/// [PinEntryPad] is drawn in two places that share no colours: the white
+/// sheets, and the gate, whose background is the deep forest green. One set
+/// cannot serve both — the house dark ink that reads perfectly on white is
+/// effectively invisible on `primaryDark` — so each surface names its own and
+/// the gate passes [PinPadTheme.onDark].
+///
+/// White and gold, and nothing else, on the dark surface: white is the primary
+/// (digits, backspace, empty outlines) and gold is the accent (the entered
+/// dots), which is also what makes "filled" legible without a label.
+class PinPadTheme {
+  /// The digit colour, and the colour of a filled dot when `dotAccent` is
+  /// false.
+  final Color filled;
+
+  /// The gold used for entered dots on the dark surface. Null on light, where
+  /// the entered dot is simply the filled ink.
+  final Color? dotAccent;
+
+  /// The fill of an empty dot. Transparent on both surfaces — an empty slot is
+  /// an outline, not a pale disc.
+  final Color emptyFill;
+
+  /// The outline of an empty dot: what makes "empty" readable at a glance.
+  final Color emptyBorder;
+
+  final Color backspace;
+
+  /// The background behind a key. Faint on the dark gate so the keypad reads
+  /// as buttons; invisible on the white sheets, which already have a card.
+  final Color keyFill;
+
+  const PinPadTheme({
+    required this.filled,
+    required this.emptyFill,
+    required this.emptyBorder,
+    required this.backspace,
+    required this.keyFill,
+    this.dotAccent,
+  });
+
+  /// On a white sheet: the house dark ink.
+  static const PinPadTheme onLight = PinPadTheme(
+    filled: AppColors.textDark,
+    emptyFill: Colors.transparent,
+    emptyBorder: AppColors.cardBorder,
+    backspace: AppColors.textDark,
+    keyFill: Colors.transparent,
+  );
+
+  /// On the gate's deep green.
+  static const PinPadTheme onDark = PinPadTheme(
+    filled: Colors.white,
+    dotAccent: AppColors.accentGold,
+    emptyFill: Colors.transparent,
+    emptyBorder: Color(0x59FFFFFF),
+    backspace: Colors.white,
+    keyFill: Color(0x0FFFFFFF),
+  );
 }
 
 /// The six dots and the 3×4 keypad, shared by the PIN sheet and the setup /
@@ -233,12 +485,21 @@ class PinEntryPad extends StatefulWidget {
   final String? message;
   final Color? messageColor;
 
+  /// Every change to what has been typed, whichever route it came from — a tap
+  /// on these keys, or the platform keyboard via [PinKeyboardInput].
+  final ValueChanged<String>? onChanged;
+
+  /// Which surface this pad is being drawn on. Defaults to the white sheets.
+  final PinPadTheme theme;
+
   const PinEntryPad({
     super.key,
     required this.onComplete,
     this.enabled = true,
     this.message,
     this.messageColor,
+    this.onChanged,
+    this.theme = PinPadTheme.onLight,
   });
 
   @override
@@ -273,7 +534,23 @@ class PinEntryPadState extends State<PinEntryPad>
         _digits = '';
         _flashing = false;
       });
+      widget.onChanged?.call(_digits);
     });
+  }
+
+  /// Take digits typed on the platform keyboard as if they had been tapped.
+  ///
+  /// Returns true when the entry reached [pinLength], so the parent submits
+  /// the way it does after a tap. Only the last [pinLength] digits are kept:
+  /// a held key can overshoot, and the extra digit is not part of this PIN.
+  bool typeFromKeyboard(String digits) {
+    if (!widget.enabled) return false;
+    final next = digits.length > pinLength
+        ? digits.substring(digits.length - pinLength)
+        : digits;
+    setState(() => _digits = next);
+    widget.onChanged?.call(next);
+    return next.length == pinLength;
   }
 
   void _tap(String digit) {
@@ -281,6 +558,7 @@ class PinEntryPadState extends State<PinEntryPad>
     HapticFeedback.selectionClick();
     final next = _digits + digit;
     setState(() => _digits = next);
+    widget.onChanged?.call(next);
     if (next.length == pinLength) {
       widget.onComplete(next);
     }
@@ -289,12 +567,18 @@ class PinEntryPadState extends State<PinEntryPad>
   void _delete() {
     if (!widget.enabled || _digits.isEmpty) return;
     HapticFeedback.selectionClick();
-    setState(() => _digits = _digits.substring(0, _digits.length - 1));
+    final next = _digits.substring(0, _digits.length - 1);
+    setState(() => _digits = next);
+    widget.onChanged?.call(next);
   }
 
   @override
   Widget build(BuildContext context) {
-    final dotColor = _flashing ? AppColors.statusAlert : AppColors.textDark;
+    final theme = widget.theme;
+    // A wrong entry flashes every dot red regardless of theme: it is an error,
+    // not a colour scheme, and it has to be the same on both surfaces.
+    final emptyBorder =
+        _flashing ? AppColors.statusAlert : theme.emptyBorder;
     return AnimatedBuilder(
       animation: _shake,
       builder: (context, child) {
@@ -333,11 +617,22 @@ class PinEntryPadState extends State<PinEntryPad>
                     height: 14,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
+                      // Entered: a solid disc, in the accent where the surface
+                      // has one. Empty: an outline with nothing inside it, so
+                      // "not yet" is a shape difference and not only a
+                      // difference of intensity.
                       color: i < _digits.length
-                          ? dotColor
+                          ? (_flashing
+                              // The flash wins over the accent: a wrong entry
+                              // has to read as wrong, not as "entered".
+                              ? AppColors.statusAlert
+                              : (theme.dotAccent ?? theme.filled))
                           : (_flashing
                               ? AppColors.statusAlert.withOpacity(0.25)
-                              : AppColors.cardBorder),
+                              : theme.emptyFill),
+                      border: i < _digits.length
+                          ? null
+                          : Border.all(color: emptyBorder, width: 1.5),
                     ),
                   ),
                 ],
@@ -383,26 +678,36 @@ class PinEntryPadState extends State<PinEntryPad>
   }
 
   Widget _key(String digit) {
+    final theme = widget.theme;
     return Semantics(
       label: digit,
       button: true,
+      // Without this the child's own Text label merges in and a screen reader
+      // announces the key twice — "5, 5" — because `Semantics` annotates its
+      // child's node rather than replacing it.
+      excludeSemantics: true,
       child: InkWell(
         key: Key('pin-key-$digit'),
         onTap: () => _tap(digit),
         customBorder: const CircleBorder(),
-        child: SizedBox(
+        child: Container(
           width: 72,
           height: 64,
-          child: Center(
-            child: Text(
-              digit,
-              style: GoogleFonts.inter(
-                fontSize: 22,
-                fontWeight: FontWeight.w600,
-                color: widget.enabled
-                    ? AppColors.textDark
-                    : AppColors.textMuted,
-              ),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: theme.keyFill,
+          ),
+          child: Text(
+            digit,
+            style: GoogleFonts.inter(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              // Dimmed rather than recoloured, so a dead keypad is still the
+              // same colour as a live one — just quieter.
+              color: widget.enabled
+                  ? theme.filled
+                  : theme.filled.withOpacity(0.4),
             ),
           ),
         ),
@@ -411,6 +716,7 @@ class PinEntryPadState extends State<PinEntryPad>
   }
 
   Widget _deleteKey() {
+    final theme = widget.theme;
     return Semantics(
       label: 'Delete the last digit',
       button: true,
@@ -418,12 +724,20 @@ class PinEntryPadState extends State<PinEntryPad>
         key: const Key('pin-key-backspace'),
         onTap: _delete,
         customBorder: const CircleBorder(),
-        child: SizedBox(
+        child: Container(
           width: 72,
           height: 64,
-          child: const Center(
-            child: Icon(Icons.backspace_outlined,
-                size: 22, color: AppColors.textDark),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: theme.keyFill,
+          ),
+          child: Icon(
+            Icons.backspace_outlined,
+            size: 22,
+            color: widget.enabled
+                ? theme.backspace
+                : theme.backspace.withOpacity(0.4),
           ),
         ),
       ),

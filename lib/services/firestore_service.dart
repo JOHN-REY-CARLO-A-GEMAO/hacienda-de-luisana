@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -395,18 +396,31 @@ class FirestoreService implements PinSecurityRemote {
 
   /// Remove a Booking outright (Admin only per firestore.rules). The lifecycle
   /// prefers Reject/Cancel — this is for test entries and duplicates.
-  Future<void> deleteBooking(String bookingId) async {
-    _bookings.removeWhere((b) => b.id == bookingId);
-    _latestBookings = _latestBookings.where((b) => b.id != bookingId).toList();
-    _bookingsController.add(List.unmodifiable(_bookings));
+  ///
+  /// Deletion is PIN-tier (ADR-0015) and is irreversible, so the service
+  /// re-asks the gate the way [applyBookingAction] does: a call site that
+  /// forgets the PIN sheet gets a refusal and no write, never a silent delete.
+  /// Returns null on success, or the reason it refused/failed.
+  Future<String?> deleteBooking(String bookingId, {SecurityTicket? ticket}) async {
+    if (gateFor(GateAction.deleteBooking) == GateLevel.pin &&
+        (ticket == null || !ticket.isValid(DateTime.now()))) {
+      return 'Deleting a Booking needs a fresh Security PIN. Run it again and '
+          'enter the PIN when the sheet asks.';
+    }
     if (isCloud) {
       try {
         await _firestore!
             .collection(AppConstants.colBookings)
             .doc(bookingId)
             .delete();
-      } catch (_) {}
+      } catch (e) {
+        return 'Could not delete from Firestore (${e.toString().split('\n').first}).';
+      }
     }
+    _bookings.removeWhere((b) => b.id == bookingId);
+    _latestBookings = _latestBookings.where((b) => b.id != bookingId).toList();
+    _bookingsController.add(List.unmodifiable(_bookings));
+    return null;
   }
 
   // ---- PUBLISHED RATES (site_config/rates) ----
@@ -552,6 +566,14 @@ class FirestoreService implements PinSecurityRemote {
   /// Confirm-tier in the gate (ADR-0015) — the confirm modal is the call
   /// site's job; the service's job is to say what went wrong instead of
   /// swallowing it, and the call sites await this and surface it.
+  /// Record an Accommodation's operational status.
+  ///
+  /// Status only. This used to accept a `newPrice` and write
+  /// `rooms.pricePerNight`, behind a dialog labelled "Peak Season Rate
+  /// Override" — a control that looked like it changed what a Guest pays and
+  /// changed nothing, because no booking, website page or availability check ever
+  /// read that field. Rates are published on `site_config/rates` and read by the
+  /// booking system; `firestore.rules` refuses any other field on this document.
   Future<String?> updateRoomStatus(String roomId, RoomStatus status) async {
     final index = _rooms.indexWhere((r) => r.id == roomId);
     if (index != -1) {
@@ -619,6 +641,58 @@ class FirestoreService implements PinSecurityRemote {
       'pin_updated_at': FieldValue.serverTimestamp(),
       'pin_updated_by': FirebaseAuth.instance.currentUser?.uid ?? uid,
     });
+  }
+
+  /// Dispose of the PIN record and file its `PinReset` line in one batch
+  /// (ADR-0016).
+  ///
+  /// Unlike the three methods above, this one **propagates its failure**. The
+  /// two friends are best-effort by contract — a missed write costs a
+  /// reconciliation, because the device copy governs. This one cannot work that
+  /// way: if the delete does not happen, `PinGate.forgetPin` has to keep the
+  /// local record and the gate has to keep asking for the PIN. A swallowed
+  /// error here would show the Admin a fresh setup screen while the server
+  /// still held the old record, which is the one outcome ADR-0016 exists to
+  /// make impossible.
+  ///
+  /// The event and the delete go together so the trail never disagrees with the
+  /// store: a record that vanished with no companion line, or a line with no
+  /// record gone, is not a state this system should be able to be in.
+  @override
+  Future<void> forgetPin(String uid) async {
+    if (!isCloud) throw StateError('no cloud connection to dispose of the PIN in');
+    final firestore = _firestore!;
+    final batch = firestore.batch();
+
+    batch.delete(firestore.collection(AppConstants.colAdminSecurity).doc(uid));
+    batch.set(
+      firestore
+          .collection(AppConstants.colAdminSecurityEvents)
+          .doc(_pinResetEventId()),
+      {
+        'uid': uid,
+        'action': 'PinReset',
+        // Server-stamped: the rules hold `at == request.time`, so the line
+        // cannot claim to have been filed at a time of the writer's choosing.
+        'at': FieldValue.serverTimestamp(),
+      },
+    );
+
+    await batch.commit();
+  }
+
+  /// A fresh id for each reset, so the trail only ever grows.
+  ///
+  /// Deliberately NOT stable per uid: `admin_security_events` refuses `update`,
+  /// so reusing one document id would make an Admin's *second* reset — years
+  /// later, after a fresh PIN and another 24 h — an update the rules refuse.
+  /// Append-only means append-only.
+  String _pinResetEventId() {
+    final random = math.Random.secure();
+    final suffix = List<int>.generate(12, (_) => random.nextInt(36))
+        .map((n) => n.toRadixString(36))
+        .join();
+    return 'pin-reset-${DateTime.now().microsecondsSinceEpoch}-$suffix';
   }
 
   void dispose() {

@@ -118,6 +118,10 @@ _Avoid_: Credential (that is the door thing), passcode, password, 2FA, OTP
 The two-tier rule that stands between an Admin tap and a sensitive action (ADR-0015): the PIN for what commits money, deletes, or publishes; a confirm modal for what only changes state. Its tier map is `lib/services/security_gate.dart`, re-asked by the service layer so a forgotten call-site check is still refused.
 _Avoid_: Permission, role check, Credential check
 
+**PIN reset**:
+Deliberate disposal of a forgotten Security PIN's record so a fresh one may be set, leaving the lockout counters behind with it (ADR-0016). The proof is a signed-in Admin session, never the PIN — the PIN is a guard rail, not a trust boundary — and it needs the server, so it cannot be done offline. Once per 24 hours, counted from the PIN's last change.
+_Avoid_: password reset, forgot password, MPIN reset, recovery code, account recovery (it recovers a second input, not an account)
+
 ### Trust and records
 
 **Government ID KYC (removed)**:

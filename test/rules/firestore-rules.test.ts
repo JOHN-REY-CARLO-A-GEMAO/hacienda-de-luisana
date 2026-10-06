@@ -571,8 +571,159 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
     })).toBe(true)
   })
 
-  it('never deletes a record — a lockout is evidence', () => {
-    expect(deny({ path: ownPath, method: 'delete', auth: own, resourceData: doc })).toBe(true)
+  // ADR-0015 said "never deletable — a lockout record is evidence". ADR-0016
+  // reverses that for one door: the Admin's own signed-in session may dispose of
+  // the record after 24 h, which is what lets a locked-out operator out. The
+  // name of this case changed with it; the case itself still denies, because the
+  // fixture's stamp is `request.time` and the cooldown has not passed.
+  it('refuses a delete inside the 24 h cooldown', () => {
+    expect(deny({ path: ownPath, method: 'delete', auth: own, resourceData: doc, time: at })).toBe(true)
+  })
+
+  // -------------------------------------------------------------------------
+  // delete door 3 — the forgotten-PIN reset (ADR-0016)
+  // -------------------------------------------------------------------------
+
+  describe('delete door 3 — the Admin may dispose of their own record', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000
+    const stamp = ADMIN_SECURITY_NOW
+    /** The record as it stands when the stamp is `stamp`. */
+    const stale = (overrides: DocData = {}) => adminSecurityDoc(overrides, stamp)
+
+    const drop = (
+      auth: Parameters<typeof request>[0]['auth'],
+      ms: number,
+      resourceData: DocData,
+    ) => deny({ path: ownPath, method: 'delete', auth, resourceData, time: stamp + ms })
+
+    it('allows it once 24 h have passed since the stamp', () => {
+      // Strictly after: at exactly 24 h the comparison is still false, which is
+      // the same edge the ratchet takes everywhere else — never equal, only
+      // later. Verified against the engine, not assumed.
+      expect(drop(own, DAY_MS, stale())).toBe(true)
+      expect(drop(own, DAY_MS + 1, stale())).toBe(false)
+    })
+
+    it('refuses it a millisecond early', () => {
+      expect(drop(own, DAY_MS - 1, stale())).toBe(true)
+      expect(drop(own, 0, stale())).toBe(true)
+    })
+
+    it('refuses it before any time has passed at all', () => {
+      // The fixture's stamp is `request.time`, so this is "just rotated".
+      expect(drop(own, 0, stale())).toBe(true)
+      expect(drop(own, 1000, stale())).toBe(true)
+    })
+
+    it.each([
+      ['a Guest who is signed in', () => anonymousGuest()],
+      ['a Guest by email', () => emailGuest()],
+      ['somebody signed out', () => null],
+    ])('refuses %s', (_name, who) => {
+      expect(drop(who(), DAY_MS + 1, stale())).toBe(true)
+    })
+
+    it("refuses another Admin, including one promoted in Firestore", () => {
+      expect(drop(promotedAdmin(), DAY_MS + 1, stale())).toBe(true)
+    })
+
+    it('refuses a record with no usable stamp', () => {
+      // The rules refuse a stamp that is not a timestamp, so the cooldown cannot
+      // be read and the record cannot be cleared — this cannot become a way to
+      // dispose of a malformed document.
+      const unstamped = adminSecurityDoc()
+      delete (unstamped as Record<string, unknown>).pin_updated_at
+      expect(drop(own, DAY_MS + 1, unstamped)).toBe(true)
+
+      const stringy = adminSecurityDoc({ pin_updated_at: '2026-09-24T00:00:00Z' })
+      expect(drop(own, DAY_MS + 1, stringy)).toBe(true)
+    })
+
+    it('ignores a live lockout — refusing one would restore the dead end', () => {
+      // The deliberate exception, stated as a case so it cannot be lost: a
+      // locked Admin can still get out, because the 24 h stamp is the brake
+      // that replaces the lock check.
+      const locked = stale({
+        failed_attempts: 9,
+        locked_until: ruleTimestamp(stamp + DAY_MS + 60_000),
+      })
+      expect(drop(own, DAY_MS + 1, locked)).toBe(false)
+    })
+
+    it('a raised counter does not bring the cooldown forward', () => {
+      // `failed_attempts` is not the stamp, and guessing must not move it.
+      expect(drop(own, DAY_MS - 1, stale({ failed_attempts: 9 }))).toBe(true)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // admin_security_events — the append-only trail of a PIN reset (ADR-0016)
+  // ---------------------------------------------------------------------------
+
+  describe('admin_security_events: evidence that outlives the record', () => {
+    const at2 = ADMIN_SECURITY_NOW
+    const own2 = allowlistedAdmin()
+    const path = 'admin_security_events/pin-reset-1'
+    const line = (overrides: DocData = {}): DocData => ({
+      uid: ADMIN_UID,
+      action: 'PinReset',
+      at: ruleTimestamp(at2),
+      ...overrides,
+    })
+
+    it('accepts the Admin\'s own line, server-stamped now', () => {
+      expect(allow({ path, method: 'create', auth: own2, requestData: line(), time: at2 })).toBe(true)
+    })
+
+    it('lets any Admin read the trail, and no Guest', () => {
+      expect(allow({ path, method: 'get', auth: own2, resourceData: line() })).toBe(true)
+      expect(allow({ path, method: 'get', auth: promotedAdmin(), resourceData: line() })).toBe(true)
+      expect(deny({ path, method: 'get', auth: anonymousGuest(), resourceData: line() })).toBe(true)
+      expect(deny({ path, method: 'get', auth: null, resourceData: line() })).toBe(true)
+    })
+
+    it('refuses a line naming somebody else', () => {
+      const other = promotedAdmin()
+      expect(deny({
+        path, method: 'create', auth: other,
+        requestData: line({ uid: ADMIN_UID }), time: at2,
+      })).toBe(true)
+    })
+
+    it.each([
+      ['a Guest', () => anonymousGuest()],
+      ['a Guest by email', () => emailGuest()],
+      ['somebody signed out', () => null],
+    ])('refuses a line from %s', (_name, who) => {
+      expect(deny({ path, method: 'create', auth: who(), requestData: line(), time: at2 })).toBe(true)
+    })
+
+    it.each([
+      ['an unknown action', line({ action: 'PinDeleted' })],
+      ['an action from the Booking vocabulary', line({ action: 'Submit' })],
+      ['an extra key', line({ note: 'anything' })],
+      ['a missing key', (() => { const l = line(); delete (l as Record<string, unknown>).action; return l })()],
+      ['a uid that is not a string', line({ uid: 7 })],
+    ])('refuses %s', (_name, bad: DocData) => {
+      expect(deny({ path, method: 'create', auth: own2, requestData: bad, time: at2 })).toBe(true)
+    })
+
+    it('refuses a timestamp the writer chose', () => {
+      // `at` must equal `request.time`, so the line cannot claim to have been
+      // filed at a moment of the writer's picking.
+      expect(deny({
+        path, method: 'create', auth: own2,
+        requestData: line({ at: ruleTimestamp(at2 - 86_400_000) }), time: at2,
+      })).toBe(true)
+    })
+
+    it('is append-only: no update, no delete, for anybody', () => {
+      for (const auth of [own2, promotedAdmin(), anonymousGuest(), null]) {
+        expect(deny({ path, method: 'update', auth, resourceData: line(), requestData: line({ action: 'PinReset' }) })).toBe(true)
+        expect(deny({ path, method: 'update', auth, resourceData: line(), requestData: line({ action: 'Nope' }) })).toBe(true)
+        expect(deny({ path, method: 'delete', auth, resourceData: line() })).toBe(true)
+      }
+    })
   })
 
   describe('the create', () => {

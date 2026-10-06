@@ -55,6 +55,7 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 | Check-in → Staying → Check-out → Complete, revoke a Credential | — | ✅ app |
 | Publish rates & cancellation policy (`site_config/rates`) | — | ✅ app |
 | A deliberate second input on every sensitive action — a Security PIN (approve, delete, publish, revoke) or a confirm (stay transitions, sign-out, reader grant) | — | ✅ app ([ADR-0015](./adr/0015-a-sensitive-admin-action-needs-a-deliberate-second-input.md)) |
+| Set aside a forgotten Security PIN and choose a new one — once per 24 h, needs the server | — | ✅ app ([ADR-0016](./adr/0016-a-forgotten-security-pin-is-reset-by-disposing-of-the-record.md)) |
 | Read every Booking, Access log, CRM, analytics | — | ✅ app |
 | Read a Guest's live location while they are sharing it | — | ✅ app ([ADR-0013](./adr/0013-live-location-as-a-stream.md)) |
 
@@ -156,7 +157,7 @@ Android: see [ANDROID.md](./ANDROID.md). Without a configured Firebase app the s
 
 - [CONTEXT.md](../CONTEXT.md) — glossary
 - [MESSAGING.md](./MESSAGING.md) — the Guest ↔ Admin conversation: data model, the 1,000-character limit, cursor pagination, retention, and live location
-- [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md); live location is [0013](./adr/0013-live-location-as-a-stream.md); reviews and the public testimonial are [0014](./adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md)
+- [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md); live location is [0013](./adr/0013-live-location-as-a-stream.md); reviews and the public testimonial are [0014](./adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md); the Admin's Security PIN is [0015](./adr/0015-a-sensitive-admin-action-needs-a-deliberate-second-input.md) and resetting a forgotten one is [0016](./adr/0016-a-forgotten-security-pin-is-reset-by-disposing-of-the-record.md), which deliberately contradicts 0015's never-deletable rule
 - [docs/REVIEWS.md](./REVIEWS.md) — the Review data model, eligibility, the edit window, moderation, and what the website publishes
 - [HDL_FLOW_CORRECTED.md](./HDL_FLOW_CORRECTED.md) — the system flow (thesis chart), per module
 - [FLUTTER_FLOW.md](./FLUTTER_FLOW.md) — the Admin app's flow and screen contracts

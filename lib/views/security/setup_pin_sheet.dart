@@ -28,7 +28,9 @@ Future<bool> showSetupPinSheet(BuildContext context, {bool change = false}) {
     backgroundColor: Colors.white,
     isDismissible: false,
     enableDrag: false,
-    isScrollControlled: false,
+    // Size to the keypad, for the same reason as the entry sheet: the default
+    // 9/16 cap is smaller than four 64px rows plus the mismatch note.
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -51,6 +53,8 @@ class _SetupPinSheetBody extends ConsumerStatefulWidget {
 
 class _SetupPinSheetBodyState extends ConsumerState<_SetupPinSheetBody> {
   final GlobalKey<PinEntryPadState> _pad = GlobalKey<PinEntryPadState>();
+  final GlobalKey<PinKeyboardInputState> _keyboard =
+      GlobalKey<PinKeyboardInputState>();
   bool _busy = false;
   bool _locked = false;
   DateTime? _lockedUntil;
@@ -126,6 +130,23 @@ class _SetupPinSheetBodyState extends ConsumerState<_SetupPinSheetBody> {
     });
   }
 
+  /// The pad's own keys. The hidden field is emptied so the two routes cannot
+  /// both hold digits — the pad is what the Admin sees, so it is what the
+  /// entry is read from once a key has been tapped.
+  void _onPadChanged(String digits) {
+    _keyboard.currentState?.clear();
+  }
+
+  /// The platform keyboard. Pushed into the pad so the dots fill the same way
+  /// a tap fills them, and a full entry submits the same way too.
+  void _onKeyboardChanged(String digits) {
+    final complete = _pad.currentState?.typeFromKeyboard(digits) ?? false;
+    if (complete) {
+      _keyboard.currentState?.clear();
+      _submit(digits);
+    }
+  }
+
   Future<void> _submit(String pin) async {
     if (_busy || _locked) return;
     final gate = ref.read(pinGateProvider);
@@ -197,74 +218,97 @@ class _SetupPinSheetBodyState extends ConsumerState<_SetupPinSheetBody> {
       // back to. The change flow, entered from Settings, is a normal sheet.
       canPop: !widget.change ? false : true,
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.cardBorder,
-                  borderRadius: BorderRadius.circular(10),
-                ),
+        // Same arrangement as the gate and the entry sheet: the keyboard layer
+        // underneath, so the keys keep their own taps and empty space raises
+        // the keyboard.
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: PinKeyboardInput(
+                key: _keyboard,
+                enabled: !_busy && !_locked,
+                // Off: this sheet is opened by a tap on a control, and raising
+                // a keyboard nobody asked for covers the answer they are
+                // giving. A tap on empty space still brings it up.
+                autofocus: false,
+                onChanged: _onKeyboardChanged,
               ),
-              const SizedBox(height: 16),
-              Row(
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(
-                    _phase == _Phase.current
-                        ? Icons.lock_outline_rounded
-                        : Icons.shield_outlined,
-                    size: 18,
-                    color: AppColors.primaryForest,
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBorder,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      _title,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.cinzel(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _phase == _Phase.current
+                            ? Icons.lock_outline_rounded
+                            : Icons.shield_outlined,
+                        size: 18,
+                        color: AppColors.primaryForest,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _title,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.cinzel(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _consequence,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      height: 1.5,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_locked)
+                    Text(
+                      'Too many wrong entries. Try again in '
+                      '${_lockedUntil == null ? 0 : _lockedUntil!.difference(DateTime.now()).inSeconds}s.',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.statusAlert,
                       ),
                     ),
+                  PinEntryPad(
+                    key: _pad,
+                    enabled: !_busy && !_locked,
+                    message: _mismatch
+                        ? 'Those two did not match — start again.'
+                        : null,
+                    messageColor: AppColors.statusAlert,
+                    onChanged: _onPadChanged,
+                    onComplete: _submit,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                _consequence,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  height: 1.5,
-                  color: AppColors.textMuted,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (_locked)
-                Text(
-                  'Too many wrong entries. Try again in '
-                  '${_lockedUntil == null ? 0 : _lockedUntil!.difference(DateTime.now()).inSeconds}s.',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.statusAlert,
-                  ),
-                ),
-              PinEntryPad(
-                key: _pad,
-                enabled: !_busy && !_locked,
-                message: _mismatch ? 'Those two did not match — start again.' : null,
-                messageColor: AppColors.statusAlert,
-                onComplete: _submit,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

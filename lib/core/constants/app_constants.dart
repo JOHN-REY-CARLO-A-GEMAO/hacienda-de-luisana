@@ -23,6 +23,13 @@ class AppConstants {
   /// in firestore.rules (ADR-0015). Not a Credential: that word is taken
   /// by the door RFID / Mobile Key (CONTEXT.md § Access).
   static const String colAdminSecurity = 'admin_security';
+  /// The append-only trail of a forgotten-PIN reset (ADR-0016). Exists so the
+  /// evidence outlives the `admin_security` record it describes — the Firebase
+  /// console can delete that record and leave no trace, this cannot be edited
+  /// or erased at all. Created in the same batch as the delete it records, and
+  /// never updated. `activity` is NOT used: it is a Booking subcollection with a
+  /// closed `knownAction()` vocabulary, and a PIN reset belongs to no Booking.
+  static const String colAdminSecurityEvents = 'admin_security_events';
   /// The Guest ↔ Admin conversation, its messages, and the live-location
   /// consent (ADR-0013).
   static const String colConversations = 'conversations';

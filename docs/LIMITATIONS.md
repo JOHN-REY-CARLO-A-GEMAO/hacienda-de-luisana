@@ -129,11 +129,69 @@ Things that remain **outside** the rules' reach, unchanged by the pass:
 
 ## Flutter
 
-This environment has **no Flutter SDK**. `flutter analyze`, `flutter test` and `flutter build apk` were **not executed** — including for `test/chat_limits_test.dart`, `lib/services/live_location_service.dart`, `lib/services/chat_retention.dart` and `lib/views/inbox/live_location_panel.dart`, which are written and reviewed but **unverified by a compiler**. No Admin workflow has been verified on a device or emulator.
+**A Flutter SDK is now present** (Flutter 3.44.4 / Dart 3.12.2), where the original
+pass of this document recorded that there was none. `flutter analyze` and
+`flutter test` have both been executed since — see [VERIFICATION.md](./VERIFICATION.md)
+for exactly which suites ran. `flutter build apk` still has not, and **no Admin
+workflow has been verified on a device or emulator**; the widget suites drive a
+test binding, not the app.
+
+Note that this SDK is newer than the repository, so `flutter analyze` reports
+`withOpacity` deprecation notices against code that predates it. They are `info`,
+not warnings or errors, and they are the house idiom — do not "fix" them
+file-by-file without a deliberate pass.
 
 ## Guest mobile app
 
 ADR-0007: Guest = website, Admin = Flutter. A Guest-facing mobile app is **not in this repository**. If the thesis requires a Guest APK, that remains a product gap.
+
+## The Security PIN reset (ADR-0016)
+
+**A PIN reset is not an authentication factor, and it is not free.** Three things
+this page has to say plainly, because ADR-0016 changed an invariant to get here:
+
+- **It closes a lockout; it does not stop anybody.** The proof is a signed-in
+  Admin session, which is why the door exists at the gate at all — the gate is
+  behind Firebase sign-in. Anyone holding a signed-in, unlocked phone can wipe the
+  record and set a new PIN. That was already true of the PIN itself (ADR-0015 §2:
+  a guard rail, not a trust boundary), so this does not widen the threat; it
+  removes the permanent lockout.
+- **It costs the server lockout watermark.** `failed_attempts` and `locked_until`
+  go with the record. That is precisely what ADR-0015 gave up ("a lockout record
+  is evidence"), and the brake that replaces the live-lock check is a 24-hour
+  cooldown keyed off `pin_updated_at` — a stamp only a real PIN change moves, so
+  failed guesses cannot bring it forward.
+- **The companion event does not prove the delete.** `admin_security_events` is
+  refused `update`/`delete` so the trail is tamper-proof, but a rule evaluating a
+  `create` has no pre-write `resource`, so it cannot bind the line to the record
+  that was disposed of. The two are tied by the app writing them in one batch and
+  by nothing else. An Admin could file a `PinReset` line without deleting
+  anything — a noisy trail, not an escalation.
+
+**Verification of this door is supplemental and partial.** `test:rules` executes
+the rules under a Linux network namespace (`scripts/phase0/boundary.mjs`: *"no
+weaker fallback is permitted"*), so it does not run on Windows or macOS at all. The
+ADR-0016 cases were checked by driving `test/rules/engine.ts` directly — a pure
+evaluator, no Firebase SDK and no network — but that is **not** the documented
+suite and must not be reported as one. Two further gaps:
+
+- **The emulator suite has no `admin_security` coverage at all**, so it has none
+  for the new delete door either. That gap is ADR-0015's, not ADR-0016's: the
+  collection was added with supplemental cases only and the canonical file was
+  never extended. **The emulator has therefore never evaluated this rule.**
+- **A pre-existing fixture bug sits next to these cases and makes them red.**
+  `adminSecurityDoc()` in `test/rules/context.ts` supplies a 36-character
+  `pin_hash`, but `isAdminSecurityShape()` requires `size() >= 40`, so the
+  suite's own `admin_security` *create* case fails on the unmodified repository.
+  The comment above the fixture claims 44 characters; the string is 36. Fixing it
+  is a one-line pad of that constant — deliberately **not** done here, since it
+  predates ADR-0016 and belongs to the ADR-0015 doors. Expect the rules suite to
+  be red on that case until it is.
+
+**An Admin locked out of Firebase is not helped by any of this.** The PIN gate
+sits behind sign-in, so a forgotten *account password* is a different problem with
+no answer in the app: `sendPasswordResetEmail` would fix it natively and free, but
+it is a separate decision ([ADR-0016 § Consequences](#consequences)).
 
 ## The retired tracking module
 

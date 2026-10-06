@@ -689,3 +689,64 @@ walang Firebase config; walang payment o auth secret na nakatago doon.
 `test`, `build apk`), ang tunay na Firestore/Storage writes, at ang emulator.
 Ang 37-hakbang na senaryo ay tumakbo sa tunay na mga module ng website sa
 kanilang offline adapter — hindi sa live na Firebase.
+
+## 14. ADR-0016 pass — the forgotten-Security-PIN reset (2026-10-06)
+
+A later pass, recorded separately from §1–§13 above so those numbers keep meaning
+what they meant. It added one rule door, one collection, one sheet and one gate
+affordance.
+
+### 14.1 What actually ran
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Dart policy + widget suites | `flutter test` on `pin_policy_test.dart`, `pin_gate_screen_test.dart`, `pin_sheet_widget_test.dart`, `pin_layout_test.dart`, `security_gate_test.dart` | **80 / 80** before the change, **93 / 93** after — 13 new (6 policy, 7 widget) |
+| Dart static analysis | `flutter analyze lib/` plus the two touched test files | **0 errors, 0 warnings**, 59 `info` (pre-existing `withOpacity` deprecations against a newer SDK) |
+| Rules file parses | `@firebase/eslint-plugin-security-rules` parser | **PASS** |
+| ADR-0016 rule behaviour | `test/rules/engine.ts` driven directly, 25 assertions | **25 / 25** |
+| TypeScript typecheck | `npx tsc --noEmit --strict` on `test/rules/firestore-rules.test.ts` | the additions contribute **0** errors; 9 pre-existing errors elsewhere in the file |
+
+### 14.2 What did NOT run, and why
+
+| Check | Why |
+| --- | --- |
+| `npm run test:rules` | **Blocked twice over.** `scripts/phase0/boundary.mjs` refuses any non-`.example` dotenv file and `.env.local` is present; then `assertIsolatedProcess()` refuses any platform that is not Linux, with the words *"Linux network namespace required; no weaker fallback is permitted"*. Not runnable on Windows. |
+| `npm run test:emulator` | not attempted. The §3 blocker (emulator JAR host unreachable) still stands; a Java runtime is now present, which removes one of two blockers but not the other. |
+| `npm test`, `npm run test:e2e` | not run. Both go through the same Linux launcher as `test:rules`. |
+| `flutter build apk`, any device run | no device or emulator available. |
+| The new rules under the Emulator | `test/emulator/rules.emulator.test.ts` has **no `admin_security` block at all**, an ADR-0015 gap that is inherited here. The new delete door therefore has no emulator case. |
+
+### 14.3 How the rules were verified anyway, precisely
+
+`test/rules/engine.ts` is a pure evaluator: it parses the repository's real
+`firestore.rules` and decides requests against in-memory stores, with no Firebase
+SDK import and no network. It was driven directly from a throwaway harness (since
+deleted) using the repository's own fixtures from `test/rules/context.ts`, asserting
+the 24-hour boundary, every refusal, and the `admin_security_events` shape.
+
+**This is not the documented suite.** It is the same evaluator the documented suite
+uses, so it exercises the same rule text, but it ran without the network-namespace
+isolation `boundary.mjs` insists on, and it must never be reported as
+`npm run test:rules`.
+
+Two real defects surfaced this way rather than by reading:
+
+1. **`duration(hours: 24)` does not parse.** The first `duration()` in this
+   repository's rules, written the prettier way, made `firestore.rules`
+   **unparseable by the very parser `engine.ts` uses**, which would have failed
+   `npm run test:rules` for everyone on Linux with no obvious cause. The working
+   form is `duration.value(24, 'h')`, documented at `engine.ts:121`.
+2. **The boundary is strict.** `>`, not `>=`: a reset is refused at exactly 24 h
+   and permitted 1 ms later. The first draft of ADR-0016 said "once 24 h have
+   passed" and the first tests said "allowed at exactly 24 h". Both were wrong and
+   are corrected.
+
+### 14.4 A pre-existing failure, not caused by this pass
+
+`adminSecurityDoc()` in `test/rules/context.ts` carries a 36-character `pin_hash`
+while `isAdminSecurityShape()` requires `size() >= 40`, and its own comment claims
+44. The suite's existing `admin_security` **create** case therefore fails on the
+unmodified repository. Confirmed by evaluating `HEAD`'s rules with the unmodified
+fixture: `create` denied; padding the hash to 47 characters allowed. Left unfixed
+here because it predates ADR-0016 and belongs to the ADR-0015 doors, but the rules
+suite is red on that case until the constant is padded.

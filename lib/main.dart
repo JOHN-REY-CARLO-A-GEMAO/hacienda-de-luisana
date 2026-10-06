@@ -10,6 +10,7 @@ import 'services/notification_service.dart';
 import 'tutorial/tutorial_keys.dart';
 import 'views/auth/admin_login_screen.dart';
 import 'views/main_shell_screen.dart';
+import 'views/security/pin_gate_screen.dart';
 
 /// Hacienda de LuisAna — **Admin** mobile app.
 ///
@@ -69,13 +70,20 @@ class HaciendaAdminApp extends StatelessWidget {
 
 /// First screen of the app: the auth gate.
 ///
-/// Signed-out (or non-Admin) sessions see [AdminLoginScreen]; the Admin goes
-/// straight into [MainShellScreen].
+/// Signed-out (or non-Admin) sessions see [AdminLoginScreen]. The Admin gets
+/// one more door before the shell — [PinGateScreen], which asks for the
+/// six-digit Security PIN the way a banking app asks for its MPIN, so a phone
+/// left unlocked shows nothing but six dots until its owner types.
 ///
 /// It is also the boundary of "signed in" for the Security gate (ADR-0015):
-/// an observer wipes the PIN ticket the moment the app is backgrounded, so
-/// a session left on the table re-asks the PIN after the next suspension —
-/// the same line signing out draws, short of actually signing out.
+/// an observer wipes the PIN ticket the moment the app is backgrounded and
+/// re-locks the gate, so a session left on the table asks for the PIN again
+/// after the next suspension — the same line signing out draws, short of
+/// actually signing out.
+///
+/// The shell stays mounted underneath the gate rather than being swapped out,
+/// so coming back from the background re-locks without throwing away the tab
+/// and scroll the Admin left behind.
 class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
 
@@ -85,6 +93,13 @@ class AuthGate extends ConsumerStatefulWidget {
 
 class _AuthGateState extends ConsumerState<AuthGate>
     with WidgetsBindingObserver {
+  /// Past the PIN for this stretch of foreground time.
+  bool _unlocked = false;
+
+  /// Whether the shell has ever been shown, so the first unlock has something
+  /// to reveal and a re-lock has something to cover.
+  bool _shellBuilt = false;
+
   @override
   void initState() {
     super.initState();
@@ -101,7 +116,16 @@ class _AuthGateState extends ConsumerState<AuthGate>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       ref.read(pinGateProvider).clearTicket();
+      if (mounted && _unlocked) setState(() => _unlocked = false);
     }
+  }
+
+  void _unlock() {
+    if (!mounted) return;
+    setState(() {
+      _unlocked = true;
+      _shellBuilt = true;
+    });
   }
 
   @override
@@ -113,6 +137,14 @@ class _AuthGateState extends ConsumerState<AuthGate>
       );
     }
     if (!auth.isAdmin) return const AdminLoginScreen();
-    return const MainShellScreen();
+    return Stack(
+      children: [
+        if (_shellBuilt) const MainShellScreen(),
+        if (!_unlocked)
+          Positioned.fill(
+            child: PinGateScreen(onUnlocked: _unlock),
+          ),
+      ],
+    );
   }
 }
