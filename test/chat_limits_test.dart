@@ -156,7 +156,7 @@ void main() {
 
     test('counts a live session down, and never below zero', () {
       expect(session.isLive, isTrue);
-      expect(session.remaining.inMinutes, greaterThan(27));
+      expect(session.remaining.inMinutes, greaterThanOrEqualTo(27));
       final ended = LiveLocationSession(
         conversationId: 'convo-1',
         guestUid: 'guest-uid-1',

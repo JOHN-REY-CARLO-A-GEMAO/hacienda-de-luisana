@@ -231,7 +231,11 @@ class DashboardScreen extends ConsumerWidget {
                 padding: EdgeInsets.all(24),
                 child: Center(child: CircularProgressIndicator()),
               ),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (e, _) => Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('Could not load recent lock events: ${e.toString().split('\n').first}',
+                    style: const TextStyle(color: AppColors.textMuted)),
+              ),
             ),
           ],
         ),

@@ -109,7 +109,9 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(child: Text('Error: $err')),
+              error: (err, _) => Center(
+                  child: Text(
+                      'Could not load stays: ${err.toString().split('\n').first}')),
             ),
           ),
         ],

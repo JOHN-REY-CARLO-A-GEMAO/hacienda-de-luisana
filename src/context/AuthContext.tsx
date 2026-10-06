@@ -45,7 +45,11 @@ export type AuthContextType = {
   actor: Actor | null
   // Actions
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, displayName?: string) => Promise<void>
+  register: (
+    email: string,
+    password: string,
+    registration?: { displayName?: string; birthdate?: string; acceptedTerms?: boolean },
+  ) => Promise<void>
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
@@ -97,8 +101,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login: async (email, password) => {
         await session.login(email, password)
       },
-      register: async (email, password, displayName) => {
-        await session.register({ email, password, displayName })
+      register: async (email, password, registration) => {
+        await session.register({ email, password, ...registration })
       },
       loginWithGoogle: async () => {
         await session.loginWithGoogle()

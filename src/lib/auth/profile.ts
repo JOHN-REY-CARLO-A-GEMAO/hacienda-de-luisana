@@ -31,6 +31,22 @@ export type Profile = {
   role: Role
   email?: string | null
   display_name?: string | null
+  /**
+   * The version of the Terms this person accepted, and when.
+   *
+   * Written by the register form, which is the one place a person ticks the
+   * box. `firestore.rules` already allows exactly these two fields on a
+   * profile. They are a record of what was agreed, so nothing rewrites them:
+   * a later version of the Terms does not overwrite an older acceptance, it
+   * asks again and leaves this where it is.
+   */
+  terms_version?: string | null
+  terms_accepted_at?: string | null
+  /**
+   * The date of birth the register form collected, kept so the age rule has a
+   * value to stand on rather than a checkbox that was ticked once.
+   */
+  birthdate?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -106,6 +122,9 @@ export function normalizeProfile(raw: unknown): Profile | null {
     role,
     email: typeof doc.email === 'string' ? doc.email : null,
     display_name: typeof doc.display_name === 'string' ? doc.display_name : null,
+    terms_version: typeof doc.terms_version === 'string' ? doc.terms_version : null,
+    terms_accepted_at: typeof doc.terms_accepted_at === 'string' ? doc.terms_accepted_at : null,
+    birthdate: typeof doc.birthdate === 'string' ? doc.birthdate : null,
     created_at: typeof doc.created_at === 'string' ? doc.created_at : undefined,
     updated_at: typeof doc.updated_at === 'string' ? doc.updated_at : undefined,
   }

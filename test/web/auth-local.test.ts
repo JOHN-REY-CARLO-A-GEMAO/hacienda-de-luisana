@@ -10,6 +10,7 @@
 // written down, and a wrong password is a wrong password.
 import { createSession } from '../../src/lib/auth'
 import { createLocalPorts, LOCAL_ACCOUNTS_KEY, LOCAL_PROFILES_KEY, LOCAL_SESSION_KEY } from '../../src/lib/authLocal'
+import { guestRegistration } from './registration-fixture'
 
 // Credentials invented for this file and used nowhere else: the one every
 // fixture account is registered with, one two accounts share (so their salts can
@@ -44,7 +45,7 @@ describe('a local account', () => {
   it('is written down without the password anybody typed', async () => {
     const { session } = startLocalSession()
 
-    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'maria@example.com', password: REGISTERED_WITH }))
 
     const [account] = accountsIn()
     expect(account.email).toBe('maria@example.com')
@@ -58,9 +59,9 @@ describe('a local account', () => {
 
   it('salts two accounts that chose the same password differently', async () => {
     const { session } = startLocalSession()
-    await session.register({ email: 'one@example.com', password: SHARED_BY_TWO })
+    await session.register(guestRegistration({ email: 'one@example.com', password: SHARED_BY_TWO }))
     await session.logout()
-    await session.register({ email: 'two@example.com', password: SHARED_BY_TWO })
+    await session.register(guestRegistration({ email: 'two@example.com', password: SHARED_BY_TWO }))
 
     const [first, second] = accountsIn()
     expect(first.password.salt).not.toBe(second.password.salt)
@@ -69,7 +70,7 @@ describe('a local account', () => {
 
   it('comes back signed in after the page is reloaded', async () => {
     const first = startLocalSession()
-    await first.session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
+    await first.session.register(guestRegistration({ email: 'maria@example.com', password: REGISTERED_WITH }))
     expect(sessionIn()?.uid).toBeTruthy()
 
     // A reload: new ports, same browser storage, nobody signing in again.
@@ -85,9 +86,9 @@ describe('a local account', () => {
 
   it('refuses a second account on the same address', async () => {
     const { session } = startLocalSession()
-    await session.register({ email: 'twice@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'twice@example.com', password: REGISTERED_WITH }))
 
-    await expect(session.register({ email: 'TWICE@example.com ', password: ARRIVED_LATE })).rejects.toMatchObject({
+    await expect(session.register(guestRegistration({ email: 'TWICE@example.com ', password: ARRIVED_LATE }))).rejects.toMatchObject({
       code: 'auth/email-already-in-use',
     })
     expect(accountsIn()).toHaveLength(1)
@@ -95,7 +96,7 @@ describe('a local account', () => {
 
   it('refuses a wrong password, and says nothing about which half was wrong', async () => {
     const { session } = startLocalSession()
-    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'maria@example.com', password: REGISTERED_WITH }))
     await session.logout()
 
     await expect(session.login('maria@example.com', 'hindi-ito-ang-password')).rejects.toMatchObject({
@@ -107,7 +108,7 @@ describe('a local account', () => {
 
   it('refuses an address nobody registered, in the same words as a wrong password', async () => {
     const { session } = startLocalSession()
-    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'maria@example.com', password: REGISTERED_WITH }))
     await session.logout()
 
     // Which half was wrong is nobody's business: telling them the account does
@@ -120,7 +121,7 @@ describe('a local account', () => {
 
   it('accepts the right password again, however often it is asked', async () => {
     const { session } = startLocalSession()
-    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'maria@example.com', password: REGISTERED_WITH }))
     await session.logout()
 
     await session.login('maria@example.com', 'bahay-kubo-9')
@@ -132,7 +133,7 @@ describe('a local account', () => {
 
   it('ends the session on disk when the person signs out', async () => {
     const { session } = startLocalSession()
-    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'maria@example.com', password: REGISTERED_WITH }))
 
     await session.logout()
 
@@ -158,7 +159,7 @@ describe('a local account', () => {
 describe('local Profiles', () => {
   it('store the role a sign-up was given, and read it back', async () => {
     const { session } = startLocalSession()
-    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH, displayName: 'Maria Santos' })
+    await session.register(guestRegistration({ email: 'maria@example.com', password: REGISTERED_WITH, displayName: 'Maria Santos' }))
 
     expect(profilesIn()).toEqual([
       expect.objectContaining({ role: 'guest', email: 'maria@example.com', display_name: 'Maria Santos' }),
@@ -167,7 +168,7 @@ describe('local Profiles', () => {
 
   it('make every sign-up a Guest, and offer no way to become anything else', async () => {
     const { session, ports } = startLocalSession()
-    await session.register({ email: 'ben@example.com', password: REGISTERED_WITH, displayName: 'Ben Cariño' })
+    await session.register(guestRegistration({ email: 'ben@example.com', password: REGISTERED_WITH, displayName: 'Ben Cariño' }))
     expect(session.getState().role).toBe('guest')
 
     // The website is the Guest's application (ADR-0007): nothing on the
@@ -186,7 +187,7 @@ describe('local Profiles', () => {
   it('recognise the allowlisted Admin address, like the rules do', async () => {
     const { session } = startLocalSession()
 
-    await session.register({ email: 'haciendadeluisiana@gmail.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'haciendadeluisiana@gmail.com', password: REGISTERED_WITH }))
 
     // The Profile a sign-up writes is a Guest's, but the allowlist wins on
     // resolution — and an Admin holds none of a Guest's own-Booking permissions.

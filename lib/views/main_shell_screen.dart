@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart' as legacy;
 import '../core/constants/app_constants.dart';
 import '../services/auth_store.dart';
+import '../services/notification_service.dart';
 import '../providers/app_providers.dart';
 import 'security/secure_action_sheet.dart';
 import 'security/setup_pin_sheet.dart';
@@ -164,6 +165,41 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     );
   }
 
+  /// Ask Android for notifications, out loud, and then say what it decided.
+  ///
+  /// The request is made here rather than on first launch: the Admin opening a
+  /// sheet called "Booking & door alerts" is the moment the reason is obvious,
+  /// and asking earlier is how a permission gets refused for good. A refusal is
+  /// reported as a refusal rather than swallowed, so nobody sits waiting for an
+  /// alert that the system is going to drop.
+  Future<void> _askForNotificationPermission(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final outcome = await NotificationService().requestPermission();
+    final String message;
+    switch (outcome) {
+      case NotificationPermission.granted:
+        message =
+            'Alerts are on. This device will tell you about a new Booking or a refused door.';
+      case NotificationPermission.denied:
+        message =
+            'Notifications are turned off for this app, so nothing will interrupt you. You can turn them on in Android Settings, then Apps, then Hacienda Admin, then Notifications.';
+      case NotificationPermission.unknown:
+        message =
+            'This device did not answer the request. Alerts stay off until it does.';
+      case NotificationPermission.notAsked:
+        message = 'This platform does not ask for notification permission.';
+    }
+    messenger.showMaterialBanner(MaterialBanner(
+      content: Text(message),
+      backgroundColor: AppColors.surfaceLight,
+      actions: [
+        TextButton(
+          onPressed: messenger.hideCurrentMaterialBanner,
+          child: const Text('Dismiss'),
+        ),
+      ],
+    ));
+  }
   void _showMoreModal(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -294,6 +330,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                   onTap: () {
                     Navigator.pop(ctx);
                     showChangePinSheet(context);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.notifications_active_outlined,
+                      color: AppColors.primaryForest),
+                  title: const Text('Booking & door alerts'),
+                  subtitle: const Text(
+                      'Tell Android to interrupt you for a new Booking or a refused door'),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _askForNotificationPermission(ctx);
                   },
                 ),
                 ListTile(

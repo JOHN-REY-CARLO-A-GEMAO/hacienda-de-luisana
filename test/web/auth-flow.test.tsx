@@ -19,6 +19,7 @@ import { MemoryRouter } from 'react-router-dom'
 import App from '../../src/App'
 import { AuthProvider } from '../../src/context/AuthContext'
 import { resetAppSession } from '../../src/lib/authSession'
+import { AN_ADULT } from './registration-fixture'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -136,6 +137,15 @@ afterEach(() => {
 async function signUp(page: Page, email: string, name = 'Maria Santos') {
   click(page, /Create one/)
   type(page, 'input[autocomplete="name"]', name)
+  // A sign-up now has to satisfy the age rule and the Terms acceptance, the same
+  // two things a person fills in before pressing the button.
+  type(page, 'input[type="date"]', AN_ADULT)
+  const terms = page.container.querySelector<HTMLInputElement>('input[type="checkbox"]')
+  if (terms) {
+    await act(async () =>
+      terms.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+    )
+  }
   type(page, 'input[type="email"]', email)
   type(page, 'input[type="password"]', TYPED_AT_SIGN_UP)
   await submit(page)

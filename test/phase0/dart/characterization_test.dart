@@ -53,7 +53,8 @@ void main() {
     expect(m.stayTotal, 5000);
     expect(m.totalAmount, 24000);
   });
-  test('F14-DART-CURRENT: non-integer guest count throws in the parser (whole-list fallback risk)', () {
-    expect(() => BookingModel.fromJson({...pending(), 'guests': '2'}, 'x'), throwsA(isA<TypeError>()));
+  test('F14-DART-FIXED: a numeric-string guest count is read, not thrown on', () {
+    expect(BookingModel.fromJson({...pending(), 'guests': '2'}, 'x').guestCount, 2);
+    expect(() => BookingModel.fromJson({...pending(), 'guests': 'two'}, 'x'), returnsNormally);
   });
 }

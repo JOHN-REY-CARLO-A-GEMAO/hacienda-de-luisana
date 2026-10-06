@@ -14,6 +14,7 @@ import { AuthContext, type AuthContextType } from '../../src/context/AuthContext
 import { ProtectedRoute } from '../../src/components/Auth/ProtectedRoute'
 import { LoginForm } from '../../src/components/Auth/LoginForm'
 import { AuthError, canOpenPage, permissionsOf, type Permission, type Role } from '../../src/lib/auth'
+import { AN_ADULT } from './registration-fixture'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -318,6 +319,12 @@ async function fillAndSubmit(
     const name = container.querySelector<HTMLInputElement>('input[autocomplete="name"]')
     if (name) setValue(name, extra.name)
   }
+  const birthdate = container.querySelector<HTMLInputElement>('input[type="date"]')
+  if (birthdate) setValue(birthdate, AN_ADULT)
+  const terms = container.querySelector<HTMLInputElement>('input[type="checkbox"]')
+  // A MouseEvent, so jsdom runs the activation behaviour that toggles checked
+  // the way a real click does; a bare Event does not.
+  if (terms) await act(async () => terms.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })))
   setValue(container.querySelector<HTMLInputElement>('input[type="email"]')!, email)
   const passwordInput = container.querySelector<HTMLInputElement>('input[type="password"]')
   if (password !== undefined && passwordInput) setValue(passwordInput, password)

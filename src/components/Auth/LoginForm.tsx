@@ -64,6 +64,37 @@ export function LoginForm({
    * instead of leaving the person to find the link below.
    */
   const [suggestLogin, setSuggestLogin] = useState(false)
+  /**
+   * One message per field, so a form with three problems says all three rather
+   * than making the person submit, read one, fix it, and submit again.
+   */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  /**
+   * What the register form checks before anything is sent to a provider.
+   *
+   * The same rules `validateRegistration` applies, so the person is told here
+   * and a caller that skipped this form is refused there: a one-character name,
+   * an impossible or too-young date of birth, and an unaccepted version of the
+   * Terms.
+   */
+  function validateRegisterFields(): Record<string, string> {
+    const problems: Record<string, string> = {}
+
+    if (displayName.trim()) {
+      const name = validateName(displayName)
+      if (!name.ok) problems.displayName = name.message
+    }
+
+    const birth = validateBirthdate(birthdate)
+    if (!birth.ok) problems.birthdate = birth.message
+
+    if (!acceptTerms) {
+      problems.acceptTerms = 'Please accept the Terms and Conditions to create an account.'
+    }
+
+    return problems
+  }
 
   const copy = {
     login: intro ?? {
@@ -85,6 +116,7 @@ export function LoginForm({
     setError(null)
     setInfo(null)
     setSuggestLogin(false)
+    setFieldErrors({})
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -99,7 +131,17 @@ export function LoginForm({
         await login(email, password)
         onSuccess?.()
       } else if (mode === 'register') {
-        await register(email, password, displayName || undefined)
+        const problems = validateRegisterFields()
+        setFieldErrors(problems)
+        if (Object.keys(problems).length > 0) {
+          setLoading(false)
+          return
+        }
+        await register(email, password, {
+          displayName: displayName || undefined,
+          birthdate,
+          acceptedTerms: acceptTerms,
+        })
         setInfo(registerIntro.successMessage)
         onSuccess?.()
       } else {
@@ -184,7 +226,12 @@ export function LoginForm({
               onChange={(e) => setDisplayName(e.target.value)}
               autoComplete="name"
               maxLength={80}
+              minLength={2}
+              aria-invalid={fieldErrors.displayName ? true : undefined}
             />
+            {fieldErrors.displayName && (
+              <span className="mt-1 block text-xs text-red-600">{fieldErrors.displayName}</span>
+            )}
           </label>
           <label className="block">
             <span className="label">Date of birth</span>
@@ -194,8 +241,12 @@ export function LoginForm({
               value={birthdate}
               onChange={(e) => setBirthdate(e.target.value)}
               required
+              aria-invalid={fieldErrors.birthdate ? true : undefined}
             />
             <span className="text-[11px] text-forest-600 mt-1 block">You must be at least 10 years old.</span>
+            {fieldErrors.birthdate && (
+              <span className="mt-1 block text-xs text-red-600">{fieldErrors.birthdate}</span>
+            )}
           </label>
           <label className="flex items-start gap-2 text-xs text-forest-800">
             <input type="checkbox" className="mt-0.5" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
@@ -204,6 +255,9 @@ export function LoginForm({
               <Link to="/legal" className="underline">Terms and Conditions</Link> (version {LEGAL_VERSION}).
             </span>
           </label>
+          {fieldErrors.acceptTerms && (
+            <span className="block text-xs text-red-600">{fieldErrors.acceptTerms}</span>
+          )}
           </>
         )}
 

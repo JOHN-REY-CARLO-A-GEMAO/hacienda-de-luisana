@@ -204,6 +204,20 @@ class BookingModel {
   static String? _str(Object? v) => v == null ? null : v.toString();
   static double? _dbl(Object? v) => v is num ? v.toDouble() : null;
 
+  /// Reads a whole number out of a stored field.
+  ///
+  /// Firestore returns whatever shape was written: a number for the app's own
+  /// writes, but a numeric *string* for a record written by hand or by an older
+  /// build. A bare `as int` threw on the string, and because the whole snapshot
+  /// was parsed inside one `try`, that single record used to take every other
+  /// Booking down with it.
+  static int _int(Object? v, int fallback) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v.trim()) ?? fallback;
+    return fallback;
+  }
+
   /// The Accommodation id, verbatim.
   ///
   /// An absent or blank value becomes an empty string rather than a stand-in
@@ -334,7 +348,7 @@ class BookingModel {
       accommodation: _accommodationId(json['accommodation']),
       checkInDate: checkIn,
       checkOutDate: checkOut,
-      guestCount: (json['guestCount'] ?? json['guests'] ?? 2) as int,
+      guestCount: _int(json['guestCount'] ?? json['guests'], 2),
       specialRequests: json['specialRequests'] ?? json['special_requests'],
       status: BookingStatusX.fromString(interpreted),
       rawStatus: interpreted,

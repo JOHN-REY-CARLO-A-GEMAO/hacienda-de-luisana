@@ -10,7 +10,7 @@ export function Pager<T>({
   onPage: (n: number) => void
   onPageSize?: (n: number) => void
 }) {
-  if (page.total === 0) return null
+  if (page.total === 0 || page.totalPages <= 1) return null
   return (
     <div className="flex flex-wrap items-center gap-3 text-xs text-forest-700 mt-4">
       <button

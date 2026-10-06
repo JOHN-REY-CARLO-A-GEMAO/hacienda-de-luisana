@@ -91,7 +91,9 @@ class RoomsScreen extends ConsumerWidget {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(child: Text('Error: $err')),
+              error: (err, _) => Center(
+                  child: Text(
+                      'Could not load rooms: ${err.toString().split('\n').first}')),
             ),
     );
   }

@@ -272,7 +272,9 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(child: Text('Error loading bookings: $err')),
+              error: (err, _) => Center(
+                  child: Text(
+                      'Could not load bookings: ${err.toString().split('\n').first}')),
             ),
           ),
         ],

@@ -84,7 +84,9 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(child: Text('Error: $err')),
+              error: (err, _) => Center(
+                  child: Text(
+                      'Could not load Guests: ${err.toString().split('\n').first}')),
             ),
           ),
         ],

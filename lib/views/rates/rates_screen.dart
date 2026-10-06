@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -256,6 +257,31 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     };
   }
 
+  /// The message a refused publication left against one field, or null.
+  ///
+  /// `validatePublishedRates` already names the path of everything it refuses
+  /// (`effective_date`, `accommodations.main-house.guest_pricing.weekday.base_rate`,
+  /// and so on), so the same refusal can be shown under the box that caused it
+  /// instead of only in the summary card. Nothing is decided twice: the card is
+  /// still the authority, and this reads what it said.
+  String? _problemFor(String path) {
+    for (final problem in _problems) {
+      if (problem.path == path || problem.path.startsWith('$path.')) {
+        return problem.message;
+      }
+    }
+    return null;
+  }
+
+  /// Digits, and at most one decimal point, and never a minus sign.
+  ///
+  /// Rates, percentages and guest counts are all non-negative. This stops a
+  /// letter or a stray character at the keyboard rather than reporting it after
+  /// the fact; `validatePublishedRates` still has the last word, because a
+  /// formatter is a courtesy and the parser is the rule.
+  static final _money =
+      FilteringTextInputFormatter.allow(RegExp(r'^\d{0,9}([.]\d{0,2})?'));
+  static final _wholeNumber = FilteringTextInputFormatter.digitsOnly;
   Future<void> _publish() async {
     final doc = _buildDoc();
     // No id whitelist is passed: `firestore.rules` `isCanonicalAccommodation()` is
@@ -417,17 +443,20 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                       Expanded(
                         child: TextField(
                           controller: _version,
-                          decoration: const InputDecoration(
-                              labelText: 'Version', hintText: 'v2'),
+                          decoration: InputDecoration(
+                              labelText: 'Version',
+                              hintText: 'v2',
+                              errorText: _problemFor('version')),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: TextField(
                           controller: _effectiveDate,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                               labelText: 'Effective date',
-                              hintText: 'YYYY-MM-DD'),
+                              hintText: 'YYYY-MM-DD',
+                              errorText: _problemFor('effective_date')),
                         ),
                       ),
                     ],
@@ -435,7 +464,8 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _holidayDates,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
+                      errorText: _problemFor('holiday_dates'),
                       labelText: 'Admin-configured holiday dates (comma-separated)',
                       hintText: 'YYYY-MM-DD, YYYY-MM-DD',
                       helperText: 'Friday and Saturday nights use weekend rates. Sunday check-in is weekday unless it is listed here; Sunday noon checkout completes the Saturday stay. No calendar is assumed.'
@@ -511,9 +541,11 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                         child: TextField(
                           controller: _refundPercent,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
+                          inputFormatters: [_money],
+                          decoration: InputDecoration(
                               labelText: 'Flat refund %',
-                              helperText: 'Used when no tiers apply'),
+                              helperText: 'Used when no tiers apply',
+                              errorText: _problemFor('refund.flat_percent')),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -521,9 +553,11 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                         child: TextField(
                           controller: _depositRefundPercent,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
+                          inputFormatters: [_money],
+                          decoration: InputDecoration(
                               labelText: 'Deposit refund %',
-                              helperText: 'Of the Security deposit'),
+                              helperText: 'Of the Security deposit',
+                              errorText: _problemFor('refund.deposit_percent')),
                         ),
                       ),
                     ],
@@ -539,7 +573,9 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                           child: TextField(
                             controller: _tiers[i].minDays,
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
+                            inputFormatters: [_wholeNumber],
+                            decoration: InputDecoration(
+                                errorText: _problemFor('refund.tier..min_days'),
                                 labelText: 'At least … days before'),
                           ),
                         ),
@@ -548,8 +584,10 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                           child: TextField(
                             controller: _tiers[i].percent,
                             keyboardType: TextInputType.number,
-                            decoration:
-                                const InputDecoration(labelText: 'Refund %'),
+                            inputFormatters: [_money],
+                            decoration: InputDecoration(
+                                labelText: 'Refund %',
+                                errorText: _problemFor('refund.tier..percent')),
                           ),
                         ),
                         IconButton(
@@ -615,17 +653,19 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     );
   }
 
-  Widget _scheduleFields(String label, _ScheduleFields f, {bool allowCap = false}) {
-    InputDecoration decoration(String text) => InputDecoration(labelText: text, isDense: true);
+  Widget _scheduleFields(String label, _ScheduleFields f, {bool allowCap = false, String path = ''}) {
+    InputDecoration decoration(String text, String? errorText) =>
+        InputDecoration(labelText: text, isDense: true, errorText: errorText);
+    InputDecoration money(String text, String field) => decoration(text, _problemFor(path + field));
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold)),
       const SizedBox(height: 6),
       Wrap(spacing: 8, runSpacing: 8, children: [
-        SizedBox(width: 145, child: TextField(controller: f.baseMax, keyboardType: TextInputType.number, decoration: decoration('Guests included'))),
-        SizedBox(width: 145, child: TextField(controller: f.baseRate, keyboardType: TextInputType.number, decoration: decoration('Base rate / stay ₱'))),
-        SizedBox(width: 145, child: TextField(controller: f.excessRate, keyboardType: TextInputType.number, decoration: decoration('Each extra guest ₱'))),
+        SizedBox(width: 145, child: TextField(controller: f.baseMax, keyboardType: TextInputType.number, inputFormatters: [_wholeNumber], decoration: money('Guests included', '.base_max_guests'))),
+        SizedBox(width: 145, child: TextField(controller: f.baseRate, keyboardType: TextInputType.number, inputFormatters: [_money], decoration: money('Base rate / stay ₱', '.base_rate'))),
+        SizedBox(width: 145, child: TextField(controller: f.excessRate, keyboardType: TextInputType.number, inputFormatters: [_money], decoration: money('Each extra guest ₱', '.excess_per_guest'))),
         if (allowCap)
-          SizedBox(width: 145, child: TextField(controller: f.maxGuests, keyboardType: TextInputType.number, decoration: decoration('Maximum guests'))),
+          SizedBox(width: 145, child: TextField(controller: f.maxGuests, keyboardType: TextInputType.number, inputFormatters: [_wholeNumber], decoration: money('Maximum guests', '.max_guests'))),
       ]),
       const SizedBox(height: 4),
       Text(
@@ -666,9 +706,14 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
             decoration: const InputDecoration(labelText: 'Property name'),
           ),
           const SizedBox(height: 8),
-          _scheduleFields('Weekday (Sunday night–Thursday night)', f.weekday, allowCap: hasAHouseCap),
+          _scheduleFields('Weekday (Sunday night–Thursday night)', f.weekday,
+              allowCap: hasAHouseCap,
+              path: 'accommodations.' + id + '.guest_pricing.weekday'),
           const SizedBox(height: 10),
-          _scheduleFields('Weekend / configured holiday (Friday and Saturday nights)', f.weekend, allowCap: hasAHouseCap),
+          _scheduleFields('Weekend / configured holiday (Friday and Saturday nights)',
+              f.weekend,
+              allowCap: hasAHouseCap,
+              path: 'accommodations.' + id + '.guest_pricing.weekend_holiday'),
           const SizedBox(height: 8),
           TextField(
             controller: f.deposit,

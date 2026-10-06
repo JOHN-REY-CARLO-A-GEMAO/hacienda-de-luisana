@@ -57,6 +57,7 @@ export {
   type AuthErrorCode,
   type Credentials,
   type Registration,
+  type RegistrationInput,
   type Rejected,
 } from './credentials'
 

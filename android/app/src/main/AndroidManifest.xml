@@ -2,10 +2,21 @@
     package="com.haciendadeluisana.client2">
 
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.BLUETOOTH"/>
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <!--
+      Android 13 (API 33) will not show a single notification until the person
+      grants this at runtime, which `NotificationService` asks for at the moment
+      it first has something worth interrupting them for, with the reason said
+      out loud and a refusal carried on rather than retried forever.
+
+      There is deliberately nothing else here. An earlier build declared
+      BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_CONNECT and READ_EXTERNAL_STORAGE,
+      but the app ships no Bluetooth, NFC, camera or file-picker code: the
+      RFID simulator on the Smart lock screen writes two Firestore documents
+      and touches no radio. Declaring a permission the app never uses is a
+      question an installer or a reviewer is entitled to ask, and there was no
+      answer to give.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="Hacienda Admin"

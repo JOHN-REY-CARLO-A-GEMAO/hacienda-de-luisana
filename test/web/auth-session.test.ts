@@ -14,6 +14,8 @@ import {
   type Role,
   type SessionUser,
 } from '../../src/lib/auth'
+import { AN_ADULT, guestRegistration } from './registration-fixture'
+import { LEGAL_VERSION } from '../../src/lib/legal'
 
 // ----------------------------------------------------------------------------
 // The two adapters, in memory
@@ -169,11 +171,11 @@ describe('signing up', () => {
   it('makes the person a Guest and keeps them signed in', async () => {
     const { session, profiles } = startSession()
 
-    const signed = await session.register({
+    const signed = await session.register(guestRegistration({
       email: '  Maria@Example.com ',
       password: REGISTERED_WITH,
       displayName: '  Maria   Santos ',
-    })
+    }))
 
     expect(signed.email).toBe('maria@example.com')
     expect(session.getState().status).toBe('signed-in')
@@ -182,17 +184,56 @@ describe('signing up', () => {
     expect(profiles.stored.get(signed.uid)).toMatchObject({ role: 'guest', display_name: 'Maria Santos' })
   })
 
+  it('records which version of the Terms this person accepted, and when', async () => {
+    const { session, profiles } = startSession()
+
+    const signed = await session.register(guestRegistration({ email: 'terms@example.com' }))
+
+    const stored = profiles.stored.get(signed.uid)
+    expect(stored?.terms_version).toBe(LEGAL_VERSION)
+    // A real timestamp, not the version or a placeholder standing in for one.
+    expect(typeof stored?.terms_accepted_at).toBe('string')
+    expect(Number.isNaN(Date.parse(stored!.terms_accepted_at!))).toBe(false)
+    expect(stored?.birthdate).toBe(AN_ADULT)
+  })
+
+  it('refuses a sign-up whose Terms were not accepted', async () => {
+    const { session, provider } = startSession()
+
+    await expect(
+      session.register(guestRegistration({ email: 'unaccepted@example.com', acceptedTerms: false })),
+    ).rejects.toThrow(/accept the Terms/i)
+    expect(provider.accounts.size).toBe(0)
+  })
+
+  it('refuses a sign-up from somebody under the minimum age', async () => {
+    const { session, provider } = startSession()
+    const tooYoung = (now: Date) => String(now.getFullYear() - 9) + '-01-01'
+
+    await expect(
+      session.register(guestRegistration({ email: 'young@example.com', birthdate: tooYoung(new Date()) })),
+    ).rejects.toThrow(/10 years old/i)
+    expect(provider.accounts.size).toBe(0)
+  })
+
+  it('refuses a sign-up with no date of birth at all', async () => {
+    const { session } = startSession()
+
+    await expect(
+      session.register(guestRegistration({ email: 'nodob@example.com', birthdate: '' })),
+    ).rejects.toThrow(/date of birth/i)
+  })
   it('cannot be talked into any other role', async () => {
     const { session } = startSession()
 
     // Whatever arrives in the body of a sign-up, the person is a Guest: there is
     // no role to ask for, and the Admin is recognised, never requested
     // (ADR-0005, ADR-0007).
-    const signed = await session.register({
+    const signed = await session.register(guestRegistration({
       email: 'escalator@example.com',
       password: REGISTERED_WITH,
       role: 'admin',
-    } as any)
+    } as any))
 
     expect(signed.uid).toBeTruthy()
     expect(session.getState().role).toBe('guest')
@@ -202,7 +243,7 @@ describe('signing up', () => {
   it('refuses a password too short to keep, without creating an account', async () => {
     const { session, provider } = startSession()
 
-    await expect(session.register({ email: 'short@example.com', password: TOO_SHORT_TO_KEEP })).rejects.toMatchObject({
+    await expect(session.register(guestRegistration({ email: 'short@example.com', password: TOO_SHORT_TO_KEEP }))).rejects.toMatchObject({
       code: 'auth/weak-password',
     })
     expect(provider.accounts.size).toBe(0)
@@ -212,11 +253,11 @@ describe('signing up', () => {
   it('refuses an address that is not an address', async () => {
     const { session, provider } = startSession()
 
-    await expect(session.register({ email: 'not-an-email', password: REGISTERED_WITH })).rejects.toMatchObject({
+    await expect(session.register(guestRegistration({ email: 'not-an-email', password: REGISTERED_WITH }))).rejects.toMatchObject({
       code: 'auth/invalid-email',
       message: 'Please enter a valid email address.',
     })
-    await expect(session.register({ email: '', password: REGISTERED_WITH })).rejects.toMatchObject({
+    await expect(session.register(guestRegistration({ email: '', password: REGISTERED_WITH }))).rejects.toMatchObject({
       code: 'auth/invalid-email',
     })
     expect(provider.accounts.size).toBe(0)
@@ -224,10 +265,10 @@ describe('signing up', () => {
 
   it('says plainly that an account already exists', async () => {
     const { session } = startSession()
-    await session.register({ email: 'twice@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'twice@example.com', password: REGISTERED_WITH }))
     await session.logout()
 
-    await expect(session.register({ email: 'twice@example.com', password: REGISTERED_WITH })).rejects.toMatchObject({
+    await expect(session.register(guestRegistration({ email: 'twice@example.com', password: REGISTERED_WITH }))).rejects.toMatchObject({
       code: 'auth/email-already-in-use',
       message: 'An account with this email already exists. Try logging in.',
     })
@@ -241,7 +282,7 @@ describe('signing up', () => {
     }
     const session = createSession(provider.port, profiles.port)
 
-    await session.register({ email: 'no-profile@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'no-profile@example.com', password: REGISTERED_WITH }))
 
     // No Profile is the same answer the rules give: a Guest, signed in.
     expect(session.getState()).toMatchObject({ status: 'signed-in', role: 'guest', profile: null })
@@ -511,7 +552,7 @@ describe('a session with no Firebase behind it', () => {
   it('still makes a sign-up a Guest, with no role switcher to step past it', async () => {
     const { session } = startSession(createFakeProvider(), createFakeProfiles())
 
-    await session.register({ email: 'maria@example.com', password: REGISTERED_WITH })
+    await session.register(guestRegistration({ email: 'maria@example.com', password: REGISTERED_WITH }))
 
     expect(session.getState().role).toBe('guest')
     expect(session.can('bookings:read:all')).toBe(false)

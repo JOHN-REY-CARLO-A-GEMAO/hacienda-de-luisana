@@ -13,6 +13,9 @@
 // This is an internal file of the `src/lib/auth` module.
 // ----------------------------------------------------------------------------
 
+import { validateBirthdate } from '../validation'
+import { LEGAL_VERSION } from '../legal'
+
 /** The failures a sign-in, a sign-up or a role change can produce. */
 export type AuthErrorCode =
   // Wrong secrets.
@@ -111,10 +114,37 @@ const MAX_NAME_LENGTH = 80
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export type Credentials = { email: string; password: string }
-export type Registration = Credentials & { displayName?: string }
+
+/**
+ * A sign-up as the person described it, before it is checked.
+ *
+ * `birthdate` and `acceptedTerms` are here rather than in the form because the
+ * rule that matters is not "the box was ticked": it is "this person is old
+ * enough and agreed to this version of the Terms", and that has to survive the
+ * trip to the stored Profile. A checkbox that only ever lived in the browser
+ * could not be shown to anybody afterwards.
+ */
+export type RegistrationInput = Credentials & {
+  displayName?: string
+  birthdate?: string
+  acceptedTerms?: boolean
+  termsVersion?: string
+}
+
+/** What a checked sign-up carries on to the Profile. */
+export type Registration = Credentials & {
+  displayName?: string
+  birthdate: string
+  termsVersion: string
+  termsAcceptedAt: string
+}
 
 export type Accepted<T> = { ok: true; value: T }
-export type Rejected = { ok: false; field: 'email' | 'password' | 'displayName'; error: AuthError }
+export type Rejected = {
+  ok: false
+  field: 'email' | 'password' | 'displayName' | 'birthdate' | 'terms'
+  error: AuthError
+}
 
 /** An email address, trimmed and folded — the way every provider stores it. */
 function sanitizeEmail(raw: unknown): string {
@@ -178,17 +208,41 @@ export function validateCredentials(raw: { email?: unknown; password?: unknown }
  * There is deliberately no role to validate: a sign-up is always a Guest, and
  * the Admin is recognised from the allowlist or a Profile written outside this
  * app, never from a sign-up form (ADR-0005, ADR-0007).
+ *
+ * Two checks here are about the person rather than their credentials: the date
+ * of birth has to put them over the minimum age the Terms state, and the Terms
+ * have to be accepted at a known version. Both used to be enforced only by the
+ * form, which meant a caller that skipped the form got neither.
  */
-export function validateRegistration(raw: {
-  email?: unknown
-  password?: unknown
-  displayName?: unknown
-}): Accepted<Registration> | Rejected {
+export function validateRegistration(
+  raw: RegistrationInput,
+  now: Date = new Date(),
+): Accepted<Registration> | Rejected {
   const credentials = validateCredentials(raw)
   if (!credentials.ok) return credentials
+
+  const birth = validateBirthdate(raw.birthdate ?? '', now)
+  if (!birth.ok) {
+    return { ok: false, field: 'birthdate', error: new AuthError('hdl/unknown', birth.message) }
+  }
+
+  if (raw.acceptedTerms !== true) {
+    return {
+      ok: false,
+      field: 'terms',
+      error: new AuthError('hdl/unknown', 'Please read and accept the Terms and Conditions to create an account.'),
+    }
+  }
+
   const displayName = sanitizeDisplayName(raw.displayName)
   return {
     ok: true,
-    value: displayName ? { ...credentials.value, displayName } : credentials.value,
+    value: {
+      ...credentials.value,
+      ...(displayName ? { displayName } : {}),
+      birthdate: birth.value,
+      termsVersion: typeof raw.termsVersion === 'string' && raw.termsVersion ? raw.termsVersion : LEGAL_VERSION,
+      termsAcceptedAt: now.toISOString(),
+    },
   }
 }

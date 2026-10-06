@@ -12,6 +12,7 @@ import { useAuth } from '../hooks/useAuth'
 import { paginate, sortBy } from '../lib/pagination'
 import { caseInsensitiveIncludes } from '../lib/pagination'
 import { validateSearch } from '../lib/validation'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
@@ -54,6 +55,7 @@ export function AccountPage() {
   const [sortKey, setSortKey] = useState<'created_at' | 'check_in' | 'accommodation'>('created_at')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(5)
+  const [confirmingWithdraw, setConfirmingWithdraw] = useState<Booking | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -89,6 +91,7 @@ export function AccountPage() {
       console.warn('[Account] withdraw failed', error)
     } finally {
       setBusy(null)
+      setConfirmingWithdraw(null)
     }
   }
 
@@ -204,6 +207,26 @@ export function AccountPage() {
         )}
 
         <div className="mt-8 space-y-5">
+          {!loading && bookings.length > 0 && filtered.length === 0 && (
+            <div className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-8 text-center">
+              <h2 className="font-serif text-xl text-forest-900">No bookings match those filters</h2>
+              <p className="mt-2 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
+                {bookings.length} booking{bookings.length === 1 ? '' : 's'} on this account, none matching
+                {q.trim() ? ` “${q.trim()}”` : ' the selected status'}. Widen the search or choose All statuses.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setQ('')
+                  setStatusFilter('all')
+                  setPage(1)
+                }}
+                className="btn-ghost mt-5 inline-flex text-xs"
+              >
+                Clear search and filters
+              </button>
+            </div>
+          )}
           {paged.items.map((booking) => {
             const status = effectiveStatus(booking)
             return (
@@ -261,7 +284,7 @@ export function AccountPage() {
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
                     <button
-                      onClick={() => void withdraw(booking)}
+                      onClick={() => setConfirmingWithdraw(booking)}
                       disabled={busy === booking.id}
                       className="btn-ghost text-xs disabled:opacity-50"
                     >
@@ -278,6 +301,37 @@ export function AccountPage() {
             )
           })}
         </div>
+
+        {!loading && bookings.length > 0 && (
+          <Pager
+            page={paged}
+            onPage={setPage}
+            onPageSize={(n) => {
+              setPageSize(n)
+              setPage(1)
+            }}
+          />
+        )}
+
+        <ConfirmDialog
+          open={confirmingWithdraw !== null}
+          danger
+          title="Withdraw this request?"
+          body={
+            confirmingWithdraw
+              ? `Request ${reference(confirmingWithdraw)} for ${accommodationName(
+                  confirmingWithdraw.accommodation,
+                )} (${confirmingWithdraw.check_in} → ${confirmingWithdraw.check_out}) will be cancelled and those dates released for other Guests. The Admin cannot undo this from their own app.`
+              : ''
+          }
+          confirmLabel="Withdraw request"
+          cancelLabel="Keep it"
+          busy={busy === confirmingWithdraw?.id}
+          onCancel={() => setConfirmingWithdraw(null)}
+          onConfirm={() => {
+            if (confirmingWithdraw) void withdraw(confirmingWithdraw)
+          }}
+        />
       </div>
     </div>
   )

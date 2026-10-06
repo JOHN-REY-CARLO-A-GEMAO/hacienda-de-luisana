@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../models/booking_model.dart';
@@ -108,18 +109,20 @@ class FirestoreService implements PinSecurityRemote {
   }
 
   void _initialize() {
-    _bookings = MockDataService.initialBookings;
-    _lockLogs = MockDataService.initialSmartLockLogs;
-    _rooms = MockDataService.initialRooms;
-    _crmProfiles = MockDataService.initialGuestProfiles;
-    _latestBookings = _bookings;
-
     try {
       if (Firebase.apps.isNotEmpty) {
         _isFirebaseReady = true;
       }
     } catch (_) {
       _isFirebaseReady = false;
+    }
+
+    if (!isCloud) {
+      _bookings = MockDataService.initialBookings;
+      _lockLogs = MockDataService.initialSmartLockLogs;
+      _rooms = MockDataService.initialRooms;
+      _crmProfiles = MockDataService.initialGuestProfiles;
+      _latestBookings = _bookings;
     }
 
     _emitAllLocal();
@@ -148,49 +151,53 @@ class FirestoreService implements PinSecurityRemote {
     });
   }
 
-  /// Converts a Firestore snapshots stream into one that NEVER errors out:
-  /// permission-denied / offline / parse failures fall back to local data
-  /// so tabs render instantly instead of spinning forever.
-  Stream<List<T>> _cloudOrLocal<T>(
-    Stream<List<T>> cloud,
-    List<T> local,
+  /// Reads one collection's documents, skipping any that do not fit the model.
+  ///
+  /// The whole snapshot used to be parsed inside one `try`, so a single
+  /// malformed record (a `guests` stored as a string, say) threw away every
+  /// other Booking and handed back the fabricated demo set. A bad record is
+  /// quarantined and counted instead: the readable ones still reach the Admin,
+  /// and the count goes to the log so the omission is visible rather than
+  /// silent.
+  List<T> _parseAll<T>(
+    QuerySnapshot<Map<String, dynamic>> snap,
+    T Function(Map<String, dynamic> json, String id) parse,
   ) {
-    return cloud.transform(
-      StreamTransformer<List<T>, List<T>>.fromHandlers(
-        handleData: (data, sink) => sink.add(data),
-        handleError: (_, __, sink) =>
-            sink.add(List<T>.unmodifiable(local)),
-      ),
-    );
+    final parsed = <T>[];
+    final skipped = <String>[];
+    for (final doc in snap.docs) {
+      try {
+        parsed.add(parse(doc.data(), doc.id));
+      } catch (error) {
+        skipped.add(doc.id);
+      }
+    }
+    if (skipped.isNotEmpty) {
+      debugPrint(
+          '[firestore] skipped ${skipped.length} unreadable record(s): ${skipped.join(', ')}');
+    }
+    return parsed;
   }
 
   // ---- STREAMS ----
 
   Stream<List<BookingModel>> streamBookings() {
-    if (_isFirebaseReady && _firestore != null) {
+    if (isCloud) {
       try {
-        return _cloudOrLocal(
-          _firestore!
-              .collection(AppConstants.colBookings)
-              // Website docs carry created_at (snake_case, serverTimestamp).
-              // Ordering by the app's old createdAt excluded every web doc.
-              .orderBy('created_at', descending: true)
-              .snapshots()
-              .map((snap) {
-            if (snap.docs.isEmpty) return _bookings;
-            try {
-              final parsed = snap.docs
-                  .map((doc) => BookingModel.fromJson(doc.data(), doc.id))
-                  .toList();
-              _latestBookings = parsed;
-              return parsed;
-            } catch (_) {
-              return _bookings;
-            }
-          }),
-          _bookings,
-        );
-      } catch (_) {}
+        return _firestore!
+            .collection(AppConstants.colBookings)
+            // Website docs carry created_at (snake_case, serverTimestamp).
+            // Ordering by the app's old createdAt excluded every web doc.
+            .orderBy('created_at', descending: true)
+            .snapshots()
+            .map((snap) => _parseAll(snap, BookingModel.fromJson))
+            .map((parsed) {
+          _latestBookings = parsed;
+          return parsed;
+        });
+      } catch (e) {
+        return Stream<List<BookingModel>>.error(e);
+      }
     }
     return _withInitial(_bookings, _bookingsController);
   }
@@ -199,74 +206,44 @@ class FirestoreService implements PinSecurityRemote {
   /// Field mapping lives in SmartLockEventModel.fromJson, which accepts both
   /// the website's and the app's shapes.
   Stream<List<SmartLockEventModel>> streamSmartLockLogs() {
-    if (_isFirebaseReady && _firestore != null) {
+    if (isCloud) {
       try {
-        return _cloudOrLocal(
-          _firestore!
-              .collection(AppConstants.colSmartLockLogs)
-              .orderBy('created_at', descending: true)
-              .snapshots()
-              .map((snap) {
-            if (snap.docs.isEmpty) return _lockLogs;
-            try {
-              return snap.docs
-                  .map((doc) => SmartLockEventModel.fromJson(doc.data(), doc.id))
-                  .toList();
-            } catch (_) {
-              return _lockLogs;
-            }
-          }),
-          _lockLogs,
-        );
-      } catch (_) {}
+        return _firestore!
+            .collection(AppConstants.colSmartLockLogs)
+            .orderBy('created_at', descending: true)
+            .snapshots()
+            .map((snap) => _parseAll(snap, SmartLockEventModel.fromJson));
+      } catch (e) {
+        return Stream<List<SmartLockEventModel>>.error(e);
+      }
     }
     return _withInitial(_lockLogs, _lockLogsController);
   }
 
   Stream<List<RoomModel>> streamRooms() {
-    if (_isFirebaseReady && _firestore != null) {
+    if (isCloud) {
       try {
-        return _cloudOrLocal(
-          _firestore!
-              .collection(AppConstants.colRooms)
-              .snapshots()
-              .map((snap) {
-            if (snap.docs.isEmpty) return _rooms;
-            try {
-              return snap.docs
-                  .map((doc) => RoomModel.fromJson(doc.data(), doc.id))
-                  .toList();
-            } catch (_) {
-              return _rooms;
-            }
-          }),
-          _rooms,
-        );
-      } catch (_) {}
+        return _firestore!
+            .collection(AppConstants.colRooms)
+            .snapshots()
+            .map((snap) => _parseAll(snap, RoomModel.fromJson));
+      } catch (e) {
+        return Stream<List<RoomModel>>.error(e);
+      }
     }
     return _withInitial(_rooms, _roomsController);
   }
 
   Stream<List<GuestCrmModel>> streamGuestProfiles() {
-    if (_isFirebaseReady && _firestore != null) {
+    if (isCloud) {
       try {
-        return _cloudOrLocal(
-          _firestore!
-              .collection(AppConstants.colGuestProfiles)
-              .snapshots()
-              .map((snap) {
-            if (snap.docs.isEmpty) return _crmProfiles;
-            try {
-              return snap.docs
-                  .map((doc) => GuestCrmModel.fromJson(doc.data(), doc.id))
-                  .toList();
-            } catch (_) {
-              return _crmProfiles;
-            }
-          }),
-          _crmProfiles,
-        );
-      } catch (_) {}
+        return _firestore!
+            .collection(AppConstants.colGuestProfiles)
+            .snapshots()
+            .map((snap) => _parseAll(snap, GuestCrmModel.fromJson));
+      } catch (e) {
+        return Stream<List<GuestCrmModel>>.error(e);
+      }
     }
     return _withInitial(_crmProfiles, _crmController);
   }
@@ -332,7 +309,7 @@ class FirestoreService implements PinSecurityRemote {
           if (v is num && v > seq) seq = v.toInt();
         }
         seq += 1;
-        final batch = _firestore!.batch();
+        final batch = _firestore.batch();
         batch.update(ref, result.patch);
         batch.set(log.doc('$seq'), {...result.entry!, 'seq': seq});
         await batch.commit();
@@ -378,16 +355,10 @@ class FirestoreService implements PinSecurityRemote {
             return sa.compareTo(sb);
           });
           return entries;
-        }).transform(
-          StreamTransformer<List<Map<String, dynamic>>,
-              List<Map<String, dynamic>>>.fromHandlers(
-            handleData: (data, sink) => sink.add(data),
-            handleError: (_, __, sink) =>
-                sink.add(List<Map<String, dynamic>>.unmodifiable(
-                    _localActivity[bookingId] ?? const [])),
-          ),
-        );
-      } catch (_) {}
+          });
+      } catch (e) {
+        return Stream<List<Map<String, dynamic>>>.error(e);
+      }
     }
     final controller = _activityControllers.putIfAbsent(
         bookingId, () => StreamController.broadcast());
@@ -551,7 +522,7 @@ class FirestoreService implements PinSecurityRemote {
     _lockLogs.insert(0, event);
     _lockLogsController.add(List.unmodifiable(_lockLogs));
 
-    if (_isFirebaseReady && _firestore != null) {
+    if (isCloud) {
       try {
         await _firestore!
             .collection(AppConstants.colSmartLockLogs)
@@ -581,7 +552,7 @@ class FirestoreService implements PinSecurityRemote {
       _roomsController.add(List.unmodifiable(_rooms));
     }
 
-    if (_isFirebaseReady && _firestore != null) {
+    if (isCloud) {
       try {
         await _firestore!
             .collection(AppConstants.colRooms)

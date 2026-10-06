@@ -30,6 +30,7 @@ import {
   validateRegistration,
   type Credentials,
   type Registration,
+  type RegistrationInput,
 } from './credentials'
 
 /** A signed-in person, as far as the session is concerned. */
@@ -94,7 +95,7 @@ export type SessionStore = {
   can(permission: Permission): boolean
   /** The actor to put on a Booking action, or null when nobody is signed in. */
   actor(): Actor | null
-  register(input: { email: string; password: string; displayName?: string }): Promise<SessionUser>
+  register(input: RegistrationInput): Promise<SessionUser>
   login(email: string, password: string): Promise<SessionUser>
   loginWithGoogle(): Promise<SessionUser>
   logout(): Promise<void>
@@ -230,6 +231,12 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
             role: DEFAULT_ROLE,
             email: user.email,
             display_name: checked.value.displayName ?? user.displayName,
+            // What this person agreed to, kept on the Profile so it can be read
+            // back rather than inferred from a checkbox that no longer exists.
+            // `firestore.rules` already permits exactly these three fields.
+            birthdate: checked.value.birthdate,
+            terms_version: checked.value.termsVersion,
+            terms_accepted_at: checked.value.termsAcceptedAt,
             created_at: at,
             updated_at: at,
           })
