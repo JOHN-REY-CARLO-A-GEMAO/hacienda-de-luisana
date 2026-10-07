@@ -110,6 +110,87 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     return value;
   }
 
+  Future<String?> _askRejectionReason({required String title}) async {
+    String selectedReason = 'Invalid payment';
+    final remarksController = TextEditingController();
+    const options = [
+      'Invalid payment',
+      'Invalid ID',
+      'Incomplete requirements',
+      'Accommodation unavailable',
+      'Other',
+    ];
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(title,
+              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Select rejection reason:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: selectedReason,
+                isExpanded: true,
+                items: options
+                    .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setDialogState(() => selectedReason = val);
+                  }
+                },
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                selectedReason == 'Other'
+                    ? 'Remarks (Required for "Other"):'
+                    : 'Remarks (Optional):',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: remarksController,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  hintText: selectedReason == 'Other'
+                      ? 'Specify reason...'
+                      : 'Additional notes for guest...',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Back'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final remarks = remarksController.text.trim();
+                if (selectedReason == 'Other' && remarks.isEmpty) {
+                  return;
+                }
+                final finalReason = selectedReason == 'Other'
+                    ? remarks
+                    : (remarks.isNotEmpty ? '$selectedReason ($remarks)' : selectedReason);
+                Navigator.pop(ctx, finalReason);
+              },
+              child: const Text('Reject'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<double?> _askAmount(String title, String hint, double? initial) async {
     final controller =
         TextEditingController(text: initial == null ? '' : initial.toStringAsFixed(2));
@@ -189,10 +270,8 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         if (ticket != null) await _run(booking, action, ticket: ticket);
         return;
       case AdminAction.reject:
-        final reason = await _askText('Reject Booking',
-            'Why is this Booking refused? The Guest reads this.',
-            confirm: 'Reject');
-        if (reason != null) {
+        final reason = await _askRejectionReason(title: 'Reject Booking');
+        if (reason != null && reason.isNotEmpty) {
           await _run(booking, action, input: ActionInput(reason: reason));
         }
         return;
@@ -307,6 +386,87 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           await _run(booking, action);
         }
         return;
+    }
+  }
+
+  Future<void> _onReschedule(BookingModel booking) async {
+    final now = DateTime.now();
+    final initialCheckIn = booking.checkInDate;
+
+    final newCheckIn = await showDatePicker(
+      context: context,
+      initialDate: initialCheckIn.isBefore(now) ? now : initialCheckIn,
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365)),
+      helpText: 'Select New Check-In Date',
+    );
+    if (newCheckIn == null) return;
+
+    if (!mounted) return;
+    final newCheckOut = await showDatePicker(
+      context: context,
+      initialDate: newCheckIn.add(const Duration(days: 1)),
+      firstDate: newCheckIn.add(const Duration(days: 1)),
+      lastDate: newCheckIn.add(const Duration(days: 365)),
+      helpText: 'Select New Check-Out Date',
+    );
+    if (newCheckOut == null) return;
+
+    if (!mounted) return;
+    final reason = await _askText('Reschedule Reason', 'Why is this stay being rescheduled?', confirm: 'Reschedule');
+    if (reason == null || reason.isEmpty) return;
+
+    setState(() => _busy = true);
+    final service = ref.read(firestoreServiceProvider);
+    final result = await service.rescheduleBooking(
+      booking: booking,
+      newCheckIn: newCheckIn,
+      newCheckOut: newCheckOut,
+      reason: reason,
+      actor: _actor(),
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (result.ok) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Rescheduled to ${DateFormatter.toIsoDate(newCheckIn)} → ${DateFormatter.toIsoDate(newCheckOut)}'),
+      ));
+    } else {
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: AppColors.statusAlert,
+        content: Text(result.reason ?? 'Reschedule refused.'),
+        duration: const Duration(seconds: 6),
+      ));
+    }
+  }
+
+  Future<void> _onRejectCancellation(BookingModel booking) async {
+    final reason = await _askText('Reject Cancellation Request', 'Why is the cancellation request rejected? The Guest reads this.', confirm: 'Reject Cancellation');
+    if (reason == null || reason.isEmpty) return;
+
+    setState(() => _busy = true);
+    final service = ref.read(firestoreServiceProvider);
+    final result = await service.rejectCancellationRequest(
+      booking: booking,
+      reason: reason,
+      actor: _actor(),
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (result.ok) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Cancellation request rejected. Booking remains active.'),
+      ));
+    } else {
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: AppColors.statusAlert,
+        content: Text(result.reason ?? 'Refused.'),
+        duration: const Duration(seconds: 6),
+      ));
     }
   }
 
@@ -512,40 +672,50 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: actions.map((a) {
-              final primary = _isPrimary(a);
-              final danger = _isDanger(a);
-              // The lifecycle's own precondition, asked before the button is
-              // offered rather than after it is pressed: Verify with no proof
-              // behind it is refused, so a live button would only ever produce
-              // an error the Admin did not need to see.
-              final blocked = adminActionBlockedReason(doc, a);
-              final onPressed = (_busy || expired || blocked != null)
-                  ? null
-                  : () => _onAction(booking, a);
-              if (primary) {
-                return ElevatedButton.icon(
+            children: [
+              ...actions.map((a) {
+                final primary = _isPrimary(a);
+                final danger = _isDanger(a);
+                final blocked = adminActionBlockedReason(doc, a);
+                final onPressed = (_busy || expired || blocked != null)
+                    ? null
+                    : () => _onAction(booking, a);
+                if (primary) {
+                  return ElevatedButton.icon(
+                    onPressed: onPressed,
+                    icon: Icon(_icon(a), size: 16),
+                    label: Text(a.label),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.statusSuccess),
+                  );
+                }
+                return OutlinedButton.icon(
                   onPressed: onPressed,
-                  icon: Icon(_icon(a), size: 16),
-                  label: Text(a.label),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.statusSuccess),
+                  icon: Icon(_icon(a),
+                      size: 16,
+                      color: danger ? AppColors.statusAlert : null),
+                  label: Text(a.label,
+                      style: TextStyle(
+                          color: danger ? AppColors.statusAlert : null)),
+                  style: danger
+                      ? OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.statusAlert))
+                      : null,
                 );
-              }
-              return OutlinedButton.icon(
-                onPressed: onPressed,
-                icon: Icon(_icon(a),
-                    size: 16,
-                    color: danger ? AppColors.statusAlert : null),
-                label: Text(a.label,
-                    style: TextStyle(
-                        color: danger ? AppColors.statusAlert : null)),
-                style: danger
-                    ? OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.statusAlert))
-                    : null,
-              );
-            }).toList(),
+              }),
+              if (!['Cancelled', 'Rejected', 'Completed', 'Expired'].contains(booking.rawStatus)) ...[
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _onReschedule(booking),
+                  icon: const Icon(Icons.edit_calendar, size: 16),
+                  label: const Text('Reschedule'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _onRejectCancellation(booking),
+                  icon: const Icon(Icons.cancel_schedule_send, size: 16),
+                  label: const Text('Reject Cancellation'),
+                ),
+              ],
+            ],
           ),
           if (blockedReasons.isNotEmpty) ...[
             const SizedBox(height: 8),

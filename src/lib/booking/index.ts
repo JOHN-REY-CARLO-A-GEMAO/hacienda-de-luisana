@@ -66,6 +66,7 @@ export {
 export { describeActivity, type ActivityLine } from './activity'
 
 export {
+  formatRefundPolicySummary,
   ratesForAccommodation,
   quoteAccommodation,
   classifyRateDate,

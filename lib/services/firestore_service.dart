@@ -372,6 +372,144 @@ class FirestoreService implements PinSecurityRemote {
   /// re-asks the gate the way [applyBookingAction] does: a call site that
   /// forgets the PIN sheet gets a refusal and no write, never a silent delete.
   /// Returns null on success, or the reason it refused/failed.
+  /// Reschedule a booking's stay dates after checking for date conflicts.
+  Future<ActionResult> rescheduleBooking({
+    required BookingModel booking,
+    required DateTime newCheckIn,
+    required DateTime newCheckOut,
+    required String reason,
+    required Actor actor,
+  }) async {
+    final checkInIso = DateFormatter.toIsoDate(newCheckIn);
+    final checkOutIso = DateFormatter.toIsoDate(newCheckOut);
+
+    // Validate availability
+    final conflicts = _latestBookings.where((b) {
+      if (b.id == booking.id) return false;
+      if (b.accommodation != booking.accommodation) return false;
+      if (b.rawStatus == 'Cancelled' || b.rawStatus == 'Rejected' || b.rawStatus == 'Expired') return false;
+      return newCheckIn.isBefore(b.checkOutDate) && newCheckOut.isAfter(b.checkInDate);
+    }).toList();
+
+    if (conflicts.isNotEmpty) {
+      return ActionResult.refused('Those dates are already held by another booking for this accommodation.');
+    }
+
+    final patch = <String, dynamic>{
+      'check_in': checkInIso,
+      'check_out': checkOutIso,
+    };
+
+    final entry = <String, dynamic>{
+      'booking_id': booking.id,
+      'action': 'Rescheduled',
+      'from_status': booking.rawStatus,
+      'to_status': booking.rawStatus,
+      'actor': actor.actor,
+      'actor_id': actor.actorId,
+      if (actor.actorName != null) 'actor_name': actor.actorName,
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'reason': reason,
+    };
+
+    if (isCloud) {
+      try {
+        final ref = _firestore!.collection(AppConstants.colBookings).doc(booking.id);
+        final log = ref.collection('activity');
+        final written = await log.get();
+        var seq = -1;
+        for (final d in written.docs) {
+          final v = d.data()['seq'];
+          if (v is num && v > seq) seq = v.toInt();
+        }
+        seq += 1;
+        final batch = _firestore.batch();
+        batch.update(ref, patch);
+        batch.set(log.doc('$seq'), {...entry, 'seq': seq});
+        await batch.commit();
+
+        if (booking.uid != null && booking.uid!.isNotEmpty) {
+          await _firestore.collection('notifications').add({
+            'user_id': booking.uid,
+            'booking_id': booking.id,
+            'title': 'Booking Rescheduled',
+            'message': 'Your booking dates have been updated to $checkInIso to $checkOutIso.',
+            'type': 'reschedule_result',
+            'created_at': FieldValue.serverTimestamp(),
+            'read': false,
+          });
+        }
+
+        return ActionResult.accepted(patch, entry);
+      } catch (e) {
+        return ActionResult.refused('Could not reschedule in Firestore (${e.toString().split('\n').first}).');
+      }
+    }
+
+    _patchLocal(booking.id, patch, entry);
+    return ActionResult.accepted(patch, entry);
+  }
+
+  /// Rejects a cancellation request, keeping the booking in its prior valid status.
+  Future<ActionResult> rejectCancellationRequest({
+    required BookingModel booking,
+    required String reason,
+    required Actor actor,
+  }) async {
+    final entry = <String, dynamic>{
+      'booking_id': booking.id,
+      'action': 'CancellationRejected',
+      'from_status': booking.rawStatus,
+      'to_status': booking.rawStatus,
+      'actor': actor.actor,
+      'actor_id': actor.actorId,
+      if (actor.actorName != null) 'actor_name': actor.actorName,
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'reason': reason,
+    };
+
+    final patch = <String, dynamic>{
+      'cancellation_reject_reason': reason,
+    };
+
+    if (isCloud) {
+      try {
+        final ref = _firestore!.collection(AppConstants.colBookings).doc(booking.id);
+        final log = ref.collection('activity');
+        final written = await log.get();
+        var seq = -1;
+        for (final d in written.docs) {
+          final v = d.data()['seq'];
+          if (v is num && v > seq) seq = v.toInt();
+        }
+        seq += 1;
+        final batch = _firestore.batch();
+        batch.update(ref, patch);
+        batch.set(log.doc('$seq'), {...entry, 'seq': seq});
+        await batch.commit();
+
+        if (booking.uid != null && booking.uid!.isNotEmpty) {
+          await _firestore.collection('notifications').add({
+            'user_id': booking.uid,
+            'booking_id': booking.id,
+            'title': 'Cancellation Request Rejected',
+            'message': 'Your cancellation request was rejected ($reason). Your booking remains ${booking.rawStatus}.',
+            'type': 'cancellation_result',
+            'created_at': FieldValue.serverTimestamp(),
+            'read': false,
+          });
+        }
+
+        return ActionResult.accepted(patch, entry);
+      } catch (e) {
+        return ActionResult.refused('Could not update Firestore (${e.toString().split('\n').first}).');
+      }
+    }
+
+    _patchLocal(booking.id, patch, entry);
+    return ActionResult.accepted(patch, entry);
+  }
+
   Future<String?> deleteBooking(String bookingId, {SecurityTicket? ticket}) async {
     if (gateFor(GateAction.deleteBooking) == GateLevel.pin &&
         (ticket == null || !ticket.isValid(DateTime.now()))) {

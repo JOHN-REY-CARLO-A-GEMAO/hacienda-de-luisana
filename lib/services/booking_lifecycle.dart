@@ -226,6 +226,15 @@ String _dateKey(Object? raw) {
   return d.toIso8601String().substring(0, 10);
 }
 
+/// Today's calendar date in Philippine Time (UTC+8).
+String manilaDateOnly(DateTime at) {
+  final m = at.toUtc().add(const Duration(hours: 8));
+  final y = m.year.toString().padLeft(4, '0');
+  final mo = m.month.toString().padLeft(2, '0');
+  final d = m.day.toString().padLeft(2, '0');
+  return '$y-$mo-$d';
+}
+
 /// Other Bookings that already take the units on these dates. Empty when the
 /// request fits. `forApproval` counts only committed Bookings — a Booking still
 /// waiting for review does not block the Admin from approving another.
@@ -890,6 +899,14 @@ String? adminActionBlockedReason(
     }
     return null;
   }
+  if (action == AdminAction.beginStay) {
+    final checkInStr = _dateKey(booking['check_in']);
+    final todayPht = manilaDateOnly(DateTime.now());
+    if (checkInStr.isNotEmpty && todayPht.compareTo(checkInStr) < 0) {
+      return 'Begin Stay is allowed starting on the check-in date ($checkInStr). Today in the Philippines is $todayPht.';
+    }
+    return null;
+  }
   if (action != AdminAction.verifyPayment) return null;
   if (_blank(booking['payment_proof_url'])) {
     return 'There is no Payment proof to verify yet.';
@@ -1154,7 +1171,17 @@ ActionResult applyAdminAction(
       break;
 
     case AdminAction.checkIn:
+      break;
+
     case AdminAction.beginStay:
+      final checkInStr = _dateKey(booking['check_in']);
+      final todayPht = manilaDateOnly(at);
+      if (checkInStr.isNotEmpty && todayPht.compareTo(checkInStr) < 0) {
+        return ActionResult.refused(
+            'Begin Stay is not allowed before the check-in date ($checkInStr). Today in the Philippines is $todayPht.');
+      }
+      break;
+
     case AdminAction.checkOut:
     case AdminAction.complete:
       break;

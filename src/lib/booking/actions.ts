@@ -14,6 +14,7 @@
 
 import { canTransition, normalizeStatus, type BookingStatus } from './statuses'
 import { effectiveStatus, findDateConflicts, type HoldBearingBooking } from './availability'
+import { bookingBusinessDate } from './leadTime'
 import {
   paymentOptions,
   paymentOptionsForTotal,
@@ -554,7 +555,18 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
     }
 
     case 'CheckIn':
-    case 'BeginStay':
+      break
+
+    case 'BeginStay': {
+      const todayPht = bookingBusinessDate(new Date(at))
+      if (todayPht < booking.check_in) {
+        return refuse(
+          `Begin Stay is not allowed before the check-in date (${booking.check_in}). Today in the Philippines is ${todayPht}.`,
+        )
+      }
+      break
+    }
+
     case 'CheckOut':
     case 'Complete':
       break

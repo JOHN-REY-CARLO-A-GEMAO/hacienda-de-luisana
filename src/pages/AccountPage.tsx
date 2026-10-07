@@ -16,7 +16,12 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
-import { ArrowRight, Calendar, Sparkle } from '../lib/icons'
+import { ArrowRight, Calendar, Sparkle, Close } from '../lib/icons'
+import {
+  fetchUserNotifications,
+  markNotificationRead,
+  type AppNotification,
+} from '../lib/notifications'
 
 /** Statuses a Guest may still withdraw from themselves — the list firestore.rules allows. */
 const WITHDRAWABLE = ['Pending']
@@ -57,6 +62,11 @@ export function AccountPage() {
   const [pageSize, setPageSize] = useState(5)
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Booking | null>(null)
 
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [showNotifications, setShowNotifications] = useState(false)
+
+  const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications])
+
   useEffect(() => {
     setLoading(true)
     const unsubscribe = cloudBookingsDB.subscribeMine(user?.uid, (list) => {
@@ -65,6 +75,17 @@ export function AccountPage() {
     })
     return () => unsubscribe()
   }, [user?.uid])
+
+  useEffect(() => {
+    if (!user?.uid) return
+    void fetchUserNotifications(user.uid).then(setNotifications)
+  }, [user?.uid])
+
+  const handleMarkRead = async (id: string) => {
+    if (!user?.uid) return
+    await markNotificationRead(id, user.uid)
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+  }
 
   const withdraw = async (booking: Booking) => {
     if (!actor) return
@@ -123,7 +144,19 @@ export function AccountPage() {
               request the Admin has not reviewed yet.
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            <button
+              type="button"
+              onClick={() => setShowNotifications((v) => !v)}
+              className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs relative"
+            >
+              Notifications
+              {unreadCount > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
             <Link to="/messages" className="btn-ghost text-xs">
               Messages
             </Link>
@@ -138,6 +171,53 @@ export function AccountPage() {
             </button>
           </div>
         </div>
+
+        {showNotifications && (
+          <div className="mt-6 bg-white rounded-[28px] border border-forest-900/10 shadow-card p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-2xl text-forest-900">Notifications</h2>
+              <button
+                type="button"
+                onClick={() => setShowNotifications(false)}
+                className="text-forest-600 hover:text-forest-900 p-1"
+                aria-label="Close notifications"
+              >
+                <Close size={20} />
+              </button>
+            </div>
+            {notifications.length === 0 ? (
+              <p className="mt-4 text-xs text-forest-700/70">No notifications yet.</p>
+            ) : (
+              <div className="mt-4 space-y-3 max-h-80 overflow-y-auto pr-1">
+                {notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`p-3.5 rounded-2xl border text-xs transition ${
+                      n.read ? 'bg-cream-50/50 border-forest-900/5 text-forest-800' : 'bg-emerald-50/60 border-emerald-200 text-emerald-950 font-medium'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-bold text-sm text-forest-900">{n.title}</div>
+                      {!n.read && (
+                        <button
+                          type="button"
+                          onClick={() => void handleMarkRead(n.id)}
+                          className="text-[10px] text-forest-600 hover:underline whitespace-nowrap"
+                        >
+                          Mark as read
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed">{n.message}</p>
+                    <div className="mt-2 text-[10px] text-forest-600/70">
+                      {new Date(n.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {notice && (
           <div
