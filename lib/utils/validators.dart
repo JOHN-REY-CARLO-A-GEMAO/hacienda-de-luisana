@@ -72,12 +72,12 @@ class Validators {
     return null;
   }
 
-  /// Guests must be 1..12 and within the accommodation capacity.
-  static String? guestCount(int guests, int capacity) {
+  /// Guests must be within the accommodation capacity.
+  static String? guestCount(int guests, int capacity, [String? name]) {
     if (guests < 1) return 'At least 1 guest required';
-    if (guests > 12) return 'Max 12 guests per booking';
     if (guests > capacity) {
-      return 'This stay accommodates up to $capacity guests';
+      final label = name != null && name.isNotEmpty ? name : 'This stay';
+      return '$label can accommodate up to $capacity guests.';
     }
     return null;
   }
@@ -120,12 +120,13 @@ class Validators {
     required DateTime checkOut,
     required int guests,
     required int capacity,
+    String? propertyName,
     DateTime? now,
   }) {
     final inErr = checkInDate(checkIn, now);
     if (inErr != null) return inErr;
     final outErr = checkOutDate(checkIn, checkOut);
     if (outErr != null) return outErr;
-    return guestCount(guests, capacity);
+    return guestCount(guests, capacity, propertyName);
   }
 }

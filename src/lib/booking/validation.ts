@@ -136,7 +136,7 @@ function guestRuleMessage(
   const period = classification === 'weekend_holiday' ? 'weekend or holiday' : 'weekday'
   const maximum = schedule.max_guests ?? schedule.base_max_guests
   if (schedule.max_guests !== undefined || schedule.base_max_guests === maximum) {
-    return `${property}'s published ${period} rate accepts ${schedule.min_guests}–${maximum} guests; ${guests} guests is outside that range.`
+    return `${property} can accommodate up to ${maximum} guests.`
   }
   return `${property}'s published ${period} rate starts at ${schedule.min_guests} guests; ${guests} guests is not supported.`
 }

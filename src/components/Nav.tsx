@@ -49,21 +49,21 @@ export function Nav() {
       <div
         className={`pointer-events-auto transition-all duration-500 ease-out-expo ${
           floating
-            ? 'mx-3 mt-3 lg:mx-auto lg:max-w-6xl rounded-full bg-cream-50/90 backdrop-blur-xl border border-forest-900/10 shadow-float'
+            ? 'mx-2 sm:mx-3 mt-2 sm:mt-3 lg:mx-auto lg:max-w-6xl rounded-full bg-cream-50/90 backdrop-blur-xl border border-forest-900/10 shadow-float'
             : 'mx-auto max-w-7xl bg-transparent border border-transparent'
         }`}
       >
-      <div className={`px-5 lg:px-8 flex items-center justify-between transition-all duration-500 ${floating ? 'h-14 lg:h-16 lg:px-6' : 'h-16 lg:h-20'}`}>
-        <Link to="/" aria-label="Hacienda de LuisAna home">
+      <div className={`px-3 sm:px-5 lg:px-6 flex items-center justify-between transition-all duration-500 ${floating ? 'h-14 lg:h-16' : 'h-16 lg:h-20'}`}>
+        <Link to="/" aria-label="Hacienda de LuisAna home" className="flex-shrink-0">
           <Logo tone={transparent ? 'light' : 'dark'} />
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-6 xl:gap-7" aria-label="Site">
+        <nav className="hidden lg:flex items-center gap-3 xl:gap-5 2xl:gap-7 flex-shrink" aria-label="Site">
           {LINKS.map((l) => (
             <Link
               key={l.href}
               to={l.href}
-              className={`${l.wide ? 'hidden xl:inline-flex' : 'inline-flex'} text-[13px] font-medium transition ${
+              className={`${l.wide ? 'hidden xl:inline-flex' : 'inline-flex'} text-[13px] font-medium whitespace-nowrap transition ${
                 transparent ? 'text-cream-100 hover:text-white' : 'text-forest-800 hover:text-forest-950'
               }`}
             >
@@ -72,13 +72,13 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="hidden lg:flex items-center gap-2.5">
+        <div className="hidden lg:flex items-center gap-2.5 flex-shrink-0">
           {/* The Guest's own page; the Admin has no page on this website */}
           {user ? (
             <>
               <Link
                 to={homeForRole(role)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition max-w-[140px] truncate ${
                   transparent
                     ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
                     : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
@@ -89,7 +89,7 @@ export function Nav() {
               </Link>
               <button
                 onClick={() => void logout()}
-                className={`text-xs ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 hover:text-forest-900'}`}
+                className={`text-xs whitespace-nowrap ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 hover:text-forest-900'}`}
               >
                 Sign out
               </button>
@@ -97,7 +97,7 @@ export function Nav() {
           ) : (
             <Link
               to="/guest/auth"
-              className={`text-xs px-3 py-1.5 rounded-full border transition ${
+              className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition ${
                 transparent
                   ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
                   : 'border-forest-900/10 text-forest-700 hover:bg-forest-50'
@@ -112,8 +112,8 @@ export function Nav() {
             data-tour="nav-book"
             className={
               transparent
-                ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs px-4 py-2 shadow-glow'
-                : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900 text-xs px-4 py-2 shadow-soft'
+                ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs px-3.5 py-2 shadow-glow whitespace-nowrap'
+                : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900 text-xs px-3.5 py-2 shadow-soft whitespace-nowrap'
             }
           >
             Book Your Stay
@@ -121,7 +121,7 @@ export function Nav() {
         </div>
 
         <button
-          className={`lg:hidden p-2 rounded-full transition ${
+          className={`lg:hidden p-2 rounded-full transition flex-shrink-0 ${
             transparent ? 'text-cream-50' : 'text-forest-900'
           }`}
           aria-label={open ? 'Close menu' : 'Open menu'}

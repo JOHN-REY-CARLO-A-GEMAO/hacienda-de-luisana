@@ -122,3 +122,54 @@ export function describeFirestoreFailure(error: unknown): FailureWords {
 export function failureLine(words: FailureWords): string {
   return `[${words.code}] ${words.advice}`
 }
+
+/**
+ * Maps technical or Firebase errors to understandable, friendly messages for guests.
+ * Keeps technical details out of guest-facing UI while keeping technical errors in development logs.
+ */
+export function guestFacingErrorMessage(
+  error: unknown,
+  fallbackMessage = "We couldn't submit your request right now. Please try again.",
+): string {
+  if (!error) return fallbackMessage
+
+  const code = codeOf(error)
+  const message = messageOf(error) ?? (typeof error === 'string' ? error : '')
+
+  if (code === 'permission-denied' || message.includes('permission-denied')) {
+    return "We couldn't submit your booking right now. Please try again."
+  }
+  if (code === 'failed-precondition' || message.includes('failed-precondition')) {
+    return "We couldn't process this request with the current details. Please check your stay details and try again."
+  }
+  if (
+    code === 'network-request-failed' ||
+    code === 'auth/network-request-failed' ||
+    code === 'unavailable' ||
+    message.includes('network-request-failed')
+  ) {
+    return 'Your internet connection appears to be unavailable. Please check your connection and try again.'
+  }
+  if (code === 'unauthenticated' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
+    return 'Invalid email or password. Please try again.'
+  }
+  if (code === 'auth/email-already-in-use') {
+    return 'An account with this email already exists. Please sign in instead.'
+  }
+  if (code === 'auth/too-many-requests') {
+    return 'Too many attempts. Please wait a moment and try again.'
+  }
+
+  // Use plain message if user-friendly and not a raw Firebase internal error code
+  if (
+    message &&
+    !message.includes('FirebaseError:') &&
+    !message.includes('permission-denied') &&
+    !message.includes('failed-precondition') &&
+    !message.includes('network-request-failed')
+  ) {
+    return message
+  }
+
+  return fallbackMessage
+}

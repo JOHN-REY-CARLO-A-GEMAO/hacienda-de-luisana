@@ -10,10 +10,10 @@ export const OFFICIAL_ACCOMMODATION_RATES: Record<string, Omit<AccommodationRate
     guest_pricing: {
       units_per_booking: 1,
       weekday: {
-        min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500,
+        min_guests: 1, base_max_guests: 10, base_rate: 5000, excess_per_guest: 500, max_guests: 10,
       },
       weekend_holiday: {
-        min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500,
+        min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500, max_guests: 10,
       },
     },
     down_payment_percent: 50,
@@ -26,8 +26,8 @@ export const OFFICIAL_ACCOMMODATION_RATES: Record<string, Omit<AccommodationRate
     active: true,
     guest_pricing: {
       units_per_booking: 1,
-      weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
-      weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 },
+      weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500, max_guests: 6 },
+      weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500, max_guests: 6 },
     },
     down_payment_percent: 50,
     manual_review_notice: 'The 50% down payment is calculated from this stay total. Events require Admin discussion; no event charge is added automatically.',

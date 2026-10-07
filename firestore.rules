@@ -1513,6 +1513,16 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Guest & Admin notifications
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isSignedIn()
+        && (request.resource.data.user_id == request.auth.uid || request.resource.data.user_id == 'admin' || isAdmin());
+      allow update: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAdmin();
+    }
+
     // Deny all other collections by default unless explicitly allowed
     match /{document=**} {
       allow read, write: if false;

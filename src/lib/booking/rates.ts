@@ -171,6 +171,32 @@ export function refundPolicyFromPublished(published: PublishedRefundPolicy): Ref
   }
 }
 
+/** Formats a guest-visible summary sentence of the published cancellation refund policy. */
+export function formatRefundPolicySummary(refund?: PublishedRefundPolicy | null): string {
+  if (!refund) {
+    return 'No cancellation refund policy is currently published. If cancelled, the stay amount is non-refundable unless confirmed by the Admin.'
+  }
+  const parts: string[] = []
+  if (refund.tiers && refund.tiers.length > 0) {
+    const tierText = refund.tiers
+      .map((t) => `${t.min_days_before_check_in}+ days before check-in: ${t.refund_percent}% refund`)
+      .join('; ')
+    parts.push(`Tiered stay refund (${tierText})`)
+  } else if (refund.refund_percent !== undefined) {
+    parts.push(`Stay refund: ${refund.refund_percent}% on cancellation`)
+  } else {
+    parts.push('Stay refund: 0% unless a policy tier applies')
+  }
+
+  if (refund.deposit_refund_percent !== undefined) {
+    parts.push(`Security deposit: ${refund.deposit_refund_percent}% refundable`)
+  } else {
+    parts.push('Security deposit: 100% refundable after check-out inspection')
+  }
+
+  return parts.join('. ')
+}
+
 export type RatesProblem = {
   /** Where the problem is, dot-path from the document root. */
   path: string

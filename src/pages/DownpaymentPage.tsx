@@ -22,6 +22,8 @@ import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
 import { validateAmount } from '../lib/validation'
+import { guestFacingErrorMessage } from '../lib/firebaseFailure'
+import { createNotification } from '../lib/notifications'
 
 function peso(n: number): string {
   return `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
@@ -331,6 +333,15 @@ refund_policy_snapshot: published.refund ?? null,
          },
          { actor: 'guest', actor_id: effectiveUid, actor_name: draft.name.trim() },
        )
+       if (effectiveUid) {
+         void createNotification({
+           userId: effectiveUid,
+           bookingId: booking.id,
+           title: 'Booking Submitted',
+           message: `Your booking request for ${draft.accommodation} on ${draft.check_in} has been submitted for Admin review.`,
+           type: 'booking_submitted',
+         })
+       }
       clearBookingDraft()
       rememberBookingId(booking.id)
       navigate(`/booking/status?id=${encodeURIComponent(booking.id)}`, {
@@ -338,7 +349,8 @@ refund_policy_snapshot: published.refund ?? null,
         state: { justSubmitted: true, storage: booking.storage },
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'The booking could not be submitted. Please try again.'
+      console.error('[BookingSubmit] Submission error:', err)
+      const message = guestFacingErrorMessage(err, 'The booking could not be submitted right now. Please try again.')
       setError(message)
     } finally {
       setBusy(false)

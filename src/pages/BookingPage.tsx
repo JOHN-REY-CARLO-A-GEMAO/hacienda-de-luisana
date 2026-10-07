@@ -21,11 +21,13 @@ import { usePublishedRates } from '../hooks/usePublishedRates'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { useBookingPolicy } from '../hooks/useBookingPolicy'
 import {
+  formatRefundPolicySummary,
   quoteAccommodation,
   validateBookingSelection,
   validateMinimumBookingLeadTime,
   type BookingRuleFailure,
 } from '../lib/booking'
+import { guestFacingErrorMessage } from '../lib/firebaseFailure'
 
 type FormState = {
   check_in: string
@@ -153,7 +155,7 @@ export function BookingPage() {
     if (!leadTime.ok) e.check_in = leadTime.reason
     const stay = validateStayDates(form.check_in, form.check_out)
     if (!stay.ok && !e[stay.field]) e[stay.field] = stay.message
-    const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity)
+    const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity, selectedAcc?.name)
     if (!guests.ok) e.guests = guests.message
     if (!form.accommodation) e.accommodation = 'Select an accommodation'
     else if (!published) {
@@ -279,7 +281,8 @@ export function BookingPage() {
     } catch (err) {
       stopped = true
       setStatus('error')
-      setErrorMsg(err instanceof Error ? err.message : 'Booking rules could not be checked right now. Please try again.')
+      console.error('[BookingCheck] Error checking booking rules:', err)
+      setErrorMsg(guestFacingErrorMessage(err, 'Booking rules could not be checked right now. Please try again.'))
     } finally {
       if (!stopped) setStatus('idle')
     }
@@ -524,12 +527,18 @@ export function BookingPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-2xl bg-cream-100/70 p-4 text-xs text-forest-700 leading-relaxed">
-                  <Sparkle size={14} className="inline mr-1 -mt-1 text-forest-600" />
-                  {estimatedTotal
-                    ? 'An estimate of the stay only. The refundable security deposit is added at the payment step, extras such as the ₱300 pet fee are settled with the Hacienda, and the final quote is confirmed before anything is reserved.'
-                    : 'The Hacienda quotes this stay on request and confirms the final figure — plus the refundable security deposit — before anything is reserved.'}{' '}
-                  <Link to="/#rates" className="underline underline-offset-2">Rates &amp; Fees</Link>
+                <div className="mt-4 rounded-2xl bg-cream-100/70 p-4 text-xs text-forest-700 leading-relaxed space-y-2">
+                  <div>
+                    <Sparkle size={14} className="inline mr-1 -mt-1 text-forest-600" />
+                    {estimatedTotal
+                      ? 'An estimate of the stay only. The refundable security deposit is added at the payment step, extras such as the ₱300 pet fee are settled with the Hacienda, and the final quote is confirmed before anything is reserved.'
+                      : 'The Hacienda quotes this stay on request and confirms the final figure — plus the refundable security deposit — before anything is reserved.'}{' '}
+                    <Link to="/rates" className="underline underline-offset-2">Rates &amp; Fees</Link>
+                  </div>
+                  <div className="pt-2 border-t border-forest-900/10">
+                    <strong className="font-semibold text-forest-900">Cancellation policy:</strong>{' '}
+                    {formatRefundPolicySummary(published?.refund)}
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,7 +1,11 @@
 import { Link } from 'react-router-dom'
 import { TERMS } from '../lib/legal'
+import { usePublishedRates } from '../hooks/usePublishedRates'
+import { formatRefundPolicySummary } from '../lib/booking'
 
 export function LegalPage() {
+  const published = usePublishedRates()
+
   return (
     <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
       <div className="mx-auto max-w-3xl px-5">
@@ -19,6 +23,11 @@ export function LegalPage() {
                 {section.body.map((p) => (
                   <li key={p}>{p}</li>
                 ))}
+                {section.id === 'cancellation' && published?.refund && (
+                  <li className="font-medium text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-xl p-3 list-none">
+                    Currently published cancellation policy: {formatRefundPolicySummary(published.refund)}
+                  </li>
+                )}
               </ul>
             </section>
           ))}

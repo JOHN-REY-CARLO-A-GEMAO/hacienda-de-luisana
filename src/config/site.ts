@@ -287,7 +287,8 @@ export const ACCOMMODATIONS: Accommodation[] = [
     shortName: 'Main House',
     description:
       'A private countryside home designed for groups and families looking for a comfortable place to stay together.',
-    capacityLabel: '10 guests included · additional guests use the published per-person rate',
+    capacity: 10,
+    capacityLabel: 'Up to 10 guests',
     // No nightly figure is published anywhere the website can cite (the Airbnb
     // price only appears once dates are chosen). The Published rates document
     // supplies it when the Admin publishes one; until then the page says
@@ -327,7 +328,8 @@ export const ACCOMMODATIONS: Accommodation[] = [
     name: 'HDL Annex',
     shortName: 'Annex',
     description: 'A separate Hacienda stay option with 6 guests included and a per-guest excess rate under the weekday/weekend-holiday schedule.',
-    capacityLabel: '6 guests included · additional guests use the published per-person rate',
+    capacity: 6,
+    capacityLabel: 'Up to 6 guests',
     priceLabel: 'From ₱4,000 / standard stay',
     priceSource: 'Official Hacienda rate card',
     amenities: [

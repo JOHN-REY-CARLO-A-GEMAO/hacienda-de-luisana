@@ -149,6 +149,81 @@ class NotificationService {
     }
   }
 
+  Future<void> showPaymentSubmissionAlert(String guestName, String refId) async {
+    if (!_canPost()) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'new_bookings_channel',
+        'New Bookings',
+        channelDescription: 'Notifications for payment submissions',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+
+    try {
+      await _localNotifications.show(
+        102,
+        '💳 Payment Proof Submitted',
+        '$guestName uploaded payment proof for $refId',
+        details,
+      );
+    } catch (error) {
+      debugPrint('[notifications] could not show payment alert: $error');
+    }
+  }
+
+  Future<void> showCancellationRequestAlert(String guestName, String refId) async {
+    if (!_canPost()) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'new_bookings_channel',
+        'New Bookings',
+        channelDescription: 'Notifications for cancellation requests',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+
+    try {
+      await _localNotifications.show(
+        104,
+        '❌ Cancellation Request',
+        '$guestName requested cancellation for $refId',
+        details,
+      );
+    } catch (error) {
+      debugPrint('[notifications] could not show cancellation alert: $error');
+    }
+  }
+
+  Future<void> showRescheduleRequestAlert(String guestName, String refId) async {
+    if (!_canPost()) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'new_bookings_channel',
+        'New Bookings',
+        channelDescription: 'Notifications for reschedule requests',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+
+    try {
+      await _localNotifications.show(
+        105,
+        '📅 Reschedule Request',
+        '$guestName requested to reschedule $refId',
+        details,
+      );
+    } catch (error) {
+      debugPrint('[notifications] could not show reschedule alert: $error');
+    }
+  }
+
   Future<void> showSmartLockSecurityAlert(String doorName, String reason) async {
     if (!_canPost()) return;
     const details = NotificationDetails(

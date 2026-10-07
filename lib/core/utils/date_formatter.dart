@@ -6,6 +6,9 @@ class DateFormatter {
   static final DateFormat _fullDateTime = DateFormat('MMM dd, yyyy · hh:mm:ss a');
   static final DateFormat _dayAndMonth = DateFormat('MMM dd');
 
+  static String toIsoDate(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
   static String formatDate(DateTime dt) => _shortDate.format(dt);
   static String formatTime(DateTime dt) => _timeWithSeconds.format(dt);
   static String formatFull(DateTime dt) => _fullDateTime.format(dt);
