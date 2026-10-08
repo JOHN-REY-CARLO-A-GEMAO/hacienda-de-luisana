@@ -25,6 +25,7 @@ import 'analytics/analytics_screen.dart';
 import 'rooms/rooms_screen.dart';
 import 'crm/guest_crm_screen.dart';
 import 'rates/rates_screen.dart';
+import 'disputes/disputes_screen.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});
@@ -87,6 +88,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       AnimatedTabPage(isActive: _currentIndex == 8, child: const RatesScreen()),
       AnimatedTabPage(isActive: _currentIndex == 9, child: const PaymentRefsScreen()),
       AnimatedTabPage(isActive: _currentIndex == 10, child: const ReviewsScreen()),
+      AnimatedTabPage(isActive: _currentIndex == 11, child: const DisputesScreen()),
     ];
 
     return Scaffold(
@@ -301,6 +303,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                     leading: Icon(Icons.rate_review_outlined),
                     title: Text('Guest Reviews'),
                     subtitle: Text('What Guests wrote after their stay — answer, moderate, publish'),
+                  ),
+                ),
+                PressableCard(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _navigateToTab(11); // Disputes
+                  },
+                  child: const ListTile(
+                    leading: Icon(Icons.gavel_outlined),
+                    title: Text('Disputes & Complaints'),
+                    subtitle: Text('Manage guest issue reports, responses & resolution'),
                   ),
                 ),
                 PressableCard(

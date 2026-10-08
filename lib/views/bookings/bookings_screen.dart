@@ -21,6 +21,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/status_pill.dart';
 import 'booking_detail_screen.dart';
+import 'payment_verification_queue_screen.dart';
 
 class BookingsScreen extends ConsumerStatefulWidget {
   const BookingsScreen({super.key});
@@ -54,6 +55,7 @@ String quickConsequence(BookingModel booking, AdminAction action) {
 
 class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   int _selectedFilterIndex = 0;
+  String _selectedAccommodation = 'All';
   String _query = '';
   String _sort = 'date';
   int _page = 0;
@@ -62,11 +64,12 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   final List<String> _filters = [
     'All',
     'Needs action',
-    'Pending',
-    'Reserved',
+    'Payment Queue',
+    'Pending Verification',
+    'Confirmed / Reserved',
     'Active Stay',
     'Completed',
-    'Cancelled',
+    'Cancelled / Rejected',
   ];
 
   /// Bookings waiting on the Admin, not the Guest.
@@ -96,6 +99,15 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
           style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.pending_actions),
+            tooltip: 'Payment Verification Queue',
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const PaymentVerificationQueueScreen(),
+              ));
+            },
+          ),
           Tooltip(
             message: 'Refresh bookings',
             child: IconButton(
@@ -167,16 +179,41 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: DropdownButton<String>(
-              value: _sort,
-              isExpanded: true,
-              items: const [
-                DropdownMenuItem(value: 'date', child: Text('Sort by booking date')),
-                DropdownMenuItem(value: 'name', child: Text('Sort by guest name')),
-                DropdownMenuItem(value: 'status', child: Text('Sort by status')),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: DropdownButton<String>(
+                    value: _selectedAccommodation,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: const [
+                      DropdownMenuItem(value: 'All', child: Text('All Accommodations')),
+                      DropdownMenuItem(value: 'main-house', child: Text('Main House')),
+                      DropdownMenuItem(value: 'annex', child: Text('Annex')),
+                      DropdownMenuItem(value: 'house-a-camping', child: Text('A-House')),
+                    ],
+                    onChanged: (v) => setState(() => _selectedAccommodation = v ?? 'All'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButton<String>(
+                    value: _sort,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: const [
+                      DropdownMenuItem(value: 'date', child: Text('Sort: Newest First')),
+                      DropdownMenuItem(value: 'date_asc', child: Text('Sort: Oldest First')),
+                      DropdownMenuItem(value: 'checkin_near', child: Text('Sort: Nearest Check-In')),
+                      DropdownMenuItem(value: 'name', child: Text('Sort: Guest Name')),
+                      DropdownMenuItem(value: 'total_desc', child: Text('Sort: Highest Total')),
+                      DropdownMenuItem(value: 'status', child: Text('Sort: Status')),
+                    ],
+                    onChanged: (v) => setState(() => _sort = v ?? 'date'),
+                  ),
+                ),
               ],
-              onChanged: (v) => setState(() => _sort = v ?? 'date'),
             ),
           ),
 
@@ -186,19 +223,34 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
               data: (allBookings) {
                 final q = _query.trim().toLowerCase();
                 final filtered = allBookings.where((b) {
+                  if (_selectedAccommodation != 'All' &&
+                      b.accommodation != _selectedAccommodation) {
+                    return false;
+                  }
                   switch (_selectedFilterIndex) {
                     case 1:
                       return needsAdminAction(b);
-                    case 2:
-                      return b.status == BookingStatus.pending;
-                    case 3:
-                      return b.status == BookingStatus.confirmed;
-                    case 4:
-                      return b.status == BookingStatus.checkedIn;
-                    case 5:
-                      return b.status == BookingStatus.completed;
-                    case 6:
-                      return b.status == BookingStatus.cancelled;
+                    case 2: // Payment Queue
+                      return (b.paymentProofUrl != null &&
+                              b.paymentProofUrl!.isNotEmpty &&
+                              b.paymentStatus != 'verified') ||
+                          b.rawStatus == BookingStatuses.paymentPending;
+                    case 3: // Pending Verification
+                      return b.rawStatus == BookingStatuses.pending;
+                    case 4: // Confirmed / Reserved
+                      return b.rawStatus == BookingStatuses.approved ||
+                          b.rawStatus == BookingStatuses.reserved ||
+                          b.rawStatus == BookingStatuses.paymentVerified;
+                    case 5: // Active Stay
+                      return b.rawStatus == BookingStatuses.checkedIn ||
+                          b.rawStatus == BookingStatuses.staying;
+                    case 6: // Completed
+                      return b.rawStatus == BookingStatuses.completed ||
+                          b.rawStatus == BookingStatuses.checkedOut;
+                    case 7: // Cancelled / Rejected
+                      return b.rawStatus == BookingStatuses.cancelled ||
+                          b.rawStatus == BookingStatuses.rejected ||
+                          b.rawStatus == BookingStatuses.expired;
                     case 0:
                     default:
                       return true;
@@ -206,17 +258,25 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                 }).where((b) {
                   if (q.isEmpty) return true;
                   if (q.length > 80) return false;
-                  final blob = '${b.guestName} ${b.guestEmail} ${b.accommodation} ${b.refId} ${b.rawStatus}'.toLowerCase();
+                  final blob = '${b.guestName} ${b.guestEmail} ${b.guestPhone} ${b.accommodation} ${b.refId} ${b.rawStatus}'.toLowerCase();
                   return blob.contains(q);
                 }).toList();
+
                 filtered.sort((a, b) {
                   switch (_sort) {
                     case 'name':
                       return a.guestName.compareTo(b.guestName);
                     case 'status':
                       return a.rawStatus.compareTo(b.rawStatus);
+                    case 'date_asc':
+                      return a.createdAt.compareTo(b.createdAt);
+                    case 'checkin_near':
+                      return a.checkInDate.compareTo(b.checkInDate);
+                    case 'total_desc':
+                      return b.totalAmount.compareTo(a.totalAmount);
+                    case 'date':
                     default:
-                      return b.checkInDate.compareTo(a.checkInDate);
+                      return b.createdAt.compareTo(a.createdAt);
                   }
                 });
                 final totalPages = (filtered.length / _pageSize).ceil().clamp(1, 9999);

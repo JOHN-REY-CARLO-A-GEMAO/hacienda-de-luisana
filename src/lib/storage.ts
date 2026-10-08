@@ -26,6 +26,9 @@ export type Booking = BookingState & {
   created_at: string // ISO
   uid?: string
   source?: string
+  late_checkout_request?: { hours: number; fee: number; status: string; requested_at: string; reason?: string }
+  late_checkout_fee?: number
+  additional_charges?: { description: string; amount: number }[]
   // Live location tracking was retired (ADR-0009). Access logs remain on access_logs.
 }
 

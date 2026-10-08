@@ -9,6 +9,7 @@ import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
 import '../core/constants/app_constants.dart';
+import '../core/utils/date_formatter.dart';
 import 'booking_lifecycle.dart';
 import 'mock_data_service.dart';
 import 'pin_store.dart' show PinSecurityRemote, SecurityTicket;
@@ -405,9 +406,9 @@ class FirestoreService implements PinSecurityRemote {
       'action': 'Rescheduled',
       'from_status': booking.rawStatus,
       'to_status': booking.rawStatus,
-      'actor': actor.actor,
-      'actor_id': actor.actorId,
-      if (actor.actorName != null) 'actor_name': actor.actorName,
+      'actor': actor.kind,
+      'actor_id': actor.id,
+      if (actor.name != null) 'actor_name': actor.name,
       'at': DateTime.now().toUtc().toIso8601String(),
       'reason': reason,
     };
@@ -461,9 +462,9 @@ class FirestoreService implements PinSecurityRemote {
       'action': 'CancellationRejected',
       'from_status': booking.rawStatus,
       'to_status': booking.rawStatus,
-      'actor': actor.actor,
-      'actor_id': actor.actorId,
-      if (actor.actorName != null) 'actor_name': actor.actorName,
+      'actor': actor.kind,
+      'actor_id': actor.id,
+      if (actor.name != null) 'actor_name': actor.name,
       'at': DateTime.now().toUtc().toIso8601String(),
       'reason': reason,
     };

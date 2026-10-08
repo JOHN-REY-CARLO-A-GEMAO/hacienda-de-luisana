@@ -398,7 +398,7 @@ void main() {
 
   group('Stay progression', () {
     test('Reserved → Checked-In → Staying → Checked-Out → Completed', () {
-      var b = booking(status: 'Reserved');
+      var b = booking(status: 'Reserved', checkIn: '2026-10-01');
       for (final step in [
         (AdminAction.checkIn, 'Checked-In'),
         (AdminAction.beginStay, 'Staying'),

@@ -11,6 +11,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/metric_stat_card.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/staggered_entrance.dart';
+import '../notifications/notifications_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   final Function(int tabIndex) onNavigateTab;
@@ -95,12 +96,9 @@ class DashboardScreen extends ConsumerWidget {
                 child: IconButton(
                   icon: const Icon(Icons.notifications_none, color: Colors.white),
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Notifications: All systems operational.'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ));
                   },
                 ),
               ),

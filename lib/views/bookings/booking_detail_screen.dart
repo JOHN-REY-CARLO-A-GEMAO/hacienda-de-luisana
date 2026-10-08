@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -14,8 +15,10 @@ import '../../services/payment_proof_service.dart';
 import '../../services/pin_store.dart';
 import '../security/secure_action_sheet.dart';
 import '../security/security_pin_sheet.dart';
+import 'booking_invoice_dialog.dart';
 import 'payment_proof_viewer.dart';
 import '../../tutorial/tutorial_keys.dart';
+import '../../widgets/booking_timeline_widget.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/status_pill.dart';
@@ -503,6 +506,87 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     } catch (_) {}
   }
 
+  void _showInvoice(BookingModel booking) {
+    showDialog(
+      context: context,
+      builder: (_) => BookingInvoiceDialog(booking: booking),
+    );
+  }
+
+  Future<void> _handleLateCheckoutRequest(BookingModel booking, bool approve) async {
+    final req = booking.raw['late_checkout_request'] as Map<String, dynamic>?;
+    if (req == null) return;
+
+    final hours = (req['hours'] is num) ? (req['hours'] as num).toInt() : 1;
+    final fee = (req['fee'] is num) ? (req['fee'] as num).toDouble() : (hours * 250.0);
+
+    setState(() => _busy = true);
+
+    final rawCharges = booking.raw['additional_charges'] is List
+        ? List<Map<String, dynamic>>.from(booking.raw['additional_charges'] as List)
+        : <Map<String, dynamic>>[];
+
+    if (approve) {
+      rawCharges.add({
+        'description': 'Late Checkout Extension (+$hours hrs)',
+        'amount': fee,
+      });
+    }
+
+    final newLateReq = Map<String, dynamic>.from(req);
+    newLateReq['status'] = approve ? 'approved' : 'rejected';
+
+    final patch = <String, dynamic>{
+      'late_checkout_request': newLateReq,
+      if (approve) 'late_checkout_fee': fee,
+      if (approve) 'additional_charges': rawCharges,
+      if (approve) 'balance_due': (booking.balanceDue ?? 0.0) + fee,
+    };
+
+    final entry = <String, dynamic>{
+      'booking_id': booking.id,
+      'action': approve ? 'LateCheckoutApproved' : 'LateCheckoutRejected',
+      'from_status': booking.rawStatus,
+      'to_status': booking.rawStatus,
+      'actor': _actor().kind,
+      'actor_id': _actor().id,
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'reason': approve ? 'Approved +$hours hrs late checkout (₱$fee)' : 'Late checkout request declined',
+    };
+
+    _patchAndNotify(booking, patch, entry, approve ? 'Late checkout extension approved (+₱$fee)' : 'Late checkout extension declined');
+  }
+
+  Future<void> _patchAndNotify(BookingModel booking, Map<String, dynamic> patch, Map<String, dynamic> entry, String snackbarMsg) async {
+    final service = ref.read(firestoreServiceProvider);
+    if (service.isCloud) {
+      try {
+        final refDoc = FirebaseFirestore.instance.collection(AppConstants.colBookings).doc(booking.id);
+        final log = refDoc.collection('activity');
+        final written = await log.get();
+        var seq = -1;
+        for (final d in written.docs) {
+          final v = d.data()['seq'];
+          if (v is num && v > seq) seq = v.toInt();
+        }
+        seq += 1;
+        final batch = FirebaseFirestore.instance.batch();
+        batch.update(refDoc, patch);
+        batch.set(log.doc('$seq'), {...entry, 'seq': seq});
+        await batch.commit();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+        setState(() => _busy = false);
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(snackbarMsg)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final booking = ref.watch(bookingByIdProvider(widget.bookingId));
@@ -551,7 +635,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           if (expiredButStored) ...[
             const SizedBox(height: 12),
             HaciendaCard(
-              borderColor: AppColors.statusWarning.withOpacity(0.5),
+              borderColor: const Color(0x80F59E0B),
               child: Row(
                 children: [
                   const Icon(Icons.timer_off_outlined,
@@ -575,20 +659,17 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           _actionsCard(booking, actions, expiredButStored),
           const SizedBox(height: 12),
           _stayCard(booking, now),
+          if (booking.raw['late_checkout_request'] is Map) ...[
+            const SizedBox(height: 12),
+            _lateCheckoutCard(booking),
+          ],
           const SizedBox(height: 12),
           _moneyCard(booking),
           const SizedBox(height: 16),
-          const SectionHeader(title: 'Activity log', padding: EdgeInsets.zero),
-          const SizedBox(height: 6),
+          const SectionHeader(title: 'Booking Timeline & Activity Log', padding: EdgeInsets.zero),
+          const SizedBox(height: 8),
           activity.when(
-            data: (entries) => entries.isEmpty
-                ? const HaciendaCard(
-                    child: Text('No entries yet.',
-                        style: TextStyle(color: AppColors.textMuted)))
-                : Column(
-                    children: entries.reversed
-                        .map((e) => _activityTile(e))
-                        .toList()),
+            data: (entries) => BookingTimelineWidget(activityEntries: entries),
             loading: () => const Center(
                 child: Padding(
                     padding: EdgeInsets.all(12),
@@ -814,43 +895,80 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               ...((booking.raw['refund_breakdown'] as Map).entries.map(
                   (e) => _kv('  ${e.key}', peso((e.value as num?)?.toDouble())))),
           ],
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showInvoice(booking),
+              icon: const Icon(Icons.receipt, size: 18),
+              label: const Text('View Official Invoice'),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.primaryForest),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _activityTile(Map<String, dynamic> e) {
-    final at = parseInstant(e['at']);
-    final actor = e['actor_name'] != null
-        ? '${e['actor_name']} (${_roleLabel(e['actor'])})'
-        : _roleLabel(e['actor']);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: HaciendaCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(_headline(e['action']?.toString() ?? ''),
-                style: GoogleFonts.inter(
-                    fontSize: 13, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 2),
-            Text('${e['from_status']} → ${e['to_status']} · $actor',
-                style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
-            Text(at == null ? '${e['at']}' : DateFormatter.formatFull(at.toLocal()),
-                style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
-            if (e['reason'] != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text('${e['reason']}',
-                    style: GoogleFonts.inter(
-                        fontSize: 12, fontStyle: FontStyle.italic)),
+  Widget _lateCheckoutCard(BookingModel booking) {
+    final req = Map<String, dynamic>.from(booking.raw['late_checkout_request'] as Map);
+    final hours = req['hours'] ?? 1;
+    final fee = req['fee'] ?? (hours * 250);
+    final status = (req['status'] ?? 'pending').toString();
+    final statusColor = status == 'approved' ? AppColors.statusSuccess : AppColors.accentGoldDark;
+
+    return HaciendaCard(
+      borderColor: AppColors.accentGold,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Late Checkout Extension Request',
+                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold),
               ),
+              StatusPill(
+                label: status.toUpperCase(),
+                color: statusColor,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Guest requested +$hours hour${hours > 1 ? 's' : ''} extension (Fee: ₱$fee)',
+            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textDark),
+          ),
+          if (status == 'pending') ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _busy ? null : () => _handleLateCheckoutRequest(booking, false),
+                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.statusAlert),
+                    child: const Text('Decline'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _busy ? null : () => _handleLateCheckoutRequest(booking, true),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusSuccess),
+                    child: Text('Approve (+₱$fee)'),
+                  ),
+                ),
+              ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
+
 
   Widget _kv(String k, String v) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
@@ -927,42 +1045,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         ),
       );
 
-  static String _roleLabel(Object? actor) {
-    switch ('$actor') {
-      case 'guest':
-        return 'Guest';
-      case 'system':
-        return 'System';
-      case 'admin':
-      case 'host':
-      case 'staff':
-        return 'Admin';
-      default:
-        return '$actor';
-    }
-  }
-
-  static String _headline(String action) {
-    const headlines = {
-      'Submit': 'Booking submitted',
-      'Approve': 'Booking approved',
-      'Reject': 'Booking rejected',
-      'ChoosePaymentPlan': 'Payment plan chosen',
-      'UploadPaymentProof': 'Payment proof uploaded',
-      'VerifyPayment': 'Payment proof verified — Booking Reserved',
-      'RejectPaymentProof': 'Payment proof rejected',
-      'MarkRefunded': 'Refund returned to the Guest',
-      'RevokeKey': 'Credential revoked by the Admin',
-      'Cancel': 'Booking cancelled',
-      'Expire': 'Date hold ran out',
-      'CheckIn': 'First Credential use — Guest checked in',
-      'BeginStay': 'Stay in progress',
-      'CheckOut': 'Guest checked out',
-      'Complete': 'Stay completed',
-      'SetStatus': 'Status set directly by the Admin',
-    };
-    return headlines[action] ?? action;
-  }
 
   static bool _isPrimary(AdminAction a) =>
       a == AdminAction.approve ||
@@ -988,7 +1070,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       case AdminAction.verifyPayment:
         return Icons.verified_outlined;
       case AdminAction.rejectPaymentProof:
-        return Icons.receipt_long_outlined;
+        return Icons.receipt_long;
       case AdminAction.cancel:
         return Icons.cancel_outlined;
       case AdminAction.markRefunded:

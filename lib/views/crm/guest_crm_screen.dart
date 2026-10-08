@@ -7,6 +7,7 @@ import '../../models/guest_crm_model.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
+import 'guest_crm_detail_dialog.dart';
 
 class GuestCrmScreen extends ConsumerStatefulWidget {
   const GuestCrmScreen({super.key});
@@ -79,7 +80,15 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 14),
                   itemBuilder: (context, i) {
                     final guest = filtered[i];
-                    return _buildCrmCard(guest, currencyFmt);
+                    return InkWell(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) => GuestCrmDetailDialog(guest: guest),
+                        );
+                      },
+                      child: _buildCrmCard(guest, currencyFmt),
+                    );
                   },
                 );
               },
