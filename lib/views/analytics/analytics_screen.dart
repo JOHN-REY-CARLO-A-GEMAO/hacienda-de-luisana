@@ -84,39 +84,79 @@ class AnalyticsScreen extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
+                      color: Colors.white.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('PROJECTED PIPELINE',
-                                style: GoogleFonts.inter(fontSize: 9, color: Colors.white60)),
-                            Text(
-                              currencyFmt.format(kpis.projectedRevenue),
-                              style: GoogleFonts.inter(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('COLLECTED REVENUE',
+                                    style: GoogleFonts.inter(fontSize: 9, color: Colors.white60)),
+                                Text(
+                                  currencyFmt.format(kpis.collectedRevenue),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF2ECC71),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('OUTSTANDING DUE',
+                                    style: GoogleFonts.inter(fontSize: 9, color: Colors.white60)),
+                                Text(
+                                  currencyFmt.format(kpis.outstandingBalance),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.accentGoldLight,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        const Divider(height: 16, color: Colors.white24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('CONVERSION RATE',
-                                style: GoogleFonts.inter(fontSize: 9, color: Colors.white60)),
-                            Text(
-                              '${kpis.conversionRate}%',
-                              style: GoogleFonts.inter(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.accentGoldLight,
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('REFUNDED TOTAL',
+                                    style: GoogleFonts.inter(fontSize: 9, color: Colors.white60)),
+                                Text(
+                                  currencyFmt.format(kpis.refundedAmount),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.redAccent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('CONVERSION RATE',
+                                    style: GoogleFonts.inter(fontSize: 9, color: Colors.white60)),
+                                Text(
+                                  '${kpis.conversionRate}%',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -200,7 +240,7 @@ class AnalyticsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
-          // 4. Top Accommodation Card — staggered in
+          // 4. Accommodation & Schedule Revenue Breakdown
           StaggeredEntrance(
             index: 3,
             child: Container(
@@ -210,49 +250,80 @@ class AnalyticsScreen extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: AppColors.cardBorder),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentGold.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.hotel_class, color: AppColors.accentGoldDark, size: 24),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'MOST BOOKED ACCOMMODATION',
-                          style: GoogleFonts.inter(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          // Ranked on Bookings that exist. With none there is no
-                          // top Accommodation, and the card says so rather than
-                          // naming a property.
-                          kpis.topAccommodationId == null
-                              ? 'No bookings yet'
-                              : BookingModel.accommodationLabel(
-                                  kpis.topAccommodationId!, ref.watch(accommodationsProvider)),
-                          style: GoogleFonts.cinzel(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: kpis.topAccommodationId == null
-                                  ? AppColors.textMuted
-                                  : AppColors.textDark),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Most Bookings among current Accommodations',
-                          style: GoogleFonts.inter(fontSize: 11, color: AppColors.statusSuccess),
-                        ),
-                      ],
+                  Text(
+                    'REVENUE BY SCHEDULE & PROPERTY',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
+                      color: AppColors.textMuted,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('WEEKDAY STAYS', style: GoogleFonts.inter(fontSize: 10, color: AppColors.textMuted)),
+                              const SizedBox(height: 4),
+                              Text(currencyFmt.format(kpis.weekdayRevenue),
+                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primaryForest)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('WEEKEND / HOLIDAY STAYS', style: GoogleFonts.inter(fontSize: 10, color: AppColors.textMuted)),
+                              const SizedBox(height: 4),
+                              Text(currencyFmt.format(kpis.weekendRevenue),
+                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.accentGoldDark)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text('By Accommodation:', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  for (final entry in kpis.accommodationRevenue.entries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            BookingModel.accommodationLabel(entry.key, ref.watch(accommodationsProvider)),
+                            style: GoogleFonts.inter(fontSize: 12),
+                          ),
+                          Text(
+                            currencyFmt.format(entry.value),
+                            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),

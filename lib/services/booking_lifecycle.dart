@@ -953,6 +953,9 @@ class ActionResult {
     this.conflicts = const [],
   });
 
+  factory ActionResult.accepted(Map<String, dynamic> patch, Map<String, dynamic> entry) =>
+      ActionResult._(ok: true, patch: patch, entry: entry);
+
   factory ActionResult.refused(String reason,
           [List<Map<String, dynamic>> conflicts = const []]) =>
       ActionResult._(ok: false, reason: reason, conflicts: conflicts);

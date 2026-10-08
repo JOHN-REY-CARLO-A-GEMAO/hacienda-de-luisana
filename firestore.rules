@@ -1513,6 +1513,36 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Guest disputes / complaints
+    match /disputes/{disputeId} {
+      function disputeWritable() {
+        return request.resource.data.keys()
+                 .hasOnly(['booking_id', 'guest_id', 'category', 'description', 'evidence_urls',
+                           'status', 'created_at', 'updated_at']);
+      }
+
+      allow create: if isSignedIn()
+        && request.resource.data.keys()
+             .hasAll(['booking_id', 'guest_id', 'category', 'description', 'status', 'created_at'])
+        && disputeWritable()
+        && request.resource.data.guest_id == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.category is string
+        && request.resource.data.description is string
+        && request.resource.data.description.size() > 0
+        && request.resource.data.description.size() <= 2000;
+
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.guest_id == request.auth.uid);
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'admin_response', 'internal_notes', 'updated_at', 'resolved_at', 'resolved_by'])
+        && request.resource.data.status in ['open', 'under_review', 'resolved', 'rejected'];
+
+      allow delete: if isAdmin();
+    }
+
     // Guest & Admin notifications
     match /notifications/{notificationId} {
       allow read: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());

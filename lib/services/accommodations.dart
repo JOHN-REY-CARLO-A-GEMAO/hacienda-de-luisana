@@ -113,12 +113,7 @@ class Accommodation {
       // third spelling invented here.
       final name = _text(node['property_name']) ?? id;
 
-      int? maxGuests = _int(weekday is Map ? weekday['max_guests'] : null);
-      if (maxGuests == null) {
-        if (id == 'main-house') maxGuests = 10;
-        else if (id == 'annex') maxGuests = 6;
-        else if (id == 'house-a-camping') maxGuests = 3;
-      }
+      final maxGuests = _int(weekday is Map ? weekday['max_guests'] : null);
       final availableUnits = _int(node['available_units']) ?? 1;
       final unitsPerBooking = _int(pricing['units_per_booking']) ?? 1;
 

@@ -217,25 +217,34 @@ final dashboardStatsProvider = Provider<DashboardStats>((ref) {
 // Analytics KPI Model
 class AnalyticsKpis {
   final double confirmedRevenue;
+  final double collectedRevenue;
+  final double outstandingBalance;
+  final double refundedAmount;
   final double projectedRevenue;
   final double averageLengthOfStay;
   final double conversionRate;
   final Map<int, int> stayDurationBuckets;
+  final Map<String, double> monthlyRevenue;
+  final Map<String, double> accommodationRevenue;
+  final double weekdayRevenue;
+  final double weekendRevenue;
 
   /// The Accommodation id with the most Bookings, or null when there are none.
-  ///
-  /// An id, never a name: the name is resolved from the published rates
-  /// document by whichever screen shows this. Null when there is no Booking to
-  /// rank, so a screen can say "no bookings yet" instead of naming whichever
-  /// property happened to sort first.
   final String? topAccommodationId;
 
   const AnalyticsKpis({
     required this.confirmedRevenue,
+    required this.collectedRevenue,
+    required this.outstandingBalance,
+    required this.refundedAmount,
     required this.projectedRevenue,
     required this.averageLengthOfStay,
     required this.conversionRate,
     required this.stayDurationBuckets,
+    required this.monthlyRevenue,
+    required this.accommodationRevenue,
+    required this.weekdayRevenue,
+    required this.weekendRevenue,
     required this.topAccommodationId,
   });
 }
@@ -248,22 +257,44 @@ final analyticsKpisProvider = Provider<AnalyticsKpis>((ref) {
       if (bookings.isEmpty) {
         return const AnalyticsKpis(
           confirmedRevenue: 0,
+          collectedRevenue: 0,
+          outstandingBalance: 0,
+          refundedAmount: 0,
           projectedRevenue: 0,
           averageLengthOfStay: 0,
           conversionRate: 0,
           stayDurationBuckets: {1: 0, 2: 0, 3: 0, 5: 0},
+          monthlyRevenue: {},
+          accommodationRevenue: {},
+          weekdayRevenue: 0,
+          weekendRevenue: 0,
           topAccommodationId: null,
         );
       }
 
       double confirmed = 0;
+      double collected = 0;
+      double outstanding = 0;
+      double refunded = 0;
       double projected = 0;
+      double weekdayRev = 0;
+      double weekendRev = 0;
       int totalNights = 0;
       int validStays = 0;
+
       final buckets = <int, int>{1: 0, 2: 0, 3: 0, 5: 0};
       final accCounts = <String, int>{};
+      final monthly = <String, double>{};
+      final accRevenue = <String, double>{};
 
       for (final b in bookings) {
+        final monthKey =
+            '${b.checkInDate.year}-${b.checkInDate.month.toString().padLeft(2, '0')}';
+
+        if (b.refundStatus == 'refunded') {
+          refunded += (b.refundTotal ?? 0.0);
+        }
+
         if (b.status != BookingStatus.cancelled) {
           projected += b.totalAmount;
           totalNights += b.totalNights;
@@ -286,6 +317,22 @@ final analyticsKpisProvider = Provider<AnalyticsKpis>((ref) {
             b.status == BookingStatus.checkedIn ||
             b.status == BookingStatus.completed) {
           confirmed += b.totalAmount;
+
+          final verified = b.amountVerified ?? b.amountClaimed ?? 0.0;
+          collected += verified;
+          outstanding += (b.totalAmount - verified).clamp(0.0, double.infinity);
+
+          monthly[monthKey] = (monthly[monthKey] ?? 0.0) + b.totalAmount;
+          accRevenue[b.accommodation] =
+              (accRevenue[b.accommodation] ?? 0.0) + b.totalAmount;
+
+          if (b.rateClassification == 'weekend_holiday' ||
+              b.checkInDate.weekday == DateTime.friday ||
+              b.checkInDate.weekday == DateTime.saturday) {
+            weekendRev += b.totalAmount;
+          } else {
+            weekdayRev += b.totalAmount;
+          }
         }
       }
 
@@ -311,27 +358,48 @@ final analyticsKpisProvider = Provider<AnalyticsKpis>((ref) {
 
       return AnalyticsKpis(
         confirmedRevenue: confirmed,
+        collectedRevenue: collected,
+        outstandingBalance: outstanding,
+        refundedAmount: refunded,
         projectedRevenue: projected,
         averageLengthOfStay: (alos * 10).roundToDouble() / 10.0,
         conversionRate: (convRate * 10).roundToDouble() / 10.0,
         stayDurationBuckets: buckets,
+        monthlyRevenue: monthly,
+        accommodationRevenue: accRevenue,
+        weekdayRevenue: weekdayRev,
+        weekendRevenue: weekendRev,
         topAccommodationId: maxCount > 0 ? topAcc : null,
       );
     },
     loading: () => const AnalyticsKpis(
       confirmedRevenue: 0,
+      collectedRevenue: 0,
+      outstandingBalance: 0,
+      refundedAmount: 0,
       projectedRevenue: 0,
       averageLengthOfStay: 0,
       conversionRate: 0,
       stayDurationBuckets: {1: 0, 2: 0, 3: 0, 5: 0},
+      monthlyRevenue: {},
+      accommodationRevenue: {},
+      weekdayRevenue: 0,
+      weekendRevenue: 0,
       topAccommodationId: null,
     ),
     error: (_, __) => const AnalyticsKpis(
       confirmedRevenue: 0,
+      collectedRevenue: 0,
+      outstandingBalance: 0,
+      refundedAmount: 0,
       projectedRevenue: 0,
       averageLengthOfStay: 0,
       conversionRate: 0,
       stayDurationBuckets: {1: 0, 2: 0, 3: 0, 5: 0},
+      monthlyRevenue: {},
+      accommodationRevenue: {},
+      weekdayRevenue: 0,
+      weekendRevenue: 0,
       topAccommodationId: null,
     ),
   );

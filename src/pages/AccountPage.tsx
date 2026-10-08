@@ -6,7 +6,9 @@ import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { formatStayDuration, type Booking } from '../lib/storage'
 import { ACCOMMODATIONS } from '../config/site'
 import { BookingHistory } from '../components/Booking/BookingHistory'
+import { BookingInvoice } from '../components/Booking/BookingInvoice'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
+import { LateCheckoutRequest } from '../components/Booking/LateCheckoutRequest'
 import { PaymentStep } from '../components/Booking/PaymentStep'
 import { useAuth } from '../hooks/useAuth'
 import { paginate, sortBy } from '../lib/pagination'
@@ -15,6 +17,7 @@ import { validateSearch } from '../lib/validation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
+import { DisputeForm } from '../components/DisputeForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
 import { ArrowRight, Calendar, Sparkle, Close } from '../lib/icons'
 import {
@@ -61,6 +64,7 @@ export function AccountPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(5)
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Booking | null>(null)
+  const [viewingInvoice, setViewingInvoice] = useState<Booking | null>(null)
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [showNotifications, setShowNotifications] = useState(false)
@@ -348,6 +352,10 @@ export function AccountPage() {
                   </div>
                 )}
 
+                {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
+                  <LateCheckoutRequest booking={booking} />
+                )}
+
                 <BookingHistory bookingId={booking.id} />
 
                 {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
@@ -361,7 +369,19 @@ export function AccountPage() {
                   </div>
                 )}
 
+                {user?.uid && (
+                  <DisputeForm bookingId={booking.id} guestId={user.uid} />
+                )}
+
                 <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setViewingInvoice(booking)}
+                    className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
+                  >
+                    📄 View Official Invoice
+                  </button>
+
                   {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
                     <button
                       onClick={() => setConfirmingWithdraw(booking)}
@@ -412,6 +432,14 @@ export function AccountPage() {
             if (confirmingWithdraw) void withdraw(confirmingWithdraw)
           }}
         />
+
+        {viewingInvoice && (
+          <div className="fixed inset-0 z-50 bg-forest-950/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="w-full max-w-2xl my-auto">
+              <BookingInvoice booking={viewingInvoice} onClose={() => setViewingInvoice(null)} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
