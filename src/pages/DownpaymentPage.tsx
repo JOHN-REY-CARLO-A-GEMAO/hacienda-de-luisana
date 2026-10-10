@@ -504,6 +504,8 @@ refund_policy_snapshot: published.refund ?? null,
                   <input
                     className="field"
                     inputMode="decimal"
+                    autoComplete="off"
+                    spellCheck={false}
                     value={amount}
                     placeholder="0.00"
                     onChange={(event) => setAmount(event.target.value)}
@@ -514,6 +516,8 @@ refund_policy_snapshot: published.refund ?? null,
                   <input
                     className="field"
                     value={reference}
+                    autoComplete="off"
+                    spellCheck={false}
                     placeholder="GCash / Maya / bank ref"
                     onChange={(event) => setReference(event.target.value)}
                   />

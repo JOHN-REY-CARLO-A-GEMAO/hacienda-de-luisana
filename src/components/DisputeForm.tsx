@@ -75,7 +75,7 @@ export function DisputeForm({
   }
 
   if (loading) {
-    return <p className="text-xs text-forest-700/70 mt-2">Checking issue reports...</p>
+    return <p className="text-xs text-forest-700/70 mt-2">Checking issue reports…</p>
   }
 
   return (
@@ -138,7 +138,7 @@ export function DisputeForm({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe what happened in detail..."
+              placeholder="Describe what happened in detail…"
               rows={3}
               className="field text-xs w-full"
               maxLength={2000}
@@ -159,7 +159,7 @@ export function DisputeForm({
               disabled={submitting}
               className="btn-primary text-xs py-1 px-4"
             >
-              {submitting ? 'Submitting...' : 'Submit Report'}
+              {submitting ? 'Submitting…' : 'Submit Report'}
             </button>
           </div>
         </form>

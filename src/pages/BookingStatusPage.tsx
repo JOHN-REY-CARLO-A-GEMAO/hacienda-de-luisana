@@ -216,7 +216,7 @@ export function BookingStatusPage() {
                 </label>
                 <label className="block">
                   <span className="label">Email</span>
-                  <input className="field" type="email" value={lookupEmail} onChange={(event) => setLookupEmail(event.target.value)} placeholder="you@email.com" />
+                  <input className="field" type="email" value={lookupEmail} onChange={(event) => setLookupEmail(event.target.value)} placeholder="you@email.com" autoComplete="email" spellCheck={false} />
                 </label>
                 {lookupError && <p className="sm:col-span-2 text-xs text-red-700">{lookupError}</p>}
                 <button type="submit" className="btn-primary text-xs sm:col-span-2 w-fit">Look up status</button>
