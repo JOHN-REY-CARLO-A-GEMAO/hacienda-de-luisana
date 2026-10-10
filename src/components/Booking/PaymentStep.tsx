@@ -409,6 +409,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   onChange={(e) => setReference(e.target.value)}
                   inputMode="numeric"
                   autoComplete="off"
+                  spellCheck={false}
                   placeholder="e.g. 1234567890123"
                   className="block w-full text-xs rounded-xl border border-forest-900/15 bg-white px-3 py-2 text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-700/30"
                 />
@@ -424,6 +425,8 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   value={amountClaimed}
                   onChange={(e) => setAmountClaimed(e.target.value)}
                   inputMode="decimal"
+                  autoComplete="off"
+                  spellCheck={false}
                   placeholder="e.g. 10500"
                   className="block w-full text-xs rounded-xl border border-forest-900/15 bg-white px-3 py-2 text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-700/30"
                 />

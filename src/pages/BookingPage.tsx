@@ -409,6 +409,7 @@ export function BookingPage() {
                   <input
                     className="field"
                     placeholder="09XX XXX XXXX"
+                    type="tel"
                     inputMode="tel"
                     value={form.phone}
                     onChange={(e) => set('phone', e.target.value)}
@@ -423,6 +424,7 @@ export function BookingPage() {
                     value={form.email}
                     onChange={(e) => set('email', e.target.value)}
                     autoComplete="email"
+                    spellCheck={false}
                   />
                 </Field>
                 <Field label="Special requests" className="sm:col-span-2">

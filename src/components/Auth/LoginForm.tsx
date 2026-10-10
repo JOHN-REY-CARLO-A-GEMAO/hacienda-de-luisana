@@ -272,6 +272,7 @@ export function LoginForm({
             required
             maxLength={254}
             autoComplete="email"
+            spellCheck={false}
           />
         </label>
 

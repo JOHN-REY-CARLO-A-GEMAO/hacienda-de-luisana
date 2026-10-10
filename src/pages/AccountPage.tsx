@@ -259,7 +259,8 @@ export function AccountPage() {
           <div className="mt-8 grid sm:grid-cols-3 gap-3" data-tour="account-tools">
             <input
               className="field text-sm"
-              placeholder="Search bookings"
+              placeholder="Search bookings…"
+              aria-label="Search bookings"
               value={q}
               maxLength={80}
               onChange={(e) => {
@@ -269,6 +270,7 @@ export function AccountPage() {
             />
             <select
               className="field text-sm"
+              aria-label="Filter by status"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value)
@@ -282,7 +284,12 @@ export function AccountPage() {
                 </option>
               ))}
             </select>
-            <select className="field text-sm" value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)}>
+            <select
+              className="field text-sm"
+              aria-label="Sort bookings"
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
+            >
               <option value="created_at">Sort by created</option>
               <option value="check_in">Sort by check-in</option>
               <option value="accommodation">Sort by stay</option>

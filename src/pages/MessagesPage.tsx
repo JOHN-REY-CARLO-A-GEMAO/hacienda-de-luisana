@@ -202,11 +202,18 @@ export function MessagesPage() {
         <div className="mt-4 flex gap-2" data-tour="message-composer">
           <input
             className="field flex-1"
+            aria-label="Write a message"
             value={text}
             maxLength={MESSAGE_MAX}
             data-tour-field="message"
             onChange={(e) => setText(e.target.value)}
-            placeholder="Write a message"
+            placeholder="Write a message…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void send()
+              }
+            }}
           />
           <button type="button" className="btn-primary text-xs" onClick={() => void send()}>
             Send

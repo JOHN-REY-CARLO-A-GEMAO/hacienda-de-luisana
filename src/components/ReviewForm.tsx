@@ -65,7 +65,7 @@ export function ReviewForm({
     }
   }, [bookingId, uid])
 
-  if (loading) return <p className="text-xs text-forest-700/70 mt-3">Checking your review…</p>
+  if (loading) return <p className="text-xs text-forest-700/70 mt-3" aria-live="polite">Checking your review…</p>
   // The gate is here as well as in the rules. The rules are the enforcement;
   // this is a Guest not being offered a form that will be refused.
   if (!isReviewableStatus(bookingStatus)) return null
