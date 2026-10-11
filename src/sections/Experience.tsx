@@ -40,7 +40,7 @@ export function Experience() {
               <>
                 More Than Just a
                 <br />
-                <span className="italic font-light">Place to Stay</span>
+                <span className="italic">Place to Stay</span>
               </>
             }
           />

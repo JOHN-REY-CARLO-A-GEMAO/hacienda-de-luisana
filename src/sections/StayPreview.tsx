@@ -28,7 +28,7 @@ export function StayPreview() {
   )
 
   return (
-    <section id="stay" className="py-20 lg:py-28 bg-gradient-to-b from-cream-50 to-cream-100/50">
+    <section id="stay" className="py-20 lg:py-28 bg-gradient-to-b from-cream-50 to-cream-100/50 dark:from-forest-950 dark:to-forest-900/60 transition-colors duration-300">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader index="03" eyebrow="Accommodations" title="Stay Your Way" />
@@ -47,7 +47,7 @@ export function StayPreview() {
           ))}
         </div>
 
-        <p className="mt-6 text-xs text-forest-700/70 max-w-2xl reveal">
+        <p className="mt-6 text-xs text-forest-700/70 dark:text-cream-200/70 max-w-2xl reveal">
           No account is required to book. A stay is confirmed only after the Hacienda approves your
           downpayment screenshot.
         </p>
@@ -70,22 +70,22 @@ function StayPreviewCard({
 
   return (
     <article
-      className="reveal bg-white rounded-[28px] overflow-hidden border border-forest-900/5 shadow-card flex flex-col hover:shadow-depth transition-shadow duration-700 ease-out-expo"
+      className="reveal bg-white dark:bg-forest-900 rounded-[28px] overflow-hidden border border-forest-900/5 dark:border-cream-100/10 shadow-card flex flex-col hover:shadow-depth transition-all duration-500 ease-out-expo"
       style={{ transitionDelay: `${delay}ms` }}
       data-accommodation={a.id}
     >
-      <div className="relative overflow-hidden bg-forest-100">
+      <div className="relative overflow-hidden bg-forest-100 dark:bg-forest-800">
         <SmartImage
           src={a.images[0]}
           alt={`${a.name} — ${a.shortName}`}
           className="h-52 w-full object-cover"
         />
         <div className="absolute top-4 left-4 flex gap-2">
-          <span className="rounded-full bg-cream-50/95 text-forest-900 text-[11px] uppercase tracking-eyebrow px-3 py-1.5 backdrop-blur">
+          <span className="rounded-full bg-cream-50/95 dark:bg-forest-950/90 text-forest-900 dark:text-cream-50 text-[11px] uppercase tracking-eyebrow px-3 py-1.5 backdrop-blur font-medium">
             {a.shortName}
           </span>
           {a.availableUnits && (
-            <span className="rounded-full bg-forest-800/90 text-cream-50 text-[11px] uppercase tracking-eyebrow px-3 py-1.5">
+            <span className="rounded-full bg-forest-800/90 dark:bg-brass-500 text-cream-50 dark:text-forest-950 text-[11px] uppercase tracking-eyebrow px-3 py-1.5 font-medium">
               {a.availableUnits} units available
             </span>
           )}
@@ -93,24 +93,24 @@ function StayPreviewCard({
       </div>
 
       <div className="p-6 flex-1 flex flex-col">
-        <h3 className="font-serif text-2xl text-forest-900">{propertyName}</h3>
+        <h3 className="font-serif text-2xl text-forest-900 dark:text-cream-50">{propertyName}</h3>
 
-        <div className="mt-3 inline-flex items-center gap-2 text-sm text-forest-800">
-          <Users size={15} className="text-forest-600 shrink-0" />
+        <div className="mt-3 inline-flex items-center gap-2 text-sm text-forest-800 dark:text-cream-100/80">
+          <Users size={15} className="text-forest-600 dark:text-sage-400 shrink-0" />
           {a.capacityLabel}
         </div>
 
-        <div className="mt-5 pt-5 border-t border-forest-900/5">
-          <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Rate</div>
-          <div className="font-serif text-xl text-forest-900 mt-1">{rate.label}</div>
-          {rate.source && <div className="text-[11px] text-forest-700/70 mt-1">{rate.source}</div>}
+        <div className="mt-5 pt-5 border-t border-forest-900/5 dark:border-cream-100/10">
+          <div className="text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">Rate</div>
+          <div className="font-serif text-xl text-forest-900 dark:text-cream-50 mt-1">{rate.label}</div>
+          {rate.source && <div className="text-[11px] text-forest-700/70 dark:text-cream-200/60 mt-1">{rate.source}</div>}
         </div>
 
         <div className="mt-auto pt-6">
           <Link
             to={`/book?accommodation=${a.id}`}
             data-tour="accommodation-cta"
-            className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 w-full group/btn"
+            className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white w-full group/btn"
           >
             Book this room
             <ArrowRight size={16} className="transition-transform group-hover/btn:translate-x-1" />

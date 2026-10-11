@@ -43,9 +43,12 @@ function ReplayButton() {
     <button
       type="button"
       onClick={tour.start}
-      className="fixed bottom-20 right-4 z-30 text-[11px] px-3 py-2 rounded-full bg-forest-900 text-cream-50 border border-cream-50/25 shadow-float hover:bg-forest-800 transition-colors lg:bottom-6"
+      aria-label="How to Book: Replay tutorial"
+      title="How to Book: Launch the interactive guide"
+      className="fixed bottom-20 right-4 z-30 inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 rounded-full bg-forest-800 text-cream-50 border border-cream-100/20 shadow-float hover:bg-forest-900 dark:bg-forest-700 dark:hover:bg-forest-600 transition-all duration-300 lg:bottom-6"
     >
-      Replay tutorial
+      <span className="hidden sm:inline text-sage-300">How to Book ·</span>
+      <span>Replay tutorial</span>
     </button>
   )
 }

@@ -15,10 +15,10 @@ import { BUSINESS } from '../config/site'
  */
 export function Intro() {
   return (
-    <section id="intro" className="relative py-24 lg:py-36 bg-cream-50 overflow-hidden">
+    <section id="intro" className="relative py-24 lg:py-36 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 overflow-hidden transition-colors duration-300">
       {/* Soft light wash behind the collage */}
       <div
-        className="pointer-events-none absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full opacity-60 blur-3xl"
+        className="pointer-events-none absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full opacity-60 dark:opacity-20 blur-3xl"
         style={{ background: 'radial-gradient(circle, rgba(198,214,193,0.55), transparent 65%)' }}
         aria-hidden="true"
       />
@@ -32,10 +32,10 @@ export function Intro() {
             range={0.07}
             className="h-[420px] sm:h-[520px] lg:h-[640px] rounded-[32px] shadow-depth"
           >
-            <div className="absolute inset-0 bg-gradient-to-t from-forest-950/35 via-transparent to-transparent pointer-events-none" />
-            <div className="absolute left-5 bottom-5 text-cream-50">
-              <div className="text-[10px] uppercase tracking-eyebrow text-cream-100/80">The Main House</div>
-              <div className="font-serif text-2xl">{BUSINESS.address.city}, {BUSINESS.address.region}</div>
+            <div className="absolute inset-0 bg-gradient-to-t from-forest-950/45 via-transparent to-transparent pointer-events-none" />
+            <div className="absolute left-6 bottom-6 text-cream-50">
+              <div className="text-[11px] font-semibold uppercase tracking-eyebrow text-cream-100/90">The Main House</div>
+              <div className="font-serif text-2xl text-cream-50">{BUSINESS.address.city}, {BUSINESS.address.region}</div>
             </div>
           </ParallaxImage>
 
@@ -44,7 +44,7 @@ export function Intro() {
             src="/images/gmaps/img-05.jpg"
             alt="Garden pathway and countryside view"
             range={0.12}
-            className="absolute -bottom-8 right-0 sm:-right-8 h-36 w-36 sm:h-52 sm:w-52 lg:h-64 lg:w-64 rounded-[24px] shadow-float border-[5px] border-cream-50"
+            className="absolute -bottom-8 right-0 sm:-right-8 h-36 w-36 sm:h-52 sm:w-52 lg:h-64 lg:w-64 rounded-[24px] shadow-float border-[5px] border-cream-50 dark:border-forest-900"
           />
 
           {/* Far layer — a quiet corner of the grounds, peeking from behind */}
@@ -62,22 +62,22 @@ export function Intro() {
             eyebrow="Your Private Escape"
             title={
               <>
-                A Little Place
+                A Private Sanctuary
                 <br />
-                to <span className="italic font-light">Slow Down</span>
+                to <span className="italic">Slow Down</span>
               </>
             }
           />
 
-          <div className="reveal mt-8 text-forest-800/85 leading-relaxed max-w-lg">
+          <div className="reveal mt-6 text-forest-800/85 dark:text-cream-100/80 leading-relaxed max-w-lg">
             <p>
-              Hacienda de LuisAna is a peaceful private getaway in Luisiana, Laguna — a private
-              main house for the whole barkada, and A-frame camping units on the same grounds, made
-              for family weekends, small gatherings, and quiet days away from the noise.
+              Hacienda de LuisAna offers exclusive private stays in Luisiana, Laguna — featuring a spacious
+              Main House for groups and families, and charming A-frame camping units on open grounds.
+              Enjoy starry nights, a crackling campfire, and serene countryside scenery away from city crowds.
             </p>
           </div>
 
-          <a href="#stay" className="btn-ghost mt-10 group reveal">
+          <a href="#stay" className="btn-ghost mt-8 group reveal">
             See the accommodations
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
           </a>

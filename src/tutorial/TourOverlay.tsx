@@ -212,14 +212,19 @@ export function TourOverlay() {
           />
         </>
       ) : (
-        <div className={`${dim} inset-0`} />
+        <div
+          className={`${dim} inset-0 cursor-pointer`}
+          onClick={tour.exit}
+          title="Click to dismiss tour"
+          aria-label="Dismiss tour and explore site"
+        />
       )}
 
       {/* The tooltip card */}
       <div
         ref={tipRef}
         data-tour-card
-        className="absolute pointer-events-auto bg-white rounded-[24px] shadow-card border border-forest-900/10 p-5 sm:p-6 max-h-[56vh] sm:max-h-[72vh] overflow-y-auto"
+        className="absolute pointer-events-auto bg-white dark:bg-forest-900 rounded-[24px] shadow-card border border-forest-900/10 dark:border-cream-100/15 p-5 sm:p-6 max-h-[56vh] sm:max-h-[72vh] overflow-y-auto"
         style={tipStyle}
       >
         <div className="flex items-start justify-between gap-3">
@@ -231,28 +236,28 @@ export function TourOverlay() {
             onClick={tour.exit}
             aria-label="Exit the tour"
             title="Exit (Esc) — the tour will offer itself again next visit"
-            className="text-forest-500 hover:text-forest-900 -mt-1 -mr-1 px-2 text-lg leading-none"
+            className="text-forest-500 hover:text-forest-900 dark:text-cream-200/70 dark:hover:text-cream-50 -mt-1 -mr-1 px-2 text-xl leading-none"
           >
             ×
           </button>
         </div>
 
-        <h2 className="font-serif text-xl sm:text-2xl mt-1.5 text-forest-900">{step.title}</h2>
-        <p className="mt-3 text-sm text-forest-800 leading-relaxed">{body}</p>
+        <h2 className="font-serif text-xl sm:text-2xl mt-1.5 text-forest-900 dark:text-cream-50">{step.title}</h2>
+        <p className="mt-3 text-sm text-forest-800 dark:text-cream-100/80 leading-relaxed">{body}</p>
 
         {step.why && (
-          <p className="mt-3 text-xs text-forest-700/80 leading-relaxed rounded-xl bg-cream-100/80 border border-forest-900/5 px-3 py-2.5">
-            <span className="font-semibold text-forest-800">Why it matters:</span> {step.why}
+          <p className="mt-3 text-xs text-forest-700/80 dark:text-cream-200/80 leading-relaxed rounded-xl bg-cream-100/80 dark:bg-forest-800/80 border border-forest-900/5 dark:border-cream-100/10 px-3 py-2.5">
+            <span className="font-semibold text-forest-800 dark:text-cream-100">Why it matters:</span> {step.why}
           </p>
         )}
 
         {tour.awaiting && tour.awaitingHint && (
-          <p className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-forest-50 bg-forest-700 rounded-full px-3 py-2">
+          <p className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-forest-50 bg-forest-700 dark:bg-brass-500 dark:text-forest-950 rounded-full px-3 py-2">
             <span aria-hidden className="tour-nudge">☝</span> {tour.awaitingHint}
           </p>
         )}
         {tour.missing && step.targets && (
-          <p className="mt-3 text-[11px] text-forest-600">
+          <p className="mt-3 text-[11px] text-forest-600 dark:text-sage-300">
             The control this step highlights isn’t on screen right now — no problem, you can simply read along.
           </p>
         )}
@@ -263,17 +268,23 @@ export function TourOverlay() {
             <span
               key={i}
               className={`h-1 rounded-full transition-all duration-300 ${
-                i === index ? 'w-6 bg-forest-700' : i < index ? 'w-2.5 bg-forest-500/70' : 'w-2.5 bg-forest-900/15'
+                i === index ? 'w-6 bg-forest-700 dark:bg-brass-400' : i < index ? 'w-2.5 bg-forest-500/70 dark:bg-sage-400/70' : 'w-2.5 bg-forest-900/15 dark:bg-cream-100/20'
               }`}
             />
           ))}
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
-          {!isLast && (
-            <button type="button" className="btn-ghost text-xs" onClick={tour.skip}>
-              Skip tour
+          {index === 0 ? (
+            <button type="button" className="btn-ghost text-xs" onClick={tour.exit}>
+              Explore on my own
             </button>
+          ) : (
+            !isLast && (
+              <button type="button" className="btn-ghost text-xs" onClick={tour.skip}>
+                Skip tour
+              </button>
+            )
           )}
           {index > 0 && (
             <button type="button" className="btn-ghost text-xs" onClick={tour.back}>
@@ -284,7 +295,7 @@ export function TourOverlay() {
           <span className="flex-1" />
 
           {tour.awaiting ? (
-            <button type="button" className="text-xs underline text-forest-600 hover:text-forest-900" onClick={tour.next}>
+            <button type="button" className="text-xs underline text-forest-600 dark:text-cream-200 hover:text-forest-900 dark:hover:text-white" onClick={tour.next}>
               Skip this step
             </button>
           ) : (

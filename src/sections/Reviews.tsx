@@ -29,7 +29,7 @@ export function Reviews() {
               <>
                 Kind Words from
                 <br />
-                <span className="italic font-light">Our Guests</span>
+                <span className="italic font-normal">Our Guests</span>
               </>
             }
           />

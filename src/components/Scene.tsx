@@ -27,15 +27,15 @@ export function SceneHeader({
   return (
     <div className={`reveal ${align === 'center' ? 'mx-auto text-center' : ''} max-w-2xl ${className}`}>
       <div className={`flex items-center gap-4 ${align === 'center' ? 'justify-center' : ''}`}>
-        <span className={`scene-index ${dark ? 'text-cream-50/70' : 'text-forest-400'}`} aria-hidden="true">
+        <span className={`scene-index ${dark ? 'text-cream-50/70' : 'text-forest-400 dark:text-sage-400'}`} aria-hidden="true">
           {index}
         </span>
-        <span className={`h-px w-8 ${dark ? 'bg-cream-50/25' : 'bg-forest-900/15'}`} aria-hidden="true" />
-        <div className={`eyebrow ${dark ? 'text-cream-100/60' : ''}`}>{eyebrow}</div>
+        <span className={`h-px w-8 ${dark ? 'bg-cream-50/25' : 'bg-forest-900/15 dark:bg-cream-100/15'}`} aria-hidden="true" />
+        <div className={`eyebrow ${dark ? 'text-cream-100/60' : 'text-forest-600 dark:text-sage-400'}`}>{eyebrow}</div>
       </div>
-      <h2 className={`display text-4xl sm:text-5xl lg:text-6xl mt-5 ${dark ? 'text-cream-50' : 'text-forest-900'}`}>{title}</h2>
+      <h2 className={`display text-4xl sm:text-5xl lg:text-6xl mt-5 ${dark ? 'text-cream-50' : 'text-forest-900 dark:text-cream-50'}`}>{title}</h2>
       {children && (
-        <div className={`mt-6 leading-relaxed ${dark ? 'text-cream-100/75' : 'text-forest-800/80'}`}>{children}</div>
+        <div className={`mt-6 leading-relaxed ${dark ? 'text-cream-100/75' : 'text-forest-800/80 dark:text-cream-100/80'}`}>{children}</div>
       )}
     </div>
   )

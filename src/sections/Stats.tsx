@@ -20,7 +20,7 @@ export function Stats() {
               className={`reveal text-center px-4 ${i > 0 ? 'md:border-l md:border-cream-100/15' : ''}`}
               style={{ transitionDelay: `${i * 60}ms` }}
             >
-              <div className="font-serif text-5xl lg:text-6xl text-cream-50">{s.value}</div>
+              <div className="font-serif text-5xl lg:text-6xl text-cream-50 tabular-nums">{s.value}</div>
               <div className="mt-2 text-[11px] uppercase tracking-eyebrow text-cream-100/70">
                 {s.label}
               </div>

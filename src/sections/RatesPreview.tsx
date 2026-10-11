@@ -26,7 +26,7 @@ export function RatesPreview() {
   const active = ACCOMMODATIONS.filter((a) => a.active)
 
   return (
-    <section id="rates" className="py-20 lg:py-28 bg-cream-50">
+    <section id="rates" className="py-20 lg:py-28 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 transition-colors duration-300">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader
@@ -36,11 +36,11 @@ export function RatesPreview() {
               <>
                 What a Stay
                 <br />
-                <span className="italic font-light">Costs</span>
+                <span className="italic">Costs</span>
               </>
             }
           >
-            <p>
+            <p className="dark:text-cream-200/80">
               The figure each Accommodation is quoted at today. The final amount is computed before
               payment and confirmed by the Hacienda.
             </p>
@@ -57,15 +57,15 @@ export function RatesPreview() {
             return (
               <div
                 key={a.id}
-                className="reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 flex flex-col"
+                className="reveal bg-white dark:bg-forest-900 rounded-[28px] border border-forest-900/5 dark:border-cream-100/10 shadow-card p-7 flex flex-col"
                 style={{ transitionDelay: `${i * 60}ms` }}
                 data-testid={`rate-${a.id}`}
               >
-                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">{a.shortName}</div>
-                <h3 className="font-serif text-2xl text-forest-900 mt-1">{a.name}</h3>
-                <div className="mt-5 font-serif text-3xl text-forest-900">{rate.label}</div>
-                <div className="mt-1 text-[11px] text-forest-700/70">{rate.source}</div>
-                <div className="mt-4 text-sm text-forest-800">{a.capacityLabel}</div>
+                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-400 font-medium">{a.shortName}</div>
+                <h3 className="font-serif text-2xl text-forest-900 dark:text-cream-50 mt-1">{a.name}</h3>
+                <div className="mt-5 font-serif text-3xl text-forest-900 dark:text-cream-50">{rate.label}</div>
+                {rate.source && <div className="mt-1 text-[11px] text-forest-700/70 dark:text-cream-200/60">{rate.source}</div>}
+                <div className="mt-4 text-sm text-forest-800 dark:text-cream-100/80">{a.capacityLabel}</div>
                 <div className="mt-auto pt-6">
                   <Link
                     to={`/book?accommodation=${a.id}`}
@@ -80,17 +80,17 @@ export function RatesPreview() {
           })}
         </div>
 
-        <div className="mt-8 bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-8 reveal">
+        <div className="mt-8 bg-white dark:bg-forest-900 rounded-[28px] border border-forest-900/5 dark:border-cream-100/10 shadow-card p-7 lg:p-8 reveal">
           <div className="eyebrow">Included in every stay</div>
-          <ul className="mt-4 grid sm:grid-cols-2 gap-x-8 gap-y-2.5 text-sm text-forest-800">
+          <ul className="mt-4 grid sm:grid-cols-2 gap-x-8 gap-y-2.5 text-sm text-forest-800 dark:text-cream-100/80">
             {FEES.included.slice(0, INCLUDED_PREVIEW).map((item) => (
               <li key={item} className="flex items-start gap-2.5">
-                <Check size={15} className="mt-0.5 text-forest-600 shrink-0" />
+                <Check size={15} className="mt-0.5 text-forest-600 dark:text-sage-400 shrink-0" />
                 <span>{item}</span>
               </li>
             ))}
           </ul>
-          <Link to="/rates" className="mt-5 inline-flex items-center gap-1.5 text-sm text-forest-800 underline underline-offset-4 hover:text-forest-950">
+          <Link to="/rates" className="mt-5 inline-flex items-center gap-1.5 text-sm text-forest-800 dark:text-cream-100 underline underline-offset-4 hover:text-forest-950 dark:hover:text-white">
             Everything included, plus fees and the deposit
             <ArrowRight size={13} />
           </Link>

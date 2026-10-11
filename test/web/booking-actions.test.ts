@@ -57,7 +57,7 @@ describe('applyAction — the journey from submission to a completed stay', () =
     expect(checkIn.patch.status).toBe('Checked-In')
     booking = { ...booking, ...checkIn.patch }
 
-    const staying = expectOk(applyAction(booking, { type: 'BeginStay' }, { ...system, now: NOW }))
+    const staying = expectOk(applyAction(booking, { type: 'BeginStay' }, { ...system, now: '2026-10-01T06:00:00.000Z' }))
     expect(staying.patch.status).toBe('Staying')
     booking = { ...booking, ...staying.patch }
 

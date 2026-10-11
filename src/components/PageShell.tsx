@@ -30,19 +30,19 @@ export function PageShell({
   cta?: ReactNode
 }) {
   return (
-    <div className="pt-28 lg:pt-36 pb-24 bg-cream-50 min-h-screen">
+    <div className="pt-28 lg:pt-36 pb-24 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 min-h-screen transition-colors duration-300">
       <div className="mx-auto max-w-3xl px-5 lg:px-8">
         <header>
           <div className="eyebrow">{eyebrow}</div>
-          <h1 className="display text-4xl sm:text-5xl lg:text-6xl mt-3 text-forest-900">{title}</h1>
-          {lead && <div className="mt-5 text-forest-800/80 leading-relaxed">{lead}</div>}
+          <h1 className="display text-4xl sm:text-5xl lg:text-6xl mt-3 text-forest-900 dark:text-cream-50">{title}</h1>
+          {lead && <div className="mt-5 text-forest-800/85 dark:text-cream-100/85 leading-relaxed">{lead}</div>}
         </header>
       </div>
 
       {children}
 
-      <div className="mx-auto max-w-3xl px-5 lg:px-8 mt-16 pt-10 border-t border-forest-900/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
-        <p className="text-sm text-forest-800/80 max-w-md leading-relaxed">
+      <div className="mx-auto max-w-3xl px-5 lg:px-8 mt-16 pt-10 border-t border-forest-900/10 dark:border-cream-100/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+        <p className="text-sm text-forest-800/80 dark:text-cream-200/80 max-w-md leading-relaxed">
           Ready when you are — pick your dates and the Hacienda confirms availability and the final
           quote with you before anything is reserved.
         </p>

@@ -66,33 +66,28 @@ export function Hero() {
       <div className="relative z-10 h-full flex flex-col">
         <div className="flex-1 flex items-center">
           <div className="mx-auto max-w-7xl w-full px-5 lg:px-8">
-            <div ref={content} className="hero-layer max-w-3xl animate-fade-in" data-hero-layer="content">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cream-50/25 bg-cream-50/5 backdrop-blur-sm px-3.5 py-1.5 text-[11px] uppercase tracking-eyebrow text-cream-100">
-                <MapPin size={13} />
-                {BUSINESS.address.city}, {BUSINESS.address.region} • {BUSINESS.address.country}
+            <div ref={content} className="hero-layer max-w-2xl animate-fade-in" data-hero-layer="content">
+              <div className="inline-flex items-center gap-2 rounded-full border border-cream-100/30 bg-forest-950/45 backdrop-blur-md px-3.5 py-1.5 text-xs text-cream-100 font-medium">
+                <MapPin size={13} className="text-brass-300" />
+                <span>{BUSINESS.address.city}, {BUSINESS.address.region}</span>
               </div>
 
-              <h1 className="display text-[44px] sm:text-6xl lg:text-[88px] mt-6 leading-[1.02] drop-shadow-[0_2px_24px_rgba(0,0,0,0.35)]">
-                Escape to the
-                <br />
-                <span className="italic font-light">Quiet Side</span> of Laguna
+              <h1 className="display text-4xl sm:text-6xl lg:text-7xl mt-5 leading-[1.08] text-cream-50 drop-shadow-[0_2px_24px_rgba(0,0,0,0.35)]">
+                Your Escape Starts Here.
               </h1>
 
-              <p className="mt-5 text-cream-100 text-sm sm:text-base uppercase tracking-[0.18em] font-medium">
-                Private countryside stay near Laguna attractions
-              </p>
-              <p className="mt-4 max-w-xl text-cream-100/85 text-base sm:text-lg leading-relaxed">
-                A peaceful private stay in Luisiana, Laguna — made for family bonding, weekend
-                escapes, small gatherings, and unforgettable countryside moments.
+              <p className="mt-4 max-w-xl text-cream-100/90 text-base sm:text-lg leading-relaxed font-normal">
+                Private countryside stay near Laguna attractions — villa accommodations and peaceful lawn
+                camping in Luisiana, Laguna, made for relaxing family gatherings and quiet days in nature.
               </p>
 
-              <div className="mt-9 flex flex-wrap gap-3">
-                <Link to="/book" data-tour="hero-cta" className="btn bg-cream-50 text-forest-900 hover:bg-white shadow-glow">
-                  Book a room
-                </Link>
-                <a href="#stay" className="btn-secondary">
-                  Explore Hacienda
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <a href="#stay" className="btn bg-cream-50 text-forest-950 hover:bg-white shadow-soft font-semibold text-sm px-6 py-3">
+                  Explore Our Stays
                 </a>
+                <Link to="/book" data-tour="hero-cta" className="btn-secondary text-sm px-6 py-3 font-medium">
+                  Book a room · Check Availability
+                </Link>
               </div>
 
               {/* Airbnb's rating of the listing — dated in config, refreshed rather than assumed */}
@@ -100,22 +95,22 @@ export function Hero() {
                 href={AIRBNB_RATING.url}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-6 inline-flex items-center gap-2 rounded-full border border-cream-50/25 bg-forest-950/30 backdrop-blur-sm px-3.5 py-1.5 text-xs text-cream-100 hover:bg-forest-950/50 transition"
+                className="mt-6 inline-flex items-center gap-2 rounded-full border border-cream-100/25 bg-forest-950/45 backdrop-blur-md px-3.5 py-1.5 text-xs text-cream-100 hover:bg-forest-950/65 transition"
                 aria-label={`Rated ${AIRBNB_RATING.rating.toFixed(1)} out of 5 on Airbnb from ${AIRBNB_RATING.reviewCount} reviews`}
               >
-                <Star size={13} className="text-olive-300" />
-                <span className="font-medium">{AIRBNB_RATING.rating.toFixed(1)}</span>
+                <Star size={13} className="text-brass-400" />
+                <span className="font-semibold text-white">{AIRBNB_RATING.rating.toFixed(1)}</span>
                 <span className="text-cream-100/80">on Airbnb · {AIRBNB_RATING.reviewCount} reviews</span>
                 {AIRBNB_RATING.superhost && (
                   <>
-                    <span className="text-cream-100/40">|</span>
-                    <span className="text-cream-100/90">Superhost</span>
+                    <span className="text-cream-100/40">·</span>
+                    <span className="text-cream-100/90 font-medium">Superhost</span>
                   </>
                 )}
               </a>
               <Link
                 to="/account"
-                className="mt-5 sm:ml-3 inline-flex lg:hidden text-sm text-cream-100/80 underline underline-offset-4"
+                className="mt-5 sm:ml-4 inline-flex lg:hidden text-sm text-cream-100/90 underline underline-offset-4"
               >
                 My Bookings
               </Link>

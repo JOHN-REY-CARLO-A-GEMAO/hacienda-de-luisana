@@ -15,7 +15,7 @@ export function Nearby() {
               <>
                 Adventure Is Never
                 <br />
-                <span className="italic font-light">Too Far Away</span>
+                <span className="italic font-normal">Too Far Away</span>
               </>
             }
           />

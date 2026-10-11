@@ -60,8 +60,8 @@ async function atStage(stage: 'Pending' | 'Payment Pending' | 'Reserved' | 'Chec
 
   await expectAccepted(booking.id, { type: 'Approve', availability: { unitsAvailable: 1, bookings: [] } }, admin)
   await expectAccepted(booking.id, { type: 'CheckIn' }, admin)
-  await expectAccepted(booking.id, { type: 'BeginStay' }, admin)
-  await expectAccepted(booking.id, { type: 'CheckOut' }, admin)
+  await expectAccepted(booking.id, { type: 'BeginStay' }, { ...admin, now: '2029-06-01T06:00:00.000Z' })
+  await expectAccepted(booking.id, { type: 'CheckOut' }, { ...admin, now: '2029-06-04T04:00:00.000Z' })
   return booking.id
 }
 
@@ -193,7 +193,7 @@ describe('who the Activity log says did it', () => {
   it('names the Admin who completed a stay', async () => {
     const id = await atStage('Checked-Out')
 
-    await expectAccepted(id, { type: 'Complete' }, admin)
+    await expectAccepted(id, { type: 'Complete' }, { ...admin, now: '2029-06-04T05:00:00.000Z' })
 
     const history = await activityLogDB.list(id)
     expect(history.at(-1)).toMatchObject({

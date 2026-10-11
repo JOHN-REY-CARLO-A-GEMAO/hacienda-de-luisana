@@ -18,11 +18,11 @@ export function LocationPreview() {
   const approach = GALLERY.find((g) => g.id === 'g11')
 
   return (
-    <section id="location" className="relative py-20 lg:py-28 bg-cream-50 overflow-hidden">
+    <section id="location" className="relative py-20 lg:py-28 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 overflow-hidden transition-colors duration-300">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader index="09" eyebrow="Location" title="Find Your Way to the Hacienda">
-            <p>
+            <p className="dark:text-cream-200/80">
               Along the Luisiana–Lucban Road in Brgy. San Isidro, with the waterfalls, lakes and
               heritage towns of Laguna and Quezon within reach.
             </p>
@@ -34,12 +34,12 @@ export function LocationPreview() {
         </div>
 
         <div className="mt-12 grid lg:grid-cols-12 gap-6 items-stretch">
-          <div className="lg:col-span-7 reveal bg-white rounded-[32px] border border-forest-900/5 shadow-card p-8 lg:p-10 flex flex-col justify-center">
+          <div className="lg:col-span-7 reveal bg-white dark:bg-forest-900 rounded-[32px] border border-forest-900/5 dark:border-cream-100/10 shadow-card p-8 lg:p-10 flex flex-col justify-center">
             <div className="eyebrow">Address</div>
-            <div className="mt-3 font-serif text-2xl lg:text-3xl leading-snug text-forest-900">
+            <div className="mt-3 font-serif text-2xl lg:text-3xl leading-snug text-forest-900 dark:text-cream-50">
               {BUSINESS.address.formatted}
             </div>
-            <div className="mt-3 text-forest-700 text-sm">
+            <div className="mt-3 text-forest-700 dark:text-cream-200/70 text-sm">
               Approx. {BUSINESS.coordinates.lat.toFixed(4)}, {BUSINESS.coordinates.lng.toFixed(4)}
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -47,7 +47,7 @@ export function LocationPreview() {
                 href={BUSINESS.contact.directions}
                 target="_blank"
                 rel="noreferrer"
-                className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 group"
+                className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white group"
               >
                 <MapPin size={16} /> Get Directions
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />

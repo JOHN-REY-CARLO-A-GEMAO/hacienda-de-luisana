@@ -25,7 +25,7 @@ export function Location() {
               <>
                 Find Your Way
                 <br />
-                <span className="italic font-light">to the Hacienda</span>
+                <span className="italic font-normal">to the Hacienda</span>
               </>
             }
           />

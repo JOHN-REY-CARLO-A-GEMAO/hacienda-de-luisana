@@ -259,7 +259,7 @@ export function AccountPage() {
           <div className="mt-8 grid sm:grid-cols-3 gap-3" data-tour="account-tools">
             <input
               className="field text-sm"
-              placeholder="Search bookings…"
+              placeholder="Search bookings"
               aria-label="Search bookings"
               value={q}
               maxLength={80}

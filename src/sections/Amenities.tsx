@@ -13,7 +13,7 @@ export function Amenities() {
             <>
               Everything You Need for a
               <br />
-              <span className="italic font-light">Comfortable Escape</span>
+              <span className="italic font-normal">Comfortable Escape</span>
             </>
           }
         />

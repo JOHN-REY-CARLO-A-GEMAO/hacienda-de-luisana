@@ -22,7 +22,7 @@ export function GoodToKnow() {
             <>
               Before You
               <br />
-              <span className="italic font-light">Arrive</span>
+              <span className="italic font-normal">Arrive</span>
             </>
           }
         >

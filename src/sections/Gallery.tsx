@@ -59,7 +59,7 @@ export function Gallery() {
             <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-5 text-forest-900">
               A Glimpse of the
               <br />
-              <span className="italic font-light">Hacienda</span>
+              <span className="italic font-normal">Hacienda</span>
             </h2>
           </div>
 

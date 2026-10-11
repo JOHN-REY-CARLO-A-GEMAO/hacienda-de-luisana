@@ -34,7 +34,7 @@ export function BookingCta() {
               <h2 className="display text-4xl sm:text-5xl lg:text-7xl mt-5 text-cream-50">
                 Ready for the
                 <br />
-                <span className="italic font-light">quiet side?</span>
+                <span className="italic">quiet side?</span>
               </h2>
               <p className="mt-6 text-cream-100/80 leading-relaxed max-w-lg">
                 Pick your dates and send a booking request. The Hacienda confirms availability and

@@ -32,7 +32,7 @@ export function GalleryPreview() {
   )
 
   return (
-    <section id="gallery" className="py-20 lg:py-28 bg-cream-50">
+    <section id="gallery" className="py-20 lg:py-28 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 transition-colors duration-300">
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader index="07" eyebrow="Gallery" title="A Glimpse of the Hacienda" />
@@ -47,7 +47,7 @@ export function GalleryPreview() {
             <button
               key={g.id}
               onClick={() => setOpen(g)}
-              className="block w-full overflow-hidden rounded-2xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 aspect-[4/3] bg-white shadow-card lg:hover:shadow-depth transition-all duration-700 ease-out-expo"
+              className="block w-full overflow-hidden rounded-2xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 dark:focus-visible:ring-brass-400 aspect-[4/3] bg-white dark:bg-forest-900 shadow-card border border-forest-900/5 dark:border-cream-100/10 lg:hover:shadow-depth transition-all duration-700 ease-out-expo"
               aria-label={`Open ${g.caption}`}
             >
               <SmartImage

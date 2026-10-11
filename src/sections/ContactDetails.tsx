@@ -63,7 +63,7 @@ export function ContactDetails() {
         <div className="eyebrow">Contact</div>
         <h2 className="display text-4xl sm:text-5xl mt-4 text-forest-900">
           Talk to Your <br />
-          <span className="italic font-light">Admin</span>
+          <span className="italic font-normal">Admin</span>
         </h2>
         <p className="mt-6 text-forest-800/75 leading-relaxed max-w-md">
           Have a question, planning a special gathering, or want to check dates? Send us a

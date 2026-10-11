@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 }
 
 html {
@@ -13,13 +13,13 @@ html {
 }
 
 body {
-  @apply bg-cream-50 text-forest-900 font-sans;
+  @apply bg-cream-50 text-forest-900 dark:bg-forest-950 dark:text-cream-50 font-sans transition-colors duration-300;
   font-feature-settings: "ss01", "cv11";
 }
 
 ::selection {
-  background: #2c4a2d;
-  color: #f6f1e3;
+  background: #243D2E;
+  color: #F5F1E8;
 }
 
 /* Interactive Guest tour — the pulsing ring around the highlighted control */
@@ -49,11 +49,16 @@ body {
   width: 10px;
   height: 10px;
 }
-::-webkit-scrollbar-track { background: #f6f1e3; }
+::-webkit-scrollbar-track { background: #FAF7F2; }
+.dark ::-webkit-scrollbar-track { background: #0D1711; }
 ::-webkit-scrollbar-thumb {
-  background: #9ab895;
+  background: #A6B29B;
   border-radius: 999px;
-  border: 2px solid #f6f1e3;
+  border: 2px solid #FAF7F2;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #385d37;
+  border: 2px solid #0D1711;
 }
 ::-webkit-scrollbar-thumb:hover { background: #6d956a; }
 
@@ -71,12 +76,12 @@ body {
 }
 
 /* Typographic helpers */
-/* `.eyebrow` lives in the components layer so a colour utility next to it
-   (`eyebrow text-cream-100/70` on the dark scenes) wins — outside the layer
-   the helper came after the utilities and painted forest-green on forest-green. */
 @layer components {
   .eyebrow {
-    @apply text-[11px] font-medium uppercase tracking-eyebrow text-forest-600;
+    @apply text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400;
+  }
+  .card-surface {
+    @apply bg-white dark:bg-forest-900/80 rounded-[28px] border border-forest-900/5 dark:border-cream-100/10 shadow-card transition-all duration-300;
   }
 }
 .display {
@@ -85,27 +90,27 @@ body {
 
 /* Buttons */
 .btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-all duration-300 ease-out-expo focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-forest-600 focus-visible:ring-offset-cream-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-all duration-300 ease-out-expo focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-forest-600 focus-visible:ring-offset-cream-50 dark:focus-visible:ring-brass-400 dark:focus-visible:ring-offset-forest-950;
 }
 .btn-primary {
-  @apply btn bg-forest-700 text-cream-50 hover:bg-forest-800 shadow-soft;
+  @apply btn bg-forest-700 text-cream-50 hover:bg-forest-800 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white shadow-soft;
 }
 .btn-secondary {
-  @apply btn bg-transparent text-cream-50 border border-cream-50/60 hover:bg-cream-50/10 backdrop-blur-sm;
+  @apply btn bg-transparent text-cream-50 border border-cream-50/60 hover:bg-cream-50/10 dark:border-cream-100/50 dark:hover:bg-cream-100/15 backdrop-blur-sm;
 }
 .btn-ghost {
-  @apply btn bg-transparent text-forest-800 border border-forest-800/20 hover:border-forest-800/60 hover:bg-forest-50;
+  @apply btn bg-transparent text-forest-800 border border-forest-800/25 hover:border-forest-800/60 hover:bg-forest-50 dark:text-cream-100 dark:border-cream-100/25 dark:hover:border-cream-100/60 dark:hover:bg-forest-900/60;
 }
 .btn-solid {
-  @apply btn bg-forest-800 text-cream-50 hover:bg-forest-900;
+  @apply btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-50 dark:text-forest-900 dark:hover:bg-white;
 }
 
 /* Inputs */
 .field {
-  @apply w-full rounded-xl border border-forest-200 bg-white/70 px-4 py-3 text-forest-900 placeholder:text-forest-500/60 focus:border-forest-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest-600/20 transition;
+  @apply w-full rounded-xl border border-forest-200 bg-white/80 px-4 py-3 text-forest-900 placeholder:text-forest-500/60 focus:border-forest-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest-600/20 dark:bg-forest-900/60 dark:border-forest-700 dark:text-cream-50 dark:placeholder:text-cream-200/40 dark:focus:border-brass-400 dark:focus:bg-forest-900/90 dark:focus:ring-brass-400/20 transition;
 }
 .label {
-  @apply block text-[11px] uppercase tracking-eyebrow text-forest-600 mb-2 font-medium;
+  @apply block text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-300 mb-2 font-medium;
 }
 
 /* No scrollbar helper */
@@ -202,6 +207,9 @@ a:focus-visible, button:focus-visible, summary:focus-visible {
   outline: 2px solid #385d37;
   outline-offset: 3px;
   border-radius: 6px;
+}
+.dark a:focus-visible, .dark button:focus-visible, .dark summary:focus-visible {
+  outline-color: #B89A64;
 }
 
 /* Reduced motion: no parallax, tilt, drift, Ken Burns or scroll-reveal travel */

@@ -48,7 +48,7 @@ export function Rates() {
               <>
                 What a Stay
                 <br />
-                <span className="italic font-light">Costs</span>
+                <span className="italic font-normal">Costs</span>
               </>
             }
           />
