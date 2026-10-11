@@ -14,6 +14,7 @@ export function ParallaxImage({
   className = '',
   range = 0.08,
   loading = 'lazy',
+  fetchpriority,
   children,
 }: {
   src: string
@@ -23,6 +24,7 @@ export function ParallaxImage({
   /** Max shift as a fraction of the frame height. */
   range?: number
   loading?: 'lazy' | 'eager'
+  fetchpriority?: 'high' | 'low' | 'auto'
   children?: React.ReactNode
 }) {
   const media = useRef<HTMLDivElement>(null)
@@ -33,7 +35,7 @@ export function ParallaxImage({
   return (
     <div className={`parallax-frame ${positioned ? '' : 'relative'} ${className}`}>
       <div ref={media} className="parallax-media">
-        <SmartImage src={src} alt={alt} loading={loading} className="h-full w-full object-cover" />
+        <SmartImage src={src} alt={alt} loading={loading} fetchpriority={fetchpriority} className="h-full w-full object-cover" />
       </div>
       {children}
     </div>

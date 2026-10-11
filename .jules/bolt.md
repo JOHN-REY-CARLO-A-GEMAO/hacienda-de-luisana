@@ -1,0 +1,3 @@
+## 2025-02-23 - `fetchpriority` prop loss in custom image wrappers
+**Learning:** `SmartImage` specified `fetchpriority` in its TypeScript `Props` interface, but omitted it during destructuring in the component signature. This caused caller components passing `fetchpriority="high"` (such as LCP Hero background images) to silently lose browser resource prefetching hints.
+**Action:** When wrapping native DOM media elements (`<img>`, `<video>`) in custom React abstractions, ensure all browser priority attributes (`fetchpriority`, `loading`, `decoding`) are destructured and explicitly passed to the underlying element.

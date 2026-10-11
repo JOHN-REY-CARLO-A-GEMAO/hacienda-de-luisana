@@ -36,6 +36,7 @@ export function Hero() {
           src="/images/gmaps/img-07.jpg"
           alt="Hacienda de LuisAna at dusk — the main house glowing warm with a campfire and A-frame camping units on the lawn"
           loading="eager"
+          fetchpriority="high"
           className={`h-full w-full object-cover ${reducedMotion ? '' : 'animate-kenburns'}`}
         />
         {/* Horizon haze: lifts the sky and separates it from the foreground */}
