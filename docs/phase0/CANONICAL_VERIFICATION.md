@@ -104,11 +104,11 @@ The fix accepts only that exact byte string. This is a **TEST HARNESS ISSUE** in
 
 These tests make the **same SDK calls** as the website:
 
-- `src/lib/guestAuth.ts:50` calls `signInAnonymously`;
-- `src/lib/authFirebase.ts:120` calls `createUserWithEmailAndPassword`;
-- `src/lib/authFirebase.ts:132` calls `signInWithEmailAndPassword`.
+- `web/lib/guestAuth.ts:50` calls `signInAnonymously`;
+- `web/lib/authFirebase.ts:120` calls `createUserWithEmailAndPassword`;
+- `web/lib/authFirebase.ts:132` calls `signInWithEmailAndPassword`.
 
-The calls run against the real Auth Emulator. The tests do **not** import `src/lib/firebase.ts`, which initialises only when a Firebase web config is supplied, and Phase 0 refuses to supply one.
+The calls run against the real Auth Emulator. The tests do **not** import `web/lib/firebase.ts`, which initialises only when a Firebase web config is supplied, and Phase 0 refuses to supply one.
 
 | Test | Result | Meaning |
 |---|---|---|

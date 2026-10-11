@@ -1,7 +1,7 @@
 // Authentication & authorization — the two roles and what each of them may do.
 //
 // The roles are not invented here: CONTEXT.md § People defines the Guest and
-// the Admin, each with their own application (ADR-0007), and `src/lib/booking`
+// the Admin, each with their own application (ADR-0007), and `web/lib/booking`
 // already refuses actions from the wrong `ActorKind`. This is the catalogue that
 // turns those two words into permissions a page, a button and a Firestore rule
 // can all ask about — so the surfaces cannot drift apart.

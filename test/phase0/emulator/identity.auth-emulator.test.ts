@@ -6,9 +6,9 @@
 //
 // Scope, stated honestly:
 //  * These tests exercise the SAME SDK calls the website makes
-//    (src/lib/guestAuth.ts:50 signInAnonymously, src/lib/authFirebase.ts:120
+//    (web/lib/guestAuth.ts:50 signInAnonymously, web/lib/authFirebase.ts:120
 //    createUserWithEmailAndPassword, :132 signInWithEmailAndPassword) against a
-//    real Auth implementation. They do NOT import src/lib/firebase.ts, which only
+//    real Auth implementation. They do NOT import web/lib/firebase.ts, which only
 //    initialises when a Firebase web config is present — Phase 0 refuses to
 //    provide one.
 //  * They establish platform semantics (what an anonymous session becomes after

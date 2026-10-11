@@ -21,7 +21,7 @@ void main() {
 
   group('a message may be 1,000 characters', () {
     test('the limit is the one the website and the rules use', () {
-      // 1,000 in `src/lib/validation.ts` (MESSAGE_MAX), in
+      // 1,000 in `web/lib/validation.ts` (MESSAGE_MAX), in
       // `firestore.rules` (`text.size() <= 1000`) and here. Three places, one
       // number: the rules are the enforcement and the other two are the courtesy.
       expect(AppConstants.messageMax, 1000);

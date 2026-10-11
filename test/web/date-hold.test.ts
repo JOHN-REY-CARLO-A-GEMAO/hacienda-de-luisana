@@ -15,7 +15,7 @@ const MINUTE = 60 * 1000
  * The stay these fixtures ask for, deliberately far in the future.
  *
  * Demo mode seeds the Main House with a Reserved booking anchored to `new Date()`
- * (`generateSampleBookings` in src/lib/storage.ts), and `readAll()` puts those
+ * (`generateSampleBookings` in web/lib/storage.ts), and `readAll()` puts those
  * samples back whenever the store is empty — which `localStorage.clear()` makes
  * it, every time. So a suite run without Firebase cannot have an empty store,
  * and a fixture window near today collides with a Booking nobody wrote here. The

@@ -1,7 +1,7 @@
 # Hacienda de LuisAna — App Plan (v2: two roles, two apps)
 
 **Status:** Implemented. Dalawang application, dalawang role — wala nang iba.  
-**Guest / Client:** Website (`src/`, React + Vite) — booking, payment proof (Supabase Storage, may OCR), tracking ng sariling booking.  
+**Guest / Client:** Website (`web/`, React + Vite) — booking, payment proof (Supabase Storage, may OCR), tracking ng sariling booking.  
 **Admin:** Flutter mobile app (`lib/`, Android) — buong management ng hacienda.  
 **Decision record:** [ADR-0007](adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md).
 
@@ -16,7 +16,7 @@
 
 | | Guest / Client | Admin |
 |---|---|---|
-| **App** | Website — `src/` (React 18, Vite, TypeScript, Tailwind) | Flutter mobile app — `lib/` (Android) |
+| **App** | Website — `web/` (React 18, Vite, TypeScript, Tailwind) | Flutter mobile app — `lib/` (Android) |
 | **Sino** | Sinumang bisita; optional na account para sa "My bookings" | Ang may-ari / operator ng hacienda — **isang role lang** |
 | **Pwedeng gawin** | Tingnan ang rooms, rates, availability · mag-book · pumili ng payment plan at mag-upload ng proof (OCR ang nag-prefill ng reference no.) · i-withdraw ang sariling booking · makipag-chat sa Admin · mag-iwan ng review pagkatapos ng stay | **Lahat** ng dating Admin + Staff + Host: approve / reject, verify payment, refund, check-in → completed, rates & cancellation policy, rooms, smart lock, chat inbox, CRM, analytics |
 | **Hindi pwede** | Walang management screen; hindi mababasa ang booking ng iba | Walang guest booking flow sa app (booking = website lang) |
@@ -28,7 +28,7 @@
 
 ```
 ┌──────────────────────────────┐      ┌──────────────────────────────┐
-│  GUEST WEBSITE  (src/)       │      │  ADMIN APP  (lib/, Flutter)  │
+│  GUEST WEBSITE  (web/)       │      │  ADMIN APP  (lib/, Flutter)  │
 │  /  /book  /messages        │      │  Dashboard · Bookings        │
 │  /messages                   │      │  Chat · Stays · More →       │
 │  /login  /guest/auth         │      │  Rates · Smart Lock ·        │
@@ -45,7 +45,7 @@
 
 ## 2. Guest website — ano ang meron
 
-Routes (`src/App.tsx`):
+Routes (`web/App.tsx`):
 
 | Route | Screen | Notes |
 |---|---|---|
@@ -56,7 +56,7 @@ Routes (`src/App.tsx`):
 | `/account` | My bookings | Status, hold countdown, payment plan + proof (OCR), cancel, activity log |
 | `/admin/*`, `/app/*` | `AdminMoved` | Signpost lang: "Admin uses the mobile app" |
 
-Guest actions (`src/lib/booking/actions.ts`): `ChoosePaymentPlan`, `UploadPaymentProof`, `Cancel`. Lahat ng approval / verification ay **wala** sa website.
+Guest actions (`web/lib/booking/actions.ts`): `ChoosePaymentPlan`, `UploadPaymentProof`, `Cancel`. Lahat ng approval / verification ay **wala** sa website.
 
 ---
 
@@ -76,7 +76,7 @@ Guest actions (`src/lib/booking/actions.ts`): `ChoosePaymentPlan`, `UploadPaymen
 | **Guest CRM** | Profiles at history ng guests |
 | **Analytics** | Occupancy, revenue, funnel |
 
-Lifecycle logic: `lib/services/booking_lifecycle.dart` (`applyAdminAction`, `findDateConflicts`, `settleRefund`, `validatePublishedRates`) — parehong status table ng web `src/lib/booking`.
+Lifecycle logic: `lib/services/booking_lifecycle.dart` (`applyAdminAction`, `findDateConflicts`, `settleRefund`, `validatePublishedRates`) — parehong status table ng web `web/lib/booking`.
 
 ---
 
@@ -107,7 +107,7 @@ Rules (`firestore.rules`, `storage.rules`):
 - **Admin** (`adminEmails()` allowlist o `profiles.role == 'admin'`): lahat ng iba — approve, verify, refund, rates, purge
 - Walang `staff`, walang `host`, walang `owner` sa rules
 
-Bootstrap admins: nasa `firestore.rules adminEmails()`, `storage.rules isAdminEmail()`, `src/lib/auth/profile.ts`, at Flutter `AuthStore.kAdminEmails` — **i-mirror kapag nagbago**.
+Bootstrap admins: nasa `firestore.rules adminEmails()`, `storage.rules isAdminEmail()`, `web/lib/auth/profile.ts`, at Flutter `AuthStore.kAdminEmails` — **i-mirror kapag nagbago**.
 
 ---
 

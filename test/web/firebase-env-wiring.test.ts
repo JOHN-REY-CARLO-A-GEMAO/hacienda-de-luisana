@@ -6,7 +6,7 @@ const firestoreSdk = vi.hoisted(() => ({
 }))
 vi.mock('firebase/firestore', () => firestoreSdk)
 
-// The regression this file exists for: `src/lib/firebase.ts` builds the object it
+// The regression this file exists for: `web/lib/firebase.ts` builds the object it
 // hands `resolveFirebaseConfig`, and the resolver looks each value up by its
 // *variable* name (`env['VITE_FIREBASE_API_KEY']`). Keying that object by field
 // name instead made every lookup miss, so every build reported demo mode while
@@ -22,7 +22,7 @@ const STUBBED: Record<string, string> = {
   VITE_FIREBASE_PROJECT_ID: 'hacienda-de-luisana',
 }
 
-describe('the environment src/lib/firebase.ts hands the resolver', () => {
+describe('the environment web/lib/firebase.ts hands the resolver', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.resetModules()

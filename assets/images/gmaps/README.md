@@ -14,7 +14,7 @@ Two copies of every photo are kept on purpose:
 1. Drop the original in `assets/images/gmaps/`.
 2. Copy it to `public/images/gmaps/`. Keep the file web-sized (longest edge
    ≤ 2048px, under ~500KB) — `npm run build` will not resize it for you.
-3. Add one entry to `GALLERY` in `src/config/site.ts` (and to an
+3. Add one entry to `GALLERY` in `web/config/site.ts` (and to an
    `ACCOMMODATIONS[].images` array if it belongs on a house card).
 4. `npm run test` — `test/web/gallery-images.test.ts` fails if a config path has
    no file behind it, or if a file in `public/images/` has no config entry.

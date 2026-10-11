@@ -9,7 +9,7 @@ They were once hotlinked straight from Facebook's CDN. Each URL carried an
 expiring token (`oe=...`), all eight expired, and nothing backed them on disk.
 A tile whose image fails to load falls back to a gradient placeholder showing
 only its caption, so every one of them rendered as a text-only card — see
-`SmartImage`. The URLs were removed from `src/config/site.ts` on 2026-10-04
+`SmartImage`. The URLs were removed from `web/config/site.ts` on 2026-10-04
 rather than refreshed, because a hotlink that breaks the page on someone else's
 schedule does not belong in a shipped site.
 
@@ -38,7 +38,7 @@ Download them. Do not hotlink.
 2. Save each photo you want (right-click → "Save image as…")
 3. Put the file in `public/images/gmaps/` — keep the `snake_case` naming those
    files already use; do not overwrite them
-4. Add a `GALLERY` entry in `src/config/site.ts` pointing at `/images/gmaps/<file>`
+4. Add a `GALLERY` entry in `web/config/site.ts` pointing at `/images/gmaps/<file>`
    (`EXPERIENCES[].image` and `ACCOMMODATIONS[].images[]` take the same form)
 5. Run the tests — `test/web/gallery-images.test.ts` fails on any referenced
    path that is not in `public/`, and on any image in `public/images/` that

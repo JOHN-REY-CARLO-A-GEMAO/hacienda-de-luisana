@@ -13,7 +13,7 @@ const NOW = '2026-09-20T01:00:00.000Z'
  * The stay these fixtures ask for, deliberately far in the future.
  *
  * Demo mode seeds the Main House with a Reserved booking anchored to `new Date()`
- * (`generateSampleBookings` in src/lib/storage.ts), and `readAll()` puts those
+ * (`generateSampleBookings` in web/lib/storage.ts), and `readAll()` puts those
  * samples back whenever the store is empty — which `localStorage.clear()` makes
  * it, every time. So a suite run without Firebase cannot have an empty store,
  * and any fixture window near today collides with a Booking nobody wrote here.
@@ -68,7 +68,7 @@ describe('the booking store seam', () => {
     const submitted = await cloudBookingsDB.add(request, { ...guest, now: NOW })
 
     // No Firebase in a test run: the success screen says "saved on this device"
-    // rather than "sent to the Admin app" (src/pages/BookingPage.tsx).
+    // rather than "sent to the Admin app" (web/pages/BookingPage.tsx).
     expect(submitted.storage).toBe('local')
   })
 
@@ -167,7 +167,7 @@ describe('the booking store seam', () => {
   })
 
   it('approves up to every unit of a multi-unit Accommodation, and no further', async () => {
-    // The camping Accommodation has two units (src/config/site.ts).
+    // The camping Accommodation has two units (web/config/site.ts).
     const unitsAvailable = 2
     const submit = async (guestName: string) => {
       const booking = await cloudBookingsDB.add(

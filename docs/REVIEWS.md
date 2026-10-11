@@ -11,8 +11,8 @@ A partial review system existed before this work and was **extended, not replace
 | `reviews/{bookingId}` — the document id **is** the Booking id | "One Review per stay" is a fact of the data model, not a check a form remembers. It is also what lets the rule read the Booking a Review claims to be about. |
 | Eligibility at `Checked-Out` or `Completed` | A Guest who has walked out has stayed. Waiting for the Admin to close the Booking is a rule about the Admin's paperwork. |
 | `validateStarRating`, `REVIEW_MAX = 1000` | One content-length policy in this system; a review is not exempt from it. |
-| `src/components/ReviewForm.tsx` at `/account` | The entry point was already where a Guest looks for it. |
-| The curated Airbnb `REVIEWS` list in `src/config/site.ts` | Transcribed verbatim from the listing, under a rule that says *"Add reviews only from the listing itself; never write one."* Untouched — see below. |
+| `web/components/ReviewForm.tsx` at `/account` | The entry point was already where a Guest looks for it. |
+| The curated Airbnb `REVIEWS` list in `web/config/site.ts` | Transcribed verbatim from the listing, under a rule that says *"Add reviews only from the listing itself; never write one."* Untouched — see below. |
 
 ## The data model
 
@@ -62,7 +62,7 @@ A Review is about a stay that happened.
 | **Checked-Out, Completed** | **yes** |
 | Rejected, Cancelled, Expired | no — a terminal branch is a request that ended, not a stay |
 
-`isReviewableStatus` in `src/lib/reviewPolicy.ts`, mirrored in `lib/services/review_policy.dart`, and `firestore.rules` reads the Booking rather than trusting a client to have checked. The rules suite pins the TypeScript list against the rules text so the three cannot drift.
+`isReviewableStatus` in `web/lib/reviewPolicy.ts`, mirrored in `lib/services/review_policy.dart`, and `firestore.rules` reads the Booking rather than trusting a client to have checked. The rules suite pins the TypeScript list against the rules text so the three cannot drift.
 
 ## One review per stay
 
@@ -107,7 +107,7 @@ ReviewPublished         a testimonial went to the website
 
 Two separate blocks, deliberately:
 
-- **The Airbnb quotes** — transcribed verbatim from the listing, attributed by first name and month. Untouched. `src/config/site.ts`: *"Add reviews only from the listing itself; never write one."*
+- **The Airbnb quotes** — transcribed verbatim from the listing, attributed by first name and month. Untouched. `web/config/site.ts`: *"Add reviews only from the listing itself; never write one."*
 - **"Stayed with us"** — Reviews written here, published by the Admin, under a heading that says where they came from, with a footnote that they are published only after the Admin has read them.
 
 Mixing them would have been cheaper and wrong: the Airbnb quotes are attributed to real first names on someone else's platform, and app-generated text among them would present words the Admin chose as though a guest had published them somewhere else.

@@ -4,7 +4,7 @@ Private countryside escape in Luisiana, Laguna. This repository contains **two a
 
 | Role | Application | Where |
 | --- | --- | --- |
-| **Guest** (the client) | **Website** — React + Vite + TypeScript + Tailwind + Firebase | `src/` · deployed on Vercel (`haciendadeluisana.com`) and Firebase Hosting |
+| **Guest** (the client) | **Website** — React + Vite + TypeScript + Tailwind + Firebase | `web/` · deployed on Vercel (`haciendadeluisana.com`) and Firebase Hosting |
 | **Admin** | **Mobile app** — Flutter (Android) | `lib/` + `android/` |
 
 There is **no Staff role and no Host role**. The Admin does everything an operator does, from the app. The website has no management screens.
@@ -17,7 +17,7 @@ There is **no Staff role and no Host role**. The Admin does everything an operat
 
 ```
 # Guest website (Vercel / Firebase Hosting)
-src/                    # React app (components, pages, sections, lib, tutorial, context, config)
+web/                    # React app (components, pages, sections, lib, tutorial, context, config)
 public/                 # Static assets (images/gmaps, nearby, favicon, CNAME)
 index.html · vite.config.ts · tailwind.config.js · postcss.config.js · tsconfig.json
 firebase.json · firestore.rules · firestore.indexes.json · storage.rules
@@ -59,11 +59,11 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 | Read every Booking, Access log, CRM, analytics | — | ✅ app |
 | Read a Guest's live location while they are sharing it | — | ✅ app ([ADR-0013](./adr/0013-live-location-as-a-stream.md)) |
 
-A role is **stored**, not chosen: signing up on the website makes a Guest and cannot make anything else. The Admin is recognised by the bootstrap email allowlist (`firestore.rules` `adminEmails()`, mirrored in `storage.rules`, `src/lib/auth/profile.ts` and `lib/services/auth_store.dart`) or by `profiles/{uid}.role == 'admin'`. Enforcement is `firestore.rules`; hiding a page or a button is only the courtesy half. See [ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md) (storage of a role) and [ADR-0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md) (the two roles).
+A role is **stored**, not chosen: signing up on the website makes a Guest and cannot make anything else. The Admin is recognised by the bootstrap email allowlist (`firestore.rules` `adminEmails()`, mirrored in `storage.rules`, `web/lib/auth/profile.ts` and `lib/services/auth_store.dart`) or by `profiles/{uid}.role == 'admin'`. Enforcement is `firestore.rules`; hiding a page or a button is only the courtesy half. See [ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md) (storage of a role) and [ADR-0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md) (the two roles).
 
 ---
 
-## Guest website (`src/`)
+## Guest website (`web/`)
 
 ### Features
 
@@ -97,7 +97,7 @@ npm run build
 npm run preview
 ```
 
-With no Firebase keys configured the site runs in **demo mode**: Guest accounts and Bookings live in this browser (passwords PBKDF2-hashed), and a banner says so on every protected page. That is the local-development behaviour; a *deployed* build falls back to the committed project in `src/lib/firebaseDefaults.ts`, so a deployment with an empty dashboard still reaches the Admin app instead of quietly keeping Guest requests in their own browser.
+With no Firebase keys configured the site runs in **demo mode**: Guest accounts and Bookings live in this browser (passwords PBKDF2-hashed), and a banner says so on every protected page. That is the local-development behaviour; a *deployed* build falls back to the committed project in `web/lib/firebaseDefaults.ts`, so a deployment with an empty dashboard still reaches the Admin app instead of quietly keeping Guest requests in their own browser.
 
 ### Deployment
 
@@ -139,7 +139,7 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 
 ### Lifecycle rules
 
-`lib/services/booking_lifecycle.dart` is a pure-Dart port of `src/lib/booking`: the eleven canonical statuses, the transition whitelist, the Admin and system actions with their preconditions (a proof and a covering amount before Verify, a re-check of the dates at approval, hold expiry read at action time), refund settlement, and `validatePublishedRates`. `FirestoreService.applyBookingAction` writes the resulting patch and the Activity entry in one batch.
+`lib/services/booking_lifecycle.dart` is a pure-Dart port of `web/lib/booking`: the eleven canonical statuses, the transition whitelist, the Admin and system actions with their preconditions (a proof and a covering amount before Verify, a re-check of the dates at approval, hold expiry read at action time), refund settlement, and `validatePublishedRates`. `FirestoreService.applyBookingAction` writes the resulting patch and the Activity entry in one batch.
 
 ### Run
 

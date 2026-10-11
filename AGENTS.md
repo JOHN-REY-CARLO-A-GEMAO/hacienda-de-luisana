@@ -2,7 +2,7 @@
 
 Two roles, two apps, one Firebase project (ADR-0007):
 
-- **Guest website** (`src/`) — React + Vite + TS + Tailwind + Firebase. Guest-only: landing page, `/book`, `/account` (own Bookings, payment proof upload, payment plan), `/messages` (chat with the Admin). No management screens.
+- **Guest website** (`web/`) — React + Vite + TS + Tailwind + Firebase. Guest-only: landing page, `/book`, `/account` (own Bookings, payment proof upload, payment plan), `/messages` (chat with the Admin). No management screens.
 - **Admin mobile app** (`lib/`) — Flutter. Admin-only: Booking review and lifecycle, payment verification, refunds, published rates, stays, chat inbox, smart-lock Access log, rooms, CRM, analytics.
 
 There is no Staff role and no Host role. Roles are `guest` | `admin`.
@@ -11,8 +11,8 @@ Read `docs/README.md` for the repository layout, and `docs/agents/domain.md` for
 
 ## Which Firebase project a build talks to
 
-Decided once, at build time, by `src/lib/firebaseConfig.ts`: `VITE_FIREBASE_*`
-variables first, then the committed project in `src/lib/firebaseDefaults.ts` for
+Decided once, at build time, by `web/lib/firebaseConfig.ts`: `VITE_FIREBASE_*`
+variables first, then the committed project in `web/lib/firebaseDefaults.ts` for
 production builds, then nothing (demo mode, `authLocal.ts`). So `npm run dev`,
 `npm test` and the emulator workflow run in demo mode, while a deployed build talks
 to the Hacienda's real project. `/status` reports which source won, and the build

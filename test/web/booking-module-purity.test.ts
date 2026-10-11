@@ -87,7 +87,7 @@ describe('the booking lifecycle module', () => {
   })
 
   it('keeps its internals behind the entry point', () => {
-    // Callers and tests go through src/lib/booking; the files behind it are
+    // Callers and tests go through web/lib/booking; the files behind it are
     // implementation detail (codebase-design: one interface, deep behind it).
     const entry = readFileSync(join(MODULE_DIR, 'index.ts'), 'utf8')
     expect(entry).toMatch(/export \{[^}]*applyAction/s)

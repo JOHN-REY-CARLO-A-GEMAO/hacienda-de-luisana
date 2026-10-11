@@ -1,12 +1,12 @@
 # Firebase Integration — Hacienda de LuisAna
 
-This document explains how Firebase backs the Hacienda de LuisAna system: the Guest website (`src/`) and the Admin mobile app (`lib/`).
+This document explains how Firebase backs the Hacienda de LuisAna system: the Guest website (`web/`) and the Admin mobile app (`lib/`).
 
 ## 🔧 What Was Implemented
 
 ### 1. Firebase SDK & Configuration
 - Installed `firebase` v10+ (modular SDK)
-- Created `src/lib/firebase.ts`:
+- Created `web/lib/firebase.ts`:
   - Centralized config using Vite env vars (`VITE_FIREBASE_*`)
   - Singleton initialization with HMR safety
   - Exports `app`, `auth`, `db` (Firestore), `storage`, `googleProvider`
@@ -16,7 +16,7 @@ This document explains how Firebase backs the Hacienda de LuisAna system: the Gu
 ### 2. Environment Variables
 - `.env.example` template with all required keys
 - `.env.local` is gitignored (already in `.gitignore`)
-- Vite type definitions in `src/vite-env.d.ts`
+- Vite type definitions in `web/vite-env.d.ts`
 
 Required vars:
 ```
@@ -37,7 +37,7 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
 ([ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md));
 `firestore.rules` enforces it. The website signs Guests in; the Admin signs in on the Flutter app.
 
-**`src/lib/auth/` — the website's authorization core (pure: no Firebase, no browser APIs)**
+**`web/lib/auth/` — the website's authorization core (pure: no Firebase, no browser APIs)**
 - `roles.ts`: the two roles, the permission catalogue, `can(role, permission)`
 - `pages.ts`: which page a permission opens (`/account`) and where each role lands (`homeForRole`)
 - `profile.ts`: `resolveRole()` — bootstrap allowlist (`BOOTSTRAP_ROLES`), then Profile, then Guest
@@ -46,36 +46,36 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
   restore, and the actor a Booking action is attributed to
 
 **Adapters — two implementations of the same two ports**
-- `src/lib/authFirebase.ts`: Firebase Auth (`browserLocalPersistence`) + Firestore `profiles`
-- `src/lib/authLocal.ts`: demo mode with no Firebase — Guest accounts, PBKDF2-SHA256 (210k rounds,
+- `web/lib/authFirebase.ts`: Firebase Auth (`browserLocalPersistence`) + Firestore `profiles`
+- `web/lib/authLocal.ts`: demo mode with no Firebase — Guest accounts, PBKDF2-SHA256 (210k rounds,
   per-account salt) password hashes and the session in this browser's localStorage; every account it
   creates is a Guest
-- `src/lib/authSession.ts`: picks one, once
+- `web/lib/authSession.ts`: picks one, once
 
 **React seam**
-- `src/context/AuthContext.tsx`: `user`, `role`, `can()`, `canOpen()`, `actor`, and the actions
-- `src/hooks/useAuth.ts`: the hook every page uses
-- `src/components/Auth/LoginForm.tsx`: Guest sign-in / sign-up (email + Google); sign-up makes a Guest
-- `src/components/Auth/ProtectedRoute.tsx`: spinner → sign-in → **turned away for the wrong role**
+- `web/context/AuthContext.tsx`: `user`, `role`, `can()`, `canOpen()`, `actor`, and the actions
+- `web/hooks/useAuth.ts`: the hook every page uses
+- `web/components/Auth/LoginForm.tsx`: Guest sign-in / sign-up (email + Google); sign-up makes a Guest
+- `web/components/Auth/ProtectedRoute.tsx`: spinner → sign-in → **turned away for the wrong role**
   (an Admin on `/account` is told this website is for Guests and pointed to the Admin app)
-- `src/lib/guestAuth.ts`: `ensureGuestUid()` is called when `/book` creates a Booking, so the
+- `web/lib/guestAuth.ts`: `ensureGuestUid()` is called when `/book` creates a Booking, so the
   document carries the uid that `firestore.rules` and `storage.rules` key Guest access to; in
   demo mode it returns the signed-in local account's uid instead
 
 **Integration points:**
-- `src/main.tsx` wrapped with `<AuthProvider>`
-- `src/App.tsx` protects `/account` (Guest); `/admin/*` and `/app/*` render a "moved to the Admin app" notice
-- `src/components/Nav.tsx` shows Book / My Bookings / Sign in / Sign out
+- `web/main.tsx` wrapped with `<AuthProvider>`
+- `web/App.tsx` protects `/account` (Guest); `/admin/*` and `/app/*` render a "moved to the Admin app" notice
+- `web/components/Nav.tsx` shows Book / My Bookings / Sign in / Sign out
 
 **The Admin app (`lib/services/auth_store.dart`)**
 - Google or email + password through Firebase Auth; `isAdmin` = allowlist (`AuthStore.kAdminEmails`)
   **or** `profiles/{uid}.role == 'admin'`; any other account is signed straight back out
 - The Admin's writes go through `lib/services/booking_lifecycle.dart` (the same lifecycle table as
-  `src/lib/booking`) and `FirestoreService.applyBookingAction`, which stores the patch and the Activity
+  `web/lib/booking`) and `FirestoreService.applyBookingAction`, which stores the patch and the Activity
   entry in one batch
 
 ### 4. Firestore Database
-- `src/lib/firestoreBookings.ts` (website):
+- `web/lib/firestoreBookings.ts` (website):
   - Cloud-aware service: uses Firestore when configured, falls back to `localStorage` otherwise
   - Guest scope: `listMine()`, `subscribeMine()`, `add()`, and `takeAction()` for the Guest's own
     lifecycle actions (ChoosePaymentPlan, UploadPaymentProof, Cancel)
@@ -108,7 +108,7 @@ stored at `profiles/{uid}` and bootstrapped by an email allowlist
 - `rooms` is a status register, not a catalogue: the Admin may read it and update a document's `status` and nothing else, and cannot create or delete one. `guest_profiles` and `gallery`: Admin writes
 - Everything else is denied by a final catch-all
 - `test/web/auth-firestore-rules.test.ts` asserts all of the above, and that the rules and
-  `src/lib/auth` keep the same bootstrap addresses
+  `web/lib/auth` keep the same bootstrap addresses
 
 **Realtime Database rules** (`database.rules.json`, ADR-0013) — the ephemeral live-location
 stream, and the only rules file that is not Firestore or Storage:
@@ -182,12 +182,12 @@ npm run dev
 ### 3c. Which project a *build* talks to (and why a deployment said “Demo mode”)
 
 The web app decides this once, at build time, in one pure module
-(`src/lib/firebaseConfig.ts`). Three sources, in this order:
+(`web/lib/firebaseConfig.ts`). Three sources, in this order:
 
 | # | Source | When it is used | Effect |
 | --- | --- | --- | --- |
 | 1 | `VITE_FIREBASE_*` environment variables | whenever they are complete | that project, and nothing from anywhere else |
-| 2 | `src/lib/firebaseDefaults.ts` (committed) | production builds (`vite build`) with no variables | the Hacienda's own project, so a deployment with an empty dashboard still reaches the Admin app |
+| 2 | `web/lib/firebaseDefaults.ts` (committed) | production builds (`vite build`) with no variables | the Hacienda's own project, so a deployment with an empty dashboard still reaches the Admin app |
 | 3 | nothing | `npm run dev`, the test run, or a build with no project anywhere | **demo mode**: accounts and Bookings live in this browser (`authLocal.ts`) |
 
 Two consequences worth knowing:
@@ -267,7 +267,7 @@ rewritten or recalculated when a new version is published.
 
 **Where:** `site_config/rates`, normally published through the Admin app's
 **Rates & Cancellation Policy** screen (`lib/views/rates/rates_screen.dart`).
-The website validates reads with `src/lib/booking/rates.ts`; the Admin app
+The website validates reads with `web/lib/booking/rates.ts`; the Admin app
 validates writes with `lib/services/booking_lifecycle.dart`. The Firestore
 rules independently validate guest-submitted booking money. The console can
 still be used by an Admin, but use the same shape and validation before writing.
@@ -351,7 +351,7 @@ payment details there—never passwords, PINs, OTPs, API keys or credentials.
 - Public booking creation stays public, but only as a `Pending` Booking with the required fields; every
   read and write past that needs a role the rules can see.
 - Admin access is the `adminEmails()` allowlist plus `profiles/{uid}` — edit `adminEmails()` in
-  `firestore.rules`, `isAdminEmail()` in `storage.rules`, `BOOTSTRAP_ROLES` in `src/lib/auth/profile.ts`
+  `firestore.rules`, `isAdminEmail()` in `storage.rules`, `BOOTSTRAP_ROLES` in `web/lib/auth/profile.ts`
   and `AuthStore.kAdminEmails` in the Flutter app, then `firebase deploy --only firestore:rules,storage`.
 - A role is never read from the body of a request: the rules take it from the signed-in identity's own
   Profile, and the test suite asserts that `request.resource.data.role` appears nowhere else.
@@ -372,18 +372,18 @@ payment details there—never passwords, PINs, OTPs, API keys or credentials.
 ## 📁 Files Added/Modified
 
 **Added:**
-- `src/lib/firebase.ts`
-- `src/lib/firebaseConfig.ts` (which project a build talks to — pure, tested)
-- `src/lib/firebaseDefaults.ts` (the committed project, used by production builds)
-- `src/lib/firebaseFailure.ts` (Firebase's refusals in words)
-- `src/lib/connectionCheck.ts` (`/status`'s "Test the connection")
-- `src/pages/StatusPage.tsx` (`/status` — where a deployment explains itself)
-- `src/lib/guestAuth.ts` (the anonymous Guest identity)
-- `src/context/AuthContext.tsx`
-- `src/hooks/useAuth.ts`
-- `src/components/Auth/LoginForm.tsx`
-- `src/components/Auth/ProtectedRoute.tsx`
-- `src/lib/firestoreBookings.ts`
+- `web/lib/firebase.ts`
+- `web/lib/firebaseConfig.ts` (which project a build talks to — pure, tested)
+- `web/lib/firebaseDefaults.ts` (the committed project, used by production builds)
+- `web/lib/firebaseFailure.ts` (Firebase's refusals in words)
+- `web/lib/connectionCheck.ts` (`/status`'s "Test the connection")
+- `web/pages/StatusPage.tsx` (`/status` — where a deployment explains itself)
+- `web/lib/guestAuth.ts` (the anonymous Guest identity)
+- `web/context/AuthContext.tsx`
+- `web/hooks/useAuth.ts`
+- `web/components/Auth/LoginForm.tsx`
+- `web/components/Auth/ProtectedRoute.tsx`
+- `web/lib/firestoreBookings.ts`
 - `firebase.json`
 - `firestore.rules`
 - `firestore.indexes.json`
@@ -393,13 +393,13 @@ payment details there—never passwords, PINs, OTPs, API keys or credentials.
 - `FIREBASE_SETUP.md`
 
 **Modified:**
-- `src/main.tsx` (AuthProvider wrapper)
-- `src/App.tsx` (ProtectedRoute for /account; `/admin`, `/app` signpost to the Admin app)
-- `src/pages/BookingPage.tsx` (Firestore integration)
-- `src/pages/AccountPage.tsx` (the Guest's own Bookings, real-time)
+- `web/main.tsx` (AuthProvider wrapper)
+- `web/App.tsx` (ProtectedRoute for /account; `/admin`, `/app` signpost to the Admin app)
+- `web/pages/BookingPage.tsx` (Firestore integration)
+- `web/pages/AccountPage.tsx` (the Guest's own Bookings, real-time)
 - `lib/services/auth_store.dart`, `lib/services/firestore_service.dart` (Admin app)
-- `src/components/Nav.tsx` (auth state)
-- `src/vite-env.d.ts` (env types)
+- `web/components/Nav.tsx` (auth state)
+- `web/vite-env.d.ts` (env types)
 - `package.json` (firebase dependency)
 
 ## 🧪 Build Test

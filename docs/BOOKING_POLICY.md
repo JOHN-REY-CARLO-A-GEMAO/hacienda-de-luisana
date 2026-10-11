@@ -13,7 +13,7 @@ On October 1, 2026 in Manila, October 30 is rejected and **October 31 is allowed
 
 ## Architecture inspected and preserved
 
-The website (`src/`) is Guest-only; the Flutter app (`lib/`) is Admin-only (ADR-0007). There is no booking API/Cloud Function tier to insert a validator into. The authoritative backend write boundary is **Firestore Security Rules**.
+The website (`web/`) is Guest-only; the Flutter app (`lib/`) is Admin-only (ADR-0007). There is no booking API/Cloud Function tier to insert a validator into. The authoritative backend write boundary is **Firestore Security Rules**.
 
 The existing flow remains:
 
@@ -49,7 +49,7 @@ The native date minimum, error copy and server constraint then use 45; no bookin
 
 ### Pure calculation and frontend
 
-`src/lib/booking/leadTime.ts`, exported through the existing booking module, resolves today's date with `Intl.DateTimeFormat` explicitly set to **Asia/Manila**. It performs arithmetic on that calendar date in UTC and strictly validates `YYYY-MM-DD` without normalizing impossible dates.
+`web/lib/booking/leadTime.ts`, exported through the existing booking module, resolves today's date with `Intl.DateTimeFormat` explicitly set to **Asia/Manila**. It performs arithmetic on that calendar date in UTC and strictly validates `YYYY-MM-DD` without normalizing impossible dates.
 
 `BookingPage` uses the computed date as the existing native check-in input's `min`; earlier days are visibly disabled by the browser. It shows the required notice and earliest date, checks the constraint on submission even though the form uses `noValidate`, and does not report room availability for a lead-time-invalid date. Existing check-out, stay-length, guest/contact and terms checks remain.
 
@@ -59,7 +59,7 @@ The native date minimum, error copy and server constraint then use 45; no bookin
 
 `BookingPage` now runs a complete selection preflight before saving the session draft or navigating to `/book/pay`: it re-reads the current lead-time policy, validates the calendar range and one-night standard-stay rule, checks the selected property's active published guest-count rate, and performs a fresh availability read. A failed rule is attached to the relevant field and the payment step is not reachable.
 
-`DownpaymentPage.submit` repeats that complete selection check before its existing proof/amount validations and again after asynchronous availability/auth work immediately before uploading. A tampered or overnight-stale draft that is invalid at these checks creates no proof, Booking, payment or Activity record. `src/lib/booking/validation.ts` is the explainable client copy of the compound create checks: it names lead time, missing/inactive rates, unsupported guest counts, unsupported stay length, stale rate snapshots, missing identity and payment failures rather than collapsing them into one refusal sentence.
+`DownpaymentPage.submit` repeats that complete selection check before its existing proof/amount validations and again after asynchronous availability/auth work immediately before uploading. A tampered or overnight-stale draft that is invalid at these checks creates no proof, Booking, payment or Activity record. `web/lib/booking/validation.ts` is the explainable client copy of the compound create checks: it names lead time, missing/inactive rates, unsupported guest counts, unsupported stay length, stale rate snapshots, missing identity and payment failures rather than collapsing them into one refusal sentence.
 
 `cloudBookingsDB.add` repeats the constraint before its existing proof gate and before any Booking/Activity write for new cloud website submissions, using a fresh clock rather than `actor.now`. Cloud preflights fetch the setting from the server, not an offline cache, and fail closed if that fetch fails. If Firestore still returns `permission-denied`, the adapter re-runs the explainable checks against the current published rate and returns that specific reason where possible; otherwise it preserves the safe infrastructure/rules-refusal message.
 
@@ -107,7 +107,7 @@ The additional strict test-source compilation was also run:
 ```bash
 npx tsc --noEmit --strict --target ES2020 --module ESNext --moduleResolution bundler \
   --skipLibCheck --types vitest/globals --jsx react-jsx \
-  src/vite-env.d.ts test/emulator/rules.emulator.test.ts \
+  web/vite-env.d.ts test/emulator/rules.emulator.test.ts \
   test/rules/booking-lead-time.rules.test.ts test/e2e/final-scenario.e2e.test.ts
 ```
 
@@ -148,14 +148,14 @@ npx firebase deploy --only firestore:rules
 | File | Purpose |
 | --- | --- |
 | `firestore.rules` | Trusted Manila/server-time guest-create guard, Admin exemption and Admin-only field validation for the shared policy. Existing Booking update/status/payment rules are unchanged. |
-| `src/lib/booking/leadTime.ts` | Central default, calendar/timezone calculation, strict date check and domain result/error wording. |
-| `src/lib/booking/index.ts` | Export the new policy helpers through the existing pure booking interface. |
-| `src/lib/bookingPolicyDB.ts` | Read/subscribe to the existing `site_config` mechanism; server preflights do not use an offline policy cache. |
-| `src/hooks/useBookingPolicy.ts` | Live policy and midnight/focus refresh for the date minimum. |
-| `src/lib/validation.ts` | Use Manila's today in the existing stay/past-date validation; retain all other field/stay checks. |
-| `src/lib/firestoreBookings.ts` | Validate the public creation path before writes and do not replay server security refusals into local Bookings. |
-| `src/pages/BookingPage.tsx` | Native picker minimum, clear notice/error and lead-time validation before availability/draft progression. |
-| `src/pages/DownpaymentPage.tsx` | Re-check the current policy/date before the existing payment checks and before proof upload. |
+| `web/lib/booking/leadTime.ts` | Central default, calendar/timezone calculation, strict date check and domain result/error wording. |
+| `web/lib/booking/index.ts` | Export the new policy helpers through the existing pure booking interface. |
+| `web/lib/bookingPolicyDB.ts` | Read/subscribe to the existing `site_config` mechanism; server preflights do not use an offline policy cache. |
+| `web/hooks/useBookingPolicy.ts` | Live policy and midnight/focus refresh for the date minimum. |
+| `web/lib/validation.ts` | Use Manila's today in the existing stay/past-date validation; retain all other field/stay checks. |
+| `web/lib/firestoreBookings.ts` | Validate the public creation path before writes and do not replay server security refusals into local Bookings. |
+| `web/pages/BookingPage.tsx` | Native picker minimum, clear notice/error and lead-time validation before availability/draft progression. |
+| `web/pages/DownpaymentPage.tsx` | Re-check the current policy/date before the existing payment checks and before proof upload. |
 | `test/web/booking-lead-time.test.ts` | 41 pure-boundary/timezone/configuration/direct-local-creation cases. |
 | `test/web/booking-lead-time-cloud.test.ts` | 9 cloud-adapter/config/refusal/no-local-fallback cases, including policy/midnight changes. |
 | `test/web/booking-lead-time-ui.test.tsx` | 13 rendered picker/payment-flow/tampering/midnight and validation-regression cases. |

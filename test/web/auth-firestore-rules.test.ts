@@ -1,10 +1,10 @@
 // The Firestore rules: the enforcement that actually matters.
 //
 // Everything the app refuses, the rules refuse again — because a person can open
-// a console and call Firestore without going through a single line of `src/`.
+// a console and call Firestore without going through a single line of `web/`.
 // There is no Firestore emulator in this repository's test run, so what is
 // asserted here is the rules file itself: that it resolves a role the way
-// `src/lib/auth` does, that it keeps the same bootstrap addresses, and that no
+// `web/lib/auth` does, that it keeps the same bootstrap addresses, and that no
 // role is ever taken from the body of a request. (activity-log.test.ts reads this
 // file the same way, for the same reason.)
 import { readFileSync } from 'node:fs'

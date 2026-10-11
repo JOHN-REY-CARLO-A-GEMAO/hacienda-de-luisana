@@ -2,7 +2,7 @@
  * `storage.rules`, executed.
  *
  * The upload paths the applications actually use — `/payments/{uid}/…` legacy
- * proofs (`src/lib/payments/upload.ts`) and Admin-published site images — with
+ * proofs (`web/lib/payments/upload.ts`) and Admin-published site images — with
  * the size and content-type limits the rules declare. The `/kyc` slot was
  * removed with Government ID KYC (2026-09-27): what is left of it is asserted
  * gone below.

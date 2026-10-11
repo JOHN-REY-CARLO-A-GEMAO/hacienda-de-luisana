@@ -29,7 +29,7 @@ _Avoid_: Scope, entitlement, access level
 ### Applications
 
 **Website**:
-The Guest's application (`src/`): availability, the Booking form, Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app.
+The Guest's application (`web/`): availability, the Booking form, Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app.
 _Avoid_: Portal, dashboard, admin site
 
 **Admin app**:
@@ -149,7 +149,7 @@ Which of `pending`, `published` or `hidden` a Review is in. Every Review arrives
 _Avoid_: Approved (that is a Booking status), Flagged, Removed, Deleted.
 
 **Testimonial**:
-What the public website shows, held at `public_reviews/{reviewId}` — six fields (the rating, a quotation, a display name, a month, a published instant and the id it came from) that the Admin writes out of a Review. It is a separate document, not a copy with fields removed, so a Guest's uid, their Booking and the Admin's private reply have no way onto the public page. **Presence in the collection is publication**: there is no status, and the Admin withdraws a testimonial by deleting it. Distinct from the Airbnb quotes transcribed into `src/config/site.ts`, which are a Guest's words published on a platform this system does not control.
+What the public website shows, held at `public_reviews/{reviewId}` — six fields (the rating, a quotation, a display name, a month, a published instant and the id it came from) that the Admin writes out of a Review. It is a separate document, not a copy with fields removed, so a Guest's uid, their Booking and the Admin's private reply have no way onto the public page. **Presence in the collection is publication**: there is no status, and the Admin withdraws a testimonial by deleting it. Distinct from the Airbnb quotes transcribed into `web/config/site.ts`, which are a Guest's words published on a platform this system does not control.
 _Avoid_: Review (the Guest's own document, private), Public review, Feedback, Quote.
 
 **Conversation**:

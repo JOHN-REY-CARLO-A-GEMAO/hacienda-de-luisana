@@ -1,4 +1,4 @@
-// The guest-facing content in src/config/site.ts, held to its own rules:
+// The guest-facing content in web/config/site.ts, held to its own rules:
 // nothing a visitor reads is a placeholder, every figure names its source,
 // and every review is a real one shown word for word. The rendering half
 // mounts the homepage sections so the rule "a missing fact renders as

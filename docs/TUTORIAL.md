@@ -8,17 +8,17 @@ picked real dates, ticked the real Terms box, switched the real tab. Read-only
 explanations keep a plain Continue button, and those are the only steps over
 irreversible actions (approving a Booking, publishing rates).
 
-- **Guest website**: `src/tutorial/` + `src/components/Tutorial.tsx`
+- **Guest website**: `web/tutorial/` + `web/components/Tutorial.tsx`
 - **Admin mobile app**: `lib/tutorial/` + wiring in `main.dart` and the screens
 
 ## How it works (web)
 
 | Piece | Where | Job |
 | --- | --- | --- |
-| Step script | `src/tutorial/steps.ts` | Ordered steps: target anchors, copy, and what `await`s completion (`click`, `fields`, `checked`, `event`, or `none`). Follows the Booking lifecycle and uses CONTEXT.md vocabulary. |
-| Engine | `src/tutorial/TourEngine.tsx` | `TourProvider` state machine: navigates to the step's route, finds the anchor's element, tracks its rect per animation frame, scrolls it into view, and listens — capture-phase, never intercepting — for the awaited interaction. |
-| Overlay | `src/tutorial/TourOverlay.tsx` | Four dim panes frame a hole over the target, so the real control keeps working. Responsive: bottom sheet on phones, floating card beside the highlight otherwise, centered dialog when there is no target. |
-| Integration | `src/components/Tutorial.tsx` | First-visit auto-open, completion cookie (`hdl_tutorial_done`, 180 days, mirrored in localStorage), "Replay tutorial" floating button. |
+| Step script | `web/tutorial/steps.ts` | Ordered steps: target anchors, copy, and what `await`s completion (`click`, `fields`, `checked`, `event`, or `none`). Follows the Booking lifecycle and uses CONTEXT.md vocabulary. |
+| Engine | `web/tutorial/TourEngine.tsx` | `TourProvider` state machine: navigates to the step's route, finds the anchor's element, tracks its rect per animation frame, scrolls it into view, and listens — capture-phase, never intercepting — for the awaited interaction. |
+| Overlay | `web/tutorial/TourOverlay.tsx` | Four dim panes frame a hole over the target, so the real control keeps working. Responsive: bottom sheet on phones, floating card beside the highlight otherwise, centered dialog when there is no target. |
+| Integration | `web/components/Tutorial.tsx` | First-visit auto-open, completion cookie (`hdl_tutorial_done`, 180 days, mirrored in localStorage), "Replay tutorial" floating button. |
 
 ### Anchoring a control
 

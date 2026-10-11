@@ -1,6 +1,6 @@
 # A Review is private; a testimonial is a separate document
 
-**Status**: accepted, 2026-09-29. **Extends** the partial Review system that was already in `firestore.rules`, `src/lib/reviewsCloud.ts` and `src/components/ReviewForm.tsx`. **Does not** replace any of it — the document id, the eligibility list and the one-review-per-stay contract are the ones that were already there, kept because they were right.
+**Status**: accepted, 2026-09-29. **Extends** the partial Review system that was already in `firestore.rules`, `web/lib/reviewsCloud.ts` and `web/components/ReviewForm.tsx`. **Does not** replace any of it — the document id, the eligibility list and the one-review-per-stay contract are the ones that were already there, kept because they were right.
 
 ## The problem this settles
 
@@ -60,7 +60,7 @@ Publication is a decision, and it is a human one: which words go out, and under 
 
 ## The public testimonial list, and the one thing this ADR does not change
 
-`src/config/site.ts` holds a curated `REVIEWS` list transcribed verbatim from the hacienda's Airbnb listing, and says in as many words: *"Add reviews only from the listing itself; never write one."* That list is **untouched**. On-site reviews appear in their own block, headed *"Stayed with us — rated here, by Guests who stayed"*, with a footnote saying they were written by Guests after their stay and are published only after the Admin has read them.
+`web/config/site.ts` holds a curated `REVIEWS` list transcribed verbatim from the hacienda's Airbnb listing, and says in as many words: *"Add reviews only from the listing itself; never write one."* That list is **untouched**. On-site reviews appear in their own block, headed *"Stayed with us — rated here, by Guests who stayed"*, with a footnote saying they were written by Guests after their stay and are published only after the Admin has read them.
 
 Mixing them would have been cheaper and wrong: the Airbnb quotes are attributed to real first names on someone else's platform under an editorial rule this repository does not control, and putting app-generated text among them would present words the Admin chose to publish as though a guest had published them somewhere else.
 

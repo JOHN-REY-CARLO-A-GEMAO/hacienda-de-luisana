@@ -1,7 +1,7 @@
 # Hacienda de LuisAna — Admin app flow
 
 **Scope:** the Flutter mobile app (`lib/`) end to end — sign-in gate, navigation, the Booking lifecycle as the Admin drives it, payment review, refunds, published rates, and the backend contract it shares with the Guest website.
-**Principle:** *One lifecycle, two sides.* The Guest takes their actions on the website (`src/lib/booking`), the Admin takes theirs here (`lib/services/booking_lifecycle.dart`), and `firestore.rules` is the arbiter both must satisfy. The app never writes a status past the rules. (ADR-0007)
+**Principle:** *One lifecycle, two sides.* The Guest takes their actions on the website (`web/lib/booking`), the Admin takes theirs here (`lib/services/booking_lifecycle.dart`), and `firestore.rules` is the arbiter both must satisfy. The app never writes a status past the rules. (ADR-0007)
 
 > **Status (Sep 2026):** implemented as described below. The former guest-prototype screens (booking form, ID capture, digital key, simulated ESP32) were removed from `lib/`; Guests use the website — and Government ID KYC itself was removed on 2026-09-27 (recorded in ADR-0004's amendment): an approval now lands directly on `Payment Pending`.
 
@@ -23,7 +23,7 @@ flowchart TD
 ```
 
 - `AuthStore` (`lib/services/auth_store.dart`) holds the session. `isAdmin` is the only authorization question the app asks.
-- The allowlist `AuthStore.kAdminEmails` mirrors `adminEmails()` in `firestore.rules`, `isAdminEmail()` in `storage.rules` and `BOOTSTRAP_ROLES` in `src/lib/auth/profile.ts`. A second operator is added by allowlist or by a `profiles/{uid}` document with `role: 'admin'` — never by a new role.
+- The allowlist `AuthStore.kAdminEmails` mirrors `adminEmails()` in `firestore.rules`, `isAdminEmail()` in `storage.rules` and `BOOTSTRAP_ROLES` in `web/lib/auth/profile.ts`. A second operator is added by allowlist or by a `profiles/{uid}` document with `role: 'admin'` — never by a new role.
 - Without Firebase configured the gate cannot be passed; the screens behind it run on in-memory demo data for development.
 
 ---
@@ -130,7 +130,7 @@ The app reads and writes the **same** Firestore documents the website does.
   "uid": "guest-anonymous-uid",            // the Guest's identity (ADR-0004)
   "source": "web",
   "guest_name": "…", "phone": "…", "email": "…",
-  "accommodation": "main-house",           // src/config/site.ts id
+  "accommodation": "main-house",           // web/config/site.ts id
   "check_in": "2026-09-12", "check_out": "2026-09-14",
   "guests": 4, "special_requests": "…",
   "status": "Payment Pending",             // canonical string
@@ -177,6 +177,6 @@ Model mapping lives in `lib/models/booking_model.dart`: `rawStatus` keeps the ex
 
 ## 7. What is deliberately not here
 
-- No Guest screens: booking form, receipt upload and OCR, Mobile Key UI. Those belong to the website (`src/`).
+- No Guest screens: booking form, receipt upload and OCR, Mobile Key UI. Those belong to the website (`web/`).
 - No Staff or Host role, no role switcher, no team screen (ADR-0007).
 - No scheduled hold sweep: expiry is a read-time rule (ADR-0002); the app only records what it reads.

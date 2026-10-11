@@ -21,7 +21,7 @@ There is **no image-to-text engine** (no Tesseract, no cloud Vision API). `runRe
 
 ## Rate limiting
 
-`src/lib/rateLimit.ts` is **client UX cooldowns** (login, reset, booking, payment, OCR, chat, review, lock command). Firestore rules do not count requests and there are no Cloud Functions or callables, so server-side rate limiting **cannot be enforced in this architecture** without new infrastructure. Firebase Auth's own brute-force protection and Firebase quotas still apply, but they are managed outside this repo and were not tested here. The cooldowns must not be described as security rate limiting.
+`web/lib/rateLimit.ts` is **client UX cooldowns** (login, reset, booking, payment, OCR, chat, review, lock command). Firestore rules do not count requests and there are no Cloud Functions or callables, so server-side rate limiting **cannot be enforced in this architecture** without new infrastructure. Firebase Auth's own brute-force protection and Firebase quotas still apply, but they are managed outside this repo and were not tested here. The cooldowns must not be described as security rate limiting.
 
 ## Payment references
 
@@ -35,7 +35,7 @@ The version is displayed and the checkbox is required by the UI, but acceptance 
 
 **Chat is migrated; Guest bookings and the Admin's Bookings list are not.**
 
-`conversations/*/messages` now uses a real Firestore cursor on both sides — the newest 40 on open, 30 older at a time behind `startAfter` / `startAfterDocument`, one bounded listener for live replies (`docs/MESSAGING.md` § 3). Guest bookings, the Admin's Bookings collection and the shared `Pager` still paginate **in memory after the data is loaded** (`src/lib/pagination.ts`, `MAX_PAGE_SIZE = 50`), and search/sort work because the whole (uid-scoped or admin) set is loaded. Migrating those is the same shape of work and is a plan of its own. Do not add Algolia.
+`conversations/*/messages` now uses a real Firestore cursor on both sides — the newest 40 on open, 30 older at a time behind `startAfter` / `startAfterDocument`, one bounded listener for live replies (`docs/MESSAGING.md` § 3). Guest bookings, the Admin's Bookings collection and the shared `Pager` still paginate **in memory after the data is loaded** (`web/lib/pagination.ts`, `MAX_PAGE_SIZE = 50`), and search/sort work because the whole (uid-scoped or admin) set is loaded. Migrating those is the same shape of work and is a plan of its own. Do not add Algolia.
 
 ## Live location
 
@@ -90,7 +90,7 @@ If `VITE_FIREBASE_*` is unset, chat and reviews persist in **this browser only**
   published testimonials; the Admin app's counts every Review they can moderate.
   They are different questions and the UI labels them.
 - **The curated Airbnb quotes are separate and stay that way.** They are
-  transcribed from the listing under `src/config/site.ts`'s rule that reviews
+  transcribed from the listing under `web/config/site.ts`'s rule that reviews
   come only from the listing itself. On-site Reviews appear in their own block.
 
 ## Firestore rules findings — resolved, with the limits of that word
@@ -113,7 +113,7 @@ behaviour has been observed against a running Firebase project.
 The invariants themselves are deliberate, and so is their limit: they are about
 money and identity (who may set what value, whose name a record carries), not a
 copy of the booking state machine. The state machine still lives once, in
-`src/lib/booking/` and `lib/services/booking_lifecycle.dart`.
+`web/lib/booking/` and `lib/services/booking_lifecycle.dart`.
 
 Things that remain **outside** the rules' reach, unchanged by the pass:
 

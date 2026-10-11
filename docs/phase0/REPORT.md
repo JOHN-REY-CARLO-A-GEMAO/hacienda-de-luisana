@@ -35,7 +35,7 @@ CI (`.github/workflows/deploy.yml`) runs only `npm ci` and `npm run build`. It u
 
 | Mode | Current decision mechanism |
 |---|---|
-| **PRODUCTION** | `import.meta.env.PROD`. Uses `VITE_FIREBASE_*`, or otherwise **falls back to the committed real project** in `src/lib/firebaseDefaults.ts`. Supabase uses `VITE_SUPABASE_*`; if absent, proofs fall back to **browser-local storage**. |
+| **PRODUCTION** | `import.meta.env.PROD`. Uses `VITE_FIREBASE_*`, or otherwise **falls back to the committed real project** in `web/lib/firebaseDefaults.ts`. Supabase uses `VITE_SUPABASE_*`; if absent, proofs fall back to **browser-local storage**. |
 | **DEVELOPMENT** | `vite dev` with no `VITE_FIREBASE_*` runs in demo mode. If developer keys are present, it can talk to the live project. Emulators are used only when `VITE_USE_FIREBASE_EMULATORS === 'true'`. |
 | **TEST** | Before Phase 0, there was no enforced concept. There is now one: the **Phase 0 TEST boundary** below. |
 
@@ -185,7 +185,7 @@ Shell environment: **no** Firebase, Supabase, Google credential, Admin or proxy 
 | `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_PROJECT_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | **Secrets**, Edge Function only | Production-only. Never used by tests. |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | **Secrets**, cleanup script | Destructive and live. Refused by the launcher. |
 | `GCLOUD_PROJECT`, `FIREBASE_PROJECT` | Test | Forced to `demo-hacienda`; anything else is refused. |
-| `src/lib/firebaseDefaults.ts`, `lib/firebase_options.dart`, `.firebaserc`, `supabase/config.toml` (`project_id`) | Committed public identifiers | Point to real projects. Not secrets, but they are why isolation must be network-level. |
+| `web/lib/firebaseDefaults.ts`, `lib/firebase_options.dart`, `.firebaserc`, `supabase/config.toml` (`project_id`) | Committed public identifiers | Point to real projects. Not secrets, but they are why isolation must be network-level. |
 
 There is no staging Firebase or Supabase project in the repository. Supabase has no local test configuration (`supabase/config.toml` has only the function setting).
 

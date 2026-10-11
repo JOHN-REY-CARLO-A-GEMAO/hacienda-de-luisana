@@ -2,7 +2,7 @@
 
 > **2026-09-29 (later) update — Guest Reviews and the public testimonial.**
 > The partial review system that was already in `firestore.rules`,
-> `src/lib/reviewsCloud.ts` and `src/components/ReviewForm.tsx` was **extended,
+> `web/lib/reviewsCloud.ts` and `web/components/ReviewForm.tsx` was **extended,
 > not replaced**: the document id is still the Booking id, the eligibility list
 > is still `Checked-Out` / `Completed`. What was added is the edit window, the
 > optional category ratings, the Admin's reply and moderation, the statistics,
@@ -263,7 +263,7 @@ regression test in `test/web/authorization-regressions.test.ts`.
 | 2 | `Reserved` reachable from `Payment Pending` with the money still `pending` | The gate read the *previous* status, not the money | Medium — a Booking could be reserved without verifiable payment | `reservedIsPaidFor()` is the first clause of the update rule and binds every writer; approved-needed-KYC and no-terminal-exit stay as they were | `rules`: "refuses Reserved while the money is still unverified, whoever asks", "accepts Reserved from Payment Pending once the money is verified"; `web`: "is reached by VerifyPayment, and by that action only" | ✅ Resolved |
 | 3 | Activity `actor_id` never compared with the writer's uid | The rule checked `actor == role()` only | Medium — an entry could name another person as the actor | Both role and uid checked; the `system` entry (ADR-0002) is the Admin's, and the unauthenticated submission entry is limited to `Submit` | `rules`: "refuses an entry a Guest files in another Guest's name", "lets the Admin record the system's own act, and nobody else"; `web`: "signs every entry with the identity making the write" | ✅ Resolved |
 | 4 | A signed-in stranger can post into a conversation they do not own | The message rule checked the sender, not the conversation | Medium — knowing an id was enough to inject into someone's inbox | `isConversationMember()` reads the conversation's own `guest_uid` (or the Admin role) for create *and* read; a missing conversation is refused | `rules`: "refuses a stranger posting into a conversation they are not part of"; `web`: `test/web/chat-authorization.test.ts` (unchanged contract) | ✅ Resolved |
-| 5 | Reviews had no rule-level eligibility, ownership or duplicate check | All three lived in `src/lib/reviewsCloud.ts`, which a console does not load | Medium — a review could be written for a stay that never happened, or twice | Document id is the Booking id; the rule reads the Booking (`exists`, author, status ∈ {`Checked-Out`, `Completed`}); updates are closed, so the taken id *is* the duplicate check; the app writes with `setDoc(reviewDocId(bookingId))` | `rules`: reviews suite (7 cases); `web`: "a Review is stored at the Booking it is about" | ✅ Resolved |
+| 5 | Reviews had no rule-level eligibility, ownership or duplicate check | All three lived in `web/lib/reviewsCloud.ts`, which a console does not load | Medium — a review could be written for a stay that never happened, or twice | Document id is the Booking id; the rule reads the Booking (`exists`, author, status ∈ {`Checked-Out`, `Completed`}); updates are closed, so the taken id *is* the duplicate check; the app writes with `setDoc(reviewDocId(bookingId))` | `rules`: reviews suite (7 cases); `web`: "a Review is stored at the Booking it is about" | ✅ Resolved |
 | 6 | `sender_role` can be mislabelled by its own sender | The label was free text; `sender_uid` stayed honest | Low — display spoofing in the Admin inbox | The label must match what the writer is: `guest` ⇔ membership, `admin` ⇔ the Admin role | `rules`: "refuses a Guest labelling their message as the Admin's"; `e2e` step 30 | ✅ Resolved |
 
 **Two things the audit found that were not on the list of six.**
@@ -377,7 +377,7 @@ out of this repository.
 Implemented as a client-side pipeline (2026-09-27), documented, and still
 **a hint only**:
 
-- What exists: `src/lib/payments/ocr.ts` — `runReceiptOcr` runs tesseract.js in
+- What exists: `web/lib/payments/ocr.ts` — `runReceiptOcr` runs tesseract.js in
   the browser when the Guest picks the screenshot (busy indicator shown, worker
   fetched on first use), `extractReferenceNumber` pulls the 10–13 digit GCash /
   Maya / bank reference (14–16 digit card numbers refused) and pre-fills the
@@ -412,7 +412,7 @@ limitation rather than built.** The reasons, checked in the repository:
   which is not enforcement.
 - App Check is not initialised anywhere in the web app or the Flutter app, so
   requests are not attested either.
-- What does exist: `src/lib/rateLimit.ts` — **client UX cooldowns** (login 5/60 s,
+- What does exist: `web/lib/rateLimit.ts` — **client UX cooldowns** (login 5/60 s,
   reset 3/60 s, booking 4/60 s, payment 5/60 s, OCR 8/60 s, chat 8/10 s, review
   3/60 s, lock command 5/10 s, with escalating locks). They can be bypassed by
   reloading the page or calling the SDK directly, so they are **not** security
@@ -428,7 +428,7 @@ plus App Check, or a proxy) — a scope decision, not a refactor.
 
 Reviewed; **not migrated**, with the reasoning recorded:
 
-- `src/lib/pagination.ts` paginates **in memory** after the data is loaded
+- `web/lib/pagination.ts` paginates **in memory** after the data is loaded
   (`paginate` slicing an array; `MAX_PAGE_SIZE = 50`, `DEFAULT_PAGE_SIZE = 10`,
   page sizes 5/10/25/50). Used by the Guest's `/account` list, the chat list and
   the `Pager` component.
@@ -455,7 +455,7 @@ Reviewed; **not migrated**, with the reasoning recorded:
 | No service worker | The PWA shell is not cached; there is no offline app cache to go stale | — | — |
 | Cookie `hdl_tutorial_done` (the only cookie the site sets) | Tour finished/dismissed | 180 days, `SameSite=Lax`, `Secure` on HTTPS, **not HttpOnly** (JS must read it); `clearCookie` available | No — a UI flag. No auth or payment data |
 | Firebase Auth persistence (IndexedDB) | The SDK's session: ID token (≈1 h) + refresh token | Managed by the SDK; sign-out clears it | **Yes — it is the session.** Standard SDK behaviour; readable by any script on the origin, which is why the site ships no third-party scripts. There is no CSP header (a hardening gap, not a leak) |
-| `localStorage` (`hdl:bookings`, `hdl:activity`, `hdl:rates`, `hdl:chat`, `hdl:review:{bookingId}`, local auth store) | Demo/offline fallback: local development with no keys (`src/lib/firebaseConfig.ts` § source 3), and the landing place when a cloud write is *refused* — in which case the Booking carries `storage: 'local'` and the success screen says it was not sent. With Firebase configured, bookings/rates/chat/reviews come from Firestore | Cleared by the browser/`localStorage.clear()`; not a security boundary locally | No payment credentials, no card data, no API keys. The offline auth store keeps a password *hash* (documented as not a secret-keeper in `authLocal.ts`) |
+| `localStorage` (`hdl:bookings`, `hdl:activity`, `hdl:rates`, `hdl:chat`, `hdl:review:{bookingId}`, local auth store) | Demo/offline fallback: local development with no keys (`web/lib/firebaseConfig.ts` § source 3), and the landing place when a cloud write is *refused* — in which case the Booking carries `storage: 'local'` and the success screen says it was not sent. With Firebase configured, bookings/rates/chat/reviews come from Firestore | Cleared by the browser/`localStorage.clear()`; not a security boundary locally | No payment credentials, no card data, no API keys. The offline auth store keeps a password *hash* (documented as not a secret-keeper in `authLocal.ts`) |
 
 Staleness, stated plainly: with Firebase configured, a page load re-reads from
 Firestore (guest bookings via a uid-scoped subscription), so a stale cache cannot
@@ -505,7 +505,7 @@ in Git).
 | 9 | Ratings/reviews | ⚠️ Partial | steps 32–34; §3.3 #5 fixed — the rule reads the Booking (author, finished, id = Booking); no live write observed |
 | 10 | Smart Lock contract and Access log | ⚠️ Partial | contract + rules executed; firmware out of repo |
 | 11 | Security rules enforcement | ⚠️ Partial | rule text executed: no escalation, cross-user reads denied, no forged verification, no impersonation, tracker closed; **emulator 🔴 Blocked** |
-| 12 | Live location tracking removed | ✅ Verified | no tracker code in `lib/`/`src/`/`test/`; `tracking_sessions` denied read/create/update to everyone; 151/151 and 360/360 green after the remediation pass; Dart parses clean |
+| 12 | Live location tracking removed | ✅ Verified | no tracker code in `lib/`/`web/`/`test/`; `tracking_sessions` denied read/create/update to everyone; 151/151 and 360/360 green after the remediation pass; Dart parses clean |
 | 13 | Server-side rate limiting | ❌ Missing | documented limitation (§7); client cooldowns are UX only |
 | 14 | Pagination for large collections | ⚠️ Partial | in-memory pagination works and is bounded (`MAX_PAGE_SIZE 50`); cursor migration documented, not performed |
 | 15 | Cache/cookie documentation | ✅ Verified | §9, verified against `firebase.json`, `cookies.ts`, `authFirebase.ts`, storage keys |
@@ -527,15 +527,15 @@ invariants — recorded in `docs/adr/0010-money-and-audit-invariants-in-the-rule
 | File | Change |
 | --- | --- |
 | `firestore.rules` | `hasVerificationMarker()` + `reservedIsPaidFor()`; the update rule's first clause is the money invariant; the Guest branch constrains *values* (`payment_status`, `kyc_status`, refund bounds) and refuses to clear an Admin's note without a fresh document; `create` refuses a claimed payment/review state; `activity` compares `actor_id` with the writer and narrows the unauthenticated entry to `Submit`; `messages` requires membership plus a truthful role label; `reviews` reads the Booking (author, finished, id = Booking, no update); `payment_references` may be voided but not rewritten or deleted once used; `conversations` cannot be re-pointed at another Guest. |
-| `src/lib/booking/actions.ts` | `VerifyPayment` writes `payment_verified_at` and `payment_verified_by` — the same four fields the app writes, so neither side can drift into a write the rules refuse. |
+| `web/lib/booking/actions.ts` | `VerifyPayment` writes `payment_verified_at` and `payment_verified_by` — the same four fields the app writes, so neither side can drift into a write the rules refuse. |
 | `lib/services/booking_lifecycle.dart` | Same four fields on the Dart side. (No lifecycle transition was moved, duplicated or re-ordered.) |
-| `src/lib/firestoreBookings.ts` | The submission entry is signed with the uid the Booking belongs to; `signActivityEntries()` signs an entry with the identity actually connected, because the rule binds `actor_id` to the writer. |
-| `src/lib/reviewsCloud.ts` | A Review is written with `setDoc(reviewDocId(bookingId))` and read with one `getDoc`; `reviewDocId`/`reviewRecordFor` are exported so the app and the rule agree on the id. |
+| `web/lib/firestoreBookings.ts` | The submission entry is signed with the uid the Booking belongs to; `signActivityEntries()` signs an entry with the identity actually connected, because the rule binds `actor_id` to the writer. |
+| `web/lib/reviewsCloud.ts` | A Review is written with `setDoc(reviewDocId(bookingId))` and read with one `getDoc`; `reviewDocId`/`reviewRecordFor` are exported so the app and the rule agree on the id. |
 | Tests | The six `FINDING:` cases became asserted refusals; `test/web/authorization-regressions.test.ts` (15 cases) covers the application half of every finding; the emulator suite carries the same cases for the canonical run. |
 
 ### 12.2 The canonical lifecycle, read out of the existing code
 
-The state machine was **inspected, not assumed**. `src/lib/booking/actions.ts`
+The state machine was **inspected, not assumed**. `web/lib/booking/actions.ts`
 (`ACTION_RULES`) and `lib/services/booking_lifecycle.dart` (`_Rule`) agree:
 
 ```
@@ -669,7 +669,7 @@ key ay nasa secret store ng function — hindi sa web, APK, public config, o Git
 
 **P5 rate limiting.** Hindi posible sa kasalukuyang arkitektura: walang Cloud
 Functions/callables, at ang Firestore rules ay walang kakayahang magbilang ng
-request sa isang window. Ang `src/lib/rateLimit.ts` ay **client UX cooldown
+request sa isang window. Ang `web/lib/rateLimit.ts` ay **client UX cooldown
 lamang** — hindi ito security rate limiting. Naidokumento bilang limitasyon
 kaysa magtayo ng bagong imprastraktura.
 

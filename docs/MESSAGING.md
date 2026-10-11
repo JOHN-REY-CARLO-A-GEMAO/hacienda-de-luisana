@@ -2,7 +2,7 @@
 
 The Guest ↔ Admin conversation, end to end: what is stored, what is refused, what is read, what is deleted, and where a Guest's live position goes.
 
-Everything here is enforced in the backend. `src/` and `lib/` are the courtesy; `firestore.rules` and `database.rules.json` are the enforcement, because a browser or a phone can call either directly and nothing in the application stops it.
+Everything here is enforced in the backend. `web/` and `lib/` are the courtesy; `firestore.rules` and `database.rules.json` are the enforcement, because a browser or a phone can call either directly and nothing in the application stops it.
 
 ---
 
@@ -11,7 +11,7 @@ Everything here is enforced in the backend. `src/` and `lib/` are the courtesy; 
 ```
 conversations/{convoId}                    Firestore
   guest_uid      string   the Guest who owns it
-  category       string   an active inquiry category (src/lib/categories.ts)
+  category       string   an active inquiry category (web/lib/categories.ts)
   created_at     ts
   updated_at     ts       bumped on every message
   last_message   string   ≤140 chars, the Admin inbox preview
@@ -36,7 +36,7 @@ conversations/{convoId}/messages/{messageId}    Firestore, append-only
 
 | Limit | Value | Enforced in |
 | --- | --- | --- |
-| Maximum message length | **1,000 characters** | `firestore.rules` (`text.size() <= 1000`) · `MESSAGE_MAX` in `src/lib/validation.ts` · `kMessageMax` in `lib/views/inbox/inbox_screen.dart` |
+| Maximum message length | **1,000 characters** | `firestore.rules` (`text.size() <= 1000`) · `MESSAGE_MAX` in `web/lib/validation.ts` · `kMessageMax` in `lib/views/inbox/inbox_screen.dart` |
 | Minimum message length | 1 character (after trimming) | same rule, and `validateMessage` |
 | Messages per conversation | **no cap** | — deliberately. A cap makes a legitimate conversation unusable and saves nothing, because the cost is in what is *read*, not in what exists. |
 
@@ -44,7 +44,7 @@ conversations/{convoId}/messages/{messageId}    Firestore, append-only
 
 The Admin is held to the same 1,000. The cap is about storage, not about role.
 
-**What is not enforced here:** rate limiting. `LIMITS.chat` (`src/lib/rateLimit.ts`) is a client-side cooldown, and Firestore rules cannot count requests. See `docs/LIMITATIONS.md` § Rate limiting — unchanged by this work, and not claimed otherwise here.
+**What is not enforced here:** rate limiting. `LIMITS.chat` (`web/lib/rateLimit.ts`) is a client-side cooldown, and Firestore rules cannot count requests. See `docs/LIMITATIONS.md` § Rate limiting — unchanged by this work, and not claimed otherwise here.
 
 ---
 
@@ -82,7 +82,7 @@ Booking done    →  messages_expires_at = closed_at + 90 days
 After that      →  a scheduled backend job sweeps the thread
 ```
 
-- The policy is `src/lib/chatRetention.ts` and its Dart copy `lib/services/chat_retention.dart`; the same 90 days and the same four terminal statuses (`Completed`, `Cancelled`, `Rejected`, `Expired`) are in both, unit-tested in both.
+- The policy is `web/lib/chatRetention.ts` and its Dart copy `lib/services/chat_retention.dart`; the same 90 days and the same four terminal statuses (`Completed`, `Cancelled`, `Rejected`, `Expired`) are in both, unit-tested in both.
 - **Nothing is stamped while a Booking is live.** `retentionPatch()` returns `null` for a non-terminal status, so a job that ran early cannot schedule away a thread that is still being written.
 - **Only the Admin can write the stamp.** `firestore.rules` holds a Guest's update to `updated_at`, `last_message`, `unread_admin` and `unread_guest` and nothing else, and refuses a conversation *created* with `messages_expires_at` already on it. A Guest can neither shorten the window on a thread the hacienda keeps nor put an expiry on a live one.
 - The Admin app shows the stamp in the inbox ("kept 62 more days") and can apply it with `stampRetention`, which is a real, working path — not a placeholder for a missing backend.
@@ -146,7 +146,7 @@ There is no `points`, no `trail`, no append anywhere in the code.
 
 ### Update policy
 
-`shouldPublishFix` (`src/lib/liveLocationPolicy.ts`) sends a fix when **both** hold:
+`shouldPublishFix` (`web/lib/liveLocationPolicy.ts`) sends a fix when **both** hold:
 
 - at least `MIN_PUBLISH_INTERVAL_MS` = **3,000 ms** since the last published fix, **and**
 - the Guest has moved at least `MIN_PUBLISH_DISTANCE_M` = **10 m** (haversine) from it.

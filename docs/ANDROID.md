@@ -30,7 +30,7 @@ The app signs in with Firebase Auth only, so a Firebase Android app is needed to
 2. Add the debug **SHA-1** (`cd android && ./gradlew signingReport`) so Google sign-in works. Email + password works without it.
 3. Download `google-services.json` to `android/app/` (gitignored), or run `flutterfire configure` to regenerate `lib/firebase_options.dart`.
 4. Enable **Email/Password** and **Google** sign-in providers.
-5. Make sure the Admin's address is in `firestore.rules` → `adminEmails()` (mirrored in `storage.rules`, `src/lib/auth/profile.ts`, `lib/services/auth_store.dart`), *or* create `profiles/{uid}` with `role: 'admin'` for that account.
+5. Make sure the Admin's address is in `firestore.rules` → `adminEmails()` (mirrored in `storage.rules`, `web/lib/auth/profile.ts`, `lib/services/auth_store.dart`), *or* create `profiles/{uid}` with `role: 'admin'` for that account.
 
 Without Firebase the app still starts and shows in-memory demo data behind the gate, but no account can pass the gate.
 
@@ -88,5 +88,5 @@ flutter build appbundle --release    # for Play Console
 ## 6. What this is / isn't
 
 - **Is:** the Admin's operations app — bookings, payments, refunds, rates, stays, chat, smart-lock logs, rooms, CRM, analytics.
-- **Isn't:** a Guest app. There is no Guest sign-in, booking form or Mobile Key screen here; those belong to the website (`src/`).
+- **Isn't:** a Guest app. There is no Guest sign-in, booking form or Mobile Key screen here; those belong to the website (`web/`).
 - iOS is not set up.

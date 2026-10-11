@@ -58,7 +58,7 @@ admin_security/{uid} = { uid, pin_hash, salt, iterations, failed_attempts,
                          locked_until, pin_updated_at, pin_updated_by }
 ```
 
-- **PBKDF2-HMAC-SHA256**, 16-byte `Random.secure()` salt, 100,000 iterations (stored per record, so the default can rise without stranding records), plaintext never written. Same stretch and same base64 shape as the website's demo-mode passwords (`src/lib/authLocal.ts`) — one hashing convention in the repo.
+- **PBKDF2-HMAC-SHA256**, 16-byte `Random.secure()` salt, 100,000 iterations (stored per record, so the default can rise without stranding records), plaintext never written. Same stretch and same base64 shape as the website's demo-mode passwords (`web/lib/authLocal.ts`) — one hashing convention in the repo.
 - The device copy (SharedPreferences, the same house triple as `tutorial_store.dart`) is a **cache** so the check works offline. Firestore is the source of truth and reconciles on the next successful write.
 - Rules beside the profiles block: Admin-only, own-doc-only, **never deletable**, and an update takes one of two doors —
   1. **the counter door**: only `failed_attempts` / `locked_until` move, and only *forward*. The server counter is a **ratchet**: failures record, locks push later, nothing lowers, and clearing app data or writing Firestore directly clears nothing. (This is a deliberate sharpening of the original sketch's "reset on success in Firestore": a reset the server cannot distinguish from tampering is not a reset worth having, so the friendly reset lives on the device counter, which is what the ladder reads, while the server holds the tamper-evident watermark.)

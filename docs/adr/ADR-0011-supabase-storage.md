@@ -29,9 +29,9 @@ stays Firestore. Only the **file bytes** move.
 ## Decision
 
 - **`@supabase/supabase-js` uploads the screenshot to the Supabase Storage
-  bucket `payment-proofs`.** The client is built in `src/lib/supabase.ts` from
+  bucket `payment-proofs`.** The client is built in `web/lib/supabase.ts` from
   `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`. The upload helper lives in
-  `src/lib/storage.ts` (`uploadPaymentProofFile`) and returns the **file path**,
+  `web/lib/storage.ts` (`uploadPaymentProofFile`) and returns the **file path**,
   not a signed URL — e.g. `payments/{uid}/{HDL-ref}/proof.png`.
 - **The file path is stored on the Booking** in Firestore (and in the localStorage
   fallback store) as `paymentProofUrl`, alongside the canonical

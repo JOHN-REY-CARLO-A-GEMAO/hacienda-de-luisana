@@ -2,8 +2,8 @@
  * Request contexts for the rules suites.
  *
  * Every payload here is the shape the applications actually write — read off
- * `src/lib/firestoreBookings.ts` (web), `src/lib/chatCloud.ts`,
- * `src/lib/reviewsCloud.ts`, `lib/services/booking_lifecycle.dart` (Admin app)
+ * `web/lib/firestoreBookings.ts` (web), `web/lib/chatCloud.ts`,
+ * `web/lib/reviewsCloud.ts`, `lib/services/booking_lifecycle.dart` (Admin app)
  * and `lib/services/firestore_service.dart` — so a suite decision says something
  * about the app, not about an invented document.
  */
@@ -96,7 +96,7 @@ export const guestPaymentPatch = (overrides: DocData = {}): DocData => ({
 
 /**
  * The Admin patch of `applyAdminAction(verifyPayment)` — the web's
- * `src/lib/booking/actions.ts` and the app's `booking_lifecycle.dart`, which
+ * `web/lib/booking/actions.ts` and the app's `booking_lifecycle.dart`, which
  * write the same four fields: the status money buys, the amount, the instant,
  * and the verifier. The rule layer refuses a `verified` document without them.
  */
@@ -131,7 +131,7 @@ export const messageDoc = (uid = GUEST_UID, role = 'guest', overrides: DocData =
 
 /**
  * A live-location session as `startSharing` writes it
- * (`src/lib/liveLocation.ts`): the consent, the window and the secret that
+ * (`web/lib/liveLocation.ts`): the consent, the window and the secret that
  * binds the ephemeral stream to this document. Deliberately no coordinate —
  * `firestore.rules` refuses a document that carries one.
  */
@@ -147,7 +147,7 @@ export const locationSessionDoc = (overrides: DocData = {}): DocData => ({
 })
 
 /**
- * A Review as `submitReview` writes it (`src/lib/reviewsCloud.ts`).
+ * A Review as `submitReview` writes it (`web/lib/reviewsCloud.ts`).
  *
  * `status: 'pending'` because a Review lands waiting for the Admin, and
  * `edit_until` is the fortnight the create stamped — which the rule recomputes

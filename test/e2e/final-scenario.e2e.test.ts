@@ -8,7 +8,7 @@
  * WHAT THIS FILE CAN AND CANNOT PROVE, stated up front because the difference
  * matters more than the pass count:
  *
- *   - `executed` steps run the **real application modules** (`src/lib/**`) on
+ *   - `executed` steps run the **real application modules** (`web/lib/**`) on
  *     the website's own adapters. With no Firebase credentials in this
  *     environment the adapters select their documented offline branches
  *     (localStorage instead of Firestore), so the lifecycle arithmetic, the

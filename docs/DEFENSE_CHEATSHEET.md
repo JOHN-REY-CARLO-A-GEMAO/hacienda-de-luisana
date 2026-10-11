@@ -54,7 +54,7 @@ Show the Security PIN gate on a real action (approve a Booking). Show
 **Point at**
 `firestore.rules` · `lib/services/security_gate.dart` (12 PIN-tier actions) ·
 `lib/services/pin_store.dart:54` · `supabase/01-storage.sql` (deliberately **no**
-`select` policy, so no Guest receipt is ever public) · `src/lib/rateLimit.ts:1`
+`select` policy, so no Guest receipt is ever public) · `web/lib/rateLimit.ts:1`
 — which documents its own limitation in line one. Admitting that last one reads
 as competence, not weakness.
 
@@ -152,7 +152,7 @@ tonight and both directly visible.
 > wrong language; those are cosmetic and I'd fix them next."
 
 **Point at**
-`tailwind.config.js` · `src/styles.css:79–109` · `src/pages/AccountPage.tsx`
+`tailwind.config.js` · `web/styles.css:79–109` · `web/pages/AccountPage.tsx`
 (the Pager + empty-search state) · `test/web/site-content.test.tsx:35` (the
 placeholder guard)
 
@@ -198,8 +198,8 @@ between them. Then open Admin → Guest reviews and press "Load 20 more" twice.
 > the operator, and a cursor there changes the query contract."
 
 **Point at**
-`src/lib/chatCloud.ts:244` (`startAfter`) · `lib/views/reviews/reviews_screen.dart:170`
-("Load 20 more") · `src/components/Pager.tsx` · `test/web/account-page-lists.test.tsx`
+`web/lib/chatCloud.ts:244` (`startAfter`) · `lib/views/reviews/reviews_screen.dart:170`
+("Load 20 more") · `web/components/Pager.tsx` · `test/web/account-page-lists.test.tsx`
 (6-booking test) · `docs/LIMITATIONS.md` § Pagination
 
 If they push: *"Yes, one list out of seven. I chose visible-complete over
@@ -262,10 +262,10 @@ out loud where the human enters the loop.
 > a contract, not a live workflow yet."
 
 **Point at**
-`src/lib/payments/ocr.ts` — `extractReferenceNumber:124`,
+`web/lib/payments/ocr.ts` — `extractReferenceNumber:124`,
 `extractReceiptAmounts:152`, `suggestedAmount:256` (returns `null` on a tie),
 `claimAgainstReceipt:446`, `canAutoVerifyFromOcr:511` (**returns `false`**),
-`src/components/Booking/PaymentStep.tsx:341` ("OCR is not verification") ·
+`web/components/Booking/PaymentStep.tsx:341` ("OCR is not verification") ·
 `docs/adr/0001-approve-before-pay-manual-verification.md`
 
 **The line, memorised:** *"extraction is automated, verification is not."*

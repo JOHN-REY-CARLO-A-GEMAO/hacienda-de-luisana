@@ -8,8 +8,8 @@ Only Phase 0 tests, fixtures, test runners/configuration, reports and non-applic
 
 ## Inspection findings
 
-- React/Vite/TypeScript guest app: `src/`. Flutter Admin app: `lib/`, native `android/`, `ios/`.
-- Web initialization: `src/lib/firebase.ts`; environment resolver: `firebaseConfig.ts`; production defaults: `firebaseDefaults.ts`.
+- React/Vite/TypeScript guest app: `web/`. Flutter Admin app: `lib/`, native `android/`, `ios/`.
+- Web initialization: `web/lib/firebase.ts`; environment resolver: `firebaseConfig.ts`; production defaults: `firebaseDefaults.ts`.
 - Development without configured variables selects browser-local/demo adapters. Development with variables can reach real Firebase; the emulator switch must be exactly `true`.
 - Production builds can select committed Firebase project `hacienda-de-luisana` even with absent variables. Flutter also carries that project's public configuration.
 - Firebase Auth/Firestore/RTDB/Storage emulators are declared in `firebase.json` on ports 9099/8080/9000/9199, currently bound to all interfaces. This configuration is not a running emulator.

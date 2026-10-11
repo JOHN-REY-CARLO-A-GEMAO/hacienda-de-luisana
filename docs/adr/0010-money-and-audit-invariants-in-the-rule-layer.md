@@ -2,7 +2,7 @@
 
 **Status**: accepted, 2026-09-24; amended 2026-09-27 for the Government ID KYC removal (the `kyc_status` clauses are gone from the rules); amended again the same day by ADR-0012 — a Booking is no longer born with nothing claimed. Resolves the six findings of the verification pass (PR #28, `docs/VERIFICATION.md` §3.3).
 
-The application's lifecycle module — `src/lib/booking/` on the website,
+The application's lifecycle module — `web/lib/booking/` on the website,
 `lib/services/booking_lifecycle.dart` in the Admin app — remains the **single
 source of truth for the booking lifecycle**: which action, from which status, by
 which actor, into which status. Nothing about that table is copied into
@@ -44,15 +44,15 @@ console never loads the module:
   `reservedIsPaidFor()` (the update rule's first clause), `isConversationMember()`
   with an `exists()`/`get()` read of the conversation, and the value bounds in the
   Guest branch. Comments in the file name the module each invariant mirrors.
-- **`src/lib/booking/actions.ts` and `lib/services/booking_lifecycle.dart`**: the
+- **`web/lib/booking/actions.ts` and `lib/services/booking_lifecycle.dart`**: the
   `VerifyPayment` patch writes `payment_verified_at` and `payment_verified_by` —
   the same four fields on both sides, so neither can drift into a write the rules
   refuse. (The app's Admin UI already recorded the verifier; the website now does
   too.)
-- **`src/lib/firestoreBookings.ts`**: a submission entry is signed with the uid the
+- **`web/lib/firestoreBookings.ts`**: a submission entry is signed with the uid the
   Booking belongs to, and `signActivityEntries()` signs an entry with the identity
   actually connected to Firestore, because the rules bind `actor_id` to the writer.
-- **`src/lib/reviewsCloud.ts`**: a Review is written with `setDoc` at the Booking's
+- **`web/lib/reviewsCloud.ts`**: a Review is written with `setDoc` at the Booking's
   id (`reviewDocId`), read back with one `getDoc`, and updates are closed — so the
   app's duplicate check and the database's refusal are the same fact.
 - **Tests**: `test/rules/firestore-rules.test.ts` (executed rule text),

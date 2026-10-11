@@ -7,7 +7,7 @@ The system does **not** collect, store, transmit or display a Guest's location â
 | Concern | Where it lives now |
 | --- | --- |
 | `tracking_sessions` collection | **Closed.** `firestore.rules` denies read, create and update to every caller (including the Admin); delete is Admin-only so an orphan can be cleared. |
-| Guest website | No share button, no consent screen, no `/track` route, no tracking module in `src/lib/`. |
+| Guest website | No share button, no consent screen, no `/track` route, no tracking module in `web/lib/`. |
 | Admin mobile app | No Radar tab, no map, no distance/ETA, no proximity notification, no tracking model or stream. |
 | What is *kept* | The **Access log** (`access_logs`): door events only, `granted` / `denied`, with the credential used and a timestamp. Per-Booking `activity` entries and Booking timestamps are also untouched. |
 
