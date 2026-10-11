@@ -431,3 +431,31 @@ A human, or a token with `workflows` scope, should apply the cosmetic follow-up:
 
 The two remaining `src/` strings in §1.2's non-functional list stay as they are for the reason in
 §2.4 — they live in files whose bytes the characterization fixture pins.
+
+### 4.6 Existing CI on the pull request
+
+Two checks report on the PR. Both are attributed below; **neither is caused by the rename**, and
+neither is left unexplained.
+
+| Check | Status | Attribution |
+|---|---|---|
+| GitGuardian Security Checks | failure | **False positive**, see below |
+| Vercel | failure | **Pre-existing** — the same check failed on the last merged PR (#58); local `npm run build` (what Vercel runs) passes and the bundle is bit-identical |
+| Vercel Preview Comments | pass | — |
+| GitHub Pages (`deploy.yml`) | not run | the workflow is `on: push: branches: [main]`; its steps are untouched by this PR |
+
+**GitGuardian**, in detail. The check reports *"2 secrets were uncovered from the scan of 4 commits
+in your pull request"*, in `test/phase0/fixtures/production-baseline.json`, lines 128 and 187
+(`web/context/AuthContext.tsx` and `web/pages/AuthPage.tsx`). Both flagged strings are **SHA-256
+digests** and both values are **byte-identical to the ones already in the base commit** under the
+old `src/…` keys:
+
+* hashes added that were not already in `5f0dc84`: **0**
+* fixture hashes changed by this migration: **0**
+
+The check passed on #58 only because those lines were not part of the diff. Re-keying the fixture
+moves 110 lines, so git presents them as additions and the entropy detector fires on the digests.
+Nothing was introduced, rotated or exposed. Remediation is a human decision, not one this migration
+should take silently: dismiss the two findings as a false positive in the GitGuardian dashboard
+(recommended), or add a scoped exclusion for the fixture — which is a *widening* of the security
+scan and belongs to the repository owner.
