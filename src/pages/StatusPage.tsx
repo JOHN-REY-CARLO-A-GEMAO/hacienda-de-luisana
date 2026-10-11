@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { firebaseConfigReport, getFirebaseStatus } from '../lib/firebase'
 import {
   describeSource,
@@ -57,6 +58,7 @@ export function StatusPage() {
   const [running, setRunning] = useState(false)
   const identity = currentIdentity()
   const identityFailure = lastIdentityFailure()
+  const [showDemoDialog, setShowDemoDialog] = useState(false)
 
   const test = async () => {
     setRunning(true)
@@ -202,6 +204,27 @@ export function StatusPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* ConfirmDialog visual preview */}
+        <div className="mt-8 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowDemoDialog(true)}
+            className="btn-ghost text-xs"
+          >
+            Preview ConfirmDialog
+          </button>
+          <ConfirmDialog
+            open={showDemoDialog}
+            title="Withdraw this request?"
+            body="Are you sure you want to withdraw request HDL-1234? Held dates will be released back into the pool."
+            danger
+            confirmLabel="Withdraw request"
+            cancelLabel="Keep it"
+            onConfirm={() => setShowDemoDialog(false)}
+            onCancel={() => setShowDemoDialog(false)}
+          />
         </div>
 
         {/* The live half */}

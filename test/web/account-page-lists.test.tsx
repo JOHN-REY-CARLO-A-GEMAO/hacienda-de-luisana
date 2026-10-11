@@ -287,6 +287,87 @@ describe('ConfirmDialog on its own', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
+
+  it('has accessible ARIA attributes linking title and body', () => {
+    const page = open(
+      <ConfirmDialog
+        open
+        title="Remove this?"
+        body="It cannot come back."
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+
+    const dialog = page.container.querySelector('[role="alertdialog"]')
+    expect(dialog).toBeTruthy()
+
+    const labelledBy = dialog?.getAttribute('aria-labelledby')
+    const describedBy = dialog?.getAttribute('aria-describedby')
+
+    expect(labelledBy).toBeTruthy()
+    expect(describedBy).toBeTruthy()
+
+    const titleEl = page.container.querySelector(`[id="${labelledBy}"]`)
+    const bodyEl = page.container.querySelector(`[id="${describedBy}"]`)
+
+    expect(titleEl?.textContent).toBe('Remove this?')
+    expect(bodyEl?.textContent).toBe('It cannot come back.')
+  })
+
+  it('includes explicit focus-visible classes on action buttons', () => {
+    const page = open(
+      <ConfirmDialog
+        open
+        danger
+        title="Remove this?"
+        body="It cannot come back."
+        confirmLabel="Delete"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+
+    const cancelButton = page.button('Cancel')
+    const deleteButton = page.button('Delete')
+
+    expect(cancelButton?.className).toContain('focus-visible:ring-2')
+    expect(cancelButton?.className).toContain('focus-visible:ring-forest-700')
+    expect(deleteButton?.className).toContain('focus-visible:ring-2')
+    expect(deleteButton?.className).toContain('focus-visible:ring-red-700')
+  })
+
+  it('traps tab focus within the dialog buttons', () => {
+    const page = open(
+      <ConfirmDialog
+        open
+        title="Remove this?"
+        body="It cannot come back."
+        confirmLabel="Confirm"
+        cancelLabel="Cancel"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+
+    const cancelButton = page.button('Cancel')
+    const confirmButton = page.button('Confirm')
+
+    // Confirm button gets focus on mount
+    expect(document.activeElement).toBe(confirmButton)
+
+    // Tab key from confirm (last focusable element) loops to cancel (first focusable element)
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+    })
+    expect(document.activeElement).toBe(cancelButton)
+
+    // Shift+Tab key from cancel (first focusable element) loops back to confirm (last focusable element)
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }))
+    })
+    expect(document.activeElement).toBe(confirmButton)
+  })
 })
 
 describe('the error boundary', () => {
