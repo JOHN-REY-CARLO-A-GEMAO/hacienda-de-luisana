@@ -1,0 +1,346 @@
+# Directory rename audit — `src/` → `web/` and `lib/` → `app/`
+
+**Audit date:** 2026-10-11
+**Repository:** `JOHN-REY-CARLO-A-GEMAO/hacienda-de-luisana`
+**Audited commit:** `5f0dc84` (`main`) — working branch `arena/30f1d31d-hacienda-de-luisana`
+**Scope:** Phase 1 (audit) and Phase 2 (plan). Findings are stated per request in the order
+they were asked for; the Flutter verdict is in §1.5 and the plan in §2.
+
+---
+
+## 0. Verdict in one paragraph
+
+* **`src/` → `web/` (Guest website): SUPPORTED.** Every internal web import is relative, no
+  Vite/TS/Tailwind/Vitest alias points at `src/`, and no configuration keys off the directory
+  name. The rename is a `git mv` plus **10 functional edit sites** and **zero** changes to the
+  contents of the 110 renamed web source files — which the repository's own characterization
+  fixture can *prove*, because it pins their SHA-256 hashes by path. **Implemented** (Phase 3).
+* **`lib/` → `app/` (Flutter Admin app): NOT SUPPORTED without disproportionate tooling
+  changes.** `lib/` is not a convention in the Dart/Flutter toolchain, it is hard-coded:
+  `package:` URIs for the root package resolve to `<project>/lib/` and `pub` writes that mapping
+  into `.dart_tool/package_config.json` on every `pub get`. The repository's 16 Dart test files
+  import the app through `package:hacienda_de_luisana/…` (41 import lines). Nothing in
+  `pubspec.yaml` can move that. **Stopped before implementing**, per the instruction in the
+  brief. §1.5 gives the evidence; §2.6 gives the supported alternative.
+
+---
+
+## 1. Phase 1 — Audit
+
+### 1.1 Repository shape (baseline)
+
+| | Path | Files (tracked) | Runtime |
+|---|---|---|---|
+| Guest website | `src/` | 143 | React 18 + TS 5.9 + Vite 5.4 + Tailwind 3.4, Vitest 3.2, jsdom |
+| Admin app | `lib/` | 75 (57 Dart + assets) | Flutter `>=3.2.0 <4.0.0`, Riverpod, Firebase, Android + iOS |
+| Web tests | `test/web`, `test/phase0`, `test/rules`, `test/e2e`, `test/emulator` | 106 `.ts/.tsx` | Vitest (7 configs) |
+| Dart tests | `test/*.dart`, `test/phase0/dart/` | 16 `.dart` | `flutter test` |
+| Native shells | `android/`, `ios/` | 47 | Flutter tooling (`flutter { source '../..' }`) |
+| Rules / backend | `firestore.rules`, `storage.rules`, `database.rules.json`, `supabase/` | 8 | Firebase + Supabase |
+
+Git note: the checkout is a **shallow clone (depth 1)**, one commit
+(`5f0dc84`, released as PR #58). History preservation therefore means
+`git mv` (rename-detected diff) rather than `git log --follow` continuity to earlier work.
+
+Reference census (whole repo, tracked files, `src/` counted excluding Android's `app/src/`):
+
+| Token | Files | Occurrences |
+|---|---|---|
+| `src/` | 189 | 738 |
+| `lib/` | 229 | 879 |
+
+Most of those are prose. The functional subsets are enumerated below — that distinction is the
+whole point of this audit, because a naive global `s/lib/app/` would corrupt `web/lib/`,
+`android/app/src/…`, dependency paths inside `package-lock.json`/`pnpm-lock.yaml`, and the
+`firebase-tools lib/emulator/…` comment in `scripts/phase0/boundary.mjs`.
+
+### 1.2 Every functional reference to `src/` (web) — must change
+
+| # | Site | Kind | Count | Notes |
+|---|---|---|---|---|
+| 1 | `index.html:72` | Vite entry | 1 | `<script type="module" src="/src/main.tsx">` |
+| 2 | `tailwind.config.js:3` | content glob | 1 | `content: ['./index.html', './src/**/*.{ts,tsx}']` |
+| 3 | `tsconfig.app.json` | `include` | 1 | `["src"]` |
+| 4 | `tsconfig.test.json` | `include` | 1 | `["test/web", "src", "vitest.config.ts"]` |
+| 5 | `tsconfig.phase0.json` | `include` | 1 | `["src", "test/phase0/**/*.ts", …]` |
+| 6 | `vite.config.ts` | 4 static imports + build-log strings | 8–11 | imports `./src/lib/{firebaseConfig,firebaseDefaults,supabaseConfig,supabaseDefaults}`; the `[firebase]`/`[supabase]` banners name `src/lib/*Defaults.ts` in operator-facing text |
+| 7 | `test/**/*.{ts,tsx}` | relative import specifiers | **214** | 207 × `'../../src/…'`, 7 × `'../../../src/…'` |
+| 8 | `test/**/*.{ts,tsx}` | `vi.mock` / `vi.doMock` / dynamic `import(...)` | 20+ | e.g. `test/phase0/doubles/cloud.ts:19`, `test/phase0/emulator/{auth-review,concurrency-harness}.ts` (the `'../../../src/…'` forms) |
+| 9 | `test/**/*.{ts,tsx}` | filesystem paths (`join(__dirname, '../../src/…')`, `readdirSync`) | 9 sites / 7 files | `auth-admin-not-on-web`, `auth-roles` (module dir), `booking-module-purity` (`MODULE_DIR`), `date-hold-cloud`, `live-location` (×3), `payment-contract` |
+| 10 | `test/phase0/fixtures/production-baseline.json` | 110 hash-table **keys** | 110 | hashes themselves must **not** change |
+| 11 | `test/phase0/foundation.characterization.test.ts` | `source('src/…')` literals | 6 | lines 58, 63, 71, 72, 73, 89 |
+| 12 | `docs/qa/booking-lead-time-browser-test.mjs` | Vite dev-server module URLs | 3 | `await import('/src/lib/firestoreBookings.ts')`, `'/src/lib/supabase.ts'` |
+| 13 | `.github/workflows/deploy.yml` | comments in CI | 2 | non-functional, must not go stale |
+
+**Non-functional `src/` references** (prose only, left alone in the mechanical commit — see §2.4):
+comments/messages inside the pinned web files themselves (41 occurrences in ~30 files, e.g.
+`web/lib/firebase.ts:127`, `web/pages/StatusPage.tsx:292`), `firestore.rules` (10),
+`test/rules/context.ts` (6), `supabase/01-storage.sql` (3), `docs/**` (~250),
+`Project_Folders_Structure_Blueprint.md` (48), `AGENTS.md`, `CONTEXT.md`, `docs/agents/domain.md`,
+extension READMEs, and `package-lock.json` (2, dependency-internal — must **not** change).
+
+**Vendored agent skills** (`.agents/skills/**`, `.claude/skills/**`): the `src/` hits there are
+generic examples about *other* repositories (e.g. `src/ordering/CONTEXT.md`). **Do not change** —
+they are not this repository's paths (only `.claude`/`.agents` are duplicates of each other).
+
+**Explicitly NOT to be touched** although they contain the token `src/`:
+`android/app/src/main/**` (Android source set) incl. `.gitignore:57` and
+`test/phase0/fixtures/production-baseline.json`'s 17 `android/…` keys; `android/gradlew:60`
+(a Gradle URL); `test/phase0/fixtures/production-baseline.json`'s `ios/…` keys.
+
+### 1.3 Vitest / Vite / TS configuration review
+
+* All 7 Vitest configs (`vitest.config.ts`, `.e2e`, `.emulator`, `.local`, `.phase0`, `.probe`,
+  `.rules`, `.tmptest`) key off `test/**`, **never** `src` → no change needed.
+* No `resolve.alias`, no `tsconfig.paths`, no `@/` prefix anywhere → relative imports only, so
+  **file contents under `src/` do not have to change at all** when the directory moves.
+* `vitest.local.config.ts`, `vitest.probe.config.ts`, `vitest.tmptest.config.ts` are orphan
+  configs (no npm script). `vitest.probe.config.ts` pins a stale absolute Windows path
+  (`root: 'D:/Downloads/11_hacienda/hacienda-de-luisana'`) — **pre-existing defect**, out of scope.
+* `vite.config.ts` `manualChunks`, `base: '/'`, `allowedHosts`, dev/preview ports → unaffected by
+  the directory name.
+
+### 1.4 Firebase / Supabase / deployment review
+
+* `firebase.json` hosting root is `dist` → unaffected. Its `flutter.platforms.dart` key
+  (`lib/firebase_options.dart`) is **Flutter-side** and pinned by hash; untouched.
+* `firestore.rules`, `storage.rules`, `database.rules.json` reference `src/…` in **comments only**;
+  they are hash-pinned (§1.6). Untouched — no rule semantics change, no security change.
+* `.firebaserc`, `vercel.json` (`cleanUrls` + rewrite to `/`), `firebase.json` rewrites → no path
+  coupling to `src/`.
+* `.github/workflows/deploy.yml` runs `npm ci` → `npm run build` (`tsc -b && vite build`) → copies
+  `dist/`. No step references `src/` except comments.
+* `package.json` scripts all route through `scripts/phase0/run.mjs` with fixed actions; **no script
+  names a web source directory**. `scripts/phase0/inside.mjs` touches only `test/**` for the web
+  suites.
+
+### 1.5 Flutter verdict: can `lib/` become `app/`? — **No** (evidence)
+
+1. **`pub` hard-codes the package source directory.** In `dart-lang/pub`
+   (`lib/src/entrypoint.dart`) the root package entry is written as
+
+   ```dart
+   PackageConfigEntry(
+     name: package.name,
+     rootUri: p.toUri(p.relative(package.dir, from: …)),
+     packageUri: p.toUri('lib/'),      // ← hard-coded, no pubspec knob
+   ```
+
+   and pub itself refuses any config that disagrees ("Pub always makes a packageUri of lib/",
+   same file, ~line 1004). There is **no `lib_dir`-style field in the pubspec format**.
+2. **Consequence for this repository:** all 16 Dart test files import the app as
+   `package:hacienda_de_luisana/…` (41 lines, e.g. `test/pin_layout_test.dart:30-35`,
+   `test/booking_lifecycle_test.dart:7`). Those resolve to `<root>/lib/…`. With the code under
+   `app/`, `flutter test` / `flutter analyze` cannot resolve a single one of them, and
+   `package:hacienda_de_luisana` becomes an empty package.
+3. **The entry point is overridable, the package root is not.** `flutter build apk` defaults
+   `--target` to `lib/main.dart` (`packages/flutter_tools/lib/src/runner/options/common_options.dart:26-28`)
+   and the Gradle plugin exposes `flutter { target "…" }` for the *entry file*
+   (`FlutterExtension.kt`: "Allows to override the target file. Otherwise, the target is
+   lib/main.dart"). That fixes the *entry point only* — it does nothing for `package:` resolution,
+   asset bundling, or `flutter test`.
+4. **`.dart_tool/package_config.json` is regenerated, not configurable.** `scripts/phase0/inside.mjs`
+   gates every Flutter action on that file existing, and `flutter pub get` rewrites it. Post-editing
+   `packageUri` is not durable and would silently revert on the next `pub get`.
+5. **The two workarounds are both disproportionate:**
+   * *Symlink `lib/ → app/`:* works on Linux/macOS, but (a) it makes the rename cosmetic — `lib/`
+     still exists and every tool still reports `lib/…` paths; (b) it requires Developer Mode or
+     admin rights on Windows, and this repository is demonstrably worked on from Windows
+     (`vitest.probe.config.ts` pins `D:/Downloads/…`); (c) the analyzer may see the same file under
+     two paths (`app/…` and `lib/…`) — a duplicate-declaration class of failure that no test in the
+     repo can catch offline.
+   * *Shim `lib/` re-exporting `app/`:* ~41 boilerplate files, on top of the entry-point override;
+     the app's own classes become second-class (files outside `lib/` are not part of the package's
+     public surface), and `flutter analyze` would flag the shim tree.
+6. **No tooling assumption in `android/` or `ios/` needs changing** — `android/app/build.gradle`
+   uses `flutter { source '../..' }` (the *project* root) and the iOS build phases call
+   `xcode_backend.sh`, which reads the target from `Generated.xcconfig`. So a move would fail in
+   Dart resolution *before* touching native builds; the failure would appear as hundreds of
+   "Target of URI doesn't exist" errors, i.e. it would look like a broken app rather than a path
+   error.
+7. **Tool-level references that would also need updating** if it were attempted: `firebase.json`
+   (`flutter.platforms.dart["lib/firebase_options.dart"]`), `.metadata`
+   (`unmanaged_files: ['lib/main.dart']`), `docs/` (every Dart path), and the 57 `lib/…` keys of
+   `production-baseline.json`.
+
+**Verdict:** the Flutter half of the request cannot be supported safely, and the supported
+alternative is a different (larger) change — see §2.6. Per the brief, it is **stopped before
+implementation** and the Admin app is left byte-identical in this migration.
+
+### 1.6 The characterization fixture is the constraint that shapes the plan
+
+`test/phase0/fixtures/production-baseline.json` (`baselineCommit 5297ec7`, algorithm `sha256`)
+pins **210** files by path → hash, asserted by
+`test/phase0/foundation.characterization.test.ts` ("all 210 pinned production source/config/lock
+files remain byte-identical to the authorized baseline"). Its composition:
+
+| Prefix | Keys | Relevance to this migration |
+|---|---|---|
+| `src/…` | 110 | paths change, **contents must not** |
+| `lib/…` | 57 | Flutter app — untouched |
+| `android/…`, `ios/…` | 27 | untouched |
+| `supabase/…` | 3 | untouched (comments only) |
+| rules + `firebase.json` + `vercel.json` | 5 | untouched — **this is what proves security rules were not weakened** |
+| `pubspec.yaml`, `pubspec.lock`, `package-lock.json` | 3 | untouched |
+| `.env.example`, `.firebaserc`, `storage.cors.json` | 3 | untouched |
+| `vite.config.ts` | 1 | **must change** (its 4 imports) → its hash is legitimately re-recorded |
+
+Everything else the migration touches — `index.html`, `tailwind.config.js`, all `tsconfig*.json`,
+`vitest.*.ts`, `package.json`, `test/**`, `docs/**`, `.github/**` — is **not** pinned, so it can be
+edited without weakening the gate. Files that are pinned and *not* functionally required to change
+are left byte-identical on purpose: after this migration the fixture will show exactly **one**
+content change among 210 pinned files (`vite.config.ts`, four import specifiers plus operator-facing
+log text), and the other 109 pinned hashes will continue to match.
+
+---
+
+## 2. Phase 2 — Migration plan (`src/` → `web/`)
+
+### 2.1 Step list (exact)
+
+**Step 0 — preconditions.** Working tree clean; branch `arena/30f1d31d-hacienda-de-luisana`.
+Baseline recorded (§3.1).
+
+**Step 1 — move (history-preserving).**
+```bash
+git mv src web          # 143 files, rename-detected, no content change
+```
+
+**Step 2 — functional edits (all outside `web/`).**
+
+| File | Edit |
+|---|---|
+| `index.html` | `/src/main.tsx` → `/web/main.tsx` |
+| `tailwind.config.js` | `'./src/**/*.{ts,tsx}'` → `'./web/**/*.{ts,tsx}'` |
+| `tsconfig.app.json` | `"include": ["src"]` → `["web"]` |
+| `tsconfig.test.json` | `"include": ["test/web","src",…]` → `[…,"web",…]` |
+| `tsconfig.phase0.json` | `"include": ["src", …]` → `["web", …]` |
+| `vite.config.ts` | 4 imports `./src/lib/…` → `./web/lib/…`; same for the `src/lib/*Defaults.ts` names inside the `[firebase]`/`[supabase]` banner text |
+| `test/**/*.{ts,tsx}` | `'../../src/` → `'../../web/`; `'../../../src/` → `'../../../web/` (mechanical; identical depth, so every specifier stays valid) |
+| `test/phase0/fixtures/production-baseline.json` | re-key `src/…` → `web/…` (110 keys), **hashes untouched**, 210 keeps its length; block re-sorted to keep the key order invariant |
+| `test/phase0/foundation.characterization.test.ts` | 6 × `source('src/…')` → `source('web/…')` |
+| `docs/qa/booking-lead-time-browser-test.mjs` | 3 × `/src/lib/…` → `/web/lib/…` |
+| `.github/workflows/deploy.yml` | 2 comment references |
+
+**Step 3 — assert the invariant.** The 110 `web/**` files must have the same SHA-256 as the old
+`src/**` keys (script check, §3.2), and `git diff -M --stat` must show renames with no content
+change under `web/`.
+
+**Step 4 — documentation sweep (separate commit, unpinned files only).** `docs/**`, `AGENTS.md`,
+`CONTEXT.md`, `Project_Folders_Structure_Blueprint.md`, `docs/agents/domain.md`, extension
+READMEs (`assets/**`, `public/**`), `.github/workflows/deploy.yml`, plus the prose in
+`test/**`. **Excluded on purpose:** comments/strings *inside* the pinned `web/**` files,
+`firestore.rules`/`storage.rules`/`supabase/01-storage.sql`, and `pubspec.yaml`/`.metadata`
+(Flutter side) — editing them would invalidate their pinned hashes for cosmetics (§2.4).
+
+### 2.2 What deliberately does not change
+
+* Every byte of `android/`, `ios/`, `lib/`, `pubspec.*`, `firestore.rules`, `storage.rules`,
+  `database.rules.json`, `firebase.json`, `vercel.json`, `supabase/**`, `package-lock.json`,
+  `pnpm-lock.yaml`.
+* Every byte of the 110 moved web files (§3.2 proves it).
+* Business logic, booking lifecycle, auth, money handling, chat retention, live-location policy,
+  security rules, CI steps, deployment behaviour. The migration is a *name* change.
+
+### 2.3 Compatibility issues found (and their handling)
+
+| Risk | Why it bites | Handling |
+|---|---|---|
+| Naive `s/lib/app/` corrupts `web/lib/**` | 1000+ tokens | Only edit Dart-side paths; `lib/` is **not** renamed at all |
+| Naive `s/src/web/` corrupts `android/app/src/…` | 17 pinned keys + `.gitignore` | Anchor edits to repo-relative prefixes (`./src/`, `'../../src/`, `/src/…`), never bare `src/` |
+| `test/phase0/fixtures/production-baseline.json` | would fail with ENOENT for 110 files | re-key, keep hashes |
+| `test/web/booking-module-purity.test.ts` | reads a *directory* off disk (`MODULE_DIR`) | path updated with the other fs sites |
+| `docs/qa/*.mjs` import Vite dev URLs | browser dynamic import resolves via dev server | 3 URLs updated |
+| `tsconfig.app.json` `include: ["src"]` | if missed, `tsc -b` compiles nothing and `npm run lint` passes silently | listed explicitly in Step 2 and re-checked in §3 |
+| Two dirs named `web` (`web/` source, `test/web/` tests) | confusing but harmless; no glob intersects | accepted, noted in `docs/MIGRATION…` |
+| `.gitignore` has no `src/`/`lib/` rule for app code | nothing to update | verified |
+| Orphan `vitest.probe.config.ts` absolute Windows `root` | pre-existing, unrelated | left alone, flagged |
+
+### 2.4 Follow-up (deliberately *not* in this PR)
+
+1. **Comment/string sweep inside the pinned web files** (~41 references in ~30 files, e.g.
+   `web/lib/firebase.ts:127`, `web/pages/StatusPage.tsx:292`, `web/lib/firebaseConfig.ts:294`).
+   These are prose and one `/status` label; changing them means re-recording ~30 baseline hashes,
+   which would destroy the byte-identity evidence this migration relies on. Do it as its own
+   PR together with a regenerated fixture (and say so in the PR description).
+2. Same for `firestore.rules` / `storage.rules` / `supabase/01-storage.sql` comments.
+3. `pubspec.yaml`'s comment naming `src/lib/authLocal.ts` (Flutter side, pinned).
+4. Fix the pre-existing failures in §3.1 (clock-drifted tests) — unrelated to the rename.
+
+### 2.5 Rollback
+
+* **Whole migration:** `git revert --no-edit <docs-sweep-sha> <rename-sha>` — the directory move
+  reverts as a rename, so `src/` comes back with the same blob hashes and the fixture returns to
+  its original 210 keys.
+* **Rename only, keep docs:** revert just the rename commit.
+* **Emergency, no history:** `git mv web src` + `git checkout <sha> -- index.html tailwind.config.js
+  tsconfig*.json vite.config.ts test docs .github` restores every edited file; the fixture needs no
+  manual work because it is versioned.
+* Nothing outside the repository is affected: no hosted config, no Firebase rule deployment, no
+  Supabase migration, no DNS. A rollback is a single `git revert` + redeploy.
+
+### 2.6 Flutter alternative (recommended, **not** implemented here)
+
+If the Admin app must live under a differently-named root, the supported shape is **project-root
+move**, not source-dir rename:
+
+```
+app/pubspec.yaml     app/lib/**     app/test/*.dart     app/android/**   app/ios/**
+```
+
+That is a genuine Flutter layout (`lib/` stays the source dir *inside* `app/`). Touchpoints:
+`firebase.json` (`flutter.platforms` paths), `.metadata`, `scripts/phase0/inside.mjs` (three
+`flutter` actions build `test/…` paths from `ROOT` — they would need `app/test/…` and a
+`cwd: app`), asset paths in `pubspec.yaml` (relative, unaffected), and every doc. It must be
+verified with a real SDK (`flutter pub get`, `flutter analyze`, `flutter test`,
+`flutter build apk`) on a machine that can run it — this sandbox cannot, so no honest verification
+of it is possible here. **Do not attempt it without that verification.**
+
+---
+
+## 3. Verification
+
+### 3.1 Baseline, before any change (this sandbox)
+
+Environment: Linux, Node 22.22.3 / npm 10.9.8, `unshare` available, **no Flutter/Dart SDK, no Java
+runtime, no Android SDK**, outbound network limited to the npm/PyPI/GitHub hosts (emulator JARs and
+the Flutter SDK come from `storage.googleapis.com`, which is unreachable here).
+
+| Check | Command | Baseline |
+|---|---|---|
+| Type check (app) | `npm run lint` (`tsc -b`) | **PASS** |
+| Production build | `npm run build` | **PASS** (warns: firebase/supabase defaults, chunk size) |
+| Phase-0 type check | `npm run check:phase0` | **FAIL, exit 2** — 3 pre-existing TS errors (`test/phase0/emulator/auth-review…:42`, `test/phase0/identity.characterization…:36`, `test/phase0/location.invariants…:32`); `tsc -b` itself passes |
+| Phase-0 build | `npm run build:phase0` | **FAIL, exit 2** — same 3 errors; the Vite step is never reached |
+| Web suite | `npm test` | **HANGS** at `test/web/tutorial.test.tsx` (pre-existing; reproducible standalone, even unisolated) |
+| Web suite minus that file | `vitest --config vitest.local.config.ts --exclude test/web/tutorial.test.tsx` | 891 tests, **871 pass / 20 fail in 5 files** (clock drift: assertions pinned to "today = 2026-09-20"; `canonical-accommodations`, `official-rates` rate drift) |
+| Security rules (offline engine) | `npm run test:rules` | **FAIL** — 7 failed / 308 passed (315) |
+| End-to-end | `npm run test:e2e` | **FAIL** — 10 failed / 34 passed (44) |
+| Characterization | `npm run test:phase0` | **FAIL** — 12 failed / 90 passed (102) |
+| Invariants | `npm run test:invariants` | **FAIL** — 22 failed / 9 passed (31) |
+| Safety harness | `npm run test:safety` | **PASS** (44 tests) |
+| Flutter analyze/test | `npm run test:flutter:analyze`, `test:flutter` | **BLOCKED, exit 78** — "Flutter/Dart SDK missing" |
+| Firebase emulator suite | `npm run test:emulator` | **BLOCKED, exit 78** — "Java runtime missing"; emulator artefacts are not downloadable here |
+| Supabase RLS (real Postgres) | `npm run test:supabase:rls` | **BLOCKED, exit 78** — PGlite not prepared |
+| Browser QA | `npm run test:qa:*` | **BLOCKED, exit 78** — Playwright/Chromium not installed |
+| Android build | `flutter build apk` | **BLOCKED** — no Flutter/Dart SDK, no Java, no Android SDK |
+
+**Baseline conclusion:** this repository is *not* green at `5f0dc84` on any machine-independent
+axis — the failures are date-dependent and pre-date this work. Success for this migration is
+therefore **"no new failures"**, measured per test name against the recorded baseline, not
+"everything passes".
+
+### 3.2 Post-migration checks (run in Phase 4)
+
+1. Byte-identity of the moved tree: every `web/…` file's SHA-256 equals the recorded `src/…` hash
+   (scripted, from the fixture itself).
+2. `git diff -M --stat` — renames only under `web/`.
+3. `npm run lint`, `npm run build` — must stay PASS.
+4. Web suite with the identical baseline command — per-test diff, must be **identical**.
+5. `npm run test:rules`, `test:e2e`, `test:phase0`, `test:invariants`, `test:safety` — per-test
+   diff against the recorded JSON reports.
+6. `npm run check:phase0`, `build:phase0` — same 3 pre-existing errors, nothing new.
+7. Re-run of the blocked actions (Flutter, emulator, QA, Android) — expected to stay BLOCKED for
+   environmental reasons; a *changed* blocked-reason would itself be a regression signal
+   (e.g. the Flutter actions must still report "SDK missing", not a path error).
+8. `npm run dev` / `vite build` smoke: `dist/index.html` references `assets/…` and no `/src/…`.
