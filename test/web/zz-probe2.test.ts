@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { validatePublishedRates, quoteAccommodation } from '../../src/lib/booking/rates'
-import { paymentOptionsForTotal } from '../../src/lib/booking'
+import { validatePublishedRates, quoteAccommodation } from '../../web/lib/booking/rates'
+import { paymentOptionsForTotal } from '../../web/lib/booking'
 import { liveRates } from './zz-probe-live.test'
 
 describe('PROBE 2: the exact payload the deployed build sends', () => {

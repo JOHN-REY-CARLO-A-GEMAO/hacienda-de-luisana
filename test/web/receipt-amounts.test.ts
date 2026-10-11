@@ -16,7 +16,7 @@ import {
   extractReceiptAmounts,
   extractReceiptFields,
   suggestedAmount,
-} from '../../src/lib/payments/ocr'
+} from '../../web/lib/payments/ocr'
 
 /** The receipt from the screenshot: two figures that disagree. */
 const DISAGREEING = `10:23 AM @ Tl ft.

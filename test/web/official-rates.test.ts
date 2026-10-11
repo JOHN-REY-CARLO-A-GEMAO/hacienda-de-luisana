@@ -1,5 +1,5 @@
-import { paymentOptionsForTotal, quoteAccommodation, validatePublishedRates, type PublishedRates } from '../../src/lib/booking'
-import { OFFICIAL_ACCOMMODATION_RATES } from '../../src/config/officialBusiness'
+import { paymentOptionsForTotal, quoteAccommodation, validatePublishedRates, type PublishedRates } from '../../web/lib/booking'
+import { OFFICIAL_ACCOMMODATION_RATES } from '../../web/config/officialBusiness'
 
 const official: PublishedRates = {
   version: 'official-v2',

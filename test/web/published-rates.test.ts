@@ -7,7 +7,7 @@ import {
   ratesForAccommodation,
   validatePublishedRates,
   type PublishedRates,
-} from '../../src/lib/booking'
+} from '../../web/lib/booking'
 
 const published: PublishedRates = {
   version: 'guest-count-v2',

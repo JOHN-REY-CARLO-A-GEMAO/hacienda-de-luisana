@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dateToISOString, formatDate, formatDateTime, parseDate } from '../../src/lib/formatDate'
+import { dateToISOString, formatDate, formatDateTime, parseDate } from '../../web/lib/formatDate'
 
 const INSTANT = new Date('2026-09-20T01:00:00.250Z')
 const SECONDS = Math.floor(INSTANT.getTime() / 1000)

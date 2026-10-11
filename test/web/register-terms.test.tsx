@@ -10,10 +10,10 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LoginForm } from '../../src/components/Auth/LoginForm'
-import { AuthContext, type AuthContextType } from '../../src/context/AuthContext'
+import { LoginForm } from '../../web/components/Auth/LoginForm'
+import { AuthContext, type AuthContextType } from '../../web/context/AuthContext'
 import { AN_ADULT } from './registration-fixture'
-import { LEGAL_VERSION } from '../../src/lib/legal'
+import { LEGAL_VERSION } from '../../web/lib/legal'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

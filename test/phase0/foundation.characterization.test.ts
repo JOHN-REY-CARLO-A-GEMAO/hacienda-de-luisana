@@ -55,12 +55,12 @@ it('F20-SOURCE: mobile simulator toJson omits required booking/UID/result fields
 })
 it('F21-SOURCE: mobile consent reader asks for session_secret; the actual web writer uses stream_secret', () => {
   expect(source('lib/services/live_location_service.dart')).toContain("data['session_secret']")
-  expect(source('src/lib/liveLocation.ts')).toContain('stream_secret: secret')
+  expect(source('web/lib/liveLocation.ts')).toContain('stream_secret: secret')
   // The stream's expiry bound is the longest share a Guest may start — the same
   // figure `MAX_SHARE_MINUTES` gives the web client and `firestore.rules` caps the
   // consent with. It read `now + 90000` until this was fixed, which no session the
   // Guest can pick fits inside, so the first fix of every share was refused.
-  const cap = Number(source('src/lib/liveLocationPolicy.ts').match(/MAX_SHARE_MINUTES = (\d+)/)?.[1])
+  const cap = Number(source('web/lib/liveLocationPolicy.ts').match(/MAX_SHARE_MINUTES = (\d+)/)?.[1])
   expect(source('database.rules.json')).toContain(`now + ${cap * 60_000}`)
 })
 it('F26-SOURCE: checked-in Firestore indexes contain no reviews composites (deployment remains unknown)', () => {
@@ -68,9 +68,9 @@ it('F26-SOURCE: checked-in Firestore indexes contain no reviews composites (depl
   expect(indexes.indexes.some((index: { collectionGroup: string }) => index.collectionGroup === 'reviews')).toBe(false)
 })
 it('F27-SOURCE: privacy text denies live tracking while the feature exists; no purge inferred from a retention helper', () => {
-  expect(source('src/lib/legal.ts')).toContain('We do not run a live location tracker.')
-  expect(source('src/lib/liveLocation.ts')).toContain('publishFix')
-  expect(source('src/lib/chatRetention.ts')).toContain('Nothing here deletes anything.')
+  expect(source('web/lib/legal.ts')).toContain('We do not run a live location tracker.')
+  expect(source('web/lib/liveLocation.ts')).toContain('publishFix')
+  expect(source('web/lib/chatRetention.ts')).toContain('Nothing here deletes anything.')
 })
 it('F28-SOURCE: mobile totalAmount uses recorded money or the saved rate snapshot, never an invented default', () => {
   const model = source('lib/models/booking_model.dart')
@@ -86,7 +86,7 @@ it('F29-SOURCE: room-status writes are separate from rates/sellable-unit configu
   expect(method).not.toContain('availableUnits')
 })
 it('F30-SOURCE: booking collection approval query/listener is unbounded, not a paginated capacity authority', () => {
-  const text = source('src/lib/firestoreBookings.ts')
+  const text = source('web/lib/firestoreBookings.ts')
   expect(text).toContain("getDocs(query(collection(db!, COLLECTION), orderBy('created_at', 'desc')))")
   expect(text).not.toMatch(/limit\(/)
 })

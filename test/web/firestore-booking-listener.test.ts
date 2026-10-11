@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sdk = vi.hoisted(() => ({ onSnapshot: vi.fn() }))
 
-vi.mock('../../src/lib/firebase', () => ({
+vi.mock('../../web/lib/firebase', () => ({
   db: {},
   isFirebaseConfigured: true,
   auth: null,
@@ -23,7 +23,7 @@ vi.mock('firebase/firestore', () => ({
   where: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
 }))
 
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
+import { cloudBookingsDB } from '../../web/lib/firestoreBookings'
 
 const CHECK_IN = new Date('2027-03-04T00:00:00.000Z')
 const CHECK_OUT = new Date('2027-03-06T00:00:00.000Z')

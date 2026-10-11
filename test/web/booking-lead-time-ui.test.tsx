@@ -4,26 +4,26 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BookingPage } from '../../src/pages/BookingPage'
-import { DownpaymentPage } from '../../src/pages/DownpaymentPage'
-import { BookingStatusPage } from '../../src/pages/BookingStatusPage'
-import { AuthProvider } from '../../src/context/AuthContext'
-import { resetAppSession } from '../../src/lib/authSession'
-import { saveBookingDraft, loadBookingDraft } from '../../src/lib/bookingDraft'
-import { bookingPolicyDB } from '../../src/lib/bookingPolicyDB'
-import { minimumBookingLeadTimeMessage } from '../../src/lib/booking'
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
-import { bookingsDB } from '../../src/lib/storage'
-import * as payments from '../../src/lib/payments'
-import { resetRateLimit } from '../../src/lib/rateLimit'
-import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
+import { BookingPage } from '../../web/pages/BookingPage'
+import { DownpaymentPage } from '../../web/pages/DownpaymentPage'
+import { BookingStatusPage } from '../../web/pages/BookingStatusPage'
+import { AuthProvider } from '../../web/context/AuthContext'
+import { resetAppSession } from '../../web/lib/authSession'
+import { saveBookingDraft, loadBookingDraft } from '../../web/lib/bookingDraft'
+import { bookingPolicyDB } from '../../web/lib/bookingPolicyDB'
+import { minimumBookingLeadTimeMessage } from '../../web/lib/booking'
+import { cloudBookingsDB } from '../../web/lib/firestoreBookings'
+import { bookingsDB } from '../../web/lib/storage'
+import * as payments from '../../web/lib/payments'
+import { resetRateLimit } from '../../web/lib/rateLimit'
+import { LOCAL_RATES_KEY } from '../../web/lib/ratesDB'
 
 // `runReceiptOcr` is stubbed because the real one loads tesseract.js. The rest of
 // the module is spread through from the original so an export added to ocr.ts is
 // still there: a closed list here silently breaks every later import of it, which
 // is how `amountMismatchNote` went missing and took all 7 of these tests with it.
-vi.mock('../../src/lib/payments/ocr', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/lib/payments/ocr')>()),
+vi.mock('../../web/lib/payments/ocr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../web/lib/payments/ocr')>()),
   runReceiptOcr: vi.fn(async () => ({ reference: '', amount: '', amounts: [], confidence: 'none', notes: [] })),
 }))
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true

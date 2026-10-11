@@ -39,8 +39,8 @@ import {
   startFailureMessage,
   type LocationFix,
   type LocationSession,
-} from '../../src/lib/liveLocationPolicy'
-import { LOCATION_SESSIONS_COLLECTION, LIVE_LOCATION_PATH, canShareLocation } from '../../src/lib/liveLocation'
+} from '../../web/lib/liveLocationPolicy'
+import { LOCATION_SESSIONS_COLLECTION, LIVE_LOCATION_PATH, canShareLocation } from '../../web/lib/liveLocation'
 
 const T0 = Date.parse('2026-10-01T09:00:00.000Z')
 
@@ -52,7 +52,7 @@ const T0 = Date.parse('2026-10-01T09:00:00.000Z')
  * live, and it is a literal, so the literal is what gets asserted.
  */
 function fixPayload(): string {
-  const source = readFileSync(join(__dirname, '../../src/lib/liveLocation.ts'), 'utf8')
+  const source = readFileSync(join(__dirname, '../../web/lib/liveLocation.ts'), 'utf8')
   const start = source.indexOf('const payload = {')
   const end = source.indexOf('const { set } = await import', start)
   expect(start).toBeGreaterThan(-1)
@@ -270,7 +270,7 @@ describe('where each half of the feature is stored', () => {
     expect(payload).not.toContain("'.ttl'")
     expect(payload).not.toContain('expireAt')
     // And no server-expiry API is called anywhere in the module.
-    const source = readFileSync(join(__dirname, '../../src/lib/liveLocation.ts'), 'utf8')
+    const source = readFileSync(join(__dirname, '../../web/lib/liveLocation.ts'), 'utf8')
     expect(source).not.toMatch(/expireAt/)
   })
 
@@ -296,7 +296,7 @@ describe('where each half of the feature is stored', () => {
     // The deletion the Guest's own device cannot be trusted to make. It is not
     // the guarantee — the rules are — but without it an abandoned node waits in
     // the database for the Admin's next visit.
-    const source = readFileSync(join(__dirname, '../../src/lib/liveLocation.ts'), 'utf8')
+    const source = readFileSync(join(__dirname, '../../web/lib/liveLocation.ts'), 'utf8')
     expect(source).toContain('onDisconnect')
     expect(source).toMatch(/onDisconnect\(reference\)\.remove\(\)/)
     expect(source).toContain('armDisconnectCleanup(input.convoId, input.uid)')

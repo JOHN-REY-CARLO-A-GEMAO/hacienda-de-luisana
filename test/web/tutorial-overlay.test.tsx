@@ -11,9 +11,9 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
-import { TourProvider } from '../../src/tutorial/TourEngine'
-import { TourOverlay, nudgeDelta, placeCard } from '../../src/tutorial/TourOverlay'
-import type { Rect, TourStep } from '../../src/tutorial/types'
+import { TourProvider } from '../../web/tutorial/TourEngine'
+import { TourOverlay, nudgeDelta, placeCard } from '../../web/tutorial/TourOverlay'
+import type { Rect, TourStep } from '../../web/tutorial/types'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

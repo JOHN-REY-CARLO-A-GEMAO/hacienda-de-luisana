@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sdk = vi.hoisted(() => ({ onSnapshot: vi.fn() }))
 
-vi.mock('../../src/lib/firebase', () => ({ db: {}, isFirebaseConfigured: true }))
+vi.mock('../../web/lib/firebase', () => ({ db: {}, isFirebaseConfigured: true }))
 vi.mock('firebase/firestore', () => ({
   Timestamp: { fromMillis: vi.fn((value: number) => ({ value })) },
   addDoc: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: vi.fn(),
 }))
 
-import { subscribeMessages } from '../../src/lib/chatCloud'
+import { subscribeMessages } from '../../web/lib/chatCloud'
 
 const CREATED = new Date('2026-09-20T01:00:00.000Z')
 

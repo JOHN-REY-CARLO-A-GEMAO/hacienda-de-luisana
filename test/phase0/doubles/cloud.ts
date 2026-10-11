@@ -1,8 +1,8 @@
 // Explicit SDK double for actual TS adapters. Not Firebase authorization,
 // conflict/retry correctness, a durable server, or a bank/transfer ledger.
 import { vi } from 'vitest'
-import type { Actor } from '../../../src/lib/booking'
-import type { Booking } from '../../../src/lib/storage'
+import type { Actor } from '../../../web/lib/booking'
+import type { Booking } from '../../../web/lib/storage'
 import { scenarios, NOW } from '../fixtures'
 
 type Ref = { path: string; id: string; constraints?: { field?: string; op?: string; value?: unknown }[] }
@@ -16,7 +16,7 @@ const sdk = vi.hoisted(() => ({
   listeners: [] as { next: (snapshot: unknown) => void; error: (error: unknown) => void }[],
 }))
 export { sdk }
-vi.mock('../../../src/lib/firebase', () => ({
+vi.mock('../../../web/lib/firebase', () => ({
   db: { phase0SdkDouble: true }, auth: sdk.auth, isFirebaseConfigured: true, googleProvider: null,
 }))
 vi.mock('firebase/firestore', () => {
@@ -105,7 +105,7 @@ export async function lostResponseThenRetry(add: () => Promise<unknown>) {
 // B then reads A's fresh Approved document in its transaction. The adapter uses
 // the stale query list rather than the fresh rival. No sleeps or Firestore
 // retry simulation. Canonical emulator companion separately tests this schedule.
-export async function lastUnitSchedule(adapter: typeof import('../../../src/lib/firestoreBookings')['cloudBookingsDB'], a: Booking, b: Booking, actorA: Actor, actorB: Actor) {
+export async function lastUnitSchedule(adapter: typeof import('../../../web/lib/firestoreBookings')['cloudBookingsDB'], a: Booking, b: Booking, actorA: Actor, actorB: Actor) {
   putCloud(a); putCloud(b)
   const queried = deferred(); const resume = deferred()
   sdk.getDocs.mockImplementationOnce(async (ref: Ref) => {

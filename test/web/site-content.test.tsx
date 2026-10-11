@@ -19,16 +19,16 @@ import {
   NEARBY,
   OFFICIAL_CHANNELS,
   REVIEWS,
-} from '../../src/config/site'
-import { Accommodations, displayedRate } from '../../src/sections/Accommodations'
-import { Rates } from '../../src/sections/Rates'
-import { Reviews, monthYear } from '../../src/sections/Reviews'
-import { Nearby } from '../../src/sections/Nearby'
-import { GoodToKnow } from '../../src/sections/GoodToKnow'
-import { Location } from '../../src/sections/Location'
-import { Hero } from '../../src/sections/Hero'
-import { OfficialChannelsNotice } from '../../src/components/OfficialChannelsNotice'
-import type { PublishedRates } from '../../src/lib/booking'
+} from '../../web/config/site'
+import { Accommodations, displayedRate } from '../../web/sections/Accommodations'
+import { Rates } from '../../web/sections/Rates'
+import { Reviews, monthYear } from '../../web/sections/Reviews'
+import { Nearby } from '../../web/sections/Nearby'
+import { GoodToKnow } from '../../web/sections/GoodToKnow'
+import { Location } from '../../web/sections/Location'
+import { Hero } from '../../web/sections/Hero'
+import { OfficialChannelsNotice } from '../../web/components/OfficialChannelsNotice'
+import type { PublishedRates } from '../../web/lib/booking'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

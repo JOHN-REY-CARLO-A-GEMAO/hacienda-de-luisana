@@ -3,7 +3,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { sdk, resetCloudDouble } from './doubles/cloud'
 import { scenarios } from './fixtures'
-import { BOOTSTRAP_ROLES, resolveRole } from '../../src/lib/auth/profile'
+import { BOOTSTRAP_ROLES, resolveRole } from '../../web/lib/auth/profile'
 
 const calls = vi.hoisted(() => ({ create: vi.fn(), login: vi.fn(), signInAnonymous: vi.fn(), update: vi.fn() }))
 vi.mock('firebase/auth', () => ({
@@ -12,8 +12,8 @@ vi.mock('firebase/auth', () => ({
   browserLocalPersistence: 'synthetic-persistence', setPersistence: vi.fn(async () => {}),
   onAuthStateChanged: vi.fn(() => () => {}), signOut: vi.fn(), signInWithPopup: vi.fn(), sendPasswordResetEmail: vi.fn(),
 }))
-import { ensureGuestUid } from '../../src/lib/guestAuth'
-import { createFirebasePorts } from '../../src/lib/authFirebase'
+import { ensureGuestUid } from '../../web/lib/guestAuth'
+import { createFirebasePorts } from '../../web/lib/authFirebase'
 
 beforeEach(() => {
   resetCloudDouble()

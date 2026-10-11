@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { BOOTSTRAP_ROLES, resolveRole } from '../../src/lib/auth/profile'
+import { BOOTSTRAP_ROLES, resolveRole } from '../../web/lib/auth/profile'
 import { scenarios } from './fixtures'
 
 it('F04 DESIRED: unverified, unbound allowlisted-email claim alone does not grant Admin authority', () => {

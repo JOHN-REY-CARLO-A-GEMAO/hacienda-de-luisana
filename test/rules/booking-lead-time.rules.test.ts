@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compileRules, type DocData, type Store } from './engine'
 import { allowlistedAdmin, anonymousGuest, bookingDoc, promotedAdmin, request, storeWith } from './context'
-import { MINIMUM_BOOKING_LEAD_TIME_DAYS } from '../../src/lib/booking'
+import { MINIMUM_BOOKING_LEAD_TIME_DAYS } from '../../web/lib/booking'
 
 const rules = readFileSync(join(__dirname, '../../firestore.rules'), 'utf8')
 const decide = compileRules(rules)

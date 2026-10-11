@@ -2,9 +2,9 @@
 // the record. The log is append-only, and the Admin's view is ordered.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { activityLogDB, cloudBookingsDB } from '../../src/lib/firestoreBookings'
-import { describeActivity } from '../../src/lib/booking'
-import type { ActivityLogEntry } from '../../src/lib/booking'
+import { activityLogDB, cloudBookingsDB } from '../../web/lib/firestoreBookings'
+import { describeActivity } from '../../web/lib/booking'
+import type { ActivityLogEntry } from '../../web/lib/booking'
 
 const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' } as const
 const admin = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana' } as const

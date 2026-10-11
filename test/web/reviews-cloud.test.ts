@@ -23,8 +23,8 @@ import {
   unpublishPublicReview,
   getReviewForBooking,
   type PublicReview,
-} from '../../src/lib/reviewsCloud'
-import { PUBLIC_EXCERPT_MAX, REVIEW_EDIT_WINDOW_DAYS } from '../../src/lib/reviewPolicy'
+} from '../../web/lib/reviewsCloud'
+import { PUBLIC_EXCERPT_MAX, REVIEW_EDIT_WINDOW_DAYS } from '../../web/lib/reviewPolicy'
 
 const BOOKING = 'booking-1'
 const UID = 'guest-uid-1'

@@ -20,11 +20,11 @@ const adapter = vi.hoisted(() => ({
   checkAvailability: vi.fn(async () => ({ available: true, conflicts: [] })),
   validateGuestCheckIn: vi.fn(async () => ({ ok: true })),
 }))
-vi.mock('../../src/lib/guestAuth', () => ({ ensureGuestUid: async () => null }))
-vi.mock('../../src/lib/payments', () => ({
+vi.mock('../../web/lib/guestAuth', () => ({ ensureGuestUid: async () => null }))
+vi.mock('../../web/lib/payments', () => ({
   uploadPaymentProof: async () => ({ ok: true, url: 'payments/demo/proof.png', uid: 'demo' }),
 }))
-vi.mock('../../src/lib/firestoreBookings', () => ({
+vi.mock('../../web/lib/firestoreBookings', () => ({
   cloudBookingsDB: {
     get isCloud() {
       return true
@@ -35,9 +35,9 @@ vi.mock('../../src/lib/firestoreBookings', () => ({
   },
 }))
 
-import { DownpaymentPage } from '../../src/pages/DownpaymentPage'
-import { saveBookingDraft, clearBookingDraft } from '../../src/lib/bookingDraft'
-import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
+import { DownpaymentPage } from '../../web/pages/DownpaymentPage'
+import { saveBookingDraft, clearBookingDraft } from '../../web/lib/bookingDraft'
+import { LOCAL_RATES_KEY } from '../../web/lib/ratesDB'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

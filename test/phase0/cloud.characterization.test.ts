@@ -2,8 +2,8 @@
 // transaction/retry evidence; local emulators have a separate companion.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { sdk, putCloud, documentSnapshot, resetCloudDouble, lostResponseThenRetry, lastUnitSchedule } from './doubles/cloud'
-import { cloudBookingsDB, activityLogDB, lastCloudWriteFailure } from '../../src/lib/firestoreBookings'
-import { bookingsDB, activityLogStorage } from '../../src/lib/storage'
+import { cloudBookingsDB, activityLogDB, lastCloudWriteFailure } from '../../web/lib/firestoreBookings'
+import { bookingsDB, activityLogStorage } from '../../web/lib/storage'
 import { booking, actor, request, NOW, scenarios } from './fixtures'
 
 beforeEach(resetCloudDouble)

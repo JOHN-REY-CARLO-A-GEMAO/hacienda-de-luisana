@@ -14,7 +14,7 @@
 // gets written by someone trying to make a preview work. So it is a test.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { PROOF_IMAGE_EXTENSIONS, proofObjectPath } from '../../src/lib/payments'
+import { PROOF_IMAGE_EXTENSIONS, proofObjectPath } from '../../web/lib/payments'
 
 const sql = readFileSync(join(__dirname, '../../supabase/01-storage.sql'), 'utf8')
 const fn = readFileSync(

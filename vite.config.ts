@@ -1,9 +1,9 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { resolveFirebaseConfig } from './src/lib/firebaseConfig'
-import { COMMITTED_PROJECT } from './src/lib/firebaseDefaults'
-import { resolveSupabaseConfig } from './src/lib/supabaseConfig'
-import { COMMITTED_SUPABASE } from './src/lib/supabaseDefaults'
+import { resolveFirebaseConfig } from './web/lib/firebaseConfig'
+import { COMMITTED_PROJECT } from './web/lib/firebaseDefaults'
+import { resolveSupabaseConfig } from './web/lib/supabaseConfig'
+import { COMMITTED_SUPABASE } from './web/lib/supabaseDefaults'
 
 /**
  * Say, in the build log, which Firebase project this bundle is being built for.
@@ -11,7 +11,7 @@ import { COMMITTED_SUPABASE } from './src/lib/supabaseDefaults'
  * The failure this is for is a silent one: a deployment built without its
  * Firebase settings is a *working* website whose Guest requests never reach the
  * Admin app. Nothing in the build output used to mention it. This does — and it
- * reads the same resolver the app reads (`src/lib/firebaseConfig.ts`), so the
+ * reads the same resolver the app reads (`web/lib/firebaseConfig.ts`), so the
  * log and the running site cannot disagree.
  *
  * It never fails a build by itself: a demo build is a legitimate thing to want.
@@ -39,8 +39,8 @@ function firebaseConfigReport(): Plugin {
           report.source === 'env'
             ? 'from VITE_FIREBASE_* environment variables'
             : report.source === 'defaults'
-              ? 'from src/lib/firebaseDefaults.ts (this build has no VITE_FIREBASE_* variables)'
-              : 'partly from the environment, the rest from src/lib/firebaseDefaults.ts'
+              ? 'from web/lib/firebaseDefaults.ts (this build has no VITE_FIREBASE_* variables)'
+              : 'partly from the environment, the rest from web/lib/firebaseDefaults.ts'
         config.logger.info(
           `\n[firebase] Building for project "${report.config.projectId}" — ${where}.`,
         )
@@ -62,7 +62,7 @@ function firebaseConfigReport(): Plugin {
           'guest’s own browser and will NOT reach the Admin app.\n' +
           '[firebase]   Fix it with VITE_FIREBASE_* variables in the hosting dashboard (Vercel → ' +
           'Settings → Environment Variables, then redeploy), or by filling ' +
-          'src/lib/firebaseDefaults.ts.'
+          'web/lib/firebaseDefaults.ts.'
         if (process.env.FIREBASE_ENV_STRICT === '1') {
           throw new Error(
             `${banner}\n[firebase] FIREBASE_ENV_STRICT=1, so this build is refused rather than shipped ` +
@@ -106,8 +106,8 @@ function supabaseConfigReport(): Plugin {
           report.source === 'env'
             ? 'from VITE_SUPABASE_* environment variables'
             : report.source === 'defaults'
-              ? 'from src/lib/supabaseDefaults.ts (this build has no VITE_SUPABASE_* variables)'
-              : 'partly from the environment, the rest from src/lib/supabaseDefaults.ts'
+              ? 'from web/lib/supabaseDefaults.ts (this build has no VITE_SUPABASE_* variables)'
+              : 'partly from the environment, the rest from web/lib/supabaseDefaults.ts'
         config.logger.info(
           `\n[supabase] Payment proofs will upload to "${new URL(report.config.url).hostname}" — ${where}.`,
         )
@@ -122,7 +122,7 @@ function supabaseConfigReport(): Plugin {
           '[supabase] This build has NO Supabase project. Payment-proof screenshots will stay in the ' +
           'guest’s own browser and will NOT reach the Admin app.\n' +
           '[supabase]   Fix it with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the hosting ' +
-          'dashboard, or by filling src/lib/supabaseDefaults.ts.'
+          'dashboard, or by filling web/lib/supabaseDefaults.ts.'
         if (process.env.SUPABASE_ENV_STRICT === '1') {
           throw new Error(
             `${banner}\n[supabase] SUPABASE_ENV_STRICT=1, so this build is refused rather than shipped ` +

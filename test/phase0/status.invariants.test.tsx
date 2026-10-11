@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { expect, it } from 'vitest'
 import { putCloud, resetCloudDouble } from './doubles/cloud'
 import { approved, booking } from './fixtures'
-import { BookingStatusPage } from '../../src/pages/BookingStatusPage'
+import { BookingStatusPage } from '../../web/pages/BookingStatusPage'
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
 it('F24 DESIRED: a Staying booking must not be described as unconfirmed Pending', async () => {

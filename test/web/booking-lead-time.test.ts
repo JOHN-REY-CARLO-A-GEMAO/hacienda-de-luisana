@@ -7,8 +7,8 @@ import {
   minimumCheckInDate,
   minimumBookingLeadTimeMessage,
   validateMinimumBookingLeadTime,
-} from '../../src/lib/booking'
-import { cloudBookingsDB, activityLogDB } from '../../src/lib/firestoreBookings'
+} from '../../web/lib/booking'
+import { cloudBookingsDB, activityLogDB } from '../../web/lib/firestoreBookings'
 
 const NOW = new Date('2026-10-01T12:00:00Z')
 const datePlus = (days: number) => new Date(Date.UTC(2026, 9, 1 + days)).toISOString().slice(0, 10)

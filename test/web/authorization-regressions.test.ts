@@ -22,10 +22,10 @@ import {
   type BookingAction,
   type BookingState,
   type BookingPatch,
-} from '../../src/lib/booking'
-import { cloudBookingsDB, activityLogDB, signActivityEntries } from '../../src/lib/firestoreBookings'
-import { bookingsDB, activityLogStorage } from '../../src/lib/storage'
-import { reviewDocId, reviewRecordFor } from '../../src/lib/reviewsCloud'
+} from '../../web/lib/booking'
+import { cloudBookingsDB, activityLogDB, signActivityEntries } from '../../web/lib/firestoreBookings'
+import { bookingsDB, activityLogStorage } from '../../web/lib/storage'
+import { reviewDocId, reviewRecordFor } from '../../web/lib/reviewsCloud'
 
 const rules = readFileSync(join(__dirname, '../../firestore.rules'), 'utf8')
 

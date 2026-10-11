@@ -2,8 +2,8 @@
 // same localStorage-backed adapter the website falls back to in demo mode.
 // Nothing here reaches past the interface — no peeking into localStorage, no
 // asserting on internals (tdd skill: verify through the interface).
-import { cloudBookingsDB, activityLogDB } from '../../src/lib/firestoreBookings'
-import { DATE_HOLD_MS } from '../../src/lib/booking'
+import { cloudBookingsDB, activityLogDB } from '../../web/lib/firestoreBookings'
+import { DATE_HOLD_MS } from '../../web/lib/booking'
 
 const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' } as const
 const admin = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana' } as const

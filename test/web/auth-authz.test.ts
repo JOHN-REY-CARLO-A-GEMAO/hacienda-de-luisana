@@ -8,8 +8,8 @@
 // they are the Admin still sends the actor the session resolved — and the
 // refusal below is what they get, before firestore.rules refuses it again for
 // anybody who skips the app entirely.
-import { activityLogDB, cloudBookingsDB } from '../../src/lib/firestoreBookings'
-import type { ActionAccepted, Actor } from '../../src/lib/booking'
+import { activityLogDB, cloudBookingsDB } from '../../web/lib/firestoreBookings'
+import type { ActionAccepted, Actor } from '../../web/lib/booking'
 
 const guest: Actor = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos', now: '2026-09-20T01:00:00.000Z' }
 const admin: Actor = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana', now: '2026-09-20T01:00:00.000Z' }

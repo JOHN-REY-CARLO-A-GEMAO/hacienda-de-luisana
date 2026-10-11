@@ -8,10 +8,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
-import { TiltCard } from '../../src/components/TiltCard'
-import { ParallaxImage } from '../../src/components/ParallaxImage'
-import { Hero } from '../../src/sections/Hero'
-import { clamp, viewportProgress, MAX_PARALLAX_RANGE } from '../../src/lib/motion'
+import { TiltCard } from '../../web/components/TiltCard'
+import { ParallaxImage } from '../../web/components/ParallaxImage'
+import { Hero } from '../../web/sections/Hero'
+import { clamp, viewportProgress, MAX_PARALLAX_RANGE } from '../../web/lib/motion'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

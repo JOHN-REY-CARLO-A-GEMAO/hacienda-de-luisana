@@ -9,17 +9,17 @@ import {
   validateSearch,
   validateStayDates,
   validateStarRating,
-} from '../../src/lib/validation'
-import { paginate, sortBy } from '../../src/lib/pagination'
+} from '../../web/lib/validation'
+import { paginate, sortBy } from '../../web/lib/pagination'
 import {
   extractReceiptFields,
   extractReferenceNumber,
   canAutoVerifyFromOcr,
   matchPaymentReference,
-} from '../../src/lib/payments/ocr'
-import { checkRateLimit, resetRateLimit, LIMITS } from '../../src/lib/rateLimit'
-import { LEGAL_VERSION, isAcceptanceCurrent, recordAcceptance } from '../../src/lib/legal'
-import { isActiveCategory } from '../../src/lib/categories'
+} from '../../web/lib/payments/ocr'
+import { checkRateLimit, resetRateLimit, LIMITS } from '../../web/lib/rateLimit'
+import { LEGAL_VERSION, isAcceptanceCurrent, recordAcceptance } from '../../web/lib/legal'
+import { isActiveCategory } from '../../web/lib/categories'
 
 describe('age / birthdate', () => {
   it('rejects under-10 using calendar age, not a hard-coded year', () => {

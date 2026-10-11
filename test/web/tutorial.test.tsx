@@ -14,13 +14,13 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
-import App from '../../src/App'
-import { AuthProvider } from '../../src/context/AuthContext'
-import { resetAppSession } from '../../src/lib/authSession'
-import { COOKIE } from '../../src/lib/cookies'
-import { bookingBusinessDate } from '../../src/lib/booking'
-import { OFFICIAL_ACCOMMODATION_RATES } from '../../src/config/officialBusiness'
-import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
+import App from '../../web/App'
+import { AuthProvider } from '../../web/context/AuthContext'
+import { resetAppSession } from '../../web/lib/authSession'
+import { COOKIE } from '../../web/lib/cookies'
+import { bookingBusinessDate } from '../../web/lib/booking'
+import { OFFICIAL_ACCOMMODATION_RATES } from '../../web/config/officialBusiness'
+import { LOCAL_RATES_KEY } from '../../web/lib/ratesDB'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

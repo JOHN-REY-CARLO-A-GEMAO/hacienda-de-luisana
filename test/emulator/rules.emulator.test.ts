@@ -24,7 +24,7 @@ import {
 } from '@firebase/rules-unit-testing'
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore'
 import { ref, uploadBytes, deleteObject, getDownloadURL } from 'firebase/storage'
-import { conversationDocId } from '../../src/lib/chatCloud'
+import { conversationDocId } from '../../web/lib/chatCloud'
 
 /** `firebase emulators:exec` puts the project id in the environment. */
 const PROJECT = process.env.GCLOUD_PROJECT ?? process.env.FIREBASE_PROJECT ?? 'demo-hacienda'

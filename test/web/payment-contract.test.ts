@@ -11,7 +11,7 @@ import {
   proofObjectPath,
   uploadPaymentProof,
   validateProofFile,
-} from '../../src/lib/payments'
+} from '../../web/lib/payments'
 
 describe('proofObjectPath', () => {
   it('writes under /payments, one folder per booking reference', () => {
@@ -107,7 +107,7 @@ describe('nextProofAttempt', () => {
  * the absence of the option.
  */
 describe('the Supabase upload never upserts', () => {
-  const source = readFileSync(join(__dirname, '../../src/lib/storage.ts'), 'utf8')
+  const source = readFileSync(join(__dirname, '../../web/lib/storage.ts'), 'utf8')
   // Whole-line comments only, which is how this file writes them. The point is
   // to assert on code, not on the comment explaining why the option is absent.
   const code = source

@@ -1,8 +1,8 @@
 import { createRoot } from 'react-dom/client'
 import { act } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { PaymentInformationPanel } from '../../src/components/Booking/PaymentInformationPanel'
-import { validatePaymentInformation, type PaymentInformation } from '../../src/lib/paymentInfoDB'
+import { PaymentInformationPanel } from '../../web/components/Booking/PaymentInformationPanel'
+import { validatePaymentInformation, type PaymentInformation } from '../../web/lib/paymentInfoDB'
 
 const valid: PaymentInformation = {
   active: true,

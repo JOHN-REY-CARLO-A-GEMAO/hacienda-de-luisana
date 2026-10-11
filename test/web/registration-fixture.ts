@@ -5,7 +5,7 @@
 // the role a sign-up does and does not get — so those cases want a registration
 // that already satisfies the two checks they are not about. Spreading this in
 // keeps each case reading as one line about its own subject.
-import type { RegistrationInput } from '../../src/lib/auth'
+import type { RegistrationInput } from '../../web/lib/auth'
 
 /** A date of birth comfortably over the minimum age. */
 export const AN_ADULT = '1990-04-17'

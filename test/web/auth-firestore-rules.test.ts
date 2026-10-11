@@ -9,7 +9,7 @@
 // file the same way, for the same reason.)
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BOOTSTRAP_ROLES } from '../../src/lib/auth'
+import { BOOTSTRAP_ROLES } from '../../web/lib/auth'
 
 const rules = readFileSync(join(__dirname, '../../firestore.rules'), 'utf8')
 const storageRules = readFileSync(join(__dirname, '../../storage.rules'), 'utf8')

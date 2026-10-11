@@ -2,10 +2,10 @@
 // Consent/rule authorization is tested separately by the canonical emulator.
 import { beforeEach, expect, it, vi } from 'vitest'
 import { scenarios, NOW } from './fixtures'
-import { checkFix, isStale } from '../../src/lib/liveLocationPolicy'
+import { checkFix, isStale } from '../../web/lib/liveLocationPolicy'
 
 const transport = vi.hoisted(() => ({ consent: vi.fn(), update: vi.fn(), set: vi.fn(), remove: vi.fn(), disconnect: vi.fn() }))
-vi.mock('../../src/lib/firebase', () => ({
+vi.mock('../../web/lib/firebase', () => ({
   db: { phase0Double: true }, isFirebaseConfigured: true,
   hasRealtimeDatabaseConfig: () => true, ensureRealtimeDatabase: async () => ({ phase0Double: true }),
 }))
@@ -17,7 +17,7 @@ vi.mock('firebase/database', () => ({
   ref: (_db: unknown, path: string) => ({ path }), set: transport.set, remove: transport.remove,
   onDisconnect: () => ({ remove: transport.disconnect }),
 }))
-import { startSharing, publishFix, stopSharing } from '../../src/lib/liveLocation'
+import { startSharing, publishFix, stopSharing } from '../../web/lib/liveLocation'
 const now = Date.parse(NOW)
 const location = scenarios.location
 const start = () => startSharing({ convoId: location.conversationId, uid: location.guestUid, minutes: 30, nowMs: now })

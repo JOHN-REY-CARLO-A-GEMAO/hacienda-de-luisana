@@ -1,7 +1,7 @@
 // The Admin publishes the rates document; the website validates and reads it.
 // This test drives the demo/localStorage path, not a mocked Firebase backend.
-import { LOCAL_RATES_EVENT, LOCAL_RATES_KEY, ratesDB } from '../../src/lib/ratesDB'
-import { paymentOptionsForTotal, quoteAccommodation, validatePublishedRates } from '../../src/lib/booking'
+import { LOCAL_RATES_EVENT, LOCAL_RATES_KEY, ratesDB } from '../../web/lib/ratesDB'
+import { paymentOptionsForTotal, quoteAccommodation, validatePublishedRates } from '../../web/lib/booking'
 
 const KNOWN = ['main-house', 'house-a-camping'] as const
 

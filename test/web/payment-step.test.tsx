@@ -10,9 +10,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { PaymentStep } from '../../src/components/Booking/PaymentStep'
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
-import type { Booking } from '../../src/lib/storage'
+import { PaymentStep } from '../../web/components/Booking/PaymentStep'
+import { cloudBookingsDB } from '../../web/lib/firestoreBookings'
+import type { Booking } from '../../web/lib/storage'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

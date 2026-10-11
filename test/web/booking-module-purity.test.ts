@@ -7,9 +7,9 @@
 // assumed.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { effectiveStatus, findDateConflicts, holdMsRemaining } from '../../src/lib/booking'
+import { effectiveStatus, findDateConflicts, holdMsRemaining } from '../../web/lib/booking'
 
-const MODULE_DIR = join(__dirname, '../../src/lib/booking')
+const MODULE_DIR = join(__dirname, '../../web/lib/booking')
 
 /**
  * The code in a source file, with its prose removed: block comments, line

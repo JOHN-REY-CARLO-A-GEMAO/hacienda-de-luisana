@@ -22,9 +22,9 @@ import {
   resolveRole,
   BOOTSTRAP_ROLES,
   type Role,
-} from '../../src/lib/auth'
+} from '../../web/lib/auth'
 
-const MODULE_DIR = join(__dirname, '../../src/lib/auth')
+const MODULE_DIR = join(__dirname, '../../web/lib/auth')
 
 describe('the two roles', () => {
   it('are Guest and Admin, in the glossary’s own words', () => {

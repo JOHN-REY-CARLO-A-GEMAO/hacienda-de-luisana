@@ -20,7 +20,7 @@
   },
   "include": [
     "test/web",
-    "src",
+    "web",
     "vitest.config.ts"
   ]
 }

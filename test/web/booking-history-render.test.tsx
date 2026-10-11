@@ -1,10 +1,10 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BookingHistory } from '../../src/components/Booking/BookingHistory'
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
-import type { ActivityLogEntry } from '../../src/lib/booking'
-import { formatDateTime } from '../../src/lib/formatDate'
+import { BookingHistory } from '../../web/components/Booking/BookingHistory'
+import { cloudBookingsDB } from '../../web/lib/firestoreBookings'
+import type { ActivityLogEntry } from '../../web/lib/booking'
+import { formatDateTime } from '../../web/lib/formatDate'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

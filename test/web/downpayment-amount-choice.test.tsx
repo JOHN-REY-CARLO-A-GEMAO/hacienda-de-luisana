@@ -12,9 +12,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { DownpaymentPage } from '../../src/pages/DownpaymentPage'
-import { saveBookingDraft, clearBookingDraft } from '../../src/lib/bookingDraft'
-import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
+import { DownpaymentPage } from '../../web/pages/DownpaymentPage'
+import { saveBookingDraft, clearBookingDraft } from '../../web/lib/bookingDraft'
+import { LOCAL_RATES_KEY } from '../../web/lib/ratesDB'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

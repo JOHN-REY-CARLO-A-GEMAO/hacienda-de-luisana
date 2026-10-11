@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { compileRules, ruleTimestamp, type RuleRequest, type Store } from '../rules/engine'
 import { booking, approved, scenarios, NOW } from './fixtures'
-import { BOOTSTRAP_ROLES } from '../../src/lib/auth/profile'
+import { BOOTSTRAP_ROLES } from '../../web/lib/auth/profile'
 const identities = scenarios.identities
 const guest = { uid: identities.anonymousGuest.uid, token: { firebase: { sign_in_provider: 'anonymous' } } }
 const other = { uid: identities.secondGuest.uid, token: { email: identities.secondGuest.email, email_verified: true } }

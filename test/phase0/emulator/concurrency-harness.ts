@@ -6,7 +6,7 @@ import { doc, getDoc, getDocs, collection, setDoc, writeBatch, type Firestore } 
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { seed, context, canonicalBooking } from './helpers'
 import { booking, actor, scenarios } from '../fixtures'
-import { applyAction, type BookingState } from '../../../src/lib/booking'
+import { applyAction, type BookingState } from '../../../web/lib/booking'
 
 const control = vi.hoisted(() => ({ holdDb: null as unknown, captured: null as null | (() => void), release: null as null | Promise<void> }))
 vi.mock('firebase/firestore', async importOriginal => {
@@ -22,8 +22,8 @@ vi.mock('firebase/firestore', async importOriginal => {
 
 async function adapterAs(db: Firestore, uid: string) {
   vi.resetModules()
-  vi.doMock('../../../src/lib/firebase', () => ({ db, auth: { currentUser: { uid } }, isFirebaseConfigured: true }))
-  return (await import('../../../src/lib/firestoreBookings')).cloudBookingsDB
+  vi.doMock('../../../web/lib/firebase', () => ({ db, auth: { currentUser: { uid } }, isFirebaseConfigured: true }))
+  return (await import('../../../web/lib/firestoreBookings')).cloudBookingsDB
 }
 export async function officialLastUnitSchedule(env: RulesTestEnvironment) {
   const a = { ...canonicalBooking(), id: 'phase0-booking-a' }

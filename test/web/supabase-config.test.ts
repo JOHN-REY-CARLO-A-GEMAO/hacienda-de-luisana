@@ -17,8 +17,8 @@ import {
   isSupabaseUrlLike,
   resolveSupabaseConfig,
   type SupabaseConfig,
-} from '../../src/lib/supabaseConfig'
-import { COMMITTED_SUPABASE } from '../../src/lib/supabaseDefaults'
+} from '../../web/lib/supabaseConfig'
+import { COMMITTED_SUPABASE } from '../../web/lib/supabaseDefaults'
 
 /**
  * A synthetic key with the right *shape*. The committed real key is never

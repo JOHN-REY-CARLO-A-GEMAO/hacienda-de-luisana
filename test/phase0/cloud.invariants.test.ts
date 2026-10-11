@@ -1,6 +1,6 @@
 import { beforeEach, expect, it } from 'vitest'
 import { sdk, putCloud, resetCloudDouble, lostResponseThenRetry, lastUnitSchedule } from './doubles/cloud'
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
+import { cloudBookingsDB } from '../../web/lib/firestoreBookings'
 import { booking, actor, request } from './fixtures'
 
 beforeEach(resetCloudDouble)

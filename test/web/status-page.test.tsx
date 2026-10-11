@@ -8,8 +8,8 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
-import { StatusPage } from '../../src/pages/StatusPage'
-import { runConnectionCheck } from '../../src/lib/connectionCheck'
+import { StatusPage } from '../../web/pages/StatusPage'
+import { runConnectionCheck } from '../../web/lib/connectionCheck'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

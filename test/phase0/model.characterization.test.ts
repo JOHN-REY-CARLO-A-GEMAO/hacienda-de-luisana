@@ -1,8 +1,8 @@
 // Actual pure TS module behavior. No claim of a cloud ledger, raced commit,
 // deployed authorization, device actuation or real money received.
 import { describe, expect, it } from 'vitest'
-import { applyAction, assertSubmittable, BOOKING_STATUSES, interpretStoredStatus, isAvailable, datesOverlap } from '../../src/lib/booking'
-import { activityLogStorage } from '../../src/lib/storage'
+import { applyAction, assertSubmittable, BOOKING_STATUSES, interpretStoredStatus, isAvailable, datesOverlap } from '../../web/lib/booking'
+import { activityLogStorage } from '../../web/lib/storage'
 import { booking, approved, actor, NOW, scenarios } from './fixtures'
 
 describe('current new and historical flow (model, not browser/native E2E)', () => {

@@ -3,13 +3,13 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import './doubles/cloud'
 import { sdk, resetCloudDouble, deferred } from './doubles/cloud'
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
-import { uploadPaymentProof } from '../../src/lib/payments/upload'
-import { uploadPaymentProofFile, readLocalPaymentProof } from '../../src/lib/storage'
+import { cloudBookingsDB } from '../../web/lib/firestoreBookings'
+import { uploadPaymentProof } from '../../web/lib/payments/upload'
+import { uploadPaymentProofFile, readLocalPaymentProof } from '../../web/lib/storage'
 import { scenarios, request, NOW } from './fixtures'
 
 const store = vi.hoisted(() => ({ configured: false, upload: vi.fn() }))
-vi.mock('../../src/lib/supabase', () => ({
+vi.mock('../../web/lib/supabase', () => ({
   get isSupabaseConfigured() { return store.configured }, PAYMENT_PROOFS_BUCKET: 'payment-proofs',
   supabase: { storage: { from: () => ({ upload: store.upload }) } },
 }))

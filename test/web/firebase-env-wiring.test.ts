@@ -35,7 +35,7 @@ describe('the environment src/lib/firebase.ts hands the resolver', () => {
     vi.resetModules()
 
     const { isFirebaseConfigured, firebaseConfigSource, firebaseConfigReport } = await import(
-      '../../src/lib/firebase'
+      '../../web/lib/firebase'
     )
 
     // The three required fields, each read back as a real value rather than a miss.
@@ -57,7 +57,7 @@ describe('the environment src/lib/firebase.ts hands the resolver', () => {
   it('still says demo mode when the build carries no variables at all', async () => {
     vi.resetModules()
 
-    const { isFirebaseConfigured, firebaseConfigSource } = await import('../../src/lib/firebase')
+    const { isFirebaseConfigured, firebaseConfigSource } = await import('../../web/lib/firebase')
 
     expect(isFirebaseConfigured).toBe(false)
     expect(firebaseConfigSource).toBe('none')

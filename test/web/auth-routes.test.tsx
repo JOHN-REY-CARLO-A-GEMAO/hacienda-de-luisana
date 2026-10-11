@@ -10,10 +10,10 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { AuthContext, type AuthContextType } from '../../src/context/AuthContext'
-import { ProtectedRoute } from '../../src/components/Auth/ProtectedRoute'
-import { LoginForm } from '../../src/components/Auth/LoginForm'
-import { AuthError, canOpenPage, permissionsOf, type Permission, type Role } from '../../src/lib/auth'
+import { AuthContext, type AuthContextType } from '../../web/context/AuthContext'
+import { ProtectedRoute } from '../../web/components/Auth/ProtectedRoute'
+import { LoginForm } from '../../web/components/Auth/LoginForm'
+import { AuthError, canOpenPage, permissionsOf, type Permission, type Role } from '../../web/lib/auth'
 import { AN_ADULT } from './registration-fixture'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true

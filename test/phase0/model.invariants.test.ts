@@ -3,8 +3,8 @@
 // Retarget to the approved trusted command boundary when one exists. Do not
 // add state to pure functions, tighten rules or alter booking UX in Phase 0.
 import { expect, it } from 'vitest'
-import { applyAction, isAvailable } from '../../src/lib/booking'
-import { activityLogStorage } from '../../src/lib/storage'
+import { applyAction, isAvailable } from '../../web/lib/booking'
+import { activityLogStorage } from '../../web/lib/storage'
 import { booking, approved, actor, NOW, scenarios } from './fixtures'
 
 it('F02/F07 DESIRED: a positive recorded quote cannot be confirmed for a tampered zero-due/₱1 claim', () => {

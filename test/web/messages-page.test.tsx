@@ -17,12 +17,12 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AuthContext } from '../../src/context/AuthContext'
-import { ShareLocationBar } from '../../src/components/chat/ShareLocationBar'
-import { MessagesPage } from '../../src/pages/MessagesPage'
-import type { UseLiveLocation } from '../../src/hooks/useLiveLocation'
-import type { LocationSession } from '../../src/lib/liveLocationPolicy'
-import { MESSAGE_MAX } from '../../src/lib/validation'
+import { AuthContext } from '../../web/context/AuthContext'
+import { ShareLocationBar } from '../../web/components/chat/ShareLocationBar'
+import { MessagesPage } from '../../web/pages/MessagesPage'
+import type { UseLiveLocation } from '../../web/hooks/useLiveLocation'
+import type { LocationSession } from '../../web/lib/liveLocationPolicy'
+import { MESSAGE_MAX } from '../../web/lib/validation'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

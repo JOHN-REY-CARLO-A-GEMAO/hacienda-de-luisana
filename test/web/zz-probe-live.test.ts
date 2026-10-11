@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validatePublishedRates, quoteAccommodation } from '../../src/lib/booking/rates'
+import { validatePublishedRates, quoteAccommodation } from '../../web/lib/booking/rates'
 
 /** The LIVE `site_config/rates`, read from production on 2026-10-06. */
 export const liveRates = {

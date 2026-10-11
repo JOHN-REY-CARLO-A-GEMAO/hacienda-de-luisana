@@ -9,7 +9,7 @@ import {
   claimAgainstReceipt,
   extractReceiptFields,
   extractReferenceNumber,
-} from '../../src/lib/payments/ocr'
+} from '../../web/lib/payments/ocr'
 
 const GCASH_EXPRESS_SEND = `10:23 AM @ Tl ft.
 X Express Send

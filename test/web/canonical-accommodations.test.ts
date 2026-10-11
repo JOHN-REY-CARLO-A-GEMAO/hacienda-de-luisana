@@ -9,9 +9,9 @@
 // why a copy of the numbers could live in three files and disagree with itself.
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { ACCOMMODATIONS } from '../../src/config/site'
-import { OFFICIAL_ACCOMMODATION_RATES } from '../../src/config/officialBusiness'
-import { unitsForAccommodation, validatePublishedRates } from '../../src/lib/booking'
+import { ACCOMMODATIONS } from '../../web/config/site'
+import { OFFICIAL_ACCOMMODATION_RATES } from '../../web/config/officialBusiness'
+import { unitsForAccommodation, validatePublishedRates } from '../../web/lib/booking'
 
 /**
  * The canonical Accommodation set.
@@ -117,7 +117,7 @@ describe('availability reads the published inventory', () => {
 })
 
 describe('retired Accommodation vocabulary', () => {
-  const SRC_DIR = join(__dirname, '../../src')
+  const SRC_DIR = join(__dirname, '../../web')
 
   function websiteSources(): Array<{ file: string; text: string }> {
     const files: string[] = []

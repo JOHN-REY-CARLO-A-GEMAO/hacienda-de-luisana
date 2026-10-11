@@ -1,9 +1,9 @@
 // Ticket #12: a submitted Booking holds its dates for 24 hours, the Guest can
 // see the time left, and when the hold runs out the Booking reads as Expired and
 // the dates go back into the pool — computed at read time, per ADR-0002.
-import { formatHoldCountdown, unitsForAccommodation } from '../../src/lib/booking'
-import { ACCOMMODATIONS } from '../../src/config/site'
-import { cloudBookingsDB, activityLogDB } from '../../src/lib/firestoreBookings'
+import { formatHoldCountdown, unitsForAccommodation } from '../../web/lib/booking'
+import { ACCOMMODATIONS } from '../../web/config/site'
+import { cloudBookingsDB, activityLogDB } from '../../web/lib/firestoreBookings'
 
 const guest = { actor: 'guest', actor_id: 'guest-1', actor_name: 'Maria Santos' } as const
 const admin = { actor: 'admin', actor_id: 'admin-1', actor_name: 'Ana Luisana' } as const

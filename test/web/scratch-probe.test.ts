@@ -1,5 +1,5 @@
 import { describe, it } from 'vitest'
-import { extractReferenceNumber, extractReceiptFields } from '../../src/lib/payments/ocr'
+import { extractReferenceNumber, extractReceiptFields } from '../../web/lib/payments/ocr'
 
 const CASES: Record<string, string> = {
   // The receipt in the screenshot: ref printed as three spaced groups, 9 digits.

@@ -40,7 +40,7 @@ import {
   starLabel,
   summarize,
   type ReviewSummaryInput,
-} from '../../src/lib/reviewPolicy'
+} from '../../web/lib/reviewPolicy'
 
 const CREATED = '2026-10-05T02:00:00.000Z'
 
@@ -252,7 +252,7 @@ describe('an Admin response', () => {
 
 describe('what the Activity log says about a Review', () => {
   it('names each of the five changes in the glossary\'s words', async () => {
-    const { describeActivity } = await import('../../src/lib/booking')
+    const { describeActivity } = await import('../../web/lib/booking')
     const entry = (action: string, to_status: string) =>
       describeActivity({
         booking_id: 'booking-1',
@@ -271,7 +271,7 @@ describe('what the Activity log says about a Review', () => {
   })
 
   it('leaves the arrow out, because a Review has no "before" the first time', async () => {
-    const { describeActivity } = await import('../../src/lib/booking')
+    const { describeActivity } = await import('../../web/lib/booking')
     const line = describeActivity({
       booking_id: 'booking-1',
       action: 'ReviewSubmitted',
@@ -297,7 +297,7 @@ describe('what the Activity log says about a Review', () => {
   })
 
   it('says which Guest acted, from the entry, not from a lookup', async () => {
-    const { describeActivity } = await import('../../src/lib/booking')
+    const { describeActivity } = await import('../../web/lib/booking')
     const line = describeActivity({
       booking_id: 'booking-1',
       action: 'ReviewSubmitted',

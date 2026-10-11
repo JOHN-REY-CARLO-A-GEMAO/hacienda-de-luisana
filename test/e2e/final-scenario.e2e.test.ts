@@ -32,16 +32,16 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { canOpenPage, createSession, homeForRole, permissionsOf, roleForEmail, type SessionStore } from '../../src/lib/auth'
-import { createLocalPorts } from '../../src/lib/authLocal'
-import { TERMS, recordAcceptance, isAcceptanceCurrent, LEGAL_VERSION } from '../../src/lib/legal'
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
-import { bookingsDB, type Booking } from '../../src/lib/storage'
-import { validateProofFile, PROOF_MAX_BYTES, proofObjectPath } from '../../src/lib/payments'
-import { extractReceiptFields, canAutoVerifyFromOcr, matchPaymentReference } from '../../src/lib/payments/ocr'
-import { interpretStoredStatus, normalizeStatus, paymentOptionsForTotal } from '../../src/lib/booking'
-import { checkRateLimit, LIMITS } from '../../src/lib/rateLimit'
-import { ensureConversation, sendChatMessage, subscribeMessages } from '../../src/lib/chatCloud'
+import { canOpenPage, createSession, homeForRole, permissionsOf, roleForEmail, type SessionStore } from '../../web/lib/auth'
+import { createLocalPorts } from '../../web/lib/authLocal'
+import { TERMS, recordAcceptance, isAcceptanceCurrent, LEGAL_VERSION } from '../../web/lib/legal'
+import { cloudBookingsDB } from '../../web/lib/firestoreBookings'
+import { bookingsDB, type Booking } from '../../web/lib/storage'
+import { validateProofFile, PROOF_MAX_BYTES, proofObjectPath } from '../../web/lib/payments'
+import { extractReceiptFields, canAutoVerifyFromOcr, matchPaymentReference } from '../../web/lib/payments/ocr'
+import { interpretStoredStatus, normalizeStatus, paymentOptionsForTotal } from '../../web/lib/booking'
+import { checkRateLimit, LIMITS } from '../../web/lib/rateLimit'
+import { ensureConversation, sendChatMessage, subscribeMessages } from '../../web/lib/chatCloud'
 import {
   getPublicReviewSummary,
   getReviewForBooking,
@@ -50,8 +50,8 @@ import {
   submitReview,
   unpublishPublicReview,
   updateReview,
-} from '../../src/lib/reviewsCloud'
-import { validateStarRating } from '../../src/lib/validation'
+} from '../../web/lib/reviewsCloud'
+import { validateStarRating } from '../../web/lib/validation'
 
 import { evaluate, type Store } from '../rules/engine'
 import {

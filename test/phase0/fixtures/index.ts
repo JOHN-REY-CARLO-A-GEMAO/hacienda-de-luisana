@@ -1,6 +1,6 @@
 import raw from './scenarios.json'
-import type { Actor } from '../../../src/lib/booking'
-import type { Booking } from '../../../src/lib/storage'
+import type { Actor } from '../../../web/lib/booking'
+import type { Booking } from '../../../web/lib/storage'
 
 export const scenarios = raw
 export const NOW = raw.meta.now

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { submitReview } from '../../src/lib/reviewsCloud'
-import { sendChatMessage } from '../../src/lib/chatCloud'
+import { submitReview } from '../../web/lib/reviewsCloud'
+import { sendChatMessage } from '../../web/lib/chatCloud'
 
 describe('reviews eligibility', () => {
   it('refuses a review before check-out', async () => {

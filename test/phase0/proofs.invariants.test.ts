@@ -1,10 +1,10 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import './doubles/cloud'
 import { resetCloudDouble } from './doubles/cloud'
-import { uploadPaymentProof } from '../../src/lib/payments/upload'
-import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
+import { uploadPaymentProof } from '../../web/lib/payments/upload'
+import { cloudBookingsDB } from '../../web/lib/firestoreBookings'
 import { scenarios, request } from './fixtures'
-vi.mock('../../src/lib/supabase', () => ({ isSupabaseConfigured: false, supabase: null, PAYMENT_PROOFS_BUCKET: 'payment-proofs' }))
+vi.mock('../../web/lib/supabase', () => ({ isSupabaseConfigured: false, supabase: null, PAYMENT_PROOFS_BUCKET: 'payment-proofs' }))
 beforeEach(resetCloudDouble)
 
 it('F12 DESIRED: proof upload outcome preserves the browser-local versus remotely available evidence distinction', async () => {

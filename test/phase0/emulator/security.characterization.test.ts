@@ -6,7 +6,7 @@ import { doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage'
 import { environment, reset, seed, context, canonicalBooking, canonicalPaid, denied } from './helpers'
 import { scenarios, NOW } from '../fixtures'
-import { interpretStoredStatus } from '../../../src/lib/booking'
+import { interpretStoredStatus } from '../../../web/lib/booking'
 let env: RulesTestEnvironment
 beforeAll(async () => { env = await environment() })
 beforeEach(async () => reset(env))

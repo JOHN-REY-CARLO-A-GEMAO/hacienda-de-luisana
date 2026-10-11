@@ -8,8 +8,8 @@
 //
 // The password rules are not relaxed for demo mode: nothing plaintext is ever
 // written down, and a wrong password is a wrong password.
-import { createSession } from '../../src/lib/auth'
-import { createLocalPorts, LOCAL_ACCOUNTS_KEY, LOCAL_PROFILES_KEY, LOCAL_SESSION_KEY } from '../../src/lib/authLocal'
+import { createSession } from '../../web/lib/auth'
+import { createLocalPorts, LOCAL_ACCOUNTS_KEY, LOCAL_PROFILES_KEY, LOCAL_SESSION_KEY } from '../../web/lib/authLocal'
 import { guestRegistration } from './registration-fixture'
 
 // Credentials invented for this file and used nowhere else: the one every

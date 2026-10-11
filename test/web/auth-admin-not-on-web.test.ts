@@ -12,9 +12,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BOOTSTRAP_ROLES, roleForEmail } from '../../src/lib/auth/profile'
+import { BOOTSTRAP_ROLES, roleForEmail } from '../../web/lib/auth/profile'
 
-const adapter = readFileSync(join(__dirname, '../../src/lib/authFirebase.ts'), 'utf8')
+const adapter = readFileSync(join(__dirname, '../../web/lib/authFirebase.ts'), 'utf8')
 
 describe('the Admin does not sign in on the website', () => {
   it('knows which addresses are the Admin, from the one list the rules use', () => {
@@ -47,7 +47,7 @@ describe('the Admin does not sign in on the website', () => {
   })
 
   it('carries a message that says where the Admin does sign in', () => {
-    const credentials = readFileSync(join(__dirname, '../../src/lib/auth/credentials.ts'), 'utf8')
+    const credentials = readFileSync(join(__dirname, '../../web/lib/auth/credentials.ts'), 'utf8')
     expect(credentials).toContain('hdl/admin-uses-app')
     expect(credentials).toMatch(/'hdl\/admin-uses-app':\s*'[^']*app[^']*'/)
   })

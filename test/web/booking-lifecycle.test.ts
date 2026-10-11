@@ -20,7 +20,7 @@ import {
   type RateCard,
   type RefundPolicy,
   type BookingStatus,
-} from '../../src/lib/booking'
+} from '../../web/lib/booking'
 
 describe('Booking status vocabulary', () => {
   it('is the canonical set from CONTEXT.md, in lifecycle order', () => {

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const sdk = vi.hoisted(() => ({
   addDoc: vi.fn(), getDocFromServer: vi.fn(), transaction: vi.fn(), set: vi.fn(),
 }))
-vi.mock('../../src/lib/firebase', () => ({
+vi.mock('../../web/lib/firebase', () => ({
   db: {}, isFirebaseConfigured: true, auth: { currentUser: { uid: 'guest-1' } },
 }))
 vi.mock('firebase/firestore', () => ({
@@ -18,7 +18,7 @@ vi.mock('firebase/firestore', () => ({
   runTransaction: sdk.transaction,
 }))
 
-import { cloudBookingsDB, lastCloudWriteFailure } from '../../src/lib/firestoreBookings'
+import { cloudBookingsDB, lastCloudWriteFailure } from '../../web/lib/firestoreBookings'
 
 const request = {
   guest_name: 'Ana Reyes', phone: '09171234567', email: 'ana@example.com', guests: 2,

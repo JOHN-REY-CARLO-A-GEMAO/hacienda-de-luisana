@@ -16,10 +16,10 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { ReviewForm } from '../../src/components/ReviewForm'
-import { getReviewForBooking } from '../../src/lib/reviewsCloud'
-import { REVIEW_CATEGORIES, STAR_LABELS } from '../../src/lib/reviewPolicy'
-import { REVIEW_MAX } from '../../src/lib/validation'
+import { ReviewForm } from '../../web/components/ReviewForm'
+import { getReviewForBooking } from '../../web/lib/reviewsCloud'
+import { REVIEW_CATEGORIES, STAR_LABELS } from '../../web/lib/reviewPolicy'
+import { REVIEW_MAX } from '../../web/lib/validation'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

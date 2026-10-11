@@ -12,7 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sdk = vi.hoisted(() => ({ getDocs: vi.fn() }))
-vi.mock('../../src/lib/firebase', () => ({
+vi.mock('../../web/lib/firebase', () => ({
   db: {}, isFirebaseConfigured: true, auth: { currentUser: { uid: 'admin-1' } },
 }))
 vi.mock('firebase/firestore', () => ({
@@ -26,7 +26,7 @@ vi.mock('firebase/firestore', () => ({
   addDoc: vi.fn(), updateDoc: vi.fn(), setDoc: vi.fn(), onSnapshot: vi.fn(), runTransaction: vi.fn(),
 }))
 
-import { activityLogDB } from '../../src/lib/firestoreBookings'
+import { activityLogDB } from '../../web/lib/firestoreBookings'
 
 /** What Firestore hands back for `FieldValue.serverTimestamp()`. */
 const serverTimestamp = { seconds: 1_789_775_400, nanoseconds: 0 }

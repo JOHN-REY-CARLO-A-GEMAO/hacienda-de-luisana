@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { sdk, putCloud, resetCloudDouble } from './doubles/cloud'
 import { booking, approved } from './fixtures'
-import { BookingStatusPage } from '../../src/pages/BookingStatusPage'
+import { BookingStatusPage } from '../../web/pages/BookingStatusPage'
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 let root: Root | undefined
 let host: HTMLDivElement

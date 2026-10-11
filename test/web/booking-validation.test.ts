@@ -3,7 +3,7 @@ import {
   validateBookingPayload,
   validateBookingSelection,
   type PublishedRates,
-} from '../../src/lib/booking'
+} from '../../web/lib/booking'
 
 const published: PublishedRates = {
   version: 'v1-guest-v3',

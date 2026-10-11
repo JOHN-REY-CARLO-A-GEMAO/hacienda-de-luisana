@@ -14,8 +14,8 @@ import {
   readEnvValue,
   resolveFirebaseConfig,
   type FirebaseConfig,
-} from '../../src/lib/firebaseConfig'
-import { COMMITTED_PROJECT } from '../../src/lib/firebaseDefaults'
+} from '../../web/lib/firebaseConfig'
+import { COMMITTED_PROJECT } from '../../web/lib/firebaseDefaults'
 
 const EMPTY: FirebaseConfig = {
   apiKey: '',

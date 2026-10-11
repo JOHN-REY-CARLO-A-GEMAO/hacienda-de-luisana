@@ -5,7 +5,7 @@ import {
   validatePublishedRates,
   WEDDING_PREP_ACCOMMODATION_ID,
   type PublishedRates,
-} from '../../src/lib/booking'
+} from '../../web/lib/booking'
 
 /** A Main House weekday quote of ₱5,000 for ten guests, plus ₱500 per extra. */
 function doc(overrides: Partial<PublishedRates> = {}): PublishedRates {

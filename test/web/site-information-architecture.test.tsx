@@ -14,9 +14,9 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import App from '../../src/App'
-import { AuthProvider } from '../../src/context/AuthContext'
-import { LINKS as NAV_LINKS } from '../../src/components/Nav'
+import App from '../../web/App'
+import { AuthProvider } from '../../web/context/AuthContext'
+import { LINKS as NAV_LINKS } from '../../web/components/Nav'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 

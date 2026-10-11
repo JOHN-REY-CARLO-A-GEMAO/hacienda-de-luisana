@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(join(__dirname, '../../src/lib/firestoreBookings.ts'), 'utf8')
+const source = readFileSync(join(__dirname, '../../web/lib/firestoreBookings.ts'), 'utf8')
 
 describe('list() in cloud mode', () => {
   // Asserted against the source, because `isCloud` is fixed at module load

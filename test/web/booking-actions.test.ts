@@ -1,4 +1,4 @@
-import { applyAction, holdsDates, type BookingState } from '../../src/lib/booking'
+import { applyAction, holdsDates, type BookingState } from '../../web/lib/booking'
 
 // A Booking as stored, mid-review: submitted an hour ago, so its Date hold has
 // 23 hours left, and the Admin has not reviewed it yet.

@@ -1,12 +1,12 @@
 import { beforeAll, expect, it, vi } from 'vitest'
 import { scenarios, NOW } from './fixtures'
 const transport = vi.hoisted(() => ({ set: vi.fn(async (_ref: unknown, _payload: { expires_at_ms: number }) => {}), consent: vi.fn(async () => {}) }))
-vi.mock('../../src/lib/firebase', () => ({ db: {}, isFirebaseConfigured: true, hasRealtimeDatabaseConfig: () => true, ensureRealtimeDatabase: async () => ({}) }))
+vi.mock('../../web/lib/firebase', () => ({ db: {}, isFirebaseConfigured: true, hasRealtimeDatabaseConfig: () => true, ensureRealtimeDatabase: async () => ({}) }))
 vi.mock('firebase/firestore', () => ({ doc: () => ({}), setDoc: transport.consent, serverTimestamp: () => 'synthetic', updateDoc: vi.fn() }))
 vi.mock('firebase/database', () => ({ ref: () => ({}), set: transport.set, onDisconnect: () => ({ remove: async () => {} }), remove: vi.fn() }))
 beforeAll(async () => { await import('firebase/database') })
-import { startSharing, publishFix } from '../../src/lib/liveLocation'
-import { MAX_SHARE_MINUTES, SHARE_DURATIONS } from '../../src/lib/liveLocationPolicy'
+import { startSharing, publishFix } from '../../web/lib/liveLocation'
+import { MAX_SHARE_MINUTES, SHARE_DURATIONS } from '../../web/lib/liveLocationPolicy'
 
 it('F21 DESIRED: actual first session fix satisfies the enforced RTDB maximum lease', async () => {
   const now = Date.parse(NOW)

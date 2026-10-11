@@ -9,10 +9,10 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { AuthContext, type AuthContextType } from '../../src/context/AuthContext'
-import * as AuthPages from '../../src/pages/AuthPage'
-import { canOpenPage, permissionsOf, type Permission, type Role } from '../../src/lib/auth'
-import { describeAuthError } from '../../src/lib/auth'
+import { AuthContext, type AuthContextType } from '../../web/context/AuthContext'
+import * as AuthPages from '../../web/pages/AuthPage'
+import { canOpenPage, permissionsOf, type Permission, type Role } from '../../web/lib/auth'
+import { describeAuthError } from '../../web/lib/auth'
 
 const { GuestAuthPage } = AuthPages
 

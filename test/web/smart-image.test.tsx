@@ -1,7 +1,7 @@
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { SmartImage } from '../../src/components/SmartImage'
+import { SmartImage } from '../../web/components/SmartImage'
 
 describe('SmartImage component', () => {
   it('passes fetchpriority and loading attributes to the rendered img element', () => {

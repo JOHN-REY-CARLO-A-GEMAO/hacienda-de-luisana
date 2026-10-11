@@ -15,9 +15,9 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { BOOTSTRAP_ROLES } from '../../src/lib/auth'
-import { LIVE_LOCATION_PATH, LOCATION_SESSIONS_COLLECTION } from '../../src/lib/liveLocation'
-import { MAX_SHARE_MINUTES } from '../../src/lib/liveLocationPolicy'
+import { BOOTSTRAP_ROLES } from '../../web/lib/auth'
+import { LIVE_LOCATION_PATH, LOCATION_SESSIONS_COLLECTION } from '../../web/lib/liveLocation'
+import { MAX_SHARE_MINUTES } from '../../web/lib/liveLocationPolicy'
 
 /** A rule value is either a literal `false` (deny) or an expression string. */
 type RuleValue = false | string

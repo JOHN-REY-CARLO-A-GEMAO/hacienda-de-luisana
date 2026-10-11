@@ -4,8 +4,8 @@
 // shipping, so both are checked here instead of in a review comment.
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { join, relative, sep } from 'path'
-import { ACCOMMODATIONS, EXPERIENCES, GALLERY, NEARBY } from '../../src/config/site'
-import { TABS } from '../../src/sections/Gallery'
+import { ACCOMMODATIONS, EXPERIENCES, GALLERY, NEARBY } from '../../web/config/site'
+import { TABS } from '../../web/sections/Gallery'
 
 const ROOT = join(__dirname, '..', '..')
 const PUBLIC = join(ROOT, 'public')

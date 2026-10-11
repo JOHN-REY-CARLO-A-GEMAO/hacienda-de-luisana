@@ -13,9 +13,9 @@ import {
   type ProfilePort,
   type Role,
   type SessionUser,
-} from '../../src/lib/auth'
+} from '../../web/lib/auth'
 import { AN_ADULT, guestRegistration } from './registration-fixture'
-import { LEGAL_VERSION } from '../../src/lib/legal'
+import { LEGAL_VERSION } from '../../web/lib/legal'
 
 // ----------------------------------------------------------------------------
 // The two adapters, in memory

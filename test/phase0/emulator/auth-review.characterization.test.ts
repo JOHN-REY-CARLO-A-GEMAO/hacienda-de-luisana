@@ -36,8 +36,8 @@ it('F16-CANONICAL-CURRENT: actual register adapter replaces anonymous UID and lo
     const anonymous = (await signInAnonymously(auth)).user
     await setDoc(doc(db, 'bookings', scenarios.booking.id), canonicalBooking({ uid: anonymous.uid }))
     vi.resetModules()
-    vi.doMock('../../../src/lib/firebase', () => ({ auth, db, googleProvider: null, isFirebaseConfigured: true }))
-    const ports = (await import('../../../src/lib/authFirebase')).createFirebasePorts()
+    vi.doMock('../../../web/lib/firebase', () => ({ auth, db, googleProvider: null, isFirebaseConfigured: true }))
+    const ports = (await import('../../../web/lib/authFirebase')).createFirebasePorts()
     if (!ports) throw new Error('actual emulator Auth ports unavailable')
     const user = await ports.auth.register({ email: `registered-${serial}@phase0.example.invalid`, password: 'synthetic-emulator-only-password', displayName: 'Synthetic Guest A' })
     expect(user.uid).not.toBe(anonymous.uid)
@@ -63,8 +63,8 @@ it('F25-CANONICAL-FIXED: the real first submit now saves end to end, and only th
     const user = (await signInAnonymously(auth)).user
     await seed(env, owner => setDoc(doc(owner.firestore(), 'bookings', scenarios.booking.id), canonicalPaid({ uid: user.uid, status: 'Completed' })))
     vi.resetModules()
-    vi.doMock('../../../src/lib/firebase', () => ({ auth, db, isFirebaseConfigured: true }))
-    const reviews = await import('../../../src/lib/reviewsCloud')
+    vi.doMock('../../../web/lib/firebase', () => ({ auth, db, isFirebaseConfigured: true }))
+    const reviews = await import('../../../web/lib/reviewsCloud')
     const submitted = await reviews.submitReview({ bookingId: scenarios.booking.id, uid: user.uid, bookingStatus: 'Completed', stars: 5, text: 'Synthetic review only' })
     expect(submitted.ok).toBe(true)
     const stored = await assertSucceeds(getDoc(doc(db, 'reviews', scenarios.booking.id)))

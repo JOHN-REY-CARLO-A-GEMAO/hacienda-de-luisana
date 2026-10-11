@@ -1,7 +1,7 @@
 // Ticket #14: every money step is written to the Activity log, and the Admin
 // reads it back in words. Pure seam (describeActivity over stored entries) —
 // no Firebase, no fallback needed.
-import { applyAction, describeActivity, type ActivityLogEntry } from '../../src/lib/booking'
+import { applyAction, describeActivity, type ActivityLogEntry } from '../../web/lib/booking'
 
 function entry(over: Partial<ActivityLogEntry> = {}): ActivityLogEntry {
   return {

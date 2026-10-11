@@ -16,9 +16,9 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
-import App from '../../src/App'
-import { AuthProvider } from '../../src/context/AuthContext'
-import { resetAppSession } from '../../src/lib/authSession'
+import App from '../../web/App'
+import { AuthProvider } from '../../web/context/AuthContext'
+import { resetAppSession } from '../../web/lib/authSession'
 import { AN_ADULT } from './registration-fixture'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true

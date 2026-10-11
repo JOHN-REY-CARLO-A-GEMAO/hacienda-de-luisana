@@ -28,7 +28,7 @@ import {
   subscribeMessages,
   type ChatMessage,
   type MessageCursor,
-} from '../../src/lib/chatCloud'
+} from '../../web/lib/chatCloud'
 import {
   CHAT_RETENTION_DAYS,
   RETENTION_FIELD,
@@ -36,8 +36,8 @@ import {
   retentionElapsed,
   retentionExpiry,
   retentionPatch,
-} from '../../src/lib/chatRetention'
-import { MESSAGE_MAX, validateMessage } from '../../src/lib/validation'
+} from '../../web/lib/chatRetention'
+import { MESSAGE_MAX, validateMessage } from '../../web/lib/validation'
 
 const LOCAL_KEY = 'hdl:chat'
 

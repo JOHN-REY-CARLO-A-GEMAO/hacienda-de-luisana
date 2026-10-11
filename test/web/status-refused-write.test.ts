@@ -8,7 +8,7 @@
 // this browser session, which is exactly where the refusal happened.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-vi.mock('../../src/lib/firebase', () => ({
+vi.mock('../../web/lib/firebase', () => ({
   db: {}, auth: null, isFirebaseConfigured: true, isUsingEmulators: false,
   firebaseConfigReport: { source: 'env' },
 }))
@@ -20,8 +20,8 @@ vi.mock('firebase/firestore', () => ({
   getDoc: async () => ({ exists: () => true }),
 }))
 
-import { runConnectionCheck } from '../../src/lib/connectionCheck'
-import { lastCloudWriteFailure } from '../../src/lib/firestoreBookings'
+import { runConnectionCheck } from '../../web/lib/connectionCheck'
+import { lastCloudWriteFailure } from '../../web/lib/firestoreBookings'
 
 /**
  * `lastWriteFailure` is module state by design — it survives until the tab is
@@ -47,7 +47,7 @@ describe('/status and a Booking write the rules refused', () => {
       advice: 'Firestore refused the write. Deploy firestore.rules.',
       message: 'internal rules evaluation detail',
     }
-    vi.spyOn(await import('../../src/lib/firestoreBookings'), 'lastCloudWriteFailure').mockReturnValue(refused)
+    vi.spyOn(await import('../../web/lib/firestoreBookings'), 'lastCloudWriteFailure').mockReturnValue(refused)
 
     const check = await writeCheck()
     expect(check?.status).toBe('fail')
@@ -57,7 +57,7 @@ describe('/status and a Booking write the rules refused', () => {
   })
 
   it('does not claim a reason when Firebase gave none', async () => {
-    vi.spyOn(await import('../../src/lib/firestoreBookings'), 'lastCloudWriteFailure').mockReturnValue({
+    vi.spyOn(await import('../../web/lib/firestoreBookings'), 'lastCloudWriteFailure').mockReturnValue({
       code: 'permission-denied',
       advice: 'Firestore refused the write.',
     })

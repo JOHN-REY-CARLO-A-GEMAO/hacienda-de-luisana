@@ -5,7 +5,7 @@ import { initializeTestEnvironment, type RulesTestEnvironment, type RulesTestCon
 import { doc, setDoc, Timestamp, type DocumentData } from 'firebase/firestore'
 import { assertEmulatorEnvironment } from '../../../scripts/phase0/boundary.mjs'
 import { scenarios, booking, approved, NOW } from '../fixtures'
-import { BOOTSTRAP_ROLES } from '../../../src/lib/auth/profile'
+import { BOOTSTRAP_ROLES } from '../../../web/lib/auth/profile'
 
 export const PROJECT = 'demo-hacienda'
 export async function environment(): Promise<RulesTestEnvironment> {

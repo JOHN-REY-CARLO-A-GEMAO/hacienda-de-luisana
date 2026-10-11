@@ -55,8 +55,8 @@ try {
       ? route.continue() : route.abort())
     await page.goto(`${BASE}/book`)
     const cloud = await page.evaluate(async () => {
-      const { cloudBookingsDB } = await import('/src/lib/firestoreBookings.ts')
-      const { isSupabaseConfigured } = await import('/src/lib/supabase.ts')
+      const { cloudBookingsDB } = await import('/web/lib/firestoreBookings.ts')
+      const { isSupabaseConfigured } = await import('/web/lib/supabase.ts')
       return cloudBookingsDB.isCloud || isSupabaseConfigured
     })
     assert.equal(cloud, false, 'This QA script must only run in demo mode')
@@ -80,7 +80,7 @@ try {
 
     // Invoke the existing action directly, bypassing every form control.
     const direct = await page.evaluate(async () => {
-      const { cloudBookingsDB } = await import('/src/lib/firestoreBookings.ts')
+      const { cloudBookingsDB } = await import('/web/lib/firestoreBookings.ts')
       const before = localStorage.getItem('hdl:bookings')
       try {
         await cloudBookingsDB.add({
