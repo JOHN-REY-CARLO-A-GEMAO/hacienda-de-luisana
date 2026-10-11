@@ -1077,7 +1077,8 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['timestamp','uid','ref_id','result','reason'])
         && request.resource.data.result in ['granted', 'denied']
-        && request.resource.data.uid == request.auth.uid;
+        && request.resource.data.uid == request.auth.uid
+        && (request.resource.data.result != 'granted' || isAdmin());
       allow read: if isAdmin();
       allow update, delete: if isAdmin();
     }

@@ -2069,7 +2069,8 @@ describe('conversations and messages', () => {
 
 describe('access_logs: the Smart Lock record', () => {
   it('records a lock touch by the person who made it', () => {
-    expect(allow({ path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc() })).toBe(true)
+    expect(deny({ path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc() })).toBe(true)
+    expect(allow({ path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(), requestData: accessLogDoc() })).toBe(true)
     expect(allow({ path: 'access_logs/log-2', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ result: 'denied', reason: 'expired-booking' }) })).toBe(true)
   })
 

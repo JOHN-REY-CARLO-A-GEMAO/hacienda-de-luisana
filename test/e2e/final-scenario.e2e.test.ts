@@ -607,8 +607,9 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     const decision = doorDecision({ refId: 'HDL-1', credentialRevoked: false, today: CHECK_IN, booking })
     expect(decision.result).toBe('granted')
     const row = accessLogDoc({ result: 'granted', reason: decision.reason, uid: GUEST_UID })
-    expect(decide({ path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: row })).toBe(true)
-    note(24, 'Authorized unlock', 'contract', `decision=granted; access_logs create accepted by rule text`)
+    expect(decide({ path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: row })).toBe(false)
+    expect(decide({ path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(), requestData: row })).toBe(true)
+    note(24, 'Authorized unlock', 'contract', `decision=granted; guest access_logs create denied, admin create accepted by rule text`)
   })
 
   it('step 25 — an unknown credential is denied and the denial is logged, with no actuation', () => {
