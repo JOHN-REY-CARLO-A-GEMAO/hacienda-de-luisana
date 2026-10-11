@@ -15,7 +15,14 @@ type Props = {
  * missing. Owners can drop new images into /public/images without changing
  * component code.
  */
-export function SmartImage({ src, alt, className = '', loading = 'lazy', aspect }: Props) {
+export function SmartImage({
+  src,
+  alt,
+  className = '',
+  loading = 'lazy',
+  aspect,
+  fetchpriority,
+}: Props) {
   const [errored, setErrored] = useState(false)
   const resolvedSrc = useMemo(() => asset(src), [src])
 
@@ -46,6 +53,9 @@ export function SmartImage({ src, alt, className = '', loading = 'lazy', aspect 
       alt={alt}
       loading={loading}
       decoding="async"
+      /* Performance Optimization: Pass fetchpriority to the native <img> tag
+         so high-priority above-the-fold images (LCP) can be prioritized by the browser scanner. */
+      {...(fetchpriority ? { fetchpriority } : {})}
       onError={() => setErrored(true)}
       className={className}
       style={aspect ? { aspectRatio: aspect } : undefined}
