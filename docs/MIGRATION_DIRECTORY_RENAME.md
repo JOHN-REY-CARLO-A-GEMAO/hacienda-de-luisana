@@ -163,6 +163,10 @@ they are not this repository's paths (only `.claude`/`.agents` are duplicates of
    (`unmanaged_files: ['lib/main.dart']`), `docs/` (every Dart path), and the 57 `lib/…` keys of
    `production-baseline.json`.
 
+8. **This sandbox cannot test the claim either way**, and that was established by probe rather than
+   assumed — see §4.7. The verdict above therefore rests on the tool's own source (points 1 and 3),
+   not on a failed attempt to run something.
+
 **Verdict:** the Flutter half of the request cannot be supported safely, and the supported
 alternative is a different (larger) change — see §2.6. Per the brief, it is **stopped before
 implementation** and the Admin app is left byte-identical in this migration.
@@ -279,22 +283,62 @@ READMEs (`assets/**`, `public/**`), `.github/workflows/deploy.yml`, plus the pro
 * Nothing outside the repository is affected: no hosted config, no Firebase rule deployment, no
   Supabase migration, no DNS. A rollback is a single `git revert` + redeploy.
 
-### 2.6 Flutter alternative (recommended, **not** implemented here)
+### 2.6 Flutter alternative — the only supportable shape, and its exact procedure
 
-If the Admin app must live under a differently-named root, the supported shape is **project-root
-move**, not source-dir rename:
+`lib/` → `app/` as a **source-dir** rename is refused (§1.5). If the Admin app must sit under a
+differently-named root, the supportable change is a **project-root move**: the whole Flutter
+project — including its `lib/` — moves into `app/`. This is **not implemented here and not
+verified**: it requires an SDK this sandbox cannot obtain (§4.7 explains, with the probes).
+
+**The move** (one commit, `git mv`, history preserved):
 
 ```
-app/pubspec.yaml     app/lib/**     app/test/*.dart     app/android/**   app/ios/**
+app/lib/**   app/test/*_test.dart   app/test/phase0/dart/**
+app/android/**   app/ios/**   app/assets/**
+app/pubspec.yaml   app/pubspec.lock   app/.metadata
 ```
 
-That is a genuine Flutter layout (`lib/` stays the source dir *inside* `app/`). Touchpoints:
-`firebase.json` (`flutter.platforms` paths), `.metadata`, `scripts/phase0/inside.mjs` (three
-`flutter` actions build `test/…` paths from `ROOT` — they would need `app/test/…` and a
-`cwd: app`), asset paths in `pubspec.yaml` (relative, unaffected), and every doc. It must be
-verified with a real SDK (`flutter pub get`, `flutter analyze`, `flutter test`,
-`flutter build apk`) on a machine that can run it — this sandbox cannot, so no honest verification
-of it is possible here. **Do not attempt it without that verification.**
+`assets/` is Flutter-only — `pubspec.yaml` declares `assets: - assets/`, the website serves its
+images from `public/`, and the only reference from `web/` is a comment at `web/config/site.ts:490`
+— so it travels with the project (Flutter does not resolve asset paths outside the project root).
+
+**Then these files must change — exhaustive list, verified by inspection:**
+
+| File | Change |
+|---|---|
+| `firebase.json` | `flutter.platforms.android.…fileOutput` → `app/android/app/google-services.json`; the `flutter.platforms.dart` key → `app/lib/firebase_options.dart` |
+| `.metadata` | `unmanaged_files` → `app/lib/main.dart`, `app/ios/Runner.xcodeproj/project.pbxproj` |
+| `.gitignore` | the **root-anchored** Flutter patterns → prefix `app/`: `android/local.properties`, `android/.gradle/`, `android/build/`, `android/app/build/`, `android/captures/`, `android/app/{debug,profile,release}/`, `android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java`, `android/app/google-services.json`. `.dart_tool/`, `.flutter-plugins*` and `**/ios/Flutter/.last_build_id` already match at any depth |
+| `scripts/phase0/inside.mjs` | four edits in the `flutter*` branch: the `package_config.json` gate → `ROOT/app/.dart_tool/package_config.json`; `fs.readdirSync(path.join(ROOT,'test'))` → `ROOT/app/test`; the characterization path → `app/test/phase0/dart/characterization_test.dart`; and `cwd: ROOT` → `cwd: ROOT/app` for those runs (the shared `execute()` helper hard-codes `cwd: ROOT`) |
+| `scripts/android-icons.sh` | `$ROOT/android/app/src/main/res` → `$ROOT/app/android/app/src/main/res` |
+| `test/phase0/fixtures/production-baseline.json` | **86 keys re-keyed** — `lib/` 57, `android/` 17, `ios/` 10, `pubspec.yaml`, `pubspec.lock` → `app/…`; hashes verbatim, key order preserved (110 `web/` keys untouched) |
+| `docs/**`, `AGENTS.md`, `CONTEXT.md`, the blueprint, `assets/**/README.md`, `web/config/site.ts:490` | prose |
+
+**Deliberately unchanged, because they are already relative to the project root:**
+`android/app/build.gradle` (`flutter { source '../..' }`), `android/settings.gradle`,
+`android/gradle.properties`, the iOS build phases (`xcode_backend.sh`), and every
+`pubspec.yaml` asset/icon/splash path. `.github/workflows/deploy.yml` builds only the website, so
+there is **no CI change — and therefore no workflow-permission obstacle** for this half.
+
+**Verification — mandatory, on a machine with the SDK. None of it can run here (§4.7):**
+
+```bash
+cd app && flutter pub get          # expect .dart_tool/package_config.json, root entry packageUri "lib/"
+flutter analyze --no-pub           # expect: no issues found
+flutter test --no-pub test/        # the 16 Dart test files
+cd .. && npm run test:flutter      # the phase0 runner, now pointing at app/
+flutter build apk --debug          # Android build
+```
+
+Then the same evidence standard used for the website move (§4.1): every moved file
+byte-identical to its previous blob (`git cat-file` vs the working tree), all renames detected
+`R100`, and the fixture's staleness set unchanged.
+
+**Rollback:** one `git revert` — the move reverts as a rename and the fixture is versioned.
+Nothing outside the repository is involved.
+
+**If any of those five commands fails, do not merge.** The failure will be in Dart package
+resolution, which is precisely what §1.5 shows cannot be worked around from the pubspec.
 
 ---
 
@@ -412,6 +456,22 @@ the moved website (which they do not touch), but they *would* be mandatory befor
    pointing at `src`, and `tsc -b` failed loudly with `TS18003` (no inputs). Fixed before the
    verification run, which is why it does not appear in §4.2 — noted here because it is exactly the
    silent-failure class §2.3 warned about.
+
+### 4.7 Why the Flutter / Android / emulator checks are BLOCKED here — probed, not assumed
+
+The audit asserts an *environmental* limitation, so it was tested rather than declared:
+
+| Channel | Result |
+|---|---|
+| `storage.googleapis.com` — the real distribution host for both the Flutter and the Dart SDK | not in this sandbox's egress allowlist |
+| `github.com/dart-lang/sdk` releases | **none published at all** — `releases/latest` → 404 and the releases list is empty, so no SDK archive is obtainable from GitHub |
+| PyPI | no package ships a Dart/Flutter SDK: `dart-sdk`, `dartsdk`, `dart_sdk`, `flutter-sdk`, `py-dart` → 404; `pypi/flutter` is an unrelated 10 KB Python dataclasses helper |
+| npm | same: `dart-sdk`, `dartsdk`, `flutter-sdk`, `@dart-lang/sdk` → 404 |
+| Java (for the emulator suite) | `scripts/phase0/toolchain.mjs` already documents the workaround it needs (`jdk4py` from PyPI); the emulator JARs come from the blocked host, so only the **offline** rules engine runs |
+
+So `test:flutter*`, `flutter build apk` and the Java emulator suite are blocked by **egress, not by
+anything this migration did** — which is why §4.2 treats an unchanged BLOCKED reason as the pass
+condition, and why §2.6's Flutter procedure must be executed somewhere else before it is merged.
 
 ### 4.5 One edit deliberately **not** carried by this branch
 
