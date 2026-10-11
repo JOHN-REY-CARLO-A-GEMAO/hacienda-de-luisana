@@ -344,3 +344,90 @@ therefore **"no new failures"**, measured per test name against the recorded bas
    environmental reasons; a *changed* blocked-reason would itself be a regression signal
    (e.g. the Flutter actions must still report "SDK missing", not a path error).
 8. `npm run dev` / `vite build` smoke: `dist/index.html` references `assets/…` and no `/src/…`.
+
+---
+
+## 4. Phase 4 — Verification results (implemented part: `src/` → `web/`)
+
+Commits: `a6a4abc` (this audit), `9cbff7b` (the rename), `6b8a7bc` (docs sweep).
+Method: identical commands before and after, compared **per test name** (not by totals), plus
+byte-level checks.
+
+### 4.1 Movement integrity
+
+| Check | Result |
+|---|---|
+| Files moved with `git mv` | 143, all detected as `R100` (100 % similarity) |
+| Content identity, every renamed file (`git cat-file HEAD:src/…` vs the new working file) | **143/143 identical** |
+| Characterization fixture | 210 entries preserved, 110 `src/` keys re-keyed to `web/`, **all 110 hashes byte-for-byte unchanged**, key order still sorted |
+| Fixture staleness (pre-existing) | at HEAD: 58 match / 51 mismatch / 1 missing (`src/sections/Contact.tsx` was renamed to `ContactDetails.tsx` after `baselineCommit 5297ec7`); after: **58 / 51 / 1 — the same set**, so the rename added no drift and hid none |
+| Production bundle | **bit-for-bit identical**: the same seven content-hashed asset names before and after (`index-QYNKdIcI.css`, `index-WsSizJZr.js`, `firebase-B60niKZF.js`, …) |
+
+### 4.2 Checks that can run here
+
+| Check | Baseline | After | Verdict |
+|---|---|---|---|
+| `npm run lint` (`tsc -b`) | PASS | PASS | same |
+| `npm run build` (`tsc -b && vite build`) | PASS | PASS | same, identical bundle |
+| Web suite (891 tests, `vitest.local.config.ts`, excluding the known hang) | 871 pass / 20 fail | 871 pass / 20 fail | **per-test identical** (0 added / 0 removed / 0 changed) |
+| `npm run test:rules` (offline rules engine, 315) | 308 / 7 | 308 / 7 | **per-test identical** |
+| `npm run test:e2e` (44) | 34 / 10 | 34 / 10 | **per-test identical** |
+| `npm run test:phase0` (characterization, 102) | 90 / 12 | 90 / 12 | **per-test identical** |
+| `npm run test:invariants` (31) | 9 / 22 | 9 / 22 | **per-test identical** |
+| `npm run test:safety` (44) | PASS | PASS | same |
+| `npm run check:phase0` / `build:phase0` | FAIL exit 2, 3 errors | FAIL exit 2, **the same 3 errors**, same files | pre-existing, unchanged |
+| `npm test` (isolated Phase 0 runner) | never completes in this sandbox (stalls in `test/web/tutorial.test.tsx`); same throughput (≈1 file/min) | identical: same stall, same pre-existing failures, ≈1 file/min | pre-existing, unchanged |
+| `npm run dev` smoke | — | `/` serves `<script src="/web/main.tsx">`; `/web/main.tsx`, `/web/App.tsx`, `/web/lib/firebase.ts`, `/web/styles.css` all **200**; `/src/main.tsx` now returns the SPA `index.html` fallback (HTML, not a module) | works |
+
+### 4.3 Checks that cannot run in this sandbox (unchanged, previously blocked)
+
+Re-run after the migration; the *reason* is identical, which is what matters for the Flutter half:
+
+| Check | After |
+|---|---|
+| `npm run test:flutter:analyze`, `npm run test:flutter`, `test:flutter:invariants` | `BLOCKED` 78 — "Flutter/Dart SDK missing" (unchanged; `lib/` was never touched, so the reason did not become a path error) |
+| `npm run test:emulator` | `BLOCKED` 78 — "Java runtime missing" (emulator artefacts are not fetchable here) |
+| `npm run test:supabase:rls` | `BLOCKED` 78 — PGlite not prepared |
+| `npm run test:qa:*` | `BLOCKED` 78 — Playwright/Chromium not installed |
+| `flutter build apk` / Android build | `BLOCKED` — no Flutter, Java or Android SDK, and none can be downloaded here |
+
+**Environment limitation, stated plainly:** the Flutter analyse/test and the Android build were
+**not** exercised by this migration — and could not be, on this machine. They do not need to be for
+the moved website (which they do not touch), but they *would* be mandatory before any Flutter
+`lib/` change (§2.6), which is a second, independent reason that change is not attempted here.
+
+### 4.4 Regressions found by verification, and their fixes
+
+1. **A missed path literal** — `test/web/canonical-accommodations.test.ts:120` used
+   `join(__dirname, '../../src')` (no trailing slash), so the mechanical `'../../src/` rewrite did
+   not match it. Six "retired Accommodation vocabulary" tests failed (20 → 26 failures) in the
+   first post-migration run. Caught by the per-test diff, fixed, re-run: back to 871/20 with zero
+   status changes. The lesson is in §2.3 — path rewrites must be anchored on *whole path tokens*,
+   and the fixture's own hash table is what makes a miss like this visible.
+2. **One over-eager edit** — `test/web/status-page.test.tsx` asserts the literal text the `/status`
+   page renders; the sed had rewritten the expected string while the (pinned) page kept rendering
+   the old one. Reverted to the page's actual text. This is the reason §2.2 fixes the *contents* of
+   the moved files: assertions about rendered strings keep holding.
+3. **`tsconfig.app.json`** has its `include` array on three lines; an inline-only pattern left it
+   pointing at `src`, and `tsc -b` failed loudly with `TS18003` (no inputs). Fixed before the
+   verification run, which is why it does not appear in §4.2 — noted here because it is exactly the
+   silent-failure class §2.3 warned about.
+
+### 4.5 One edit deliberately **not** carried by this branch
+
+`.github/workflows/deploy.yml` contains two comment references that the audit lists in §1.2
+(sites #13). They are **not** in this branch: the GitHub App token that pushes this branch is not
+allowed to modify files under `.github/workflows/`, and the push is rejected for that reason alone.
+The functional CI steps are untouched either way (`npm ci` → `npm run build` → Pages publish), so
+nothing about the deployment changes.
+
+A human, or a token with `workflows` scope, should apply the cosmetic follow-up:
+
+```diff
+       # The Firebase project and the Supabase project both come from committed
+-      # defaults (`src/lib/firebaseDefaults.ts`, `src/lib/supabaseDefaults.ts`),
++      # defaults (`web/lib/firebaseDefaults.ts`, `web/lib/supabaseDefaults.ts`),
+```
+
+The two remaining `src/` strings in §1.2's non-functional list stay as they are for the reason in
+§2.4 — they live in files whose bytes the characterization fixture pins.
