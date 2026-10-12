@@ -741,12 +741,32 @@ Two real defects surfaced this way rather than by reading:
    passed" and the first tests said "allowed at exactly 24 h". Both were wrong and
    are corrected.
 
-### 14.4 A pre-existing failure, not caused by this pass
+### 14.4 The fixture bug is fixed; what that unblocked
 
-`adminSecurityDoc()` in `test/rules/context.ts` carries a 36-character `pin_hash`
-while `isAdminSecurityShape()` requires `size() >= 40`, and its own comment claims
-44. The suite's existing `admin_security` **create** case therefore fails on the
-unmodified repository. Confirmed by evaluating `HEAD`'s rules with the unmodified
-fixture: `create` denied; padding the hash to 47 characters allowed. Left unfixed
-here because it predates ADR-0016 and belongs to the ADR-0015 doors, but the rules
-suite is red on that case until the constant is padded.
+`adminSecurityDoc()` in `test/rules/context.ts` used to carry a 36-character
+`pin_hash` while `isAdminSecurityShape()` requires `size() >= 40`, and its own
+comment claimed 44. The suite's existing `admin_security` **create** case
+therefore failed on the unmodified repository. Confirmed by evaluating `HEAD`'s
+rules with the unmodified fixture: `create` denied; padding the hash allowed.
+
+**The constant has since been corrected** to a 44-character value. Re-evaluating
+the same cases through `test/rules/engine.ts` confirms the fix and that nothing
+else in the shape gate moved with it:
+
+| `admin_security` create | verdict |
+| --- | --- |
+| well-formed, corrected 44-char fixture | allowed |
+| the old 36-char fixture value | denied |
+| `pin_hash: 'short'` | denied |
+| an extra key | denied |
+| counters not born zero | denied |
+
+Because that gate used to deny **every** `admin_security` write, the whole block
+was vacuous until now; its assertions are live for the first time. That is also
+what surfaced the remaining failure: `"update door 2 > refuses a rotation that
+keeps the old hash"`. See [docs/LIMITATIONS.md](LIMITATIONS.md) and
+`.github/workflows/ci.yml` for the empty-`affectedKeys()` analysis.
+
+**These are offline-engine results, not a suite result.** `npm run test:rules`
+was not re-run for this update — `assertIsolatedProcess()` requires a Linux
+network namespace — so no pass/fail claim is made for the suite as a whole.

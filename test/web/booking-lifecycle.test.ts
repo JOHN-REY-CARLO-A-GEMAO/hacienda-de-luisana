@@ -149,7 +149,7 @@ describe('datesOverlap', () => {
   })
 
   it('is false when the stays only touch at a check-out / check-in handover', () => {
-    // Check-out is 12:00 NN and check-in is 2:00 PM on the same day: the
+    // Check-out is 12:00 PM and check-in is 2:00 PM on the same day: the
     // departing Guest's last night is the night before, so the dates do not clash.
     expect(datesOverlap('2026-10-01', '2026-10-05', '2026-10-05', '2026-10-08')).toBe(false)
     expect(datesOverlap('2026-10-05', '2026-10-08', '2026-10-01', '2026-10-05')).toBe(false)

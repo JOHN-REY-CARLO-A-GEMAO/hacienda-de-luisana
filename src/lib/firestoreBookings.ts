@@ -57,6 +57,11 @@ import {
 } from './booking'
 
 const COLLECTION = 'bookings'
+/**
+ * Admin-owned configuration, read publicly by both apps. It also holds the
+ * per-Accommodation approval lock: `approval_lock_{accommodationId}`.
+ */
+const SITE_CONFIG = 'site_config'
 /** Per-Booking Activity log: `bookings/{id}/activity`, append-only. */
 const ACTIVITY_COLLECTION = 'activity'
 
@@ -412,6 +417,55 @@ let lastWriteFailure: ReturnType<typeof describeFirestoreFailure> | null = null
 /** Why the last cloud write was refused, or null if it landed. */
 export function lastCloudWriteFailure(): ReturnType<typeof describeFirestoreFailure> | null {
   return lastWriteFailure
+}
+
+// ----------------------------------------------------------------------------
+// Approval — the concurrency protocol (ADR-0006)
+// ----------------------------------------------------------------------------
+
+/**
+ * How many times an approval may discard a stale availability snapshot before
+ * it gives up and refuses.
+ *
+ * Explicit and bounded, because an approval that cannot reach a decision must
+ * say so rather than spin. Three rides out one rival approval landing in each
+ * of the two places a snapshot can go stale (the collection query, and the
+ * transaction's own lock read); the SDK's own conflict retries sit inside each
+ * attempt and default to five more.
+ */
+export const MAX_APPROVAL_SNAPSHOT_ATTEMPTS = 3
+
+/**
+ * What an approval transaction *returns* when the availability snapshot it was
+ * handed is no longer the world it was taken from.
+ *
+ * Returned, never thrown. The Web SDK does not retry an error a transaction
+ * callback throws — it rejects the whole `runTransaction` on the spot
+ * ("Do not retry errors thrown by user provided updateFunction"), so a thrown
+ * sentinel would surface to the Admin as a failure rather than as the ordinary
+ * "someone beat you to it" that it is. Discarding a snapshot is control flow
+ * here; it has to travel back as a value for the outer loop to decide.
+ */
+const STALE_APPROVAL_SNAPSHOT = 'stale-approval-snapshot' as const
+
+/**
+ * The Approval version stored on an Accommodation's lock document.
+ *
+ * A lock written before this protocol existed carries no version. That is `0`,
+ * not an error: treating a missing or malformed version as "unusable" would
+ * make every legacy lock refuse every approval, which is the livelock a missing
+ * counter is most likely to cause. Anything that is not a whole number at or
+ * above zero reads as `0`, so a hand-edited value can neither push the counter
+ * backwards nor make the document unreadable.
+ *
+ * This is not a counter of Bookings and must never become one: it counts
+ * approval *decisions*, and it exists only to say "the world moved since you
+ * looked". The authoritative count is still `findDateConflicts` over Booking
+ * documents, which cannot drift from a Booking's status.
+ */
+function approvalLockVersion(data: DocumentData | undefined): number {
+  const version = data?.version
+  return typeof version === 'number' && Number.isInteger(version) && version >= 0 ? version : 0
 }
 
 // ----------------------------------------------------------------------------
@@ -829,24 +883,38 @@ export const cloudBookingsDB = {
   /**
    * Approve, with the G2 re-check made atomic with the write (ADR-0006).
    *
-   * The browser SDK's transaction reads documents, not queries, so the
-   * protocol is split:
+   * The browser SDK's transaction reads documents, not queries, so the protocol
+   * is split — and the split is the design:
    *
-   *   1. The callback — which the SDK reruns from the top on every abort —
-   *      first reads the Bookings collection fresh. That read is not part of
-   *      the transaction; it only decides whom to verify next.
-   *   2. The Booking being approved, and every other Booking that still holds
-   *      its dates, are then read through the transaction (approvalCouplingSet
-   *      says who). Their data is not used — the reads are what couple
-   *      concurrent approvals: a rival approval that commits in between makes
-   *      one of the reads stale, this transaction aborts, and the callback
-   *      reruns on the changed world.
-   *   3. The decision is re-applied to the fresh document, and the patch is
-   *      written through the same transaction.
+   *   1. The Accommodation's lock version is read, and THEN the Bookings
+   *      collection. The order is load-bearing. Every approval of this
+   *      Accommodation writes `site_config/approval_lock_{accommodation}` and
+   *      bumps its `version`, so a version read *before* the query is one that
+   *      predates every commit the query could have missed. Read it after the
+   *      query and a Booking that was created *and* approved inside that gap
+   *      is invisible to this approval and to the version check alike.
+   *   2. The callback — which the SDK reruns from the top on every abort —
+   *      re-reads the lock document through the transaction. If its version is
+   *      no longer the one step 1 captured, the snapshot is abandoned: no
+   *      decision, no write, and the outer loop takes a fresh version and a
+   *      fresh query.
+   *   3. The Booking being approved is read through the transaction, and so is
+   *      every other Booking that still holds its dates — `approvalCouplingSet`
+   *      says whom, over the step 1 query. Those snapshots are what the
+   *      decision reasons over, *not* the query rows: a rival that commits
+   *      before this transaction reads it produces no conflict abort (the read
+   *      was never stale), and deciding from the query rows is precisely how
+   *      the last unit was claimed twice.
+   *   4. The capacity is read from trusted configuration inside the same
+   *      transaction, never from `action.availability`. The caller's number is
+   *      ignored outright — see `AvailabilityCheck`.
+   *   5. The patch and the lock bump are written through the same transaction,
+   *      so two overlapping approvals of one Accommodation cannot both commit on
+   *      the version they read.
    *
    * A refused approval writes nothing, so there is nothing to roll back: a
-   * refused action stores nothing and logs nothing, as ever. The Activity
-   * entry follows the commit through the regular append-only path — the log's
+   * refused action stores nothing and logs nothing, as ever. The Activity entry
+   * follows the commit through the regular append-only path — the log's
    * sequence is managed with a query of its own, and it must not start before
    * this transaction has actually committed (a logged approval whose write
    * aborted would be a false record, and the log is append-only).
@@ -856,43 +924,117 @@ export const cloudBookingsDB = {
     action: Extract<BookingAction, { type: 'Approve' }>,
     actor: Actor,
   ): Promise<ActionAccepted | ActionRefused> {
-    const result = await runTransaction(db!, async (tx) => {
-      // 1. The world as it is now — inside the retryable callback, so a rerun
-      //    sees whatever a rival approval has committed.
+    void action // Deliberately unread: see step 4 and AvailabilityCheck.
+
+    const targetRef = doc(db!, COLLECTION, id)
+
+    // The Accommodation, and therefore the name of the lock document, has to be
+    // known before the loop: step 1 needs a lock to read a version from. This is
+    // a hint and nothing else — every fact the decision uses is re-read through
+    // the transaction below, and a Booking that has since moved Accommodation is
+    // treated as a stale snapshot rather than approved against the wrong lock.
+    const hint = await getDoc(targetRef)
+    if (!hint.exists()) return { ok: false, reason: 'No Booking with that id.' }
+    const accommodation = String(hint.data().accommodation ?? '')
+    const lockRef = doc(db!, SITE_CONFIG, `approval_lock_${accommodation}`)
+
+    for (let attempt = 1; attempt <= MAX_APPROVAL_SNAPSHOT_ATTEMPTS; attempt += 1) {
+      // 1. The lock version FIRST, then the collection query (see step 1 above).
+      const observedVersion = approvalLockVersion((await getDoc(lockRef)).data())
+
+      // 2. The collection query decides only whom to verify next. Its rows are
+      //    never the data the decision reasons over.
       const snapshot = await getDocs(query(collection(db!, COLLECTION), orderBy('created_at', 'desc')))
-      const bookings = snapshot.docs.map((d) => mapDocToBooking(d.id, d.data()))
+      const queried = snapshot.docs.map((d) => mapDocToBooking(d.id, d.data()))
 
-      // 2a. The Booking being approved, transactionally: a Booking cancelled
-      //     or expired between the Admin's click and now is refused here, not
-      //     approved on a stale read.
-      const target = await tx.get(doc(db!, COLLECTION, id))
-      if (!target.exists()) return { ok: false as const, reason: 'No Booking with that id.' }
-      const booking = mapDocToBooking(target.id, target.data())
+      let result: ActionAccepted | ActionRefused | typeof STALE_APPROVAL_SNAPSHOT
+      try {
+        result = await runTransaction(db!, async (tx) => {
+          // 2a. Has this Accommodation's approval world moved since step 1? Then
+          //     the query was taken against a world this transaction has already
+          //     left: discard it rather than decide on it.
+          const lock = await tx.get(lockRef)
+          if (approvalLockVersion(lock.data()) !== observedVersion) return STALE_APPROVAL_SNAPSHOT
 
-      // 2b. The coupling reads: one per overlapping date-holder, data unused.
-      for (const rival of approvalCouplingSet(booking, bookings, instantOf(actor))) {
-        await tx.get(doc(db!, COLLECTION, rival.id))
+          // 2b. The Booking being approved, transactionally: a Booking cancelled
+          //     or hold-expired between the Admin's click and now is refused
+          //     here, not approved on a stale read.
+          const target = await tx.get(targetRef)
+          if (!target.exists()) return { ok: false as const, reason: 'No Booking with that id.' }
+          const booking = mapDocToBooking(target.id, target.data())
+          if (booking.accommodation !== accommodation) return STALE_APPROVAL_SNAPSHOT
+
+          // 2c. The coupling reads: one per overlapping date-holder, and this
+          //     time their data is used rather than discarded.
+          const rivals: HoldBearingBooking[] = []
+          for (const rival of approvalCouplingSet(booking, queried, instantOf(actor))) {
+            const rivalSnap = await tx.get(doc(db!, COLLECTION, rival.id))
+            if (rivalSnap.exists()) rivals.push(mapDocToBooking(rivalSnap.id, rivalSnap.data()))
+          }
+
+          // 2d. Capacity, from configuration this repository owns: the published
+          //     rates document first (where the Admin states a Accommodation's
+          //     physical inventory), then the build-time catalogue, and never
+          //     below one unit. A missing or malformed `available_units` falls
+          //     through to the catalogue rather than failing the approval, and
+          //     an Accommodation nobody published anything for is one unit, not
+          //     an unlimited number. Reading it here also couples the approval to
+          //     a republication: a capacity that shrank mid-review aborts this
+          //     attempt instead of being approved against the old figure.
+          const published = await tx.get(doc(db!, SITE_CONFIG, 'rates'))
+          const unitsAvailable = unitsForAccommodation(
+            booking.accommodation,
+            ACCOMMODATIONS,
+            published.exists() ? published.data() : null,
+          )
+
+          const decision = applyAction(
+            booking,
+            { type: 'Approve', availability: { bookings: rivals, unitsAvailable } },
+            actor,
+          )
+          if (!decision.ok) return decision
+
+          // 3. Every read is done; from here it is writes only.
+          const { id: _omit, ...rest } = decision.patch as Record<string, unknown>
+          tx.update(target.ref, rest)
+          // The version bump is what makes a snapshot stale: every approval of
+          // this Accommodation writes this document, so two of them cannot both
+          // commit on the version they read, and an approval re-running after an
+          // abort is told its world moved.
+          tx.set(
+            lockRef,
+            {
+              accommodation,
+              version: approvalLockVersion(lock.data()) + 1,
+              last_approved_at: serverTimestamp(),
+              last_approved_id: id,
+            },
+            { merge: true },
+          )
+          return decision
+        })
+      } catch (e) {
+        // The SDK has spent its own conflict retries. Nothing committed, so
+        // there is nothing to roll back: take a fresh version and a fresh query.
+        console.warn(`[Firestore] approve() transaction did not settle. ${failureLine(describeFirestoreFailure(e))}`, e)
+        continue
       }
 
-      // 3. The decision on the fresh state, then the write — one atomic step.
-      //    The action's payload carries the unit count the Admin published;
-      //    the booking list is this fresh read, not the Admin's screen copy.
-      const decision = applyAction(
-        booking,
-        { ...action, availability: { ...action.availability, bookings } },
-        actor,
-      )
-      if (!decision.ok) return decision
-
-      const { id: _omit, ...rest } = decision.patch as Record<string, unknown>
-      tx.update(target.ref, rest)
-      return decision
-    })
-
-    if (result.ok) {
+      // 4. A discarded snapshot is not a refusal — try the world as it is now.
+      if (result === STALE_APPROVAL_SNAPSHOT) continue
+      if (!result.ok) return result
       await activityLogDB.append(result.entries)
+      return result
     }
-    return result
+
+    return {
+      ok: false,
+      reason:
+        `Another review for this Accommodation was being confirmed at the same time, ` +
+        `so this one could not reach a decision in ${MAX_APPROVAL_SNAPSHOT_ATTEMPTS} attempts. ` +
+        `Nothing was approved. Read the Booking list again and approve from what it says now.`,
+    }
   },
 
   /**

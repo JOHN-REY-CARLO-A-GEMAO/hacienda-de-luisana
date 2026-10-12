@@ -179,14 +179,29 @@ suite and must not be reported as one. Two further gaps:
   for the new delete door either. That gap is ADR-0015's, not ADR-0016's: the
   collection was added with supplemental cases only and the canonical file was
   never extended. **The emulator has therefore never evaluated this rule.**
-- **A pre-existing fixture bug sits next to these cases and makes them red.**
-  `adminSecurityDoc()` in `test/rules/context.ts` supplies a 36-character
-  `pin_hash`, but `isAdminSecurityShape()` requires `size() >= 40`, so the
-  suite's own `admin_security` *create* case fails on the unmodified repository.
-  The comment above the fixture claims 44 characters; the string is 36. Fixing it
-  is a one-line pad of that constant — deliberately **not** done here, since it
-  predates ADR-0016 and belongs to the ADR-0015 doors. Expect the rules suite to
-  be red on that case until it is.
+- **A fixture bug that made the whole block vacuous — now fixed.** `adminSecurityDoc()`
+  in `test/rules/context.ts` used to supply a 36-character `pin_hash` while
+  `isAdminSecurityShape()` requires `size() >= 40`, so the suite's own
+  `admin_security` *create* case failed on the unmodified repository. The constant
+  is now 44 characters. Re-evaluating through `test/rules/engine.ts` shows the
+  create case **allowed** with the corrected fixture and still **denied** for a
+  short hash, an extra key, counters not born zero, and the old 36-char value.
+  The gate had been denying every `admin_security` write, so those ~30 assertions
+  only now test what they were written to test.
+- **One assertion still does not reach the rule it names.** `"update door 2 >
+  refuses a rotation that keeps the old hash"` builds a request that is
+  *byte-identical* to the stored document, so `diff().affectedKeys()` is the empty
+  set, an empty key set satisfies `hasOnly([...])`, and **update door 1 admits it**
+  — door 2's `pin_hash != old` guard is never evaluated. This is **not
+  exploitable**: an empty diff writes nothing, and `pin_updated_at` does not move,
+  so the door 3 delete cooldown cannot be bought this way. The guard itself does
+  work — re-stamping an older record now while keeping the hash is correctly
+  denied. The test has been retargeted onto that path, and the empty-diff
+  admission is pinned as characterisation. Narrowing the rules instead would mean
+  the same empty-`affectedKeys()` repair at five sites (`firestore.rules` 719,
+  1201, 1294, 1508, 1553), so it is not a one-line change. Neither the retargeted
+  test nor the suite has been run under `npm run test:rules` here: that needs the
+  Linux network namespace `boundary.mjs` refuses to give way without.
 
 **An Admin locked out of Firebase is not helped by any of this.** The PIN gate
 sits behind sign-in, so a forgotten *account password* is a different problem with

@@ -171,7 +171,7 @@ export const BUSINESS = {
   // Standard stay and published house rules.
   policies: {
     checkIn: '2:00 PM',
-    checkOut: '12:00 NN',
+    checkOut: '12:00 PM',
     standardStayHours: 22,
     mainHouseIncludedGuests: 10,
     annexIncludedGuests: 6,

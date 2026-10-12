@@ -2,6 +2,10 @@
 node_modules/
 dist/
 *.tsbuildinfo
+# Vite dependency-optimizer cache. Holds only generated pre-bundled chunks and
+# the `{"type":"module"}` marker it drops in each deps_temp_* staging dir; the
+# files are rewritten on every optimize run and are safe to delete locally.
+.vite/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

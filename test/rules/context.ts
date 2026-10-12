@@ -206,7 +206,7 @@ export const ADMIN_SECURITY_NOW = DEFAULT_REQUEST_TIME
 
 export const adminSecurityDoc = (overrides: DocData = {}, at: number = ADMIN_SECURITY_NOW): DocData => ({
   uid: ADMIN_UID,
-  pin_hash: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=', // 44 chars: 32 bytes, base64
+  pin_hash: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY=', // 44 chars: 32 bytes, base64
   salt: 'c2FsdHNhbHRzYWx0c2FsdA==', // 24 chars: 16 bytes, base64
   iterations: 100000,
   failed_attempts: 0,

@@ -602,14 +602,14 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
     note(23, 'Check-in → Staying', 'executed', `status=${(await cloudBookingsDB.get(bookingId))?.status}`)
   })
 
-  it('step 24 — a valid credential on the stay dates is granted, and the row the contract writes is accepted', () => {
+  it('step 24 — a valid credential on the stay dates is granted, and Admin simulated grant event is accepted while guest grant is denied', () => {
     const booking = { status: 'Staying', check_in: CHECK_IN, check_out: CHECK_OUT, ref_id: 'HDL-1' }
     const decision = doorDecision({ refId: 'HDL-1', credentialRevoked: false, today: CHECK_IN, booking })
     expect(decision.result).toBe('granted')
-    const row = accessLogDoc({ result: 'granted', reason: decision.reason, uid: GUEST_UID })
-    expect(decide({ path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: row })).toBe(false)
-    expect(decide({ path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(), requestData: row })).toBe(true)
-    note(24, 'Authorized unlock', 'contract', `decision=granted; guest access_logs create denied, admin create accepted by rule text`)
+    const adminRow = accessLogDoc({ result: 'granted', reason: decision.reason, uid: ADMIN_UID })
+    expect(decide({ path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(), requestData: adminRow })).toBe(true)
+    expect(decide({ path: 'access_logs/log-1-guest', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: accessLogDoc({ result: 'granted', uid: GUEST_UID }) })).toBe(false)
+    note(24, 'Authorized unlock', 'contract', `decision=granted; admin access_logs create accepted, guest grant denied`)
   })
 
   it('step 25 — an unknown credential is denied and the denial is logged, with no actuation', () => {

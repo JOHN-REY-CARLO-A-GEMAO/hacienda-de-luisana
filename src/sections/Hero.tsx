@@ -27,7 +27,7 @@ export function Hero() {
   return (
     <section
       ref={section}
-      className="hero relative h-[100svh] min-h-[640px] w-full overflow-hidden bg-forest-950 text-cream-50"
+      className="hero relative flex min-h-[max(100svh,640px)] w-full flex-col overflow-hidden bg-forest-950 text-cream-50"
       data-motion={reducedMotion ? 'reduced' : 'full'}
     >
       {/* Layer 0 — sky & photograph (moves slowest) */}
@@ -62,14 +62,19 @@ export function Hero() {
         />
       </div>
 
-      {/* Layer 1 — content */}
-      <div className="relative z-10 h-full flex flex-col">
-        <div className="flex-1 flex items-center">
+      {/* Layer 1 — content.
+          `pt-*` reserves the fixed nav's band (h-16 = 64px, lg:h-20 = 80px) so the
+          centred block can never ride up under the logo on a short viewport. The
+          section is `min-h-[max(100svh,640px)]` rather than a fixed height, so a
+          viewport too short to hold the block makes the hero grow instead of
+          pushing its first line behind the nav. */}
+      <div className="relative z-10 flex flex-1 flex-col pt-16 lg:pt-24">
+        <div className="flex flex-1 items-center">
           <div className="mx-auto max-w-7xl w-full px-5 lg:px-8">
-            <div ref={content} className="hero-layer max-w-2xl animate-fade-in" data-hero-layer="content">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cream-100/30 bg-forest-950/45 backdrop-blur-md px-3.5 py-1.5 text-xs text-cream-100 font-medium">
+            <div ref={content} className="hero-layer relative max-w-3xl animate-fade-in" data-hero-layer="content">
+              <div className="inline-flex items-center gap-2 rounded-full border border-cream-50/25 bg-cream-50/5 backdrop-blur-sm px-3.5 py-1.5 text-[11px] uppercase tracking-eyebrow text-cream-100">
                 <MapPin size={13} className="text-brass-300" />
-                <span>{BUSINESS.address.city}, {BUSINESS.address.region}</span>
+                <span>{BUSINESS.address.city}, {BUSINESS.address.region} • {BUSINESS.address.country}</span>
               </div>
 
               <h1 className="display text-4xl sm:text-6xl lg:text-7xl mt-5 leading-[1.08] text-cream-50 drop-shadow-[0_2px_24px_rgba(0,0,0,0.35)]">
@@ -114,12 +119,23 @@ export function Hero() {
               >
                 My Bookings
               </Link>
+              {/* A scrim that travels with the copy block, so the paragraph keeps its
+                  contrast over the busiest part of the photograph (the lit house, the
+                  fence) whatever sits behind it. Last child on purpose: the browser QA
+                  script reads the first child div as the eyebrow badge. */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -inset-x-6 -inset-y-10 -z-10 rounded-[2.5rem] bg-forest-950/55 blur-2xl"
+              />
             </div>
           </div>
         </div>
 
-        {/* Bottom strip: scene marker, scroll cue, at-a-glance facts (all from config) */}
-        <div className="mx-auto max-w-7xl w-full px-5 lg:px-8 pb-24 lg:pb-9 flex items-end justify-between gap-6">
+        {/* Bottom strip: scene marker, scroll cue, at-a-glance facts (all from
+            config). `pb-24` clears the mobile sticky CTA; `lg:pb-20` clears the
+            floating "Replay tutorial" pill, so the strip sits above that pill in
+            its own band instead of the card being shoved inboard to dodge it. */}
+        <div className="mx-auto max-w-7xl w-full px-5 lg:px-8 pb-24 lg:pb-20 flex items-end justify-between gap-6">
           <div className="hidden sm:block text-[11px] uppercase tracking-eyebrow text-cream-100/60">
             <span className="font-serif text-2xl text-cream-50/90 not-italic tracking-normal mr-3">01</span>
             {BUSINESS.tagline}
@@ -131,7 +147,7 @@ export function Hero() {
             <span className="text-[10px] uppercase tracking-eyebrow">Discover the Hacienda</span>
             <ArrowDown size={18} className={reducedMotion ? '' : 'animate-bounce'} />
           </a>
-          <dl className="hidden lg:grid grid-cols-3 gap-6 rounded-2xl border border-cream-50/15 bg-forest-950/35 backdrop-blur-md px-6 py-4 text-cream-50 lg:mr-28">
+          <dl className="hidden lg:grid grid-cols-3 gap-6 rounded-2xl border border-cream-50/15 bg-forest-950/35 backdrop-blur-md px-6 py-4 text-cream-50">
             <div>
               <dt className="text-[10px] uppercase tracking-eyebrow text-cream-100/60">Main House base rate</dt>
               <dd className="font-serif text-2xl leading-tight mt-1">{BUSINESS.policies.mainHouseIncludedGuests} guests included</dd>

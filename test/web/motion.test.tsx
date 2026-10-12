@@ -159,4 +159,20 @@ describe('Hero', () => {
     expect(fore.getAttribute('aria-hidden')).toBe('true')
     expect(fore.className).toContain('pointer-events-none')
   })
+
+  it('reserves the fixed nav band above the centred block', () => {
+    const { container } = render(<Hero />)
+    const content = container.querySelector('[data-hero-layer="content"]')!
+    const layer = content.parentElement!.parentElement!.parentElement!
+    expect(layer.className).toContain('pt-16')
+    expect(layer.className).toContain('lg:pt-24')
+  })
+
+  it('grows past a short viewport instead of a fixed 100svh box', () => {
+    const { container } = render(<Hero />)
+    const hero = container.querySelector('section.hero')!
+    expect(hero.className).toContain('min-h-[max(100svh,640px)]')
+    expect(hero.className).not.toMatch(/(^|\s)h-\[100svh\](\s|$)/)
+    expect(hero.className).toContain('flex-col')
+  })
 })

@@ -231,6 +231,22 @@ try {
     assert('A2 nothing (foliage/overlay) covers the hero CTA', hit)
     assert('A2 hero Airbnb badge present', (await page.locator('.hero a[href*="airbnb"]').count()) > 0)
 
+    // The nav is fixed and the hero sits under it. The hero block must start below
+    // the nav's bottom edge, or a short viewport rides it up onto the logo.
+    const clash = await page.evaluate(() => {
+      const bar = document.querySelector('header > div')
+      const badge = document.querySelector('.hero [data-hero-layer="content"] > div')
+      if (!bar || !badge) return null
+      const b = bar.getBoundingClientRect()
+      const g = badge.getBoundingClientRect()
+      return { navBottom: +b.bottom.toFixed(1), contentTop: +g.top.toFixed(1) }
+    })
+    assert(
+      'A2 hero content starts below the fixed nav (never over the logo)',
+      clash && clash.contentTop >= clash.navBottom - 0.5,
+      JSON.stringify(clash),
+    )
+
     // nav
     if (MODE === 'desktop') {
       assert('A3 desktop nav "Book Your Stay" visible', await page.locator('[data-tour="nav-book"]').isVisible())

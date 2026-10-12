@@ -855,7 +855,26 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
     })
 
     it('refuses a rotation that keeps the old hash', () => {
-      expect(update(doc, rotated({ pin_hash: doc.pin_hash as string }))).toBe('denied')
+      // The stored record carries an OLDER stamp, so re-stamping it now is a
+      // real change (affectedKeys() = {pin_updated_at}) and the request reaches
+      // Door 2 -- the door whose job is to insist the hash actually moved.
+      // Asserting against a byte-identical document instead falls through Door 1,
+      // whose hasOnly() is trivially true of an empty diff, and never exercises
+      // the pin_hash guard this test exists to pin.
+      const stale = adminSecurityDoc({}, at - 5_000)
+      expect(update(stale, rotated({ pin_hash: stale.pin_hash as string }))).toBe('denied')
+    })
+
+    it('admits a write that changes nothing, and it mutates nothing', () => {
+      // Characterisation, not endorsement: with an identical document the diff
+      // is empty, Door 1's hasOnly() holds vacuously, and the write is allowed.
+      // It is inert -- every field is unchanged and pin_updated_at does NOT
+      // move, so the Door 3 delete cooldown cannot be bought this way. Pinned
+      // here so the boundary is visible rather than accidental; see
+      // docs/LIMITATIONS.md.
+      const noop = rotated({ pin_hash: doc.pin_hash as string })
+      expect(update(doc, noop)).toBe('allowed')
+      expect(noop.pin_updated_at).toEqual(doc.pin_updated_at)
     })
 
     it('refuses a rotation out of a live lock, and accepts one past it', () => {
@@ -2068,25 +2087,26 @@ describe('conversations and messages', () => {
 // ---------------------------------------------------------------------------
 
 describe('access_logs: the Smart Lock record', () => {
-  it('records a lock touch by the person who made it', () => {
+  it('records a lock touch by the person who made it, and restricts granted events to Admin', () => {
     expect(deny({ path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc() })).toBe(true)
-    expect(allow({ path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(), requestData: accessLogDoc() })).toBe(true)
-    expect(allow({ path: 'access_logs/log-2', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ result: 'denied', reason: 'expired-booking' }) })).toBe(true)
+    expect(deny({ path: 'access_logs/log-2', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ result: 'granted' }) })).toBe(true)
+    expect(allow({ path: 'access_logs/log-3-admin', method: 'create', auth: allowlistedAdmin(), requestData: accessLogDoc({ uid: ADMIN_UID, result: 'granted' }) })).toBe(true)
+    expect(allow({ path: 'access_logs/log-4', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ result: 'denied', reason: 'expired-booking' }) })).toBe(true)
   })
 
   it('refuses a row written in somebody else\'s uid', () => {
-    expect(deny({ path: 'access_logs/log-3', method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: accessLogDoc() })).toBe(true)
+    expect(deny({ path: 'access_logs/log-3', method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: accessLogDoc({ result: 'denied' }) })).toBe(true)
   })
 
   it('refuses a row with no result, or a result that is not granted/denied', () => {
     expect(deny({ path: 'access_logs/log-4', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ result: 'maybe' }) })).toBe(true)
-    const missing: DocData = accessLogDoc()
+    const missing: DocData = accessLogDoc({ result: 'denied' })
     delete missing.result
     expect(deny({ path: 'access_logs/log-5', method: 'create', auth: anonymousGuest(), requestData: missing })).toBe(true)
   })
 
   it('refuses a signed-out writer', () => {
-    expect(deny({ path: 'access_logs/log-6', method: 'create', auth: null, requestData: accessLogDoc() })).toBe(true)
+    expect(deny({ path: 'access_logs/log-6', method: 'create', auth: null, requestData: accessLogDoc({ result: 'denied' }) })).toBe(true)
   })
 
   it('lets only the Admin read the log', () => {
@@ -2102,7 +2122,7 @@ describe('access_logs: the Smart Lock record', () => {
 
   it('still works now that live location is retired', () => {
     // The guarantee the tracker removal had to keep: the door log is untouched.
-    expect(allow({ path: 'access_logs/log-7', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ reason: 'rfid-card' }) })).toBe(true)
+    expect(allow({ path: 'access_logs/log-7', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ result: 'denied', reason: 'rfid-card' }) })).toBe(true)
   })
 })
 

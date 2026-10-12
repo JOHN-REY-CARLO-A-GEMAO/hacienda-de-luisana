@@ -73,6 +73,13 @@ on conflict (id) do update
 -- nobody anything: verification is the Admin's, the Booking document is in
 -- Firestore under `firestore.rules`, and a forged path cannot mark a payment
 -- verified.
+--
+-- IDENTITY BOUNDARY LIMITATION:
+-- Firebase Auth user identity is enforced in Cloud Firestore rules. Supabase
+-- Storage receives requests using the public Vite bundle's `anon` key without
+-- a Supabase auth session. Path scoping under `payments/` and the 5MB bucket
+-- size limit restrict bucket abuse, but Supabase Storage RLS does not
+-- independently verify Firebase Auth tokens or Firestore booking ownership.
 
 drop policy if exists "guests upload payment proofs" on storage.objects;
 

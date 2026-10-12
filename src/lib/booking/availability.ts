@@ -17,7 +17,7 @@ import { DAY_MS, parseDate, parseInstant } from './internal'
  * Do two stays claim the same night?
  *
  * A stay owns the nights from its check-in date up to, but not including, its
- * check-out date — check-out is 12:00 NN and the next check-in is 2:00 PM the
+ * check-out date — check-out is 12:00 PM and the next check-in is 2:00 PM the
  * same day, so a handover is not a clash. Unparseable dates never overlap: a
  * corrupt read must not silently block the calendar.
  */

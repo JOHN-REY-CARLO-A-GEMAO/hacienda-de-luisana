@@ -1,0 +1,164 @@
+# Read-only validation for pull requests and for pushes to main.
+#
+# Scope, stated plainly: this workflow runs the dependency install, the TypeScript
+# build and the production bundle. Those are the only checks that can actually run
+# on a GitHub-hosted runner, and each one below was executed before being added.
+#
+# It deliberately does NOT run any Phase 0 suite. See the "why nothing else is
+# here" section at the bottom: scripts/phase0/boundary.mjs refuses to start when
+# /var/run/docker.sock exists, which every GitHub-hosted Linux runner has. That is
+# a deliberate fail-closed control and is not weakened here.
+#
+# It adds no `pages`, `id-token` or OIDC permission, consumes no secrets, and
+# touches no real project. deploy.yml is untouched.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Node 22, not 20. `@supabase/supabase-js` is a direct dependency and declares
+  # `engines.node >= 22.0.0` (package.json -> dependencies), so 20 sits below the
+  # floor the project has already committed to. Recorded as finding F31 in
+  # docs/phase0/CANONICAL_VERIFICATION.md. `deploy.yml` still pins 20; that is out
+  # of scope here and changing it is an owner decision.
+  NODE_VERSION: '22'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # `npm ci`, `tsc -b` and the real Vite production bundle.
+  #
+  # `npm run lint` and `npm run build` are the same scripts deploy.yml runs
+  # successfully on every push to main, and all three were re-run against this
+  # exact lockfile before being added here. The one deliberate difference is
+  # `--ignore-scripts` on the install. Running them on pull_request is what makes
+  # this workflow useful: it fails the PR instead of failing the deploy.
+  #
+  # `npm ci` is itself the lockfile-drift guard -- it exits non-zero when
+  # package.json and package-lock.json disagree, so no extra check is needed.
+  # ---------------------------------------------------------------------------
+  lockfile-and-build:
+    name: lockfile + types + bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Nothing here needs the token. Leaving it out of .git/config means a
+          # compromised dependency install script has nothing to exfiltrate.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          # Requires the committed package-lock.json.
+          cache: npm
+      # --ignore-scripts: this job needs no install script. esbuild and rollup
+      # take their native binaries from the @esbuild/* and @rollup/* optional
+      # packages, which the lockfile pins for linux-x64, and the bundle was
+      # verified to build with install scripts suppressed.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run lint
+      # The same strict gate deploy.yml sets, so CI is never weaker than the
+      # deploy it guards. vite.config.ts:126 refuses a production build with no
+      # Supabase project rather than shipping one that silently loses every
+      # payment proof (finding F12). Verified to pass against the committed
+      # src/lib/supabaseDefaults.ts.
+      - run: npm run build
+        env:
+          SUPABASE_ENV_STRICT: '1'
+
+  # ---------------------------------------------------------------------------
+  # WHY NOTHING ELSE IS HERE
+  #
+  # One blocker accounts for every Phase 0 script (all 19 of them: test,
+  # test:rules, test:safety, test:e2e, check:phase0, build:phase0, the emulator,
+  # flutter and qa actions). scripts/phase0/boundary.mjs:94
+  #
+  #     if (fs.existsSync('/var/run/docker.sock'))
+  #       throw new IsolationError('host Docker socket present; ...')
+  #
+  # throws before any suite starts. Every one of those npm scripts routes through
+  # scripts/phase0/run.mjs, which calls assertSafeInputs() first. GitHub-hosted
+  # Linux runners run Docker, so that socket is present and each of those scripts
+  # would exit 78 (BLOCKED) without executing a single test. GitHub's own
+  # documentation for docker/setup-docker-action states that on GitHub-hosted
+  # Linux runners "Docker is already up and running".
+  #
+  # Adding those jobs anyway would produce a permanently red workflow whose names
+  # imply coverage that does not exist, so they are omitted rather than shipped
+  # broken. Enabling them needs one of:
+  #
+  #   (a) a self-hosted Linux runner whose image does not run a Docker daemon, so
+  #       /var/run/docker.sock is absent. This satisfies the guard rather than
+  #       relaxing it, and is the option consistent with the project's
+  #       fail-closed design; or
+  #   (b) an explicit owner decision to narrow boundary.mjs:94. That changes a
+  #       safety control and is not something a CI change should decide.
+  #
+  # Individually, these also have their own prerequisites that are unmet:
+  #
+  #   test:emulator, test:emulator:invariants
+  #       Need Java 21 (prepare:phase0:java) plus the firestore/database/storage
+  #       emulator JARs (prepare:phase0:emulators). No recorded run has ever
+  #       obtained those JARs -- CANONICAL_VERIFICATION.md 3.2 lists them BLOCKED.
+  #       test:emulator:auth needs neither: the Auth emulator ships inside the
+  #       locked firebase-tools and there is no Auth JAR to install. It is the one
+  #       emulator action with a recorded 6/6 PASS, so it is the first job to add
+  #       once a runner satisfying (a) exists.
+  #   test:flutter, test:flutter:invariants, test:flutter:analyze
+  #       No Flutter SDK in the repository and no pubspec.lock, so Dart
+  #       resolution is unpinned. All three are recorded BLOCKED and never run.
+  #   test:qa:booking, test:qa:site, test:qa:tutorial
+  #       Need a Playwright browser binary; no install step for one is committed.
+  #   test:invariants
+  #       31 known-failing simulated invariants (CANONICAL_VERIFICATION.md 3.3).
+  #
+  # KNOWN FAILURES NOT GATED HERE, so they are not hidden:
+  #
+  #   test:rules  1 failed / 314 passed. "update door 2 > refuses a rotation that
+  #     keeps the old hash" (test/rules/firestore-rules.test.ts:858). That test was
+  #     passing only because the fixture's 36-character pin_hash failed the rule's
+  #     `pin_hash.size() >= 40` shape gate, so every write was denied before any
+  #     door was evaluated. Correcting the fixture took that suite from 5 failed /
+  #     310 passed to 1 failed / 314 passed; the four it fixed were the assertions
+  #     expecting `allowed`, which the shape gate had been denying outright. Note
+  #     the wider effect: because that gate denied *every* admin_security write,
+  #     the whole block was vacuous before, and its ~30 assertions in
+  #     firestore-rules.test.ts are live for the first time now -- including the
+  #     `it.each` "refuses ..." table, whose eight cases now each fail on their
+  #     own clause instead of all failing on hash length. With the fixture
+  #     corrected, the request becomes a
+  #     no-op: `diff().affectedKeys()` is empty, an empty key set satisfies
+  #     `hasOnly([...])`, and update door 1 admits it. Not exploitable -- an empty
+  #     diff writes nothing -- but the `pin_hash != old` guard is left unproven.
+  #     Repairing it means either a five-site change to firestore.rules (the same
+  #     empty-affectedKeys pattern appears at firestore.rules:719, 1201, 1294,
+  #     1508 and 1553) or a test change to test/rules/firestore-rules.test.ts,
+  #     which is protected staged work.
+  #
+  #   check:phase0  exit 2: three pre-existing TS errors in test/phase0/ (two
+  #     TS2345, a `Registration` literal missing birthdate / termsVersion /
+  #     termsAcceptedAt, and one TS2322 assigning number to `60 | 30 | 15`).
+  #     build:phase0 stops at the same errors, so the guarded bundle is unverified.
+  #
+  #   test:e2e  9 failed / 35 passed. Note docs/phase0/REPORT.md records this
+  #     suite at 44/44 passing on an older commit; the 9 failures were measured
+  #     with the uncommitted staged changes applied, and those changes modify
+  #     src/ modules the scenario drives, so the cause is attributed but not
+  #     confirmed.
+  #
+  # Also unaddressed here: `tsc -b` covers src and test/web only, so test/rules/**
+  # and test/e2e/** are typechecked by no tsconfig in the repository.
+  # tsconfig.phase0.json does cover test/phase0/** (plus src and vitest*.ts),
+  # but it is the config that fails with the three errors above, so it is not a
+  # passing gate today.
+  # ---------------------------------------------------------------------------

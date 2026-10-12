@@ -134,7 +134,7 @@ reinstated module is shaped this way. `docs/MESSAGING.md` is the full account.
 
 ## 5. Check-out, Damage, Cleaning & Inspection Flow
 
-1. CHECK-OUT (e.g. 12:00 NN) → Sets Credential = INACTIVE
+1. CHECK-OUT (e.g. 12:00 PM) → Sets Credential = INACTIVE
 2. ESP32 Locks Door
 3. Save Check-out Access Log → Sets Booking = **CHECKED-OUT** → Notify Customer: check-out recorded
 4. Admin inspects the property (or has it cleaned — cleaners are not system users; the Admin records the outcome)

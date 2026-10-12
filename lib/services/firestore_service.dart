@@ -291,11 +291,114 @@ class FirestoreService implements PinSecurityRemote {
       publishedRates: input.publishedRates ?? _rates,
       damageDeduction: input.damageDeduction,
     );
-    final result = applyAdminAction(booking.toLifecycleDoc(), action, actor,
-        input: merged);
-    if (!result.ok) return result;
-
     if (isCloud) {
+      if (action == AdminAction.approve) {
+        try {
+          final result = await _firestore!.runTransaction<ActionResult>((tx) async {
+            final ref = _firestore!.collection(AppConstants.colBookings).doc(booking.id);
+            final targetSnap = await tx.get(ref);
+            if (!targetSnap.exists || targetSnap.data() == null) {
+              return ActionResult.refused('No Booking with that id.');
+            }
+            final targetDoc = Map<String, dynamic>.from(targetSnap.data()!);
+            targetDoc['id'] = booking.id;
+
+            final accommodation = (targetDoc['accommodation'] ?? '').toString();
+
+            // Transactionally read the shared accommodation-level coordination document.
+            // This guarantees mathematical serialization across concurrent approvals for the
+            // same accommodation even when no existing bookings are present in the collection.
+            //
+            // The snapshot is kept, not discarded: its `version` is the freshness token both
+            // clients now stamp on every approval. The website's approval reads this version
+            // BEFORE its availability query and abandons the snapshot when the two disagree,
+            // which is how it detects a rival approval that landed between its query and this
+            // document. An approval that did not bump the version would be invisible to that
+            // check, so the bump below is cross-client, not a local cache tag.
+            final lockRef = _firestore!.collection(AppConstants.colSiteConfig).doc('approval_lock_$accommodation');
+            final lockSnap = await tx.get(lockRef);
+            // A lock written before this field existed reads as 0, not as an error: a missing
+            // or malformed version must not make every approval of a legacy lock fail.
+            final lockVersion = switch (lockSnap.data()?['version']) {
+              final int v when v >= 0 => v,
+              _ => 0,
+            };
+
+            // Discover candidate bookings for the accommodation to perform transactional coupling reads
+            final querySnap = await _firestore!
+                .collection(AppConstants.colBookings)
+                .where('accommodation', isEqualTo: accommodation)
+                .get();
+
+            final freshBookings = <Map<String, dynamic>>[];
+            for (final d in querySnap.docs) {
+              // Perform transactional read coupling for each candidate booking before any writes
+              final bSnap = await tx.get(d.reference);
+              if (bSnap.exists && bSnap.data() != null) {
+                final bDoc = Map<String, dynamic>.from(bSnap.data() as Map<String, dynamic>);
+                bDoc['id'] = d.id;
+                freshBookings.add(bDoc);
+              }
+            }
+
+            final freshOthers = freshBookings.where((b) => b['id'] != booking.id).toList();
+
+            final mergedInput = ActionInput(
+              reason: input.reason,
+              amountVerified: input.amountVerified,
+              guestResubmits: input.guestResubmits,
+              otherBookings: freshOthers,
+              publishedRates: input.publishedRates ?? _rates,
+              damageDeduction: input.damageDeduction,
+            );
+
+            final decision = applyAdminAction(targetDoc, action, actor, input: mergedInput);
+            if (!decision.ok) {
+              return decision;
+            }
+
+            // Write phase inside transaction (must follow all reads)
+            tx.update(ref, decision.patch);
+            tx.set(
+              lockRef,
+              {
+                'accommodation': accommodation,
+                // Derived from this transaction's own read, not from anything cached,
+                // so the counter is monotonic across the SDK's transaction retries.
+                'version': lockVersion + 1,
+                'last_approved_at': FieldValue.serverTimestamp(),
+                'last_approved_id': booking.id,
+              },
+              SetOptions(merge: true),
+            );
+            return decision;
+          });
+
+          if (result.ok && result.entry != null) {
+            try {
+              final logRef = _firestore!.collection(AppConstants.colBookings).doc(booking.id).collection('activity');
+              final written = await logRef.get();
+              var seq = -1;
+              for (final d in written.docs) {
+                final v = d.data()['seq'];
+                if (v is num && v > seq) seq = v.toInt();
+              }
+              seq += 1;
+              await logRef.doc('$seq').set({...result.entry!, 'seq': seq});
+            } catch (e) {
+              debugPrint('[firestore] activity log write failed: $e');
+            }
+          }
+          return result;
+        } catch (e) {
+          return ActionResult.refused(
+              'Could not save to Firestore (${e.toString().split('\n').first}).');
+        }
+      }
+
+      final result = applyAdminAction(booking.toLifecycleDoc(), action, actor, input: merged);
+      if (!result.ok) return result;
+
       try {
         final ref =
             _firestore!.collection(AppConstants.colBookings).doc(booking.id);
@@ -310,7 +413,7 @@ class FirestoreService implements PinSecurityRemote {
           if (v is num && v > seq) seq = v.toInt();
         }
         seq += 1;
-        final batch = _firestore.batch();
+        final batch = _firestore!.batch();
         batch.update(ref, result.patch);
         batch.set(log.doc('$seq'), {...result.entry!, 'seq': seq});
         await batch.commit();
@@ -320,6 +423,9 @@ class FirestoreService implements PinSecurityRemote {
             'Could not save to Firestore (${e.toString().split('\n').first}).');
       }
     }
+
+    final result = applyAdminAction(booking.toLifecycleDoc(), action, actor, input: merged);
+    if (!result.ok) return result;
 
     _patchLocal(booking.id, result.patch, result.entry!);
     return result;

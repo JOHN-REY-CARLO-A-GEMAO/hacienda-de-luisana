@@ -9,12 +9,21 @@ import { booking, actor, request, NOW, scenarios } from './fixtures'
 beforeEach(resetCloudDouble)
 
 describe('deterministic actual-adapter race schedule, SDK double', () => {
-  it('F06-LAST-UNIT: a fresh Approved rival is read but ignored after a stale outside-transaction query', async () => {
+  // CHANGED 2026-10-12 (booking capacity correctness). This recorded the
+  // reproduced defect — the adapter read Admin A's freshly Approved document
+  // through its transaction and then decided from the stale outside-transaction
+  // query anyway, approving two Bookings for one unit. The adapter now carries
+  // the Accommodation lock version across the query, discards a stale snapshot
+  // and decides from the transactionally read documents, so the schedule leaves
+  // one approval and one refusal.
+  it('F06-LAST-UNIT: the losing Admin discards its stale query and reads A\'s Approved document back', async () => {
     const a = booking()
     const b = booking({ id: 'phase0-booking-b', uid: scenarios.identities.secondGuest.uid })
     const observed = await lastUnitSchedule(cloudBookingsDB, a, b, actor(), actor('adminB'))
-    expect(observed.results.map(result => result.ok)).toEqual([true, true])
-    expect(observed.approvedCount).toBe(2)
+    expect(observed.results.map(result => result.ok)).toEqual([true, false])
+    expect(observed.approvedCount).toBe(1)
+    // The evidence the old protocol threw away: B's transaction did read A's
+    // Approved document, and that read is now what the decision uses.
     expect(sdk.transactionReads).toContainEqual({ path: `bookings/${a.id}`, data: expect.objectContaining({ status: 'Approved' }) })
   })
 })

@@ -60,7 +60,7 @@ export function Nav() {
           <Logo tone={transparent ? 'light' : isDark ? 'light' : 'dark'} />
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-3 xl:gap-5 2xl:gap-7 flex-shrink" aria-label="Site">
+        <nav className="hidden lg:flex items-center gap-4 xl:gap-6 2xl:gap-7 flex-shrink" aria-label="Site">
           {LINKS.map((l) => (
             <Link
               key={l.href}
@@ -74,7 +74,9 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="hidden lg:flex items-center gap-2.5 flex-shrink-0">
+{/* The right-hand cluster reads as one group: the theme toggle and the account
+            actions sit together, and a hairline keeps the primary CTA from crowding them. */}
+        <div className="hidden lg:flex items-center gap-3 xl:gap-4 flex-shrink-0">
           {/* Theme toggle */}
           <button
             type="button"
@@ -89,7 +91,6 @@ export function Nav() {
           >
             {isDark ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-
           {/* The Guest's own page; the Admin has no page on this website */}
           {user ? (
             <>
@@ -123,6 +124,10 @@ export function Nav() {
               Sign in
             </Link>
           )}
+
+          {/* Hairline between the account actions and the primary CTA, so the
+              two read as separate groups rather than one crowded row. */}
+          <span aria-hidden className={`h-6 w-px ${transparent ? 'bg-cream-50/25' : 'bg-forest-900/15'}`} />
 
           <Link
             to="/book"

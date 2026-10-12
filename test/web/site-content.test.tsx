@@ -101,7 +101,7 @@ describe('site content carries no placeholders', () => {
     const checkIn = FAQS.find((f) => /check-in/i.test(f.q))!
     const checkOut = FAQS.find((f) => /check-out/i.test(f.q))!
     expect(checkIn.a).toBe('Check-in is from 2:00 PM.')
-    expect(checkOut.a).toBe('Check-out is by 12:00 NN.')
+    expect(checkOut.a).toBe('Check-out is by 12:00 PM.')
   })
 })
 
@@ -263,7 +263,7 @@ describe('house rules, guest notes and getting here', () => {
   it('keeps the Hacienda\'s rules and the guests\' accounts in separate, labelled voices', () => {
     const page = render(<GoodToKnow />)
     expect(page.text()).toContain('House rules')
-    expect(page.text()).toContain('The standard 22-hour stay checks in at 2:00 PM and checks out by 12:00 NN')
+    expect(page.text()).toContain('The standard 22-hour stay checks in at 2:00 PM and checks out by 12:00 PM')
     expect(page.text()).toContain('CLEAN AS YOU GO!')
     expect(page.text()).toContain('₱300')
     expect(page.text()).toContain('What recent guests mention')

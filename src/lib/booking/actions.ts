@@ -111,7 +111,22 @@ export type Actor = {
 export type AvailabilityCheck = {
   /** Bookings already stored for this Accommodation. */
   bookings: readonly HoldBearingBooking[]
-  /** Units of the Accommodation that can be held at once. */
+  /**
+   * Units of the Accommodation that can be held at once.
+   *
+   * Advisory only, and deliberately so. `applyAction` is a pure function with no
+   * access to any configuration, so it cannot tell a published figure from an
+   * invented one — and `findDateConflicts` treats "no figure" as "nothing in the
+   * way". A caller that supplies 999 therefore gets an unconditional approval
+   * from this function alone.
+   *
+   * The cloud approval path therefore ignores both fields here and supplies its
+   * own: it decides from the documents it read through its transaction, and it
+   * derives the capacity from the published rates document (falling back to the
+   * build-time catalogue, and never below one). This field still exists for the
+   * pure module's own callers — the demo-mode adapter and the Dart port's
+   * equivalence tests — where there is no server to ask.
+   */
   unitsAvailable?: number
 }
 
