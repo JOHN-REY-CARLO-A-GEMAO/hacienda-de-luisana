@@ -433,15 +433,15 @@ service cloud.firestore {
         && amount is number && amount > 0
         && validPetCount(published, data)
         && validLateCheckout(published, data)
-        && data.rate_amount == amount
+        && float(data.rate_amount) == float(amount)
         && data.rate_unit == 'standard_stay'
         && data.rate_classification == classification
-        && data.stay_total == total
+        && float(data.stay_total) == float(total)
         && data.payment_plan == 'down-payment'
-        && data.amount_due == due
-        && data.security_deposit == rate.security_deposit
-        && data.balance_due == total - due
-        && data.amount_claimed >= due
+        && float(data.amount_due) == float(due)
+        && float(data.security_deposit) == float(rate.security_deposit)
+        && float(data.balance_due) == float(total - due)
+        && float(data.amount_claimed) >= float(due)
         && data.policy_version == published.version
         && data.policy_effective_date == published.effective_date
         && data.get('refund_policy_snapshot', null) == published.get('refund', null);
@@ -479,15 +479,15 @@ service cloud.firestore {
         && !resource.data.keys().hasAny(['rate_classification'])
         && resource.data.get('payment_plan', '') in ['', null]
         && total is number && total > 0
-        && data.get('stay_total', -1) == total
+        && float(data.get('stay_total', -1)) == float(total)
         && plan in ['down-payment', 'full']
         && due > 0
         && data.get('payment_status', '') == 'pending'
-        && data.get('amount_due', -1) == due
+        && float(data.get('amount_due', -1)) == float(due)
         && data.get('security_deposit', 0) is number
         && data.get('security_deposit', 0) >= 0
-        && data.get('security_deposit', 0) == resource.data.get('security_deposit', 0)
-        && data.get('balance_due', -1) == total - due
+        && float(data.get('security_deposit', 0)) == float(resource.data.get('security_deposit', 0))
+        && float(data.get('balance_due', -1)) == float(total - due)
         && data.get('policy_version', null) == resource.data.get('policy_version', null)
         && data.get('policy_effective_date', null) == resource.data.get('policy_effective_date', null)
         && data.get('refund_policy_snapshot', null) == resource.data.get('refund_policy_snapshot', null)
