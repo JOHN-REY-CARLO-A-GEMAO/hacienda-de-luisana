@@ -20,6 +20,8 @@ import { LEGAL_VERSION } from '../lib/legal'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { useBookingPolicy } from '../hooks/useBookingPolicy'
+import { doc, setDoc } from 'firebase/firestore'
+import { db } from '../lib/firebase'
 import {
   formatRefundPolicySummary,
   quoteAccommodation,
@@ -43,7 +45,7 @@ type FormState = {
 type Errors = Partial<Record<keyof FormState, string>>
 
 export function BookingPage() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { minimumBookingLeadTimeDays, earliestCheckIn } = useBookingPolicy()
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -71,14 +73,16 @@ export function BookingPage() {
   // only into fields they have left empty: a name they are typing is theirs.
   const prefilled = useRef(false)
   useEffect(() => {
-    if (prefilled.current || !user) return
+    if (prefilled.current || (!user && !profile)) return
     prefilled.current = true
+    const profileName = profile?.display_name || (profile?.first_name ? `${profile.first_name} ${profile.last_name || ''}`.trim() : '')
     setForm((current) => ({
       ...current,
-      name: current.name || user.displayName || '',
-      email: current.email || user.email || '',
+      name: current.name || profileName || user?.displayName || '',
+      email: current.email || profile?.email || user?.email || '',
+      phone: current.phone || profile?.phone || '',
     }))
-  }, [user])
+  }, [user, profile])
 
   const selectedAcc = useMemo(
     () => ACCOMMODATIONS.find((a) => a.id === form.accommodation),
@@ -267,6 +271,18 @@ export function BookingPage() {
 
       // The form does not create a Booking. The downpayment screenshot is
       // mandatory, and the Booking is born Pending only after that upload.
+      // If user is signed in and phone was entered, sync to profile if missing
+      if (user?.uid && form.phone && db) {
+        try {
+          const profileRef = doc(db, 'profiles', user.uid)
+          await setDoc(
+            profileRef,
+            { phone: form.phone.trim(), updated_at: new Date().toISOString() },
+            { merge: true }
+          )
+        } catch (_) {}
+      }
+
       saveBookingDraft({
         check_in: form.check_in,
         check_out: form.check_out,

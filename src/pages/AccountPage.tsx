@@ -25,6 +25,9 @@ import {
   markNotificationRead,
   type AppNotification,
 } from '../lib/notifications'
+import { validateName, validatePhMobile, validateBirthdate } from '../lib/validation'
+import { doc, setDoc } from 'firebase/firestore'
+import { db } from '../lib/firebase'
 
 /** Statuses a Guest may still withdraw from themselves — the list firestore.rules allows. */
 const WITHDRAWABLE = ['Pending']
@@ -53,9 +56,99 @@ function statusChip(status: ReturnType<typeof effectiveStatus>) {
  * what makes the Activity log say a Guest did it.
  */
 export function AccountPage() {
-  const { user, role, can, actor, logout } = useAuth()
+  const { user, profile, role, can, actor, logout, refresh } = useAuth()
+  const [activeTab, setActiveTab] = useState<'bookings' | 'profile'>('bookings')
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Profile Form state
+  const [firstName, setFirstName] = useState(profile?.first_name ?? '')
+  const [middleName, setMiddleName] = useState(profile?.middle_name ?? '')
+  const [lastName, setLastName] = useState(profile?.last_name ?? '')
+  const [phone, setPhone] = useState(profile?.phone ?? '')
+  const [birthdate, setBirthdate] = useState(profile?.birthdate ?? '')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileMsg, setProfileMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
+
+  useEffect(() => {
+    if (profile) {
+      setFirstName(profile.first_name ?? '')
+      setMiddleName(profile.middle_name ?? '')
+      setLastName(profile.last_name ?? '')
+      setPhone(profile.phone ?? '')
+      setBirthdate(profile.birthdate ?? '')
+    }
+  }, [profile])
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setProfileMsg(null)
+
+    if (!user?.uid) return
+
+    const fn = validateName(firstName)
+    if (!fn.ok) {
+      setProfileMsg({ tone: 'bad', text: 'First name: ' + fn.message })
+      return
+    }
+    const ln = validateName(lastName)
+    if (!ln.ok) {
+      setProfileMsg({ tone: 'bad', text: 'Last name: ' + ln.message })
+      return
+    }
+    if (middleName.trim()) {
+      const mn = validateName(middleName)
+      if (!mn.ok) {
+        setProfileMsg({ tone: 'bad', text: 'Middle name: ' + mn.message })
+        return
+      }
+    }
+    const ph = validatePhMobile(phone)
+    if (!ph.ok) {
+      setProfileMsg({ tone: 'bad', text: ph.message })
+      return
+    }
+    if (birthdate.trim()) {
+      const bd = validateBirthdate(birthdate)
+      if (!bd.ok) {
+        setProfileMsg({ tone: 'bad', text: bd.message })
+        return
+      }
+    }
+
+    setProfileSaving(true)
+    try {
+      const displayName = `${firstName.trim()} ${lastName.trim()}`.trim()
+      const payload = {
+        uid: user.uid,
+        role: profile?.role ?? 'guest',
+        display_name: displayName,
+        first_name: firstName.trim(),
+        middle_name: middleName.trim() || null,
+        last_name: lastName.trim(),
+        phone: phone.trim(),
+        birthdate: birthdate.trim() || null,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (db) {
+        const profileRef = doc(db, 'profiles', user.uid)
+        await setDoc(profileRef, payload, { merge: true })
+      } else {
+        const key = 'hdl:auth:profiles'
+        const local = JSON.parse(localStorage.getItem(key) || '{}')
+        local[user.uid] = { ...(local[user.uid] || {}), ...payload }
+        localStorage.setItem(key, JSON.stringify(local))
+      }
+
+      await refresh()
+      setProfileMsg({ tone: 'good', text: 'Your profile details have been saved successfully!' })
+    } catch (err: any) {
+      setProfileMsg({ tone: 'bad', text: err?.message || 'Failed to update profile.' })
+    } finally {
+      setProfileSaving(false)
+    }
+  }
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
   const [q, setQ] = useState('')
@@ -141,11 +234,9 @@ export function AccountPage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="eyebrow">Your stay · {role ? ROLE_LABELS[role] : 'Guest'}</div>
-            <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">My Bookings</h1>
+            <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">Account Center</h1>
             <p className="mt-3 text-sm text-forest-800/80 max-w-xl leading-relaxed">
-              Signed in as <strong>{user?.email ?? user?.displayName ?? 'this browser'}</strong>. These are the requests
-              made from this account — watch the Date hold, pay for a request the Admin approved, and withdraw a
-              request the Admin has not reviewed yet.
+              Signed in as <strong>{user?.email ?? user?.displayName ?? 'this browser'}</strong>. Manage your stay requests and personal profile information here.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
@@ -174,6 +265,32 @@ export function AccountPage() {
               Sign out
             </button>
           </div>
+        </div>
+
+        {/* Account Center Tabs */}
+        <div className="mt-8 flex gap-3 border-b border-forest-900/10 pb-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('bookings')}
+            className={`px-4 py-2 text-sm font-semibold rounded-t-xl transition ${
+              activeTab === 'bookings'
+                ? 'bg-forest-900 text-white shadow-sm'
+                : 'text-forest-700 hover:bg-cream-100'
+            }`}
+          >
+            My Bookings ({bookings.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('profile')}
+            className={`px-4 py-2 text-sm font-semibold rounded-t-xl transition ${
+              activeTab === 'profile'
+                ? 'bg-forest-900 text-white shadow-sm'
+                : 'text-forest-700 hover:bg-cream-100'
+            }`}
+          >
+            My Profile
+          </button>
         </div>
 
         {showNotifications && (
@@ -223,201 +340,307 @@ export function AccountPage() {
           </div>
         )}
 
-        {notice && (
-          <div
-            className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
-              notice.tone === 'good'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : 'bg-red-50 border-red-200 text-red-800'
-            }`}
-          >
-            {notice.text}
-          </div>
-        )}
-
-        {loading && (
-          <div className="mt-10 text-center text-sm text-forest-700/70">Reading your bookings…</div>
-        )}
-
-        {!loading && bookings.length === 0 && (
-          <div className="mt-10 rounded-[28px] bg-white border border-forest-900/5 shadow-card p-8 text-center">
-            <div className="mx-auto w-12 h-12 rounded-2xl bg-cream-100 text-forest-700 flex items-center justify-center">
-              <Calendar size={20} />
-            </div>
-            <h2 className="font-serif text-2xl text-forest-900 mt-4">No bookings on this account yet</h2>
-            <p className="mt-2 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
-              A request only shows up here if it was made while you were signed in with this account. Requests made
-              before you signed up stay with the browser that made them — ask the Admin and they will find it by name.
+        {activeTab === 'profile' && (
+          <div className="mt-8 bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 max-w-2xl">
+            <h2 className="font-serif text-2xl text-forest-900">Personal Information</h2>
+            <p className="mt-1 text-sm text-forest-700/80">
+              Keep your contact details up to date so the Admin can easily reach you regarding your stay.
             </p>
-            <Link to="/book" className="btn-primary mt-6 inline-flex text-xs">
-              Request your dates <ArrowRight size={14} />
-            </Link>
+
+            {profileMsg && (
+              <div
+                className={`mt-4 rounded-xl border p-3.5 text-xs font-medium ${
+                  profileMsg.tone === 'good'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}
+              >
+                {profileMsg.text}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveProfile} className="mt-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="label">First Name *</span>
+                  <input
+                    className="field"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    required
+                    placeholder="First Name"
+                  />
+                </label>
+                <label className="block">
+                  <span className="label">Last Name *</span>
+                  <input
+                    className="field"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    required
+                    placeholder="Last Name"
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="label">Middle Name (optional)</span>
+                <input
+                  className="field"
+                  value={middleName}
+                  onChange={(e) => setMiddleName(e.target.value)}
+                  placeholder="Middle Name"
+                />
+              </label>
+
+              <label className="block">
+                <span className="label">Mobile Phone Number *</span>
+                <input
+                  className="field"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                  placeholder="09171234567"
+                />
+                <span className="text-[11px] text-forest-600 mt-1 block">
+                  Philippine mobile format: 09XX XXX XXXX
+                </span>
+              </label>
+
+              <label className="block">
+                <span className="label">Date of Birth (optional)</span>
+                <input
+                  className="field"
+                  type="date"
+                  value={birthdate}
+                  onChange={(e) => setBirthdate(e.target.value)}
+                />
+              </label>
+
+              <label className="block">
+                <span className="label">Email Address</span>
+                <input
+                  className="field bg-cream-50/50 cursor-not-allowed"
+                  value={user?.email ?? ''}
+                  disabled
+                />
+                <span className="text-[11px] text-forest-600 mt-1 block">
+                  Email address cannot be changed directly.
+                </span>
+              </label>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="btn-primary text-xs disabled:opacity-60"
+                >
+                  {profileSaving ? 'Saving Changes…' : 'Save Profile Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         )}
 
-        {!loading && bookings.length > 0 && (
-          <div className="mt-8 grid sm:grid-cols-3 gap-3" data-tour="account-tools">
-            <input
-              className="field text-sm"
-              placeholder="Search bookings"
-              aria-label="Search bookings"
-              value={q}
-              maxLength={80}
-              onChange={(e) => {
-                setQ(e.target.value)
-                setPage(1)
-              }}
-            />
-            <select
-              className="field text-sm"
-              aria-label="Filter by status"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value)
-                setPage(1)
-              }}
-            >
-              <option value="all">All statuses</option>
-              {['Pending', 'Payment Pending', 'Reserved', 'Completed', 'Cancelled'].map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            <select
-              className="field text-sm"
-              aria-label="Sort bookings"
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
-            >
-              <option value="created_at">Sort by created</option>
-              <option value="check_in">Sort by check-in</option>
-              <option value="accommodation">Sort by stay</option>
-            </select>
-          </div>
-        )}
-
-        <div className="mt-8 space-y-5">
-          {!loading && bookings.length > 0 && filtered.length === 0 && (
-            <div className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-8 text-center">
-              <h2 className="font-serif text-xl text-forest-900">No bookings match those filters</h2>
-              <p className="mt-2 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
-                {bookings.length} booking{bookings.length === 1 ? '' : 's'} on this account, none matching
-                {q.trim() ? ` “${q.trim()}”` : ' the selected status'}. Widen the search or choose All statuses.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setQ('')
-                  setStatusFilter('all')
-                  setPage(1)
-                }}
-                className="btn-ghost mt-5 inline-flex text-xs"
+        {activeTab === 'bookings' && (
+          <>
+            {notice && (
+              <div
+                className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
+                  notice.tone === 'good'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}
               >
-                Clear search and filters
-              </button>
-            </div>
-          )}
-          {paged.items.map((booking) => {
-            const status = effectiveStatus(booking)
-            return (
-              <article
-                key={booking.id}
-                className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-6"
-                data-tour="booking-card"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="eyebrow">Request {reference(booking)}</div>
-                    <h2 className="font-serif text-2xl text-forest-900 mt-1.5">
-                      {accommodationName(booking.accommodation)}
-                    </h2>
-                    <div className="mt-1 text-sm text-forest-700/80">
-                      {booking.check_in} → {booking.check_out} · {formatStayDuration(booking.check_in, booking.check_out)}{' '}
-                      · {booking.guests} guest{booking.guests === 1 ? '' : 's'}
-                    </div>
-                  </div>
-                  <span
-                    className={`px-3 py-1 rounded-full text-[11px] font-bold ${statusChip(status)}`}
-                  >
-                    {status}
-                  </span>
-                </div>
+                {notice.text}
+              </div>
+            )}
 
-                <div className="mt-4">
-                  <HoldCountdown booking={booking} />
-                </div>
+            {loading && (
+              <div className="mt-10 text-center text-sm text-forest-700/70">Reading your bookings…</div>
+            )}
 
-                {booking.rejection_reason && (
-                  <p className="mt-3 text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                    The Admin refused this request: “{booking.rejection_reason}”. Those dates are free again.
+            {!loading && bookings.length === 0 && (
+              <div className="mt-10 rounded-[28px] bg-white border border-forest-900/5 shadow-card p-8 text-center">
+                <div className="mx-auto w-12 h-12 rounded-2xl bg-cream-100 text-forest-700 flex items-center justify-center">
+                  <Calendar size={20} />
+                </div>
+                <h2 className="font-serif text-2xl text-forest-900 mt-4">No bookings on this account yet</h2>
+                <p className="mt-2 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
+                  A request only shows up here if it was made while you were signed in with this account. Requests made
+                  before you signed up stay with the browser that made them — ask the Admin and they will find it by name.
+                </p>
+                <Link to="/book" className="btn-primary mt-6 inline-flex text-xs">
+                  Request your dates <ArrowRight size={14} />
+                </Link>
+              </div>
+            )}
+
+            {!loading && bookings.length > 0 && (
+              <div className="mt-8 grid sm:grid-cols-3 gap-3" data-tour="account-tools">
+                <input
+                  className="field text-sm"
+                  placeholder="Search bookings"
+                  aria-label="Search bookings"
+                  value={q}
+                  maxLength={80}
+                  onChange={(e) => {
+                    setQ(e.target.value)
+                    setPage(1)
+                  }}
+                />
+                <select
+                  className="field text-sm"
+                  aria-label="Filter by status"
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value)
+                    setPage(1)
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  {['Pending', 'Payment Pending', 'Reserved', 'Completed', 'Cancelled'].map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="field text-sm"
+                  aria-label="Sort bookings"
+                  value={sortKey}
+                  onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
+                >
+                  <option value="created_at">Sort by created</option>
+                  <option value="check_in">Sort by check-in</option>
+                  <option value="accommodation">Sort by stay</option>
+                </select>
+              </div>
+            )}
+
+            <div className="mt-8 space-y-5">
+              {!loading && bookings.length > 0 && filtered.length === 0 && (
+                <div className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-8 text-center">
+                  <h2 className="font-serif text-xl text-forest-900">No bookings match those filters</h2>
+                  <p className="mt-2 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
+                    {bookings.length} booking{bookings.length === 1 ? '' : 's'} on this account, none matching
+                    {q.trim() ? ` “${q.trim()}”` : ' the selected status'}. Widen the search or choose All statuses.
                   </p>
-                )}
-                {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
-                  <div className="mt-4">
-                    <PaymentStep booking={booking} />
-                  </div>
-                )}
-
-                {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
-                  <LateCheckoutRequest booking={booking} />
-                )}
-
-                <BookingHistory bookingId={booking.id} />
-
-                {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
-                  <div data-testid="review-entry">
-                    {isReviewableStatus(status) && (
-                      <p className="mt-4 text-sm text-forest-800">
-                        <strong className="font-medium">Your stay is complete!</strong> How was your stay?
-                      </p>
-                    )}
-                    <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
-                  </div>
-                )}
-
-                {user?.uid && (
-                  <DisputeForm bookingId={booking.id} guestId={user.uid} />
-                )}
-
-                <div className="mt-4 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setViewingInvoice(booking)}
-                    className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
+                    onClick={() => {
+                      setQ('')
+                      setStatusFilter('all')
+                      setPage(1)
+                    }}
+                    className="btn-ghost mt-5 inline-flex text-xs"
                   >
-                    📄 View Official Invoice
+                    Clear search and filters
                   </button>
-
-                  {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
-                    <button
-                      onClick={() => setConfirmingWithdraw(booking)}
-                      disabled={busy === booking.id}
-                      className="btn-ghost text-xs disabled:opacity-50"
-                    >
-                      {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
-                    </button>
-                  )}
-                  {!WITHDRAWABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
-                    <span className="text-[11px] text-forest-600 flex items-center gap-1">
-                      <Sparkle size={12} /> Past the point you can withdraw alone — message the Admin to change it.
-                    </span>
-                  )}
                 </div>
-              </article>
-            )
-          })}
-        </div>
+              )}
+              {paged.items.map((booking) => {
+                const status = effectiveStatus(booking)
+                return (
+                  <article
+                    key={booking.id}
+                    className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-6"
+                    data-tour="booking-card"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="eyebrow">Request {reference(booking)}</div>
+                        <h2 className="font-serif text-2xl text-forest-900 mt-1.5">
+                          {accommodationName(booking.accommodation)}
+                        </h2>
+                        <div className="mt-1 text-sm text-forest-700/80">
+                          {booking.check_in} → {booking.check_out} · {formatStayDuration(booking.check_in, booking.check_out)}{' '}
+                          · {booking.guests} guest{booking.guests === 1 ? '' : 's'}
+                        </div>
+                      </div>
+                      <span
+                        className={`px-3 py-1 rounded-full text-[11px] font-bold ${statusChip(status)}`}
+                      >
+                        {status}
+                      </span>
+                    </div>
 
-        {!loading && bookings.length > 0 && (
-          <Pager
-            page={paged}
-            onPage={setPage}
-            onPageSize={(n) => {
-              setPageSize(n)
-              setPage(1)
-            }}
-          />
+                    <div className="mt-4">
+                      <HoldCountdown booking={booking} />
+                    </div>
+
+                    {booking.rejection_reason && (
+                      <p className="mt-3 text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                        The Admin refused this request: “{booking.rejection_reason}”. Those dates are free again.
+                      </p>
+                    )}
+                    {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
+                      <div className="mt-4">
+                        <PaymentStep booking={booking} />
+                      </div>
+                    )}
+
+                    {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
+                      <LateCheckoutRequest booking={booking} />
+                    )}
+
+                    <BookingHistory bookingId={booking.id} />
+
+                    {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
+                      <div data-testid="review-entry">
+                        {isReviewableStatus(status) && (
+                          <p className="mt-4 text-sm text-forest-800">
+                            <strong className="font-medium">Your stay is complete!</strong> How was your stay?
+                          </p>
+                        )}
+                        <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
+                      </div>
+                    )}
+
+                    {user?.uid && (
+                      <DisputeForm bookingId={booking.id} guestId={user.uid} />
+                    )}
+
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setViewingInvoice(booking)}
+                        className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
+                      >
+                        📄 View Official Invoice
+                      </button>
+
+                      {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
+                        <button
+                          onClick={() => setConfirmingWithdraw(booking)}
+                          disabled={busy === booking.id}
+                          className="btn-ghost text-xs disabled:opacity-50"
+                        >
+                          {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
+                        </button>
+                      )}
+                      {!WITHDRAWABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
+                        <span className="text-[11px] text-forest-600 flex items-center gap-1">
+                          <Sparkle size={12} /> Past the point you can withdraw alone — message the Admin to change it.
+                        </span>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+
+            {!loading && bookings.length > 0 && (
+              <Pager
+                page={paged}
+                onPage={setPage}
+                onPageSize={(n) => {
+                  setPageSize(n)
+                  setPage(1)
+                }}
+              />
+            )}
+          </>
         )}
 
         <ConfirmDialog

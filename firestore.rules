@@ -612,6 +612,7 @@ service cloud.firestore {
           && request.resource.data.role in ['guest', 'admin']
           && request.resource.data.keys()
                .hasOnly(['uid', 'role', 'email', 'display_name', 'created_at', 'updated_at',
+                         'first_name', 'middle_name', 'last_name',
                          'phone', 'birthdate', 'terms_version', 'terms_accepted_at']);
       }
 
@@ -631,7 +632,7 @@ service cloud.firestore {
         && (isAdmin()
             || (isSignedIn() && request.auth.uid == userId
                 && request.resource.data.diff(resource.data).affectedKeys()
-                     .hasOnly(['display_name', 'email', 'updated_at', 'phone', 'birthdate',
+                     .hasOnly(['display_name', 'email', 'updated_at', 'first_name', 'middle_name', 'last_name', 'phone', 'birthdate',
                                'terms_version', 'terms_accepted_at'])));
 
       // Removing an account's role. Never your own: one click should not be able

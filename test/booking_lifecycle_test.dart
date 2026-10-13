@@ -413,6 +413,19 @@ void main() {
       expect(applyAdminAction(b, AdminAction.checkIn, admin, now: now).ok, isFalse);
     });
 
+    test('refuses checkIn and beginStay before the check-in date', () {
+      // now is Oct 1, 2026. Check-in is Oct 10, 2026.
+      final futureBooking = booking(status: 'Reserved', checkIn: '2026-10-10');
+      final checkInResult = applyAdminAction(futureBooking, AdminAction.checkIn, admin, now: now);
+      expect(checkInResult.ok, isFalse);
+      expect(checkInResult.reason, contains('not allowed before the check-in date'));
+
+      final checkedInFuture = booking(status: 'Checked-In', checkIn: '2026-10-10');
+      final beginStayResult = applyAdminAction(checkedInFuture, AdminAction.beginStay, admin, now: now);
+      expect(beginStayResult.ok, isFalse);
+      expect(beginStayResult.reason, contains('not allowed before the check-in date'));
+    });
+
     test('RevokeKey logs without moving the Booking', () {
       final r = applyAdminAction(booking(status: 'Staying'), AdminAction.revokeKey, admin, now: now);
       expect(r.ok, isTrue);

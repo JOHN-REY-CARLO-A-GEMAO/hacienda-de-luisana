@@ -231,9 +231,10 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
             role: DEFAULT_ROLE,
             email: user.email,
             display_name: checked.value.displayName ?? user.displayName,
-            // What this person agreed to, kept on the Profile so it can be read
-            // back rather than inferred from a checkbox that no longer exists.
-            // `firestore.rules` already permits exactly these three fields.
+            first_name: checked.value.firstName,
+            middle_name: checked.value.middleName,
+            last_name: checked.value.lastName,
+            phone: checked.value.phone,
             birthdate: checked.value.birthdate,
             terms_version: checked.value.termsVersion,
             terms_accepted_at: checked.value.termsAcceptedAt,

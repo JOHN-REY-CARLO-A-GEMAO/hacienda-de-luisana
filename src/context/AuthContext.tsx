@@ -48,7 +48,15 @@ export type AuthContextType = {
   register: (
     email: string,
     password: string,
-    registration?: { displayName?: string; birthdate?: string; acceptedTerms?: boolean },
+    registration?: {
+      displayName?: string
+      firstName?: string
+      middleName?: string
+      lastName?: string
+      phone?: string
+      birthdate?: string
+      acceptedTerms?: boolean
+    },
   ) => Promise<void>
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>

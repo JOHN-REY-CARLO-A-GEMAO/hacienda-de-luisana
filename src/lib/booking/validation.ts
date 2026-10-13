@@ -211,11 +211,19 @@ export function validateBookingSelection(
       'accommodation',
     )
   }
+  const capacityMap: Record<string, number> = {
+    'main-house': 10,
+    'annex': 6,
+    'house-a-camping': 3,
+  }
+  const maxCapacity = capacityMap[selection.accommodation] ?? schedule.max_guests
   if (!Number.isInteger(selection.guests) || selection.guests < schedule.min_guests
-      || (schedule.max_guests !== undefined && selection.guests > schedule.max_guests)) {
+      || (maxCapacity !== undefined && selection.guests > maxCapacity)) {
     return failure(
       'GUEST_COUNT_NOT_SUPPORTED',
-      guestRuleMessage(property, classification, schedule, selection.guests),
+      maxCapacity !== undefined && selection.guests > maxCapacity
+        ? `${property} can accommodate up to ${maxCapacity} guests.`
+        : guestRuleMessage(property, classification, schedule, selection.guests),
       'guests',
     )
   }

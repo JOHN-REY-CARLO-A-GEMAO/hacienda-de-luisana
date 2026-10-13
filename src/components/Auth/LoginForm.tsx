@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { MIN_PASSWORD_LENGTH, describeAuthError, homeForRole } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
-import { validateBirthdate, validateEmail, validateName } from '../../lib/validation'
+import { validateBirthdate, validateEmail, validateName, validatePhMobile } from '../../lib/validation'
 import { LEGAL_VERSION } from '../../lib/legal'
 
 type Mode = 'login' | 'register' | 'reset'
@@ -52,6 +52,10 @@ export function LoginForm({
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [middleName, setMiddleName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [phone, setPhone] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [birthdate, setBirthdate] = useState('')
   const [acceptTerms, setAcceptTerms] = useState(false)
@@ -82,8 +86,24 @@ export function LoginForm({
     const problems: Record<string, string> = {}
 
     if (displayName.trim()) {
-      const name = validateName(displayName)
-      if (!name.ok) problems.displayName = name.message
+      const nameRes = validateName(displayName)
+      if (!nameRes.ok) problems.displayName = nameRes.message
+    }
+    if (firstName.trim()) {
+      const fnRes = validateName(firstName)
+      if (!fnRes.ok) problems.firstName = fnRes.message
+    }
+    if (lastName.trim()) {
+      const lnRes = validateName(lastName)
+      if (!lnRes.ok) problems.lastName = lnRes.message
+    }
+    if (middleName.trim()) {
+      const mnRes = validateName(middleName)
+      if (!mnRes.ok) problems.middleName = mnRes.message
+    }
+    if (phone.trim()) {
+      const phRes = validatePhMobile(phone)
+      if (!phRes.ok) problems.phone = phRes.message
     }
 
     const birth = validateBirthdate(birthdate)
@@ -137,9 +157,14 @@ export function LoginForm({
           setLoading(false)
           return
         }
+        const constructedDisplayName = `${firstName.trim()} ${lastName.trim()}`.trim() || displayName
         await register(email, password, {
-          displayName: displayName || undefined,
-          birthdate,
+          firstName: firstName.trim(),
+          middleName: middleName.trim() || undefined,
+          lastName: lastName.trim(),
+          phone: phone.trim(),
+          displayName: constructedDisplayName || undefined,
+          birthdate: birthdate ? birthdate : undefined,
           acceptedTerms: acceptTerms,
         })
         setInfo(registerIntro.successMessage)
@@ -217,47 +242,126 @@ export function LoginForm({
       <form onSubmit={handleSubmit} className="space-y-4">
         {mode === 'register' && (
           <>
-          <label className="block">
-            <span className="label">Display Name (optional)</span>
-            <input
-              className="field"
-              placeholder="Juan Dela Cruz"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              autoComplete="name"
-              maxLength={80}
-              minLength={2}
-              aria-invalid={fieldErrors.displayName ? true : undefined}
-            />
-            {fieldErrors.displayName && (
-              <span className="mt-1 block text-xs text-red-600">{fieldErrors.displayName}</span>
+            <label className="block">
+              <span className="label">Display Name / Full Name</span>
+              <input
+                className="field"
+                placeholder="Juan Dela Cruz"
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value)
+                  const parts = e.target.value.trim().split(' ')
+                  if (parts.length > 1) {
+                    setFirstName(parts[0])
+                    setLastName(parts.slice(1).join(' '))
+                  } else {
+                    setFirstName(e.target.value)
+                  }
+                }}
+                autoComplete="name"
+                maxLength={80}
+                aria-invalid={fieldErrors.displayName ? true : undefined}
+              />
+              {fieldErrors.displayName && (
+                <span className="mt-1 block text-xs text-red-600">{fieldErrors.displayName}</span>
+              )}
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block">
+                <span className="label">First Name</span>
+                <input
+                  className="field"
+                  placeholder="Juan"
+                  value={firstName}
+                  onChange={(e) => {
+                    setFirstName(e.target.value)
+                    setDisplayName(`${e.target.value} ${lastName}`.trim())
+                  }}
+                  maxLength={80}
+                  aria-invalid={fieldErrors.firstName ? true : undefined}
+                />
+                {fieldErrors.firstName && (
+                  <span className="mt-1 block text-xs text-red-600">{fieldErrors.firstName}</span>
+                )}
+              </label>
+
+              <label className="block">
+                <span className="label">Last Name</span>
+                <input
+                  className="field"
+                  placeholder="Dela Cruz"
+                  value={lastName}
+                  onChange={(e) => {
+                    setLastName(e.target.value)
+                    setDisplayName(`${firstName} ${e.target.value}`.trim())
+                  }}
+                  maxLength={80}
+                  aria-invalid={fieldErrors.lastName ? true : undefined}
+                />
+                {fieldErrors.lastName && (
+                  <span className="mt-1 block text-xs text-red-600">{fieldErrors.lastName}</span>
+                )}
+              </label>
+            </div>
+
+            <label className="block">
+              <span className="label">Middle Name (optional)</span>
+              <input
+                className="field"
+                placeholder="Santos"
+                value={middleName}
+                onChange={(e) => setMiddleName(e.target.value)}
+                maxLength={80}
+                aria-invalid={fieldErrors.middleName ? true : undefined}
+              />
+              {fieldErrors.middleName && (
+                <span className="mt-1 block text-xs text-red-600">{fieldErrors.middleName}</span>
+              )}
+            </label>
+
+            <label className="block">
+              <span className="label">Mobile Phone Number (optional)</span>
+              <input
+                className="field"
+                placeholder="09171234567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                maxLength={15}
+                aria-invalid={fieldErrors.phone ? true : undefined}
+              />
+              <span className="text-[11px] text-forest-600 mt-1 block">Philippine format: 09XX XXX XXXX</span>
+              {fieldErrors.phone && (
+                <span className="mt-1 block text-xs text-red-600">{fieldErrors.phone}</span>
+              )}
+            </label>
+
+            <label className="block">
+              <span className="label">Date of birth</span>
+              <input
+                className="field"
+                type="date"
+                value={birthdate}
+                onChange={(e) => setBirthdate(e.target.value)}
+                required
+                aria-invalid={fieldErrors.birthdate ? true : undefined}
+              />
+              <span className="text-[11px] text-forest-600 mt-1 block">You must be at least 10 years old.</span>
+              {fieldErrors.birthdate && (
+                <span className="mt-1 block text-xs text-red-600">{fieldErrors.birthdate}</span>
+              )}
+            </label>
+
+            <label className="flex items-start gap-2 text-xs text-forest-800">
+              <input type="checkbox" className="mt-0.5" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
+              <span>
+                I have read and accept the{' '}
+                <Link to="/legal" className="underline">Terms and Conditions</Link> (version {LEGAL_VERSION}).
+              </span>
+            </label>
+            {fieldErrors.acceptTerms && (
+              <span className="block text-xs text-red-600">{fieldErrors.acceptTerms}</span>
             )}
-          </label>
-          <label className="block">
-            <span className="label">Date of birth</span>
-            <input
-              className="field"
-              type="date"
-              value={birthdate}
-              onChange={(e) => setBirthdate(e.target.value)}
-              required
-              aria-invalid={fieldErrors.birthdate ? true : undefined}
-            />
-            <span className="text-[11px] text-forest-600 mt-1 block">You must be at least 10 years old.</span>
-            {fieldErrors.birthdate && (
-              <span className="mt-1 block text-xs text-red-600">{fieldErrors.birthdate}</span>
-            )}
-          </label>
-          <label className="flex items-start gap-2 text-xs text-forest-800">
-            <input type="checkbox" className="mt-0.5" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
-            <span>
-              I have read and accept the{' '}
-              <Link to="/legal" className="underline">Terms and Conditions</Link> (version {LEGAL_VERSION}).
-            </span>
-          </label>
-          {fieldErrors.acceptTerms && (
-            <span className="block text-xs text-red-600">{fieldErrors.acceptTerms}</span>
-          )}
           </>
         )}
 
