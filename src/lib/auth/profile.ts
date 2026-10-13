@@ -31,6 +31,10 @@ export type Profile = {
   role: Role
   email?: string | null
   display_name?: string | null
+  first_name?: string | null
+  middle_name?: string | null
+  last_name?: string | null
+  phone?: string | null
   /**
    * The version of the Terms this person accepted, and when.
    *
@@ -122,6 +126,10 @@ export function normalizeProfile(raw: unknown): Profile | null {
     role,
     email: typeof doc.email === 'string' ? doc.email : null,
     display_name: typeof doc.display_name === 'string' ? doc.display_name : null,
+    first_name: typeof doc.first_name === 'string' ? doc.first_name : null,
+    middle_name: typeof doc.middle_name === 'string' ? doc.middle_name : null,
+    last_name: typeof doc.last_name === 'string' ? doc.last_name : null,
+    phone: typeof doc.phone === 'string' ? doc.phone : null,
     terms_version: typeof doc.terms_version === 'string' ? doc.terms_version : null,
     terms_accepted_at: typeof doc.terms_accepted_at === 'string' ? doc.terms_accepted_at : null,
     birthdate: typeof doc.birthdate === 'string' ? doc.birthdate : null,

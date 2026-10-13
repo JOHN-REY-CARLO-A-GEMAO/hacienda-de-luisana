@@ -899,11 +899,11 @@ String? adminActionBlockedReason(
     }
     return null;
   }
-  if (action == AdminAction.beginStay) {
+  if (action == AdminAction.beginStay || action == AdminAction.checkIn) {
     final checkInStr = _dateKey(booking['check_in']);
     final todayPht = manilaDateOnly(DateTime.now());
     if (checkInStr.isNotEmpty && todayPht.compareTo(checkInStr) < 0) {
-      return 'Begin Stay is allowed starting on the check-in date ($checkInStr). Today in the Philippines is $todayPht.';
+      return 'Check-in / Begin Stay is allowed starting on the check-in date ($checkInStr). Today in the Philippines is $todayPht.';
     }
     return null;
   }
@@ -1174,14 +1174,12 @@ ActionResult applyAdminAction(
       break;
 
     case AdminAction.checkIn:
-      break;
-
     case AdminAction.beginStay:
       final checkInStr = _dateKey(booking['check_in']);
       final todayPht = manilaDateOnly(at);
       if (checkInStr.isNotEmpty && todayPht.compareTo(checkInStr) < 0) {
         return ActionResult.refused(
-            'Begin Stay is not allowed before the check-in date ($checkInStr). Today in the Philippines is $todayPht.');
+            'Check-in / Begin Stay is not allowed before the check-in date ($checkInStr). Today in the Philippines is $todayPht.');
       }
       break;
 

@@ -60,12 +60,12 @@ export function Nav() {
           <Logo tone={transparent ? 'light' : isDark ? 'light' : 'dark'} />
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-3 xl:gap-5 2xl:gap-7 flex-shrink" aria-label="Site">
+        <nav className="hidden lg:flex items-center gap-2 xl:gap-4 2xl:gap-6 flex-shrink" aria-label="Site">
           {LINKS.map((l) => (
             <Link
               key={l.href}
               to={l.href}
-              className={`${l.wide ? 'hidden xl:inline-flex' : 'inline-flex'} text-[13px] font-medium whitespace-nowrap transition ${
+              className={`${l.wide ? 'hidden xl:inline-flex' : 'inline-flex'} text-[12px] xl:text-[13px] font-medium whitespace-nowrap transition ${
                 transparent ? 'text-cream-100 hover:text-white' : 'text-forest-800 dark:text-cream-100 hover:text-forest-950 dark:hover:text-white'
               }`}
             >
@@ -74,7 +74,7 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="hidden lg:flex items-center gap-2.5 flex-shrink-0">
+        <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
           {/* Theme toggle */}
           <button
             type="button"

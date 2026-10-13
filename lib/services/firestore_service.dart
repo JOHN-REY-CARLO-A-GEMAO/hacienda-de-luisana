@@ -313,6 +313,7 @@ class FirestoreService implements PinSecurityRemote {
         final batch = _firestore.batch();
         batch.update(ref, result.patch);
         batch.set(log.doc('$seq'), {...result.entry!, 'seq': seq});
+        _addNotificationForAction(batch, booking, action, result.patch, merged);
         await batch.commit();
         return result;
       } catch (e) {
@@ -323,6 +324,72 @@ class FirestoreService implements PinSecurityRemote {
 
     _patchLocal(booking.id, result.patch, result.entry!);
     return result;
+  }
+
+  void _addNotificationForAction(
+    WriteBatch batch,
+    BookingModel booking,
+    AdminAction action,
+    Map<String, dynamic> patch,
+    ActionInput input,
+  ) {
+    final uid = booking.uid;
+    if (uid == null || uid.isEmpty) return;
+
+    String? title;
+    String? message;
+    String type = 'booking_status';
+
+    switch (action) {
+      case AdminAction.approve:
+        title = 'Booking Approved';
+        final checkInIso = DateFormatter.toIsoDate(booking.checkInDate);
+        final checkOutIso = DateFormatter.toIsoDate(booking.checkOutDate);
+        message =
+            'Your booking request for ${booking.accommodation} ($checkInIso to $checkOutIso) has been approved! Please choose your payment plan and upload your downpayment proof.';
+        break;
+      case AdminAction.reject:
+        title = 'Booking Request Refused';
+        final reason = (input.reason ?? '').isNotEmpty
+            ? input.reason!
+            : (patch['rejection_reason'] as String? ?? 'Declined by Admin');
+        message = 'Your booking request was declined ($reason).';
+        break;
+      case AdminAction.verifyPayment:
+        title = 'Payment Verified';
+        final status = patch['status'] ?? 'Reserved';
+        message =
+            'Your payment proof has been verified! Your booking is now $status.';
+        break;
+      case AdminAction.rejectPaymentProof:
+        title = 'Payment Proof Declined';
+        final reason = (input.reason ?? '').isNotEmpty
+            ? input.reason!
+            : 'Please re-upload a valid payment screenshot.';
+        message = 'Your payment proof was declined ($reason).';
+        break;
+      case AdminAction.cancel:
+        title = 'Booking Cancelled';
+        final reason =
+            (input.reason ?? '').isNotEmpty ? input.reason! : 'Cancelled by Admin';
+        message = 'Your booking has been cancelled ($reason).';
+        break;
+      default:
+        break;
+    }
+
+    if (title != null && message != null) {
+      final notifRef = _firestore!.collection('notifications').doc();
+      batch.set(notifRef, {
+        'user_id': uid,
+        'booking_id': booking.id,
+        'title': title,
+        'message': message,
+        'type': type,
+        'created_at': FieldValue.serverTimestamp(),
+        'read': false,
+      });
+    }
   }
 
   void _patchLocal(

@@ -126,6 +126,10 @@ export type Credentials = { email: string; password: string }
  */
 export type RegistrationInput = Credentials & {
   displayName?: string
+  firstName?: string
+  middleName?: string
+  lastName?: string
+  phone?: string
   birthdate?: string
   acceptedTerms?: boolean
   termsVersion?: string
@@ -134,7 +138,11 @@ export type RegistrationInput = Credentials & {
 /** What a checked sign-up carries on to the Profile. */
 export type Registration = Credentials & {
   displayName?: string
-  birthdate: string
+  firstName?: string
+  middleName?: string
+  lastName?: string
+  phone?: string
+  birthdate?: string
   termsVersion: string
   termsAcceptedAt: string
 }
@@ -235,11 +243,20 @@ export function validateRegistration(
   }
 
   const displayName = sanitizeDisplayName(raw.displayName)
+  const firstName = raw.firstName?.trim()
+  const middleName = raw.middleName?.trim()
+  const lastName = raw.lastName?.trim()
+  const phone = raw.phone?.trim()
+
   return {
     ok: true,
     value: {
       ...credentials.value,
       ...(displayName ? { displayName } : {}),
+      ...(firstName ? { firstName } : {}),
+      ...(middleName ? { middleName } : {}),
+      ...(lastName ? { lastName } : {}),
+      ...(phone ? { phone } : {}),
       birthdate: birth.value,
       termsVersion: typeof raw.termsVersion === 'string' && raw.termsVersion ? raw.termsVersion : LEGAL_VERSION,
       termsAcceptedAt: now.toISOString(),
