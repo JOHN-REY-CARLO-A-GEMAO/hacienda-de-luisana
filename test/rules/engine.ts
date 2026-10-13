@@ -1197,6 +1197,11 @@ function globalCall(name: string, args: unknown[], scope: Scope, node: Node): un
       if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
       throw new RuleEvaluationError('int() takes a number or an integer string')
     }
+    case 'float': {
+      const value = args[0]
+      if (typeof value === 'string' || typeof value === 'number') return Number(value)
+      throw new RuleEvaluationError('float() takes a number or string')
+    }
     case 'get':
     case 'getAfter': {
       const path = asPath(args[0], name)
