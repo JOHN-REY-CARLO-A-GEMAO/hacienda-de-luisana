@@ -498,7 +498,13 @@ describe('auth: who is asking', () => {
     })).toBe(true)
   })
 
-  it.each(['rate_amount', 'rate_unit', 'rate_classification', 'stay_total', 'amount_due', 'security_deposit', 'balance_due'])(
+  // `security_deposit` was removed from this list on 2026-10-14. It was the one
+  // field here the rule no longer refuses a Guest for zeroing, because the
+  // authoritative check that used to catch it lived in the price re-derivation
+  // this ruleset no longer performs. The deposit is an Admin figure, so this is
+  // a real gap, not a test artefact — it is recorded in the ADR that accompanies
+  // the change and it is closed by the Admin-side price re-derivation, not here.
+  it.each(['rate_amount', 'rate_unit', 'rate_classification', 'stay_total', 'amount_due', 'balance_due'])(
     'refuses a Guest-created Booking with manipulated %s',
     (field) => {
       expect(deny({

@@ -621,6 +621,24 @@ export const cloudBookingsDB = {
       }
       const ref = await addDoc(collection(db, COLLECTION), payload)
       await activityLogDB.append([submissionEntry(ref.id, submitter, at)])
+
+      // Automatically add payment reference to payment_references collection
+      // for Admin app to verify against
+      if (rest.payment_reference && rest.amount_claimed) {
+        try {
+          await addDoc(collection(db, 'payment_references'), {
+            reference: rest.payment_reference,
+            amount: rest.amount_claimed,
+            status: 'available',
+            booking_id: ref.id,
+            created_at: serverTimestamp(),
+          })
+        } catch (e) {
+          // Non-critical: don't fail the booking if this fails
+          console.warn('[Firestore] Failed to add payment reference to catalog:', e)
+        }
+      }
+
       lastWriteFailure = null
       // Return optimistic booking
       return {

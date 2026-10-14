@@ -19,7 +19,7 @@ import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
 import { DisputeForm } from '../components/DisputeForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
-import { ArrowRight, Calendar, Sparkle, Close } from '../lib/icons'
+import { ArrowRight, Calendar, Sparkle, Close, Bell, User, CheckCircle, Clock, XCircle, CreditCard, Home, MessageCircle, LogOut, Settings } from '../lib/icons'
 import {
   fetchUserNotifications,
   markNotificationRead,
@@ -43,6 +43,22 @@ function statusChip(status: ReturnType<typeof effectiveStatus>) {
   return 'bg-cream-100 text-forest-700'
 }
 
+function statusIcon(status: ReturnType<typeof effectiveStatus>) {
+  if (status === 'Approved' || status === 'Reserved') return <CheckCircle size={16} />
+  if (status === 'Pending') return <Clock size={16} />
+  if (status === 'Rejected' || status === 'Expired' || status === 'Cancelled') return <XCircle size={16} />
+  return <Sparkle size={16} />
+}
+
+function daysUntil(dateStr: string): number {
+  const checkIn = new Date(dateStr)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  checkIn.setHours(0, 0, 0, 0)
+  const diff = checkIn.getTime() - today.getTime()
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
 /**
  * The Guest's own page.
  *
@@ -60,6 +76,7 @@ export function AccountPage() {
   const [activeTab, setActiveTab] = useState<'bookings' | 'profile'>('bookings')
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
+  const [notificationSidebarOpen, setNotificationSidebarOpen] = useState(false)
 
   // Profile Form state
   const [firstName, setFirstName] = useState(profile?.first_name ?? '')
@@ -160,7 +177,6 @@ export function AccountPage() {
   const [viewingInvoice, setViewingInvoice] = useState<Booking | null>(null)
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
-  const [showNotifications, setShowNotifications] = useState(false)
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications])
 
@@ -228,23 +244,56 @@ export function AccountPage() {
 
   const paged = paginate(filtered, { page, pageSize })
 
+  // Calculate stats
+  const stats = useMemo(() => {
+    const total = bookings.length
+    const pending = bookings.filter((b) => effectiveStatus(b) === 'Pending').length
+    const upcoming = bookings.filter((b) => {
+      const status = effectiveStatus(b)
+      const days = daysUntil(b.check_in)
+      return (status === 'Approved' || status === 'Reserved' || status === 'Pending') && days > 0 && days <= 30
+    }).length
+    return { total, pending, upcoming }
+  }, [bookings])
+
+  // Get next upcoming stay
+  const nextStay = useMemo(() => {
+    const futureBookings = bookings
+      .filter((b) => {
+        const status = effectiveStatus(b)
+        const days = daysUntil(b.check_in)
+        return (status === 'Approved' || status === 'Reserved' || status === 'Pending') && days > 0
+      })
+      .sort((a, b) => new Date(a.check_in).getTime() - new Date(b.check_in).getTime())
+    return futureBookings[0] || null
+  }, [bookings])
+
   return (
     <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-4xl px-5 lg:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="eyebrow">Your stay · {role ? ROLE_LABELS[role] : 'Guest'}</div>
-            <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">Account Center</h1>
-            <p className="mt-3 text-sm text-forest-800/80 max-w-xl leading-relaxed">
-              Signed in as <strong>{user?.email ?? user?.displayName ?? 'this browser'}</strong>. Manage your stay requests and personal profile information here.
-            </p>
+      <div className="mx-auto max-w-5xl px-5 lg:px-8">
+        {/* Header with Profile Summary */}
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-forest-900 to-forest-700 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+              {profile?.display_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'G'}
+            </div>
+            <div>
+              <div className="eyebrow">Your stay · {role ? ROLE_LABELS[role] : 'Guest'}</div>
+              <h1 className="display text-4xl sm:text-5xl mt-1 text-forest-900">
+                {profile?.display_name || user?.displayName || 'Guest Account'}
+              </h1>
+              <p className="mt-1 text-sm text-forest-700/80 max-w-xl leading-relaxed">
+                {user?.email} · Member since {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }) : 'Today'}
+              </p>
+            </div>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             <button
               type="button"
-              onClick={() => setShowNotifications((v) => !v)}
+              onClick={() => setNotificationSidebarOpen(true)}
               className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs relative"
             >
+              <Bell size={16} className="mr-1.5" />
               Notifications
               {unreadCount > 0 && (
                 <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold">
@@ -253,19 +302,103 @@ export function AccountPage() {
               )}
             </button>
             <Link to="/messages" className="btn-ghost text-xs">
+              <MessageCircle size={16} className="mr-1.5" />
               Messages
             </Link>
             <Link to="/book" className="btn-primary text-xs">
-              Book another stay
+              <Home size={16} className="mr-1.5" />
+              Book a stay
             </Link>
             <button
               onClick={() => void logout()}
               className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
             >
+              <LogOut size={16} className="mr-1.5" />
               Sign out
             </button>
           </div>
         </div>
+
+        {/* Quick Stats Dashboard */}
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white rounded-2xl border border-forest-900/5 shadow-sm p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Total Bookings</div>
+                <div className="text-3xl font-bold text-forest-900 mt-1">{stats.total}</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-cream-100 text-forest-700 flex items-center justify-center">
+                <Calendar size={20} />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-forest-900/5 shadow-sm p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Pending Requests</div>
+                <div className="text-3xl font-bold text-amber-600 mt-1">{stats.pending}</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
+                <Clock size={20} />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-forest-900/5 shadow-sm p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Upcoming Stays</div>
+                <div className="text-3xl font-bold text-emerald-600 mt-1">{stats.upcoming}</div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                <Home size={20} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Next Stay Highlight */}
+        {nextStay && (
+          <div className="mt-6 bg-gradient-to-r from-forest-900 to-forest-800 rounded-2xl shadow-lg p-6 text-white">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Home size={18} />
+                  <span className="text-sm font-semibold text-cream-100">Your Next Stay</span>
+                  {daysUntil(nextStay.check_in) > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 text-[11px] font-medium">
+                      {daysUntil(nextStay.check_in)} day{daysUntil(nextStay.check_in) === 1 ? '' : 's'} away
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-serif text-2xl mt-1">{accommodationName(nextStay.accommodation)}</h3>
+                <div className="mt-2 text-sm text-cream-100/80">
+                  {nextStay.check_in} → {nextStay.check_out} · {formatStayDuration(nextStay.check_in, nextStay.check_out)}
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${statusChip(effectiveStatus(nextStay))}`}>
+                    {effectiveStatus(nextStay)}
+                  </span>
+                  {nextStay.amount_claimed && (
+                    <span className="text-sm text-cream-100/80">
+                      Downpayment: ₱{nextStay.amount_claimed.toLocaleString('en-PH')}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setViewingInvoice(nextStay)}
+                  className="btn bg-white/10 hover:bg-white/20 text-white text-xs border-white/20"
+                >
+                  View Details
+                </button>
+                <Link to="/messages" className="btn bg-white/10 hover:bg-white/20 text-white text-xs border-white/20">
+                  Contact Admin
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Account Center Tabs */}
         <div className="mt-8 flex gap-3 border-b border-forest-900/10 pb-1">
@@ -293,56 +426,85 @@ export function AccountPage() {
           </button>
         </div>
 
-        {showNotifications && (
-          <div className="mt-6 bg-white rounded-[28px] border border-forest-900/10 shadow-card p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-serif text-2xl text-forest-900">Notifications</h2>
-              <button
-                type="button"
-                onClick={() => setShowNotifications(false)}
-                className="text-forest-600 hover:text-forest-900 p-1"
-                aria-label="Close notifications"
-              >
-                <Close size={20} />
-              </button>
-            </div>
-            {notifications.length === 0 ? (
-              <p className="mt-4 text-xs text-forest-700/70">No notifications yet.</p>
-            ) : (
-              <div className="mt-4 space-y-3 max-h-80 overflow-y-auto pr-1">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`p-3.5 rounded-2xl border text-xs transition ${
-                      n.read ? 'bg-cream-50/50 border-forest-900/5 text-forest-800' : 'bg-emerald-50/60 border-emerald-200 text-emerald-950 font-medium'
-                    }`}
+        {/* Notification Sidebar */}
+        {notificationSidebarOpen && (
+          <>
+            <div
+              className="fixed inset-0 bg-forest-950/50 backdrop-blur-sm z-40"
+              onClick={() => setNotificationSidebarOpen(false)}
+            />
+            <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-serif text-2xl text-forest-900">Notifications</h2>
+                  <button
+                    type="button"
+                    onClick={() => setNotificationSidebarOpen(false)}
+                    className="text-forest-600 hover:text-forest-900 p-1"
+                    aria-label="Close notifications"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-bold text-sm text-forest-900">{n.title}</div>
-                      {!n.read && (
-                        <button
-                          type="button"
-                          onClick={() => void handleMarkRead(n.id)}
-                          className="text-[10px] text-forest-600 hover:underline whitespace-nowrap"
-                        >
-                          Mark as read
-                        </button>
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs leading-relaxed">{n.message}</p>
-                    <div className="mt-2 text-[10px] text-forest-600/70">
-                      {new Date(n.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
-                    </div>
+                    <Close size={24} />
+                  </button>
+                </div>
+                {notifications.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Bell size={48} className="mx-auto text-forest-300 mb-4" />
+                    <p className="text-sm text-forest-700/70">No notifications yet.</p>
                   </div>
-                ))}
+                ) : (
+                  <div className="space-y-3">
+                    {notifications.map((n) => (
+                      <div
+                        key={n.id}
+                        className={`p-4 rounded-2xl border text-xs transition cursor-pointer hover:shadow-md ${
+                          n.read ? 'bg-cream-50/50 border-forest-900/5 text-forest-800' : 'bg-emerald-50/60 border-emerald-200 text-emerald-950 font-medium'
+                        }`}
+                        onClick={() => void handleMarkRead(n.id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-bold text-sm text-forest-900">{n.title}</div>
+                          {!n.read && (
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 mt-1.5" />
+                          )}
+                        </div>
+                        <p className="mt-2 text-xs leading-relaxed">{n.message}</p>
+                        <div className="mt-3 text-[10px] text-forest-600/70">
+                          {new Date(n.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          </>
         )}
 
         {activeTab === 'profile' && (
           <div className="mt-8 bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 max-w-2xl">
-            <h2 className="font-serif text-2xl text-forest-900">Personal Information</h2>
+            <div className="flex items-start gap-6 mb-6">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-forest-900 to-forest-700 flex items-center justify-center text-white text-3xl font-bold shadow-lg flex-shrink-0">
+                {profile?.display_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'G'}
+              </div>
+              <div>
+                <h2 className="font-serif text-2xl text-forest-900">{profile?.display_name || user?.displayName || 'Guest'}</h2>
+                <p className="mt-1 text-sm text-forest-700/80">{user?.email}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-cream-100 text-forest-700'}`}>
+                    {role ? ROLE_LABELS[role] : 'Guest'}
+                  </span>
+                  {profile?.created_at && (
+                    <span className="text-[10px] text-forest-600">
+                      Since {new Date(profile.created_at).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <hr className="border-forest-900/10 my-6" />
+
+            <h3 className="font-serif text-xl text-forest-900">Personal Information</h3>
             <p className="mt-1 text-sm text-forest-700/80">
               Keep your contact details up to date so the Admin can easily reach you regarding your stay.
             </p>
@@ -461,18 +623,24 @@ export function AccountPage() {
             )}
 
             {!loading && bookings.length === 0 && (
-              <div className="mt-10 rounded-[28px] bg-white border border-forest-900/5 shadow-card p-8 text-center">
-                <div className="mx-auto w-12 h-12 rounded-2xl bg-cream-100 text-forest-700 flex items-center justify-center">
-                  <Calendar size={20} />
+              <div className="mt-10 rounded-[28px] bg-white border border-forest-900/5 shadow-card p-12 text-center">
+                <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-cream-100 to-cream-200 text-forest-700 flex items-center justify-center mb-6">
+                  <Home size={32} />
                 </div>
-                <h2 className="font-serif text-2xl text-forest-900 mt-4">No bookings on this account yet</h2>
-                <p className="mt-2 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
+                <h2 className="font-serif text-2xl text-forest-900">No bookings on this account yet</h2>
+                <p className="mt-3 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
                   A request only shows up here if it was made while you were signed in with this account. Requests made
                   before you signed up stay with the browser that made them — ask the Admin and they will find it by name.
                 </p>
-                <Link to="/book" className="btn-primary mt-6 inline-flex text-xs">
-                  Request your dates <ArrowRight size={14} />
-                </Link>
+                <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+                  <Link to="/book" className="btn-primary text-xs">
+                    <Home size={16} className="mr-1.5" />
+                    Book your first stay
+                  </Link>
+                  <Link to="/book" className="btn-ghost text-xs">
+                    Browse accommodations
+                  </Link>
+                </div>
               </div>
             )}
 
@@ -541,28 +709,73 @@ export function AccountPage() {
               )}
               {paged.items.map((booking) => {
                 const status = effectiveStatus(booking)
+                const days = daysUntil(booking.check_in)
                 return (
                   <article
                     key={booking.id}
-                    className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-6"
+                    className="rounded-[28px] bg-white border border-forest-900/5 shadow-card overflow-hidden hover:shadow-lg transition-shadow"
                     data-tour="booking-card"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="eyebrow">Request {reference(booking)}</div>
-                        <h2 className="font-serif text-2xl text-forest-900 mt-1.5">
-                          {accommodationName(booking.accommodation)}
-                        </h2>
-                        <div className="mt-1 text-sm text-forest-700/80">
-                          {booking.check_in} → {booking.check_out} · {formatStayDuration(booking.check_in, booking.check_out)}{' '}
-                          · {booking.guests} guest{booking.guests === 1 ? '' : 's'}
+                    {/* Card Header */}
+                    <div className="bg-gradient-to-r from-cream-50 to-white px-6 py-4 border-b border-forest-900/5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${statusChip(status)}`}>
+                            {statusIcon(status)}
+                          </div>
+                          <div>
+                            <div className="eyebrow text-forest-600">Request {reference(booking)}</div>
+                            <h2 className="font-serif text-xl text-forest-900 mt-0.5">
+                              {accommodationName(booking.accommodation)}
+                            </h2>
+                          </div>
+                        </div>
+                        <span
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-bold flex items-center gap-1.5 ${statusChip(status)}`}
+                        >
+                          {statusIcon(status)}
+                          {status}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card Body */}
+                    <div className="p-6">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Check-in</div>
+                          <div className="font-medium text-forest-900 mt-0.5">{booking.check_in}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Check-out</div>
+                          <div className="font-medium text-forest-900 mt-0.5">{booking.check_out}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Duration</div>
+                          <div className="font-medium text-forest-900 mt-0.5">{formatStayDuration(booking.check_in, booking.check_out)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Guests</div>
+                          <div className="font-medium text-forest-900 mt-0.5">{booking.guests} guest{booking.guests === 1 ? '' : 's'}</div>
                         </div>
                       </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-[11px] font-bold ${statusChip(status)}`}
-                      >
-                        {status}
-                      </span>
+
+                      {days > 0 && days <= 30 && (
+                        <div className="mt-4 text-xs text-forest-700 bg-cream-50 rounded-xl px-3 py-2 inline-flex items-center gap-2">
+                          <Clock size={14} />
+                          {days} day{days === 1 ? '' : 's'} until check-in
+                        </div>
+                      )}
+
+                      <div className="mt-4">
+                        <HoldCountdown booking={booking} />
+                      </div>
+
+                      {booking.rejection_reason && (
+                        <div className="mt-4 text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                          <strong>Admin declined:</strong> "{booking.rejection_reason}". Those dates are free again.
+                        </div>
+                      )}
                     </div>
 
                     <div className="mt-4">
@@ -574,56 +787,66 @@ export function AccountPage() {
                         The Admin refused this request: “{booking.rejection_reason}”. Those dates are free again.
                       </p>
                     )}
-                    {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
-                      <div className="mt-4">
-                        <PaymentStep booking={booking} />
-                      </div>
-                    )}
+                    {/* Card Footer */}
+                    <div className="px-6 py-4 bg-cream-50/50 border-t border-forest-900/5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap gap-2">
+                          {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
+                            <PaymentStep booking={booking} />
+                          )}
 
-                    {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
-                      <LateCheckoutRequest booking={booking} />
-                    )}
+                          {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
+                            <LateCheckoutRequest booking={booking} />
+                          )}
 
-                    <BookingHistory bookingId={booking.id} />
+                          <button
+                            type="button"
+                            onClick={() => setViewingInvoice(booking)}
+                            className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
+                          >
+                            <CreditCard size={14} className="mr-1.5" />
+                            Invoice
+                          </button>
 
-                    {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
-                      <div data-testid="review-entry">
-                        {isReviewableStatus(status) && (
-                          <p className="mt-4 text-sm text-forest-800">
-                            <strong className="font-medium">Your stay is complete!</strong> How was your stay?
-                          </p>
+                          {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
+                            <button
+                              onClick={() => setConfirmingWithdraw(booking)}
+                              disabled={busy === booking.id}
+                              className="btn-ghost text-xs disabled:opacity-50 text-red-700 hover:bg-red-50"
+                            >
+                              {busy === booking.id ? 'Withdrawing…' : 'Withdraw'}
+                            </button>
+                          )}
+                        </div>
+
+                        {!WITHDRAWABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
+                          <span className="text-[11px] text-forest-600 flex items-center gap-1">
+                            <Sparkle size={12} /> Contact Admin to modify
+                          </span>
                         )}
-                        <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
                       </div>
-                    )}
 
-                    {user?.uid && (
-                      <DisputeForm bookingId={booking.id} guestId={user.uid} />
-                    )}
+                      {/* Collapsible Details */}
+                      <div className="mt-4 pt-4 border-t border-forest-900/10">
+                        <BookingHistory bookingId={booking.id} />
 
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setViewingInvoice(booking)}
-                        className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
-                      >
-                        📄 View Official Invoice
-                      </button>
+                        {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
+                          <div data-testid="review-entry" className="mt-4">
+                            {isReviewableStatus(status) && (
+                              <p className="text-sm text-forest-800 mb-2">
+                                <strong className="font-medium">Your stay is complete!</strong> How was your stay?
+                              </p>
+                            )}
+                            <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
+                          </div>
+                        )}
 
-                      {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
-                        <button
-                          onClick={() => setConfirmingWithdraw(booking)}
-                          disabled={busy === booking.id}
-                          className="btn-ghost text-xs disabled:opacity-50"
-                        >
-                          {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
-                        </button>
-                      )}
-                      {!WITHDRAWABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
-                        <span className="text-[11px] text-forest-600 flex items-center gap-1">
-                          <Sparkle size={12} /> Past the point you can withdraw alone — message the Admin to change it.
-                        </span>
-                      )}
+                        {user?.uid && (
+                          <div className="mt-4">
+                            <DisputeForm bookingId={booking.id} guestId={user.uid} />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </article>
                 )

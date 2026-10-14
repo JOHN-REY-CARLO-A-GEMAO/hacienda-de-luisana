@@ -193,7 +193,86 @@ service cloud.firestore {
     function validGuestCreate(data) {
       return data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && meetsMinimumBookingLeadTime(data.check_in)
-        && validAuthoritativeMoney(data);
+        && validBookingMoneyInvariants(data);
+    }
+
+    // ------------------------------------------------------------------
+    // What the rule layer still decides about a Booking's money
+    // ------------------------------------------------------------------
+    //
+    // Until 2026-10-14 this was `validAuthoritativeMoney`, which re-derived the
+    // entire price out of the Admin's published rate document: accommodation
+    // lookup, check-in classification against the holiday list, occupancy and
+    // excess pricing, pet fee, late-checkout fee, the 50/50 split, and twelve
+    // rate-configuration checks. That is the right place for the question, and
+    // it cost so many expressions that it crossed Firestore's documented
+    // 1000-expression limit for a single document write. The rule did not refuse
+    // the Booking on a policy ground — it ERRORED, and Firestore reports an
+    // evaluation error as the same bare `permission-denied` a real refusal
+    // produces. Every Guest booking was refused, on every date, and the offline
+    // rules suite still reported green because `test/rules/engine.ts` models no
+    // budget at all.
+    //
+    // So the deep derivation moved out of the rule layer. What remains is the
+    // arithmetic the Guest's own figures must be internally coherent under.
+    // Every check below is pure arithmetic or a membership test over values the
+    // Guest submitted; none of them descends into the rate document, so none of
+    // them scale with it.
+    //
+    // WHAT THIS NO LONGER GUARANTEES — read before trusting it.
+    //
+    // A Guest can no longer tamper with the arithmetic: not below the 50/50
+    // split, not above the total, not short of the amount due, not on a retired
+    // rate unit, not with an invented classification. `stay_total` also carries
+    // a hard floor, so an absurd figure is refused outright.
+    //
+    // A Guest CAN still quote a price that is internally coherent but far below
+    // the published rate — `stay_total: 1000` on every accommodation passes here,
+    // and so does zeroing the Security deposit. The authoritative check is now
+    // the Admin's, in `lib/services/booking_lifecycle.dart` (`AdminAction.
+    // approve`), and it does not do that today: it compares `amount_claimed`
+    // against `amount_due`, and both are values the Guest wrote. A proof
+    // screenshot shows what was PAID, not what was OWED, so it does not close
+    // this either.
+    //
+    // Accepted as an interim measure, with that gap recorded rather than left
+    // implicit. See the ADR that accompanies this change.
+    // ------------------------------------------------------------------
+    function validBookingMoneyInvariants(data) {
+      return data.rate_unit == 'standard_stay'
+        && data.rate_classification in ['weekday', 'weekend_holiday']
+        && data.payment_plan == 'down-payment'
+        // One 22-hour standard stay is the only length a Guest may book online.
+        && data.nights is int
+        && data.nights == 1
+        && data.rate_amount is number
+        && data.rate_amount > 0
+        && data.stay_total is number
+        && data.stay_total > 0
+        // The hard floor. A published rate is in the thousands, so nothing below
+        // this is a real quote. It is a floor against nonsense, NOT a price
+        // check: it does not know what any Accommodation actually costs, so a
+        // Guest quoting 1,000 for a stay that should be 32,000 still passes it.
+        && data.stay_total >= 1000
+        // The deposit may not be negative. It may, for now, be zero — see the
+        // note above on what the rule no longer enforces.
+        && data.get('security_deposit', 0) is number
+        && data.security_deposit >= 0
+        // The 50/50 split, computed exactly as `downPaymentAmount(stayTotal, 50)`
+        // computes it in src/lib/booking/money.ts:55-60 — `int(total * 50) / 100`
+        // truncates toward zero, which is `Math.floor` for a positive total, and
+        // the `/ 100.0` is float division on purpose. In a CEL-based language `/`
+        // between two ints is INTEGER division, which would truncate the
+        // centavos away and refuse every odd peso total as a mismatch.
+        && data.amount_due is number
+        && data.amount_due == int(data.stay_total * 50) / 100.0
+        // The split has to close: what is owed now plus what remains is the
+        // whole stay, with no peso unaccounted for in either direction.
+        && data.balance_due is number
+        && data.balance_due == data.stay_total - data.amount_due
+        // A Guest cannot claim to have sent less than the downpayment.
+        && data.amount_claimed is number
+        && data.amount_claimed >= data.amount_due;
     }
 
     function scheduledRate(schedule, guests) {
@@ -451,7 +530,7 @@ service cloud.firestore {
     // rate/policy fields already saved on that Booking. Never re-read the
     // current rates document for an existing quote: that would silently reprice
     // a historical record after an Admin publication.
-    function validHistoricalPlanChoice(data) {
+    function validHistoricalPlanChoice(data, affected) {
       let savedTotal = resource.data.get('stay_total', -1);
       let savedRate = resource.data.get('rate_amount', -1);
       let savedNights = resource.data.get('nights', -1);
@@ -491,14 +570,10 @@ service cloud.firestore {
         && data.get('policy_version', null) == resource.data.get('policy_version', null)
         && data.get('policy_effective_date', null) == resource.data.get('policy_effective_date', null)
         && data.get('refund_policy_snapshot', null) == resource.data.get('refund_policy_snapshot', null)
-        && (!data.keys().hasAny(['nights'])
-            || (resource.data.keys().hasAny(['nights']) && data.nights == resource.data.nights))
-        && (!data.keys().hasAny(['rate_amount'])
-            || (resource.data.keys().hasAny(['rate_amount']) && data.rate_amount == resource.data.rate_amount))
-        && (!data.keys().hasAny(['rate_unit'])
-            || (resource.data.keys().hasAny(['rate_unit']) && data.rate_unit == resource.data.rate_unit))
-        && (!data.keys().hasAny(['rate_classification'])
-            || (resource.data.keys().hasAny(['rate_classification']) && data.rate_classification == resource.data.rate_classification));
+        // E4: the four identity keys of the stored quote are untouched. This is
+        // what the four `data.k == resource.data.k` clauses said; one `hasAny`
+        // on the already-bound `affected` says it for all of them.
+        && !affected.hasAny(['nights', 'rate_amount', 'rate_unit', 'rate_classification']);
     }
 
     function validPaymentMethod(method) {
@@ -536,20 +611,26 @@ service cloud.firestore {
         && request.resource.data.get('notes', '').size() <= 1000;
     }
 
+    // E2 (2026-10-14): `old` and `next` bound once instead of thirteen times.
+    // Every bare `resource.data.stay_total` in the old body was a second and
+    // third dereference the evaluator paid for on every write to a Booking, and
+    // this function runs on the `allow update` path that was crossing
+    // Firestore's 1000-expression budget. Pure renaming of the two operands —
+    // no predicate changed, no key dropped.
+    // E4 (2026-10-14): same policy, a fraction of the expressions. The old body
+    // tested thirteen keys one by one (`!old.keys().hasAny([k]) || next.k == old.k`),
+    // about 170 expressions, and the Rules runtime appears to evaluate a denied
+    // request without pruning, so that whole body was paid for on every deny.
+    // Meaning is unchanged: a pricing-snapshot key that the stored Booking
+    // already has may not be changed or removed; a key it lacks may still be
+    // added (legacy Payment Pending records choosing a plan need that).
     function pricingSnapshotImmutable() {
-      return (!resource.data.keys().hasAny(['nights']) || request.resource.data.nights == resource.data.nights)
-        && (!resource.data.keys().hasAny(['rate_amount']) || request.resource.data.rate_amount == resource.data.rate_amount)
-        && (!resource.data.keys().hasAny(['rate_unit']) || request.resource.data.rate_unit == resource.data.rate_unit)
-        && (!resource.data.keys().hasAny(['rate_classification']) || request.resource.data.rate_classification == resource.data.rate_classification)
-        && (!resource.data.keys().hasAny(['stay_total']) || request.resource.data.stay_total == resource.data.stay_total)
-        && (!resource.data.keys().hasAny(['total_amount']) || request.resource.data.get('total_amount', null) == resource.data.get('total_amount', null))
-        && (!resource.data.keys().hasAny(['totalAmount']) || request.resource.data.get('totalAmount', null) == resource.data.get('totalAmount', null))
-        && (!resource.data.keys().hasAny(['security_deposit']) || request.resource.data.security_deposit == resource.data.security_deposit)
-        && (!resource.data.keys().hasAny(['amount_due']) || request.resource.data.amount_due == resource.data.amount_due)
-        && (!resource.data.keys().hasAny(['balance_due']) || request.resource.data.balance_due == resource.data.balance_due)
-        && (!resource.data.keys().hasAny(['policy_version']) || request.resource.data.policy_version == resource.data.policy_version)
-        && (!resource.data.keys().hasAny(['policy_effective_date']) || request.resource.data.policy_effective_date == resource.data.policy_effective_date)
-        && (!resource.data.keys().hasAny(['refund_policy_snapshot']) || request.resource.data.get('refund_policy_snapshot', null) == resource.data.get('refund_policy_snapshot', null));
+      let old = resource.data;
+      let frozenHere = old.keys().toSet().intersection(['nights', 'rate_amount', 'rate_unit',
+        'rate_classification', 'stay_total', 'total_amount', 'totalAmount',
+        'security_deposit', 'amount_due', 'balance_due', 'policy_version',
+        'policy_effective_date', 'refund_policy_snapshot'].toSet());
+      return !request.resource.data.diff(old).affectedKeys().hasAny(frozenHere);
     }
 
     // ------------------------------------------------------------------
@@ -876,60 +957,88 @@ service cloud.firestore {
       // for a Profile read to find out they are allowed.
       allow read: if isOwnDoc() || isAdmin();
 
-      allow update: if reservedIsPaidFor() && pricingSnapshotImmutable() && (
-        // The Admin's writes are checked at the rule layer for the moves that
-        // must never go wrong: nothing leaves a terminal status, the money
-        // gates cannot be skipped — Payment Pending needs the Admin's approval
-        // (from a Booking still under review), Reserved needs verified money
-        // (the invariant above) — and a Booking can never be left saying
-        // `verified` without the marker that says who verified it. The full
-        // lifecycle table lives in lib/services/booking_lifecycle.dart (app)
-        // and src/lib/booking (web).
-        (isAdmin()
+// ------------------------------------------------------------------
+      // The Admin's half of `allow update` (E3, 2026-10-14)
+      //
+      // Checked at the rule layer for the moves that must never go wrong:
+      // nothing leaves a terminal status, the money gates cannot be skipped —
+      // Payment Pending needs the Admin's approval (from a Booking still under
+      // review), Reserved needs verified money (the invariant above) — and a
+      // Booking can never be left saying `verified` without the marker that says
+      // who verified it. The full lifecycle table lives in
+      // lib/services/booking_lifecycle.dart (app) and src/lib/booking (web).
+      //
+      // Extracted verbatim into its own function so `old` and `next` can be
+      // bound once, and so each half of the rule can be read and tested on its
+      // own. `allow` cannot declare a `let` at all — a permission body is a
+      // bare expression — which is why this had to move into a function rather
+      // than stay inline. No predicate was added, removed or reordered.
+      // ------------------------------------------------------------------
+      function adminUpdate() {
+        let old = resource.data;
+        let next = request.resource.data;
+        return isAdmin()
           && approvedIsEarned()
-          && !(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
-               && request.resource.data.status != resource.data.status)
+          && !(old.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
+               && next.status != old.status)
           // Retired statuses are read as their successors (Confirmed →
           // Reserved, KYC Submitted → Pending) and are never written again.
           // `Approved` is written again: it is the confirmation (ADR-0012).
-          && !(request.resource.data.status in ['Confirmed', 'KYC Submitted'])
-          && !(request.resource.data.status == 'Payment Pending'
-               && !(resource.data.status in ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending']))
-          && !(request.resource.data.status == 'Reserved'
-               && resource.data.status != 'Payment Pending')
-          && (request.resource.data.get('payment_status', '') != 'verified'
+          && !(next.status in ['Confirmed', 'KYC Submitted'])
+          && !(next.status == 'Payment Pending'
+               && !(old.status in ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending']))
+          && !(next.status == 'Reserved'
+               && old.status != 'Payment Pending')
+          && (next.get('payment_status', '') != 'verified'
               || hasVerificationMarker())
           // The verifier named on the document is whoever wrote it, or the name
           // already recorded there — never a third party.
-          && (request.resource.data.get('payment_verified_by', '')
-                == resource.data.get('payment_verified_by', '')
-              || request.resource.data.get('payment_verified_by', '') == request.auth.uid))
+          && (next.get('payment_verified_by', '')
+                == old.get('payment_verified_by', '')
+              || next.get('payment_verified_by', '') == request.auth.uid);
+      }
 
-        // A Guest may withdraw, choose a payment plan, and upload or resend
-        // a payment proof — and stamp the cancellation policy their plan was
-        // quoted under. They may never approve or verify anything
-        // themselves (ADR-0001: money moves only after the Admin), and never
-        // touch the identity the Booking was created with. No location key is
-        // legitimate on a Booking either: live tracking was removed entirely
-        // (ADR-0009), so a position written here is refused like any other
-        // unknown key.
-        || (isSignedIn()
-          && resource.data.get('uid', '') == request.auth.uid
+      // ------------------------------------------------------------------
+      // The Guest's half of `allow update` (E3 + E1, 2026-10-14)
+      //
+      // A Guest may withdraw, choose a payment plan, and upload or resend
+      // a payment proof — and stamp the cancellation policy their plan was
+      // quoted under. They may never approve or verify anything
+      // themselves (ADR-0001: money moves only after the Admin), and never
+      // touch the identity the Booking was created with. No location key is
+      // legitimate on a Booking either: live tracking was removed entirely
+      // (ADR-0009), so a position written here is refused like any other
+      // unknown key.
+      //
+      // E1 is the one binding that actually pays: `diff()` and `affectedKeys()`
+      // used to be computed twice on this path, once for the closed
+      // guest-writable vocabulary below and again for the money-key guard. The
+      // set is identical both times, so one binding serves both and the
+      // `hasOnly` / `hasAny` calls receive exactly what they received before.
+      // ------------------------------------------------------------------
+      function guestSelfServeUpdate() {
+        let old = resource.data;
+        let next = request.resource.data;
+        let affected = next.diff(old).affectedKeys();
+        return isSignedIn()
+          && old.get('uid', '') == request.auth.uid
           // Forward or out, never backwards: a Guest may take their own Booking
           // to the next stage the lifecycle gives them, or withdraw it, but can
           // never write a status that un-does a decision the Admin already made.
           // (`KYC Submitted` and `Approved` still appear as *stored* statuses on
           // documents written before KYC was removed; they are retired on read.)
-          && ((resource.data.status in ['Pending', 'KYC Submitted']
-                 && request.resource.data.status in ['Pending', 'Cancelled'])
-              || (resource.data.status == 'Approved'
-                 && request.resource.data.status in ['Approved', 'Cancelled'])
-              || (resource.data.status == 'Payment Pending'
-                 && request.resource.data.status in ['Payment Pending', 'Cancelled'])
-              || (resource.data.status == 'Reserved'
-                 && request.resource.data.status in ['Reserved', 'Cancelled']))
-          && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['status',
+          && ((old.status in ['Pending', 'KYC Submitted']
+                 && next.status in ['Pending', 'Cancelled'])
+              || (old.status == 'Approved'
+                 && next.status in ['Approved', 'Cancelled'])
+              || (old.status == 'Payment Pending'
+                 && next.status in ['Payment Pending', 'Cancelled'])
+              || (old.status == 'Reserved'
+                 && next.status in ['Reserved', 'Cancelled']))
+          // The closed vocabulary. This is also the whole of ADR-0009: a
+          // location key is not on this list, so it is refused like any other
+          // unknown key. Do NOT widen it to `hasAny`.
+          && affected.hasOnly(['status',
                       'payment_plan', 'payment_status', 'payment_proof_url', 'paymentProofUrl',
                       'payment_reject_reason', 'extractedRefNumber',
                       'amount_claimed', 'nights', 'rate_amount', 'rate_unit', 'rate_classification',
@@ -940,28 +1049,31 @@ service cloud.firestore {
                       'payment_reference', 'ocr_reference', 'ocr_amount',
                       'terms_version', 'terms_accepted_at'])
           // Choosing/changing a plan is permitted only when every financial
-          // snapshot field agrees with the current authoritative property rate.
-          // Proof-only updates to a historical Booking do not re-price it.
-          && (!request.resource.data.diff(resource.data).affectedKeys()
-                .hasAny(['payment_plan', 'nights', 'rate_amount', 'rate_unit', 'rate_classification',
+          // snapshot field is internally coherent under the Guest's own figures
+          // (ADR-0016). Proof-only updates to a historical Booking do not
+          // re-price it, and a legacy Payment Pending record with no
+          // `rate_classification` and no stored plan falls to
+          // `validHistoricalPlanChoice`, which is the only thing that lets those
+          // records choose `full` at all. Both branches are required.
+          && (!affected.hasAny(['payment_plan', 'nights', 'rate_amount', 'rate_unit', 'rate_classification',
                          'stay_total', 'amount_due', 'security_deposit', 'balance_due',
                          'policy_version', 'policy_effective_date', 'refund_policy_snapshot'])
-              || validAuthoritativeMoney(request.resource.data)
-              || validHistoricalPlanChoice(request.resource.data))
+              || validBookingMoneyInvariants(next)
+              || validHistoricalPlanChoice(next, affected))
           // Money moves in one direction only, and only into the Guest's own
           // words: `unpaid` -> `pending` by sending a proof. `verified`,
           // `approved` and `rejected` are the Admin's — a Guest may not claim
           // them, and may not un-do one the Admin already wrote (a verified
           // Booking cannot be pushed back to `pending` to submit a different
           // proof).
-          && (request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'pending']
-              || request.resource.data.get('payment_status', '') == resource.data.get('payment_status', ''))
+          && (next.get('payment_status', 'unpaid') in ['unpaid', 'pending']
+              || next.get('payment_status', '') == old.get('payment_status', ''))
           // The Admin's notes are the Admin's words. A Guest may clear one only
           // by attaching a fresh proof in the same write — the resubmit loop
           // — and can never write a note of their own.
-          && (request.resource.data.get('payment_reject_reason', '') == resource.data.get('payment_reject_reason', '')
-              || (request.resource.data.get('payment_reject_reason', '') == null
-                  && request.resource.data.get('payment_proof_url', '') != resource.data.get('payment_proof_url', '')))
+          && (next.get('payment_reject_reason', '') == old.get('payment_reject_reason', '')
+              || (next.get('payment_reject_reason', '') == null
+                  && next.get('payment_proof_url', '') != old.get('payment_proof_url', '')))
           // A Guest who withdraws a paid Reservation records what the published
           // policy says comes back (the settlement is computed once, in
           // `src/lib/booking/money.ts` / `booking_lifecycle.dart`, and reaches
@@ -969,19 +1081,27 @@ service cloud.firestore {
           // the refund can never exceed the amount the Admin actually verified,
           // the breakdown has to agree with the total, and `refunded` — the fact
           // that money went back — is the Admin's to record.
-          && request.resource.data.get('refund_status', resource.data.get('refund_status', 'none')) in ['none', 'initiated']
-          && request.resource.data.get('refund_total', 0) is number
-          && request.resource.data.get('refund_total', 0) >= 0
-          && request.resource.data.get('refund_total', 0)
-               <= request.resource.data.get('amount_verified', resource.data.get('amount_verified', 0))
+          && next.get('refund_status', old.get('refund_status', 'none')) in ['none', 'initiated']
+          && next.get('refund_total', 0) is number
+          && next.get('refund_total', 0) >= 0
+          && next.get('refund_total', 0)
+               <= next.get('amount_verified', old.get('amount_verified', 0))
           // Guarded on presence rather than defaulted: `{}` is not a map the
           // runtime will hand back here, and asking a value that is not there
           // for a key is an evaluation error rather than a false. A Guest who
           // withdraws without a breakdown agrees with themselves and passes.
-          && (!request.resource.data.keys().hasAny(['refund_breakdown'])
-              || request.resource.data.refund_breakdown.get('refundTotal', request.resource.data.get('refund_total', 0))
-                   == request.resource.data.get('refund_total', 0)))
-      );
+          && (!next.keys().hasAny(['refund_breakdown'])
+              || next.refund_breakdown.get('refundTotal', next.get('refund_total', 0))
+                   == next.get('refund_total', 0));
+      }
+
+      // The two halves above are OR'd, not AND'd: a write is allowed if EITHER
+      // a Admin's rules accept it OR the Guest's own self-serve rules do. That
+      // is the same disjunction the inline body had, and it is why these must
+      // stay two functions rather than being merged or reordered — `isAdmin()`
+      // is false for a Guest and short-circuits the Admin half.
+      allow update: if reservedIsPaidFor() && pricingSnapshotImmutable()
+        && (adminUpdate() || guestSelfServeUpdate());
 
       allow delete: if isAdmin();
 
@@ -1088,6 +1208,36 @@ service cloud.firestore {
     match /gallery/{imageId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Payment references catalog — Admin-managed list of valid GCash/bank references
+    // that new bookings are checked against. Automatically populated when a guest
+    // submits a booking with a payment_reference.
+    match /payment_references/{refId} {
+      function validReferenceShape() {
+        return request.resource.data.keys()
+                 .hasOnly(['reference', 'amount', 'status', 'booking_id', 'created_at'])
+          && request.resource.data.reference is string
+          && request.resource.data.reference.size() > 0
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.status in ['available', 'used', 'invalid']
+          && request.resource.data.booking_id is string
+          && request.resource.data.created_at is timestamp;
+      }
+
+      allow read: if isAdmin();
+      // Admin can create anytime
+      allow create: if isAdmin() && validReferenceShape();
+      // Guest can create only when submitting a booking (with booking_id)
+      allow create: if isSignedIn()
+        && validReferenceShape()
+        && request.resource.data.booking_id != null
+        && request.resource.data.status == 'available';
+      allow update: if isAdmin()
+        && validReferenceShape()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin();
     }
 
     // Site config — including the published rates at site_config/rates that

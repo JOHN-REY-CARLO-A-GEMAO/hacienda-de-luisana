@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_constants.dart';
 import '../../utils/validators.dart';
 import '../security/secure_action_sheet.dart';
@@ -18,13 +21,44 @@ class _PaymentRefsScreenState extends State<PaymentRefsScreen> {
   final _search = TextEditingController();
   String _sort = 'reference';
   final List<_RefRow> _rows = [];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  StreamSubscription<QuerySnapshot>? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeToPaymentReferences();
+  }
 
   @override
   void dispose() {
     _ref.dispose();
     _amount.dispose();
     _search.dispose();
+    _subscription?.cancel();
     super.dispose();
+  }
+
+  void _subscribeToPaymentReferences() {
+    _subscription = _firestore
+        .collection('payment_references')
+        .orderBy('created_at', descending: true)
+        .snapshots()
+        .listen((snapshot) {
+      setState(() {
+        _rows.clear();
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          _rows.add(_RefRow(
+            reference: data['reference'] as String? ?? '',
+            amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
+            status: data['status'] as String? ?? 'available',
+          ));
+        }
+      });
+    }, onError: (e) {
+      print('Error loading payment references: $e');
+    });
   }
 
   Future<void> _add() async {
@@ -52,11 +86,21 @@ class _PaymentRefsScreenState extends State<PaymentRefsScreen> {
       confirm: 'Add',
     );
     if (!ok || !mounted) return;
-    setState(() {
-      _rows.add(_RefRow(reference: ref, amount: amt, status: 'available'));
+
+    try {
+      await _firestore.collection('payment_references').add({
+        'reference': ref,
+        'amount': amt,
+        'status': 'available',
+        'created_at': FieldValue.serverTimestamp(),
+      });
       _ref.clear();
       _amount.clear();
-    });
+      _toast('Reference added successfully.');
+      // Real-time subscription will auto-refresh the list
+    } catch (e) {
+      _toast('Failed to add reference: $e');
+    }
   }
 
   void _toast(String m) {
@@ -71,7 +115,22 @@ class _PaymentRefsScreenState extends State<PaymentRefsScreen> {
       confirm: 'Delete',
       danger: true,
     );
-    if (ok == true && mounted) setState(() => _rows.remove(row));
+    if (ok == true && mounted) {
+      try {
+        // Find and delete from Firestore
+        final snapshot = await _firestore
+            .collection('payment_references')
+            .where('reference', isEqualTo: row.reference)
+            .get();
+        for (var doc in snapshot.docs) {
+          await doc.reference.delete();
+        }
+        _toast('Reference deleted successfully.');
+        // Real-time subscription will auto-refresh the list
+      } catch (e) {
+        _toast('Failed to delete reference: $e');
+      }
+    }
   }
 
   @override
