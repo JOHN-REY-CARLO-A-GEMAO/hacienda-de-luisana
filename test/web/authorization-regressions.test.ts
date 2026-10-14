@@ -90,7 +90,7 @@ const ACTIONS: BookingAction['type'][] = [
 /** The keys a Guest's own write may touch, read out of `firestore.rules`. */
 const guestServeKeys = ((): string[] => {
   const bookings = rules.slice(rules.indexOf('match /bookings/{bookingId}'))
-  const guestBranch = bookings.slice(bookings.indexOf('|| (isSignedIn()'))
+  const guestBranch = bookings.slice(bookings.indexOf('guestSelfServeUpdate'))
   const list = guestBranch.match(/\.hasOnly\(\[([\s\S]*?)\]\)/)
   return list ? [...list[1].matchAll(/'([A-Za-z_]+)'/g)].map((k) => k[1]) : []
 })()

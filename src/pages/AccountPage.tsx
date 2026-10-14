@@ -778,15 +778,6 @@ export function AccountPage() {
                       )}
                     </div>
 
-                    <div className="mt-4">
-                      <HoldCountdown booking={booking} />
-                    </div>
-
-                    {booking.rejection_reason && (
-                      <p className="mt-3 text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                        The Admin refused this request: “{booking.rejection_reason}”. Those dates are free again.
-                      </p>
-                    )}
                     {/* Card Footer */}
                     <div className="px-6 py-4 bg-cream-50/50 border-t border-forest-900/5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -814,7 +805,7 @@ export function AccountPage() {
                               disabled={busy === booking.id}
                               className="btn-ghost text-xs disabled:opacity-50 text-red-700 hover:bg-red-50"
                             >
-                              {busy === booking.id ? 'Withdrawing…' : 'Withdraw'}
+                              {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
                             </button>
                           )}
                         </div>
