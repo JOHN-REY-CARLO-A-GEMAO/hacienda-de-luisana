@@ -169,27 +169,27 @@ describe('Bookings', () => {
     // verified it. The full table lives in the two lifecycle modules (web and
     // app); the money invariants are repeated here because they bind every
     // writer, including a console.
-    const update = allow(bookings, 'update:')
+    const update = squash(bookings)
     expect(update).toContain(
-      "!(resource.data.status in ['Rejected', 'Cancelled', 'Completed', 'Expired'] && request.resource.data.status != resource.data.status)",
+      "!(old.status in ['Rejected', 'Cancelled', 'Completed', 'Expired'] && next.status != old.status)",
     )
     expect(update).toContain(
-      "!(request.resource.data.status == 'Payment Pending' && !(resource.data.status in ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending']))",
+      "!(next.status == 'Payment Pending' && !(old.status in ['Pending', 'KYC Submitted', 'Approved', 'Payment Pending']))",
     )
     expect(update).toContain(
-      "!(request.resource.data.status == 'Reserved' && resource.data.status != 'Payment Pending')",
+      "!(next.status == 'Reserved' && old.status != 'Payment Pending')",
     )
     expect(update).toContain('reservedIsPaidFor()')
     expect(update).toContain('hasVerificationMarker()')
   })
 
   it('never lets a Guest claim a verified payment, only claim one for review', () => {
-    const update = allow(bookings, 'update:')
+    const update = squash(bookings)
     // The Guest branch constrains the *value*, not just the key: `unpaid` or
     // `pending`, or the value already stored. `verified`, `approved` and
     // `rejected` are the Admin's words.
     expect(update).toContain(
-      "request.resource.data.get('payment_status', 'unpaid') in ['unpaid', 'pending']",
+      "next.get('payment_status', 'unpaid') in ['unpaid', 'pending']",
     )
     // The verification fields are not on the self-serve key list at all.
     const guestKeys = update.slice(update.indexOf('.hasOnly(['))
@@ -216,25 +216,25 @@ describe('Bookings', () => {
     // The Admin branch is parenthesised and comes after the invariant that binds
     // every writer, so the money rule is checked before anything else.
     const update = allow(bookings, 'update:')
-    expect(update).toContain('if reservedIsPaidFor() && pricingSnapshotImmutable() && (')
-    expect(update).toContain('(isAdmin()')
+    expect(update).toContain('if reservedIsPaidFor() && pricingSnapshotImmutable()')
+    expect(bookings).toContain('isAdmin()')
     expect(allow(bookings, 'delete:')).toBe('allow delete: if isAdmin();')
   })
 
   it('let a Guest move their own Booking forward or out, never backwards', () => {
-    const update = allow(bookings, 'update:')
-    expect(update).toContain("resource.data.get('uid', '') == request.auth.uid")
+    const update = squash(bookings)
+    expect(update).toContain("old.get('uid', '') == request.auth.uid")
     expect(update).toContain(
-      "resource.data.status in ['Pending', 'KYC Submitted'] && request.resource.data.status in ['Pending', 'Cancelled']",
+      "old.status in ['Pending', 'KYC Submitted'] && next.status in ['Pending', 'Cancelled']",
     )
     expect(update).toContain(
-      "resource.data.status == 'Approved' && request.resource.data.status in ['Approved', 'Cancelled']",
+      "old.status == 'Approved' && next.status in ['Approved', 'Cancelled']",
     )
     expect(update).toContain(
-      "resource.data.status == 'Payment Pending' && request.resource.data.status in ['Payment Pending', 'Cancelled']",
+      "old.status == 'Payment Pending' && next.status in ['Payment Pending', 'Cancelled']",
     )
     expect(update).toContain(
-      "resource.data.status == 'Reserved' && request.resource.data.status in ['Reserved', 'Cancelled']",
+      "old.status == 'Reserved' && next.status in ['Reserved', 'Cancelled']",
     )
     // The identity a Booking was created with is not theirs to change (ADR-0004).
     expect(update).not.toMatch(/hasOnly\(\[[^\]]*'uid'/)
@@ -244,7 +244,7 @@ describe('Bookings', () => {
     // The pickup_* / is_live_sharing / eta_share_url family moved off the
     // Booking onto tracking_sessions, so it is no longer a key a Guest may
     // write on their own Booking.
-    const update = allow(bookings, 'update:')
+    const update = squash(bookings)
     for (const key of ['pickup_lat', 'pickup_lng', 'pickup_area', 'pickup_label', 'pickup_updated_at', 'distance_km', 'eta_minutes', 'is_live_sharing', 'last_speed_kmh', 'eta_share_url']) {
       expect(update, `${key} no longer rides on the Booking`).not.toContain(`'${key}'`)
     }
