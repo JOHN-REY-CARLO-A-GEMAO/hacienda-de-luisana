@@ -29,6 +29,12 @@ import {
   type PropertyQuote,
   type PublishedRates,
 } from './rates'
+import {
+  MAX_BONFIRE_WOOD_SETS,
+  MAX_LATE_CHECKOUT_HOURS,
+  maxPetsFor,
+  pricedStayExtras,
+} from './requests'
 
 export type BookingRuleFailureCode =
   | 'INVALID_CHECK_IN_DATE'
@@ -39,6 +45,7 @@ export type BookingRuleFailureCode =
   | 'PROPERTY_NOT_BOOKABLE'
   | 'RATE_NOT_PUBLISHED'
   | 'GUEST_COUNT_NOT_SUPPORTED'
+  | 'ADDON_NOT_SUPPORTED'
   | 'RATE_CONFIGURATION_INVALID'
   | 'DATE_UNAVAILABLE'
   | 'RATE_SNAPSHOT_STALE'
@@ -48,7 +55,7 @@ export type BookingRuleFailureCode =
   | 'GUEST_IDENTITY_REQUIRED'
   | 'RULES_REFUSED'
 
-export type BookingRuleField = 'check_in' | 'check_out' | 'guests' | 'accommodation' | 'payment'
+export type BookingRuleField = 'check_in' | 'check_out' | 'guests' | 'accommodation' | 'requests' | 'payment'
 
 export type BookingRuleFailure = {
   code: BookingRuleFailureCode
@@ -61,6 +68,16 @@ export type BookingSelection = {
   check_in: string
   check_out: string
   guests: number
+  /**
+   * Structured add-on requests (see ./requests). Only the ones the Admin has
+   * priced reach the quote; an unpriced request is recorded for Admin approval
+   * and never refuses or reprices the stay.
+   */
+  pet_count?: number
+  late_checkout_hours?: number
+  bonfire_wood_sets?: number
+  event_purpose?: string
+  event_purpose_detail?: string
 }
 
 export type BookingSelectionOptions = {
@@ -228,7 +245,21 @@ export function validateBookingSelection(
     )
   }
 
-  const quote = quoteAccommodation(published, selection.accommodation, selection)
+  // Structured add-on requests: quantities must be whole and inside the
+  // ceilings the UI offers, and a pet count above the Admin's published cap is
+  // refused here with a sentence that names the cap. Requests the Admin has not
+  // priced (no `pet_policy` / `late_checkout_per_hour` published) never reach
+  // the quote at all — `pricedStayExtras` keeps them out, so they are recorded
+  // for Admin approval instead of refusing the Booking.
+  const addonProblem = validateAddonQuantities(published, selection, property)
+  if (addonProblem) return addonProblem
+
+  const quote = quoteAccommodation(published, selection.accommodation, {
+    check_in: selection.check_in,
+    check_out: selection.check_out,
+    guests: selection.guests,
+    ...pricedStayExtras(published, selection),
+  })
   if (!quote) {
     return failure(
       'RATE_CONFIGURATION_INVALID',
@@ -237,6 +268,39 @@ export function validateBookingSelection(
     )
   }
   return { ok: true, quote, nights: 1 }
+}
+
+function isWholeCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+/** Explainable refusals for the structured add-on quantities alone. */
+function validateAddonQuantities(
+  published: PublishedRates,
+  selection: BookingSelection,
+  property: string,
+): { ok: false; failure: BookingRuleFailure } | null {
+  for (const [key, label, max] of [
+    ['pet_count', 'pet count', maxPetsFor(published)],
+    ['bonfire_wood_sets', 'bonfire wood sets', MAX_BONFIRE_WOOD_SETS],
+    ['late_checkout_hours', 'late-checkout hours', MAX_LATE_CHECKOUT_HOURS],
+  ] as const) {
+    const value = selection[key]
+    if (value === undefined) continue
+    if (!isWholeCount(value)) {
+      return failure('ADDON_NOT_SUPPORTED', `The ${label} must be a whole number. Please correct it before continuing.`, 'requests')
+    }
+    if (value > max) {
+      return failure(
+        'ADDON_NOT_SUPPORTED',
+        key === 'pet_count' && published.pet_policy?.max_pets !== undefined
+          ? `${property} welcomes up to ${max} pets per booking. Please reduce the number of pets or contact the Hacienda.`
+          : `The ${label} supports up to ${max}. Please reduce it or contact the Hacienda for a larger request.`,
+        'requests',
+      )
+    }
+  }
+  return null
 }
 
 function sameValue(a: unknown, b: unknown): boolean {
