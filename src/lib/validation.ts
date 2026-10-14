@@ -19,6 +19,8 @@ export const EMAIL_MAX = 120
 export const MESSAGE_MAX = 1000
 export const REVIEW_MAX = 1000
 export const REF_MAX = 40
+export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5MB
+export const ALLOWED_PROOF_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 export const MIN_BOOKING_NIGHTS = 1
 export const MAX_BOOKING_NIGHTS = 30
 
@@ -179,6 +181,24 @@ export function validateMessage(raw: string): FieldResult {
   if (!v) return { ok: false, message: 'Message cannot be empty' }
   if (v.length > MESSAGE_MAX) return { ok: false, message: `Message must be at most ${MESSAGE_MAX} characters` }
   return { ok: true, value: v }
+}
+
+export function validateProofFile(file: File | null | undefined): FieldResult {
+  if (!file) {
+    return { ok: false, message: 'Please select a payment proof screenshot or image' }
+  }
+  const mimeType = file.type?.toLowerCase() || ''
+  const name = file.name?.toLowerCase() || ''
+  const validExtension = /\.(jpg|jpeg|png|webp)$/i.test(name)
+  const validMime = ALLOWED_PROOF_MIME_TYPES.includes(mimeType)
+
+  if (!validMime && !validExtension) {
+    return { ok: false, message: 'Please upload an image file (JPG, PNG, or WEBP)' }
+  }
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return { ok: false, message: 'File size must be 5 MB or less' }
+  }
+  return { ok: true, value: file.name }
 }
 
 export function validateStarRating(n: number): FieldResult {

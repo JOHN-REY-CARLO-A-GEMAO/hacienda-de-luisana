@@ -9,6 +9,7 @@ import {
   validateSearch,
   validateStayDates,
   validateStarRating,
+  validateProofFile,
 } from '../../src/lib/validation'
 import { paginate, sortBy } from '../../src/lib/pagination'
 import {
@@ -70,6 +71,26 @@ describe('email / amount / search / rating', () => {
     expect(validateSearch('x'.repeat(81)).ok).toBe(false)
     expect(validateStarRating(5).ok).toBe(true)
     expect(validateStarRating(0).ok).toBe(false)
+  })
+})
+
+describe('validateProofFile', () => {
+  it('refuses null or missing file', () => {
+    expect(validateProofFile(null).ok).toBe(false)
+    expect(validateProofFile(undefined).ok).toBe(false)
+  })
+
+  it('accepts valid JPG/PNG/WEBP files within size limit', () => {
+    const validFile = new File(['dummy content'], 'proof.jpg', { type: 'image/jpeg' })
+    expect(validateProofFile(validFile).ok).toBe(true)
+  })
+
+  it('refuses non-image file formats or oversized files', () => {
+    const pdfFile = new File(['pdf content'], 'receipt.pdf', { type: 'application/pdf' })
+    expect(validateProofFile(pdfFile).ok).toBe(false)
+
+    const largeFile = new File([new ArrayBuffer(6 * 1024 * 1024)], 'large.png', { type: 'image/png' })
+    expect(validateProofFile(largeFile).ok).toBe(false)
   })
 })
 

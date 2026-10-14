@@ -11,6 +11,7 @@ import '../../services/booking_lifecycle.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/status_pill.dart';
+import '../../utils/validators.dart';
 import '../security/security_pin_sheet.dart';
 
 class RefundManagementScreen extends ConsumerStatefulWidget {
@@ -38,6 +39,7 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
     final amountController = TextEditingController(text: refundAmount.toStringAsFixed(2));
     final notesController = TextEditingController();
     String channel = 'GCash';
+    String? dialogError;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -77,6 +79,9 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
                   hintText: 'e.g. 10023459201',
                   border: OutlineInputBorder(),
                 ),
+                onChanged: (_) {
+                  if (dialogError != null) setDialogState(() => dialogError = null);
+                },
               ),
               const SizedBox(height: 10),
               TextField(
@@ -87,6 +92,9 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
                   prefixText: '₱ ',
                   border: OutlineInputBorder(),
                 ),
+                onChanged: (_) {
+                  if (dialogError != null) setDialogState(() => dialogError = null);
+                },
               ),
               const SizedBox(height: 10),
               TextField(
@@ -98,13 +106,28 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
                   border: OutlineInputBorder(),
                 ),
               ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                Text(dialogError!, style: const TextStyle(fontSize: 12, color: Colors.red)),
+              ],
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () {
-                if (refController.text.trim().isEmpty) return;
+                final refVal = refController.text.trim();
+                final refErr = Validators.reference(refVal);
+                if (refErr != null) {
+                  setDialogState(() => dialogError = refErr);
+                  return;
+                }
+                final amtVal = double.tryParse(amountController.text.replaceAll(',', '').trim());
+                final amtErr = Validators.amount(amountController.text, min: 0.01);
+                if (amtErr != null || amtVal == null || amtVal <= 0) {
+                  setDialogState(() => dialogError = amtErr ?? 'Please enter a valid refund amount.');
+                  return;
+                }
                 Navigator.pop(ctx, true);
               },
               child: const Text('Record Refund'),

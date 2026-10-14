@@ -13,6 +13,8 @@ import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
 import '../../services/payment_proof_service.dart';
 import '../../services/pin_store.dart';
+import '../../utils/error_utils.dart';
+import '../../utils/validators.dart';
 import '../security/secure_action_sheet.dart';
 import '../security/security_pin_sheet.dart';
 import 'booking_invoice_dialog.dart';
@@ -75,7 +77,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     } else {
       messenger.showSnackBar(SnackBar(
         backgroundColor: AppColors.statusAlert,
-        content: Text(result.reason ?? 'Refused.'),
+        content: Text(ErrorUtils.toUserMessage(result.reason, fallback: 'Action was refused. Please check the requirements and try again.')),
         duration: const Duration(seconds: 6),
       ));
     }
@@ -84,30 +86,50 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   Future<String?> _askText(String title, String hint,
       {String confirm = 'Save', bool optional = false}) async {
     final controller = TextEditingController();
+    String? dialogError;
     final value = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title,
-            style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 3,
-          decoration: InputDecoration(
-              hintText: hint, border: const OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Back')),
-          ElevatedButton(
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.isEmpty && !optional) return;
-              Navigator.pop(ctx, text);
-            },
-            child: Text(confirm),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(title,
+              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: 3,
+                decoration: InputDecoration(
+                    hintText: hint, border: const OutlineInputBorder()),
+                onChanged: (_) {
+                  if (dialogError != null) setDialogState(() => dialogError = null);
+                },
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 6),
+                Text(dialogError!,
+                    style: const TextStyle(fontSize: 12, color: Colors.red)),
+              ],
+            ],
           ),
-        ],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('Back')),
+            ElevatedButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                if (text.isEmpty && !optional) {
+                  setDialogState(() => dialogError = 'Please enter a response before submitting.');
+                  return;
+                }
+                Navigator.pop(ctx, text);
+              },
+              child: Text(confirm),
+            ),
+          ],
+        ),
       ),
     );
     return value;
@@ -116,6 +138,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   Future<String?> _askRejectionReason({required String title}) async {
     String selectedReason = 'Invalid payment';
     final remarksController = TextEditingController();
+    String? dialogError;
     const options = [
       'Invalid payment',
       'Invalid ID',
@@ -145,7 +168,10 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                     .toList(),
                 onChanged: (val) {
                   if (val != null) {
-                    setDialogState(() => selectedReason = val);
+                    setDialogState(() {
+                      selectedReason = val;
+                      dialogError = null;
+                    });
                   }
                 },
                 decoration: const InputDecoration(border: OutlineInputBorder()),
@@ -167,7 +193,15 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                       : 'Additional notes for guest...',
                   border: const OutlineInputBorder(),
                 ),
+                onChanged: (_) {
+                  if (dialogError != null) setDialogState(() => dialogError = null);
+                },
               ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 6),
+                Text(dialogError!,
+                    style: const TextStyle(fontSize: 12, color: Colors.red)),
+              ],
             ],
           ),
           actions: [
@@ -178,8 +212,12 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             ElevatedButton(
               onPressed: () {
                 final remarks = remarksController.text.trim();
-                if (selectedReason == 'Other' && remarks.isEmpty) {
-                  return;
+                if (selectedReason == 'Other') {
+                  final err = Validators.rejectionReason(remarks);
+                  if (err != null) {
+                    setDialogState(() => dialogError = err);
+                    return;
+                  }
                 }
                 final finalReason = selectedReason == 'Other'
                     ? remarks
@@ -197,30 +235,56 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   Future<double?> _askAmount(String title, String hint, double? initial) async {
     final controller =
         TextEditingController(text: initial == null ? '' : initial.toStringAsFixed(2));
+    String? dialogError;
     return showDialog<double>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title,
-            style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-              prefixText: '₱ ', hintText: hint, border: const OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Back')),
-          ElevatedButton(
-            onPressed: () {
-              final v = double.tryParse(controller.text.replaceAll(',', ''));
-              if (v == null) return;
-              Navigator.pop(ctx, v);
-            },
-            child: const Text('Confirm'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(title,
+              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                    prefixText: '₱ ', hintText: hint, border: const OutlineInputBorder()),
+                onChanged: (_) {
+                  if (dialogError != null) setDialogState(() => dialogError = null);
+                },
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 6),
+                Text(dialogError!,
+                    style: const TextStyle(fontSize: 12, color: Colors.red)),
+              ],
+            ],
           ),
-        ],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('Back')),
+            ElevatedButton(
+              onPressed: () {
+                final textVal = controller.text.replaceAll(',', '').trim();
+                final err = Validators.amount(textVal, min: 0.0);
+                if (err != null) {
+                  setDialogState(() => dialogError = err);
+                  return;
+                }
+                final v = double.tryParse(textVal);
+                if (v == null) {
+                  setDialogState(() => dialogError = 'Please enter a valid amount.');
+                  return;
+                }
+                Navigator.pop(ctx, v);
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
+        ),
       ),
     );
   }
