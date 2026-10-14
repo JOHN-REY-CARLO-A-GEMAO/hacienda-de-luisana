@@ -21,7 +21,7 @@ import { amountMismatchNote, claimAgainstReceipt, runReceiptOcr, suggestedAmount
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
-import { validateAmount } from '../lib/validation'
+import { validateAmount, validateProofFile } from '../lib/validation'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
 import { createNotification } from '../lib/notifications'
 
@@ -112,12 +112,22 @@ export function DownpaymentPage() {
   if (!draft) return null
 
   const onFile = async (file: File | null) => {
-    setProofFile(file)
     setError('')
     setOcrNote('')
     setAmountCandidates([])
     setClaimOffReceipt(false)
-    if (!file) return
+    if (!file) {
+      setProofFile(null)
+      return
+    }
+    const fileValid = validateProofFile(file)
+    if (!fileValid.ok) {
+      setError(fileValid.message)
+      setProofFile(null)
+      if (fileInput.current) fileInput.current.value = ''
+      return
+    }
+    setProofFile(file)
     try {
       const fields = await runReceiptOcr(file)
       if (fields.reference && !reference) setReference(fields.reference)

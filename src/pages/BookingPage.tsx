@@ -153,6 +153,47 @@ export function BookingPage() {
     setErrors((e) => ({ ...e, [k]: undefined }))
   }
 
+  const validateSingleField = (key: keyof FormState): string | undefined => {
+    if (key === 'check_in') {
+      const leadTime = validateMinimumBookingLeadTime(form.check_in, new Date(), minimumBookingLeadTimeDays)
+      if (!leadTime.ok) return leadTime.reason
+      const stay = validateStayDates(form.check_in, form.check_out)
+      if (!stay.ok && stay.field === 'check_in') return stay.message
+    }
+    if (key === 'check_out') {
+      const stay = validateStayDates(form.check_in, form.check_out)
+      if (!stay.ok && stay.field === 'check_out') return stay.message
+    }
+    if (key === 'guests') {
+      const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity, selectedAcc?.name)
+      if (!guests.ok) return guests.message
+    }
+    if (key === 'accommodation') {
+      if (!form.accommodation) return 'Select an accommodation'
+      if (published?.accommodations[form.accommodation]?.active === false) {
+        return 'This property is not accepting new bookings.'
+      }
+    }
+    if (key === 'name') {
+      const name = validateName(form.name)
+      if (!name.ok) return name.message
+    }
+    if (key === 'phone') {
+      const phone = validatePhMobile(form.phone)
+      if (!phone.ok) return phone.message
+    }
+    if (key === 'email') {
+      const email = validateEmail(form.email)
+      if (!email.ok) return email.message
+    }
+    return undefined
+  }
+
+  const handleBlur = (key: keyof FormState) => {
+    const err = validateSingleField(key)
+    setErrors((e) => ({ ...e, [key]: err }))
+  }
+
   const validate = (): boolean => {
     const e: Errors = {}
     const leadTime = validateMinimumBookingLeadTime(form.check_in, new Date(), minimumBookingLeadTimeDays)
@@ -370,6 +411,7 @@ export function BookingPage() {
                     value={form.check_in}
                     data-tour-field="check-in"
                     onChange={(e) => set('check_in', e.target.value)}
+                    onBlur={() => handleBlur('check_in')}
                   />
                 </Field>
                 <Field label="Check-out" error={errors.check_out}>
@@ -380,6 +422,7 @@ export function BookingPage() {
                     value={form.check_out}
                     data-tour-field="check-out"
                     onChange={(e) => set('check_out', e.target.value)}
+                    onBlur={() => handleBlur('check_out')}
                   />
                 </Field>
                 <Field label="Number of guests" error={errors.guests}>
@@ -390,6 +433,7 @@ export function BookingPage() {
                     className="field"
                     value={form.guests}
                     onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
+                    onBlur={() => handleBlur('guests')}
                   />
                 </Field>
                 <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
@@ -397,6 +441,7 @@ export function BookingPage() {
                     className="field appearance-none pr-10"
                     value={form.accommodation}
                     onChange={(e) => set('accommodation', e.target.value)}
+                    onBlur={() => handleBlur('accommodation')}
                   >
                     {options.map((o) => (
                       <option key={o.id} value={o.id}>{o.label}</option>
@@ -417,6 +462,7 @@ export function BookingPage() {
                       value={form.name}
                       data-tour-field="guest-name"
                       onChange={(e) => set('name', e.target.value)}
+                      onBlur={() => handleBlur('name')}
                       autoComplete="name"
                     />
                   </Field>
@@ -429,6 +475,7 @@ export function BookingPage() {
                     inputMode="tel"
                     value={form.phone}
                     onChange={(e) => set('phone', e.target.value)}
+                    onBlur={() => handleBlur('phone')}
                     autoComplete="tel"
                   />
                 </Field>
@@ -439,6 +486,7 @@ export function BookingPage() {
                     type="email"
                     value={form.email}
                     onChange={(e) => set('email', e.target.value)}
+                    onBlur={() => handleBlur('email')}
                     autoComplete="email"
                     spellCheck={false}
                   />

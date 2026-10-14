@@ -44,6 +44,47 @@ class Validators {
     return null;
   }
 
+  static String? amount(String? value, {double min = 0.01, double max = 5000000.0}) {
+    final v = (value ?? '').trim().replaceAll(',', '');
+    if (v.isEmpty) return 'Please enter an amount';
+    final parsed = double.tryParse(v);
+    if (parsed == null || !parsed.isFinite) return 'Please enter a valid number';
+    if (parsed < min) return 'Amount must be at least ₱${min.toStringAsFixed(2)}';
+    if (parsed > max) return 'Amount exceeds maximum allowed limit';
+    return null;
+  }
+
+  static String? reference(String? value) {
+    final v = (value ?? '').trim().toUpperCase();
+    if (v.isEmpty) return 'Please enter a reference number';
+    if (v.length > 40) return 'Reference number must be 40 characters or less';
+    if (!RegExp(r'^[A-Z0-9-]+$').hasMatch(v)) {
+      return 'Reference may only contain letters, numbers, and hyphens';
+    }
+    return null;
+  }
+
+  static String? pin(String? value) {
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return 'Please enter your 6-digit PIN';
+    if (!RegExp(r'^\d{6}$').hasMatch(v)) return 'PIN must be exactly 6 digits';
+    return null;
+  }
+
+  static String? rejectionReason(String? value) {
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return 'Please provide a reason for rejection';
+    if (v.length < 3) return 'Reason must be at least 3 characters long';
+    if (v.length > 500) return 'Reason must be at most 500 characters long';
+    return null;
+  }
+
+  static String? requiredText(String? value, String fieldName) {
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return 'Please enter $fieldName';
+    return null;
+  }
+
   /// Normalizes a PH mobile number to +639XXXXXXXXX for storage.
   static String normalizePhone(String value) {
     final v = value.replaceAll(RegExp(r'[\s\-()]'), '');

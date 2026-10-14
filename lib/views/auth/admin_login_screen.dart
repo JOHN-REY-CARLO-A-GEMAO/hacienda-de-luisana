@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/auth_store.dart';
 import '../../core/theme/app_theme.dart';
+import '../../utils/error_utils.dart';
 import '../../utils/validators.dart';
 import '../../widgets/staggered_entrance.dart';
 
@@ -50,7 +51,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = 'Sign-in failed. Retry.');
+      if (mounted) setState(() => _error = ErrorUtils.toUserMessage(e, fallback: 'Sign-in failed. Please try again.'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -76,7 +77,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted) setState(() => _error = 'Sign-in failed. Retry.');
+      if (mounted) setState(() => _error = ErrorUtils.toUserMessage(e, fallback: 'Sign-in failed. Please try again.'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
