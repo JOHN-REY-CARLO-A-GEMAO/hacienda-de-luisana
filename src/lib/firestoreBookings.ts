@@ -106,6 +106,20 @@ function mapDocToBooking(id: string, data: DocumentData): Booking {
     guests: data.guests,
     accommodation: data.accommodation,
     special_requests: data.special_requests || '',
+    // Structured add-ons & requests (additive; absent on older documents).
+    ...(typeof data.pet_count === 'number' && Number.isInteger(data.pet_count) && data.pet_count >= 0
+      ? { pet_count: data.pet_count } : {}),
+    ...(data.pet_request && typeof data.pet_request === 'object' ? { pet_request: data.pet_request } : {}),
+    ...(typeof data.late_checkout_hours === 'number' && Number.isInteger(data.late_checkout_hours) && data.late_checkout_hours >= 0
+      ? { late_checkout_hours: data.late_checkout_hours } : {}),
+    ...(typeof data.bonfire_wood_sets === 'number' && Number.isInteger(data.bonfire_wood_sets) && data.bonfire_wood_sets >= 0
+      ? { bonfire_wood_sets: data.bonfire_wood_sets } : {}),
+    ...(typeof data.event_purpose === 'string' && data.event_purpose ? { event_purpose: data.event_purpose } : {}),
+    ...(typeof data.event_purpose_detail === 'string' && data.event_purpose_detail ? { event_purpose_detail: data.event_purpose_detail } : {}),
+    ...(data.late_checkout_request && typeof data.late_checkout_request === 'object'
+      ? { late_checkout_request: data.late_checkout_request } : {}),
+    ...(typeof data.late_checkout_fee === 'number' ? { late_checkout_fee: data.late_checkout_fee } : {}),
+    ...(Array.isArray(data.additional_charges) ? { additional_charges: data.additional_charges } : {}),
     // Old documents are migrated on read: a stored `Confirmed` reads as
     // `Reserved`, and nothing is rewritten in Firestore (spec #9).
     status: interpretStoredStatus(data.status, {

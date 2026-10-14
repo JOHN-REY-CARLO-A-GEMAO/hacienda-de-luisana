@@ -23,12 +23,17 @@ import { useBookingPolicy } from '../hooks/useBookingPolicy'
 import { doc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import {
+  addonFeeLines,
   formatRefundPolicySummary,
+  pricedStayExtras,
   quoteAccommodation,
   validateBookingSelection,
   validateMinimumBookingLeadTime,
   type BookingRuleFailure,
+  type EventPurpose,
 } from '../lib/booking'
+import { officialAddonFallbacks } from '../lib/stayRequests'
+import { StayRequestsSection, AddonFeeSummary } from '../components/Booking/StayRequestsSection'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
 
 type FormState = {
@@ -39,7 +44,14 @@ type FormState = {
   name: string
   phone: string
   email: string
+  /** The Guest's free text for anything the structured controls do not cover. */
   special_requests: string
+  // Structured add-ons & requests (src/lib/booking/requests.ts).
+  pet_count: number
+  bonfire_wood_sets: number
+  late_checkout_hours: number
+  event_purpose: EventPurpose | ''
+  event_purpose_detail: string
 }
 
 type Errors = Partial<Record<keyof FormState, string>>
@@ -60,6 +72,11 @@ export function BookingPage() {
     phone: '',
     email: '',
     special_requests: '',
+    pet_count: 0,
+    bonfire_wood_sets: 0,
+    late_checkout_hours: 0,
+    event_purpose: '',
+    event_purpose_detail: '',
   })
   const [errors, setErrors] = useState<Errors>({})
   const [status, setStatus] = useState<'idle' | 'submitting' | 'error'>('idle')
@@ -114,9 +131,21 @@ export function BookingPage() {
       check_in: form.check_in,
       check_out: form.check_out,
       guests: Number(form.guests),
+      // Only the add-ons the Admin has priced reach the quote; requests with no
+      // published figure stay out of the total and go to the Admin for review.
+      ...pricedStayExtras(published, form),
     })
-  }, [published, form.accommodation, form.check_in, form.check_out, form.guests])
+  }, [published, form.accommodation, form.check_in, form.check_out, form.guests,
+      form.pet_count, form.late_checkout_hours])
   const estimatedTotal = authoritativeQuote?.stayTotal ?? null
+
+  // The live fee breakdown: documented peso figures (officialBusiness.ts) under
+  // whatever the Admin has published, recomputed the moment a control changes.
+  const addonFallbacks = useMemo(() => officialAddonFallbacks(published), [published])
+  const addonLines = useMemo(
+    () => addonFeeLines(published, form, addonFallbacks),
+    [published, addonFallbacks, form.pet_count, form.bonfire_wood_sets, form.late_checkout_hours],
+  )
 
   useEffect(() => {
     if (!form.check_in || !form.check_out || !form.accommodation
@@ -267,6 +296,9 @@ export function BookingPage() {
           check_in: form.check_in,
           check_out: form.check_out,
           guests: Number(form.guests),
+          pet_count: form.pet_count,
+          bonfire_wood_sets: form.bonfire_wood_sets,
+          late_checkout_hours: form.late_checkout_hours,
         },
         {
           published,
@@ -333,6 +365,13 @@ export function BookingPage() {
         phone: form.phone.trim(),
         email: form.email.trim(),
         special_requests: form.special_requests.trim(),
+        pet_count: form.pet_count,
+        bonfire_wood_sets: form.bonfire_wood_sets,
+        late_checkout_hours: form.late_checkout_hours,
+        event_purpose: form.event_purpose,
+        ...(form.event_purpose === 'other' && form.event_purpose_detail.trim()
+          ? { event_purpose_detail: form.event_purpose_detail.trim() }
+          : {}),
       })
       navigate('/book/pay')
     } catch (err) {
@@ -491,19 +530,33 @@ export function BookingPage() {
                     spellCheck={false}
                   />
                 </Field>
-                <Field label="Special requests" className="sm:col-span-2">
-                  <textarea
-                    className="field min-h-[110px] resize-y"
-                    placeholder="Pet count; reunion/team building; wedding preparation; shoot; bonfire wood; late-checkout request…"
-                    value={form.special_requests}
-                    onChange={(e) => set('special_requests', e.target.value)}
-                  />
-                  <p className="mt-2 text-xs text-forest-700/70 leading-relaxed">
-                    Declare each pet (₱300 per pet for sanitation). Bonfire wood (₱150/set), approved late checkout (₱250/hour after noon), and special-event/use charges are reviewed by the Admin and are never added automatically.
-                  </p>
-                </Field>
               </div>
             </div>
+
+            <StayRequestsSection
+              values={{
+                pet_count: form.pet_count,
+                bonfire_wood_sets: form.bonfire_wood_sets,
+                late_checkout_hours: form.late_checkout_hours,
+                event_purpose: form.event_purpose,
+                event_purpose_detail: form.event_purpose_detail,
+                notes: form.special_requests,
+              }}
+              onChange={(patch) => {
+                setForm((f) => ({
+                  ...f,
+                  ...(patch.pet_count !== undefined ? { pet_count: patch.pet_count } : {}),
+                  ...(patch.bonfire_wood_sets !== undefined ? { bonfire_wood_sets: patch.bonfire_wood_sets } : {}),
+                  ...(patch.late_checkout_hours !== undefined ? { late_checkout_hours: patch.late_checkout_hours } : {}),
+                  ...(patch.event_purpose !== undefined ? { event_purpose: patch.event_purpose } : {}),
+                  ...(patch.event_purpose_detail !== undefined ? { event_purpose_detail: patch.event_purpose_detail } : {}),
+                  ...(patch.notes !== undefined ? { special_requests: patch.notes } : {}),
+                }))
+                setErrors((e) => ({ ...e, special_requests: undefined }))
+              }}
+              published={published}
+              fallback={addonFallbacks}
+            />
 
             {availability && !availability.available && (
               <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-900 leading-relaxed">
@@ -531,8 +584,8 @@ export function BookingPage() {
                 (version {LEGAL_VERSION}). This is not accepted for me.
               </span>
             </label>
-            {errors.special_requests && !form.special_requests && (
-              <p className="text-xs text-red-600">{errors.special_requests}</p>
+            {errors.special_requests && (
+              <p className="text-xs text-red-600" role="alert">{errors.special_requests}</p>
             )}
 
             <div className="pt-2">
@@ -591,13 +644,14 @@ export function BookingPage() {
                       )}
                     </div>
                   </div>
+                  <AddonFeeSummary lines={addonLines} />
                 </div>
 
                 <div className="mt-4 rounded-2xl bg-cream-100/70 p-4 text-xs text-forest-700 leading-relaxed space-y-2">
                   <div>
                     <Sparkle size={14} className="inline mr-1 -mt-1 text-forest-600" />
                     {estimatedTotal
-                      ? 'An estimate of the stay only. The refundable security deposit is added at the payment step, extras such as the ₱300 pet fee are settled with the Hacienda, and the final quote is confirmed before anything is reserved.'
+                      ? 'An estimate of the stay, including any add-ons marked “Added to total”. The refundable security deposit is added at the payment step; requests marked “Pending approval” are reviewed and priced by the Hacienda and are not part of this figure. The final quote is confirmed before anything is reserved.'
                       : 'The Hacienda quotes this stay on request and confirms the final figure — plus the refundable security deposit — before anything is reserved.'}{' '}
                     <Link to="/rates" className="underline underline-offset-2">Rates &amp; Fees</Link>
                   </div>

@@ -14,9 +14,27 @@ function getAccommodationName(id: string) {
 export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose }) => {
   const stayTotal = booking.stay_total ?? booking.total_amount ?? 0
   const securityDeposit = booking.security_deposit ?? 0
-  const petFee = (booking as unknown as { pet_fee?: number }).pet_fee ?? (booking.special_requests?.toLowerCase().includes('pet') ? 300 : 0)
-  const lateCheckoutFee = (booking as unknown as { late_checkout_fee?: number }).late_checkout_fee ?? 0
-  const additionalCharges = (booking as unknown as { additional_charges?: { description: string; amount: number }[] }).additional_charges ?? []
+  // Structured add-ons (src/lib/booking/requests.ts). A priced pet count is
+  // already inside `stay_total`; a pending `pet_request` is an estimate the
+  // Admin has not approved, so neither may be summed in as a separate charge.
+  // The old free-text heuristic ("special_requests mentions 'pet' → ₱300") is
+  // kept ONLY for legacy documents that predate the structured fields, so old
+  // invoices render exactly as they always did.
+  const petCount = booking.pet_count ?? 0
+  const petRequest = booking.pet_request
+  const lateCheckoutHours = booking.late_checkout_hours ?? 0
+  const lateCheckoutRequest = booking.late_checkout_request
+  const bonfireWoodSets = booking.bonfire_wood_sets ?? 0
+  // Only the keys the structured booking form writes mark a document as "new":
+  // a legacy Booking that already carried a `late_checkout_request` (from the
+  // post-booking extension flow) keeps its old invoice rendering untouched.
+  const hasStructuredRequests =
+    petCount > 0 || Boolean(petRequest) || lateCheckoutHours > 0
+    || bonfireWoodSets > 0 || Boolean(booking.event_purpose)
+  const petFee = (booking as unknown as { pet_fee?: number }).pet_fee
+    ?? (!hasStructuredRequests && booking.special_requests?.toLowerCase().includes('pet') ? 300 : 0)
+  const lateCheckoutFee = booking.late_checkout_fee ?? 0
+  const additionalCharges = booking.additional_charges ?? []
 
   const totalAdditional = additionalCharges.reduce((acc, curr) => acc + (curr.amount || 0), 0) + lateCheckoutFee + petFee
   const grandTotal = stayTotal + securityDeposit + totalAdditional
@@ -100,6 +118,52 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
               <tr>
                 <td className="py-2.5 text-forest-800">Late Checkout Extension Fee</td>
                 <td className="py-2.5 text-right font-mono text-forest-900">₱{lateCheckoutFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+              </tr>
+            )}
+            {petCount > 0 && petFee === 0 && (
+              <tr>
+                <td className="py-2.5 text-forest-800" colSpan={2}>
+                  Pet sanitation fee ({petCount} pet{petCount === 1 ? '' : 's'}) — included in the Base Stay Total
+                </td>
+              </tr>
+            )}
+            {petRequest && (
+              <tr>
+                <td className="py-2.5 text-forest-800">
+                  Pet sanitation fee ({petRequest.count} pet{petRequest.count === 1 ? '' : 's'}) —{' '}
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                    {petRequest.status === 'approved' ? 'Approved' : petRequest.status === 'rejected' ? 'Rejected' : 'Pending Admin approval'}
+                  </span>
+                </td>
+                <td className="py-2.5 text-right font-mono text-forest-900">
+                  {petRequest.status === 'approved' ? '' : `₱${(petRequest.estimated_fee || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} est.`}
+                </td>
+              </tr>
+            )}
+            {lateCheckoutHours > 0 && (
+              <tr>
+                <td className="py-2.5 text-forest-800" colSpan={2}>
+                  Late checkout (+{lateCheckoutHours} hour{lateCheckoutHours === 1 ? '' : 's'}) — included in the Base Stay Total
+                </td>
+              </tr>
+            )}
+            {lateCheckoutRequest && lateCheckoutFee === 0 && (
+              <tr>
+                <td className="py-2.5 text-forest-800">
+                  Late checkout (+{lateCheckoutRequest.hours} hour{lateCheckoutRequest.hours === 1 ? '' : 's'}) —{' '}
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+                    {lateCheckoutRequest.status === 'approved' ? 'Approved' : lateCheckoutRequest.status === 'rejected' ? 'Rejected' : 'Pending Admin approval'}
+                  </span>
+                </td>
+                <td className="py-2.5 text-right font-mono text-forest-900">₱{(lateCheckoutRequest.fee || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} est.</td>
+              </tr>
+            )}
+            {bonfireWoodSets > 0 && (
+              <tr>
+                <td className="py-2.5 text-forest-800" colSpan={2}>
+                  Bonfire wood ({bonfireWoodSets} set{bonfireWoodSets === 1 ? '' : 's'}) —{' '}
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">Pending Admin approval</span>
+                </td>
               </tr>
             )}
             {additionalCharges.map((item, idx) => (

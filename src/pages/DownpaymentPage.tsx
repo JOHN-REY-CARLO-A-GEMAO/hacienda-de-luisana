@@ -9,11 +9,18 @@ import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { ensureGuestUid } from '../lib/guestAuth'
 import { ArrowRight, Calendar, Sparkle, Users } from '../lib/icons'
 import {
+  addonFeeLines,
+  composeSpecialRequests,
+  eventPurposeLabel,
   paymentOptionsForTotal,
+  pricedStayExtras,
   quoteAccommodation,
+  sanitizeStayRequests,
   validateBookingPayload,
   validateBookingSelection,
 } from '../lib/booking'
+import { composeRequestMeta, officialAddonFallbacks } from '../lib/stayRequests'
+import { AddonFeeSummary } from '../components/Booking/StayRequestsSection'
 import { uploadPaymentProof } from '../lib/payments'
 import { usePaymentInformation } from '../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from '../components/Booking/PaymentInformationPanel'
@@ -63,7 +70,19 @@ export function DownpaymentPage() {
   const accommodation = ACCOMMODATIONS.find((item) => item.id === draft?.accommodation)
   const nights = draft ? nightsBetween(draft.check_in, draft.check_out) : 0
   const rate = accommodation ? displayedRate(accommodation, published) : null
-  const quoted = published && draft ? quoteAccommodation(published, draft.accommodation, draft) : undefined
+  // Only the add-ons the Admin has priced enter the quote and the money fields;
+  // unpriced requests travel on the document for Admin review (see submit).
+  const quoted = published && draft
+    ? quoteAccommodation(published, draft.accommodation, {
+        check_in: draft.check_in,
+        check_out: draft.check_out,
+        guests: Number(draft.guests),
+        ...pricedStayExtras(published, draft),
+      })
+    : undefined
+  const addonFallbacks = officialAddonFallbacks(published)
+  const requests = sanitizeStayRequests(draft ?? undefined, published)
+  const addonLines = addonFeeLines(published, requests, addonFallbacks)
   const stayTotal = quoted?.stayTotal ?? null
   const paymentOptions = quoted ? paymentOptionsForTotal(quoted.stayTotal, quoted.rateCard) : []
   const reservationOption = paymentOptions.find((option) => option.plan === 'down-payment')
@@ -184,6 +203,9 @@ export function DownpaymentPage() {
           check_in: draft.check_in,
           check_out: draft.check_out,
           guests: Number(draft.guests),
+          pet_count: requests.pet_count ?? 0,
+          bonfire_wood_sets: requests.bonfire_wood_sets ?? 0,
+          late_checkout_hours: requests.late_checkout_hours ?? 0,
         },
         { published, checkLeadTime: false },
       )
@@ -258,6 +280,9 @@ export function DownpaymentPage() {
           check_in: draft.check_in,
           check_out: draft.check_out,
           guests: Number(draft.guests),
+          pet_count: requests.pet_count ?? 0,
+          bonfire_wood_sets: requests.bonfire_wood_sets ?? 0,
+          late_checkout_hours: requests.late_checkout_hours ?? 0,
         },
         { published, checkLeadTime: false },
       )
@@ -310,6 +335,23 @@ refund_policy_snapshot: published.refund ?? null,
       // Financial fields are a historical snapshot of the authoritative rate,
       // not of what OCR/the Guest says the receipt contains. Firestore rules
       // independently derive and verify this same snapshot.
+      //
+      // Structured add-ons & requests (src/lib/booking/requests.ts): a charge
+      // the Admin has PRICED (published pet_policy / late_checkout_per_hour) is
+      // stored on the same keys the quote and firestore.rules arithmetic use
+      // (`pet_count`, `late_checkout_hours`) and is already inside `stay_total`.
+      // A charge nobody has priced is stored as a PENDING REQUEST — the
+      // `late_checkout_request` shape the Admin app already renders and
+      // approves, or a `pet_request` mirror of it — and never touches the money
+      // fields. `special_requests` is composed from all of it plus the Guest's
+      // notes, so the Admin's existing Notes view shows every request even on
+      // surfaces that have not learned the structured keys yet.
+      const composeMeta = composeRequestMeta(published, requests)
+      const requestedAt = new Date().toISOString()
+      const petCount = requests.pet_count ?? 0
+      const lateHours = requests.late_checkout_hours ?? 0
+      const bonfireSets = requests.bonfire_wood_sets ?? 0
+      const roundPeso = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
        const effectiveUid = uid || uploaded.uid
        const booking = await cloudBookingsDB.add(
          {
@@ -320,7 +362,35 @@ refund_policy_snapshot: published.refund ?? null,
            check_out: draft.check_out,
            guests: Number(draft.guests),
            accommodation: draft.accommodation,
-           special_requests: draft.special_requests.trim(),
+           special_requests: composeSpecialRequests(
+             { ...requests, notes: draft.special_requests.trim() },
+             composeMeta,
+           ),
+           ...(composeMeta.petsIncludedInTotal
+             ? { pet_count: petCount }
+             : petCount > 0
+               ? { pet_request: {
+                   count: petCount,
+                   estimated_fee: roundPeso(petCount * (composeMeta.petUnitAmount ?? 0)),
+                   status: 'pending',
+                   requested_at: requestedAt,
+                 } }
+               : {}),
+           ...(composeMeta.lateCheckoutIncludedInTotal
+             ? { late_checkout_hours: lateHours }
+             : lateHours > 0
+               ? { late_checkout_request: {
+                   hours: lateHours,
+                   fee: roundPeso(lateHours * (composeMeta.lateCheckoutUnitAmount ?? 0)),
+                   status: 'pending',
+                   requested_at: requestedAt,
+                 } }
+               : {}),
+           ...(bonfireSets > 0 ? { bonfire_wood_sets: bonfireSets } : {}),
+           ...(requests.event_purpose ? { event_purpose: requests.event_purpose } : {}),
+           ...(requests.event_purpose === 'other' && requests.event_purpose_detail
+             ? { event_purpose_detail: requests.event_purpose_detail }
+             : {}),
            ...(effectiveUid ? { uid: effectiveUid } : {}),
            payment_proof_url: uploaded.url,
            paymentProofUrl: uploaded.url,
@@ -611,7 +681,7 @@ refund_policy_snapshot: published.refund ?? null,
             </div>
           </section>
 
-          <StaySummary draft={draft} accommodationName={accommodation?.name} image={accommodation?.images[0]} nights={nights} />
+          <StaySummary draft={draft} accommodationName={accommodation?.name} image={accommodation?.images[0]} nights={nights} addonLines={addonLines} />
         </div>
       </div>
     </div>
@@ -623,11 +693,13 @@ function StaySummary({
   accommodationName,
   image,
   nights,
+  addonLines,
 }: {
   draft: BookingDraft
   accommodationName?: string
   image?: string
   nights: number
+  addonLines: ReturnType<typeof addonFeeLines>
 }) {
   return (
     <aside className="lg:sticky lg:top-28 self-start">
@@ -643,6 +715,16 @@ function StaySummary({
         <div className="p-6 space-y-3 text-sm">
           <Row icon={Calendar} label="Dates" value={`${draft.check_in} → ${draft.check_out}`} />
           <Row icon={Users} label="Guests" value={`${draft.guests} · ${nights || '—'} night${nights === 1 ? '' : 's'}`} />
+          {draft.event_purpose && (
+            <Row
+              icon={Sparkle}
+              label="Event / purpose"
+              value={draft.event_purpose === 'other' && draft.event_purpose_detail?.trim()
+                ? `Other — ${draft.event_purpose_detail.trim()}`
+                : eventPurposeLabel(draft.event_purpose)}
+            />
+          )}
+          <AddonFeeSummary lines={addonLines} />
           <div className="pt-3 border-t border-forest-900/10 text-xs text-forest-700 leading-relaxed">
             <div className="font-medium text-forest-900">{draft.name}</div>
             <div>{draft.phone}</div>

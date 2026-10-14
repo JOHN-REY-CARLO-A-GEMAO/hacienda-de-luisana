@@ -26,6 +26,21 @@ export type Booking = BookingState & {
   created_at: string // ISO
   uid?: string
   source?: string
+  // Structured add-ons & requests (src/lib/booking/requests.ts). All additive:
+  // absent on every Booking stored before they existed, and no reader may
+  // assume one is present.
+  /** Declared pets — stored only when the published pet policy prices them into `stay_total`. */
+  pet_count?: number
+  /** Declared pets awaiting Admin approval, when no pet fee is published. */
+  pet_request?: { count: number; estimated_fee: number; status: string; requested_at: string }
+  /** Whole hours kept past noon check-out, priced into `stay_total` when the hourly rate is published. */
+  late_checkout_hours?: number
+  /** Bonfire wood sets requested; always an Admin-approved extra, never in `stay_total`. */
+  bonfire_wood_sets?: number
+  /** The named purpose of the stay (reunion, team_building, wedding_prep, photoshoot, other). */
+  event_purpose?: string
+  /** The Guest's own words when `event_purpose` is `other`. */
+  event_purpose_detail?: string
   late_checkout_request?: { hours: number; fee: number; status: string; requested_at: string; reason?: string }
   late_checkout_fee?: number
   additional_charges?: { description: string; amount: number }[]
