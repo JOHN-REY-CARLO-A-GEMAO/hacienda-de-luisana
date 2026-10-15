@@ -5,7 +5,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { assertSafeInputs, DEMO_PROJECT, ROOT } from './boundary.mjs'
 
-export const ACTIONS = new Set(['safety', 'web', 'watch', 'rules', 'e2e', 'characterization', 'invariants', 'emulator', 'emulator-invariants', 'emulator-auth', 'supabase-rls', 'typecheck', 'build', 'flutter', 'flutter-invariants', 'flutter-analyze', 'qa-booking', 'qa-site', 'qa-tutorial'])
+export const ACTIONS = new Set(['safety', 'web', 'watch', 'rules', 'rules-baseline', 'e2e', 'characterization', 'invariants', 'emulator', 'emulator-invariants', 'emulator-auth', 'supabase-rls', 'typecheck', 'build', 'flutter', 'flutter-invariants', 'flutter-analyze', 'qa-booking', 'qa-site', 'qa-tutorial'])
 
 const action = process.argv[2]
 try {

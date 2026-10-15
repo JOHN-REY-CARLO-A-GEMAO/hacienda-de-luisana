@@ -167,3 +167,23 @@ _Avoid_: Purging on completion, message cap
 **Live location (reinstated)**:
 A Guest choosing, from inside their Conversation, to let the Admin watch where they are for 15, 30 or 60 minutes. The Firestore side is a **Live location session** — consent metadata with no coordinate — and the position itself is ephemeral: a Realtime Database node the server deletes at the session's expiry. Reinstated by ADR-0013, which reopened what ADR-0009 withdrew; `tracking_sessions` remains closed, because a position written to Firestore is a position stored forever.
 _Avoid_: Tracking session, breadcrumb, ping, route, radar, geofence, ETA — the shape this repository has is a stream with an expiry, not a route.
+
+### Issue & Dispute Management
+
+**Case**: A server-owned Issue or Dispute reported by a recoverable Guest account
+or an Admin, optionally linked to a verified Booking. Identified by a human-readable
+reference; its lifecycle never executes a Booking or financial action. Guest-facing
+cases and internal operational reports have separate visibility. Private notes and
+restricted evidence are not fields that a Guest-readable document merely hides.
+
+**Independent review**: An appeal decided by another Admin who has not investigated,
+proposed or decided the case and is not its complainant. Assignment alone is not
+participation. No eligible reviewer means pending. One ordinary appeal, with
+exceptional reopening and remedy enforcement distinct from repeated merits appeals.
+
+**Case resolution**: A completed simple fix, accepted completed remedy, or reasoned
+independent determination. A promise is not fulfillment, and silence is not consent.
+Closed is administrative finality, not a statement that the Guest agreed.
+
+See ADR-0017 and `docs/disputes/IMPLEMENTATION.md`. Production release, retention
+policy and legal approval remain explicit prerequisites, not implementation claims.

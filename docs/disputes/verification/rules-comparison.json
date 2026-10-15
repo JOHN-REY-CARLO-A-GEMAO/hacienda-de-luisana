@@ -1,0 +1,269 @@
+{
+  "baselineCommit": "e5155dec0e2255c3f6b29dbec7b1f5e063f1d878",
+  "verification": "SUPPLEMENTAL — not Firebase emulator verification",
+  "generatedAt": "2026-10-15T01:15:08.394Z",
+  "sourceHashes": {
+    "firestore.rules": {
+      "current": "b0dc13a5018036f3b2bee26572a2673722bfd9ae9f024da628f6ffdc845ad234",
+      "baseline": "e4980e2a050b766852024c76c77a5fbb28f03c3b3c4df821d68534952efc47ac"
+    },
+    "storage.rules": {
+      "current": "3e002f547826b19dcd00f907db4327a7da435d241d8a51d0a65b3705d70a57a6",
+      "baseline": "ac22a703d33e7a3dbdffbc415de240b24a19eb6188c63ef331a61a9edfb1d0dc"
+    }
+  },
+  "unchangedFixtures": true,
+  "verifiedFixtureCount": 7,
+  "reportProblems": [],
+  "staleInputs": [],
+  "comparedAssertions": 314,
+  "currentExistingFailures": 51,
+  "baselineExistingFailures": 51,
+  "evaluatorToSetErrors": 32,
+  "otherAssertionFailures": 19,
+  "changedAssertionStatuses": [],
+  "newDisputeTests": [
+    {
+      "name": "server-owned case boundaries allows only the verified participant and Admin to read a Guest case",
+      "status": "passed"
+    },
+    {
+      "name": "server-owned case boundaries does not accept anonymous identities as case accounts",
+      "status": "passed"
+    },
+    {
+      "name": "server-owned case boundaries refuses direct writes, even from an Admin",
+      "status": "passed"
+    },
+    {
+      "name": "server-owned case boundaries isolates internal reports and private notes",
+      "status": "passed"
+    },
+    {
+      "name": "server-owned case boundaries scopes public activity and evidence metadata to the parent case",
+      "status": "passed"
+    },
+    {
+      "name": "server-owned case boundaries freezes legacy writes and closes the legacy internal-note exposure",
+      "status": "passed"
+    },
+    {
+      "name": "server-owned case boundaries keeps server receipts, upload manifests, policy and inbox documents inaccessible directly",
+      "status": "passed"
+    },
+    {
+      "name": "server-owned case boundaries rejects unverified bootstrap-email Admin access to new case collections",
+      "status": "passed"
+    },
+    {
+      "name": "server-owned case boundaries denies all raw case Storage operations, including Admin reads",
+      "status": "passed"
+    }
+  ],
+  "failures": [
+    {
+      "name": "booking-lead-time.rules.test.ts:Admin/legacy regression boundaries still denies guest date changes on an existing booking",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "booking-lead-time.rules.test.ts:Admin/legacy regression boundaries does not block an existing Guest withdrawal or Admin update inside 30 days",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates adds the published pet fee to the stay total and the 50/50 split",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates adds the published late-checkout rate to the stay total",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates validates one A-House unit for up to three guests at a flat per-unit rate",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates an A-House schedule that drifts from the documented occupancy refuses a cap pulled below the included occupancy",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates an A-House schedule that drifts from the documented occupancy refuses a cap and excess rule that admit a fourth guest",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates an A-House schedule that drifts from the documented occupancy refuses an excess rule on the flat per-unit rate",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates an A-House schedule that drifts from the documented occupancy refuses a base occupancy stretched past three",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates an A-House schedule that drifts from the documented occupancy refuses a stay when only the other schedule has drifted",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates rejects manipulated totals, invalid counts and multi-stays",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates fails closed for retired flat/fixed-fee rates and missing holiday configuration",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates captures the exact published refund policy and rejects a guest-edited copy",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:official guest-count rates keeps an existing booking rate, classification, policy and money snapshot immutable",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:admin_security: the PIN the app checks sensitive actions against gives an Admin no write on another Admin's record",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:admin_security: the PIN the app checks sensitive actions against the create accepts the Admin's own first setup, counters born zero",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:admin_security: the PIN the app checks sensitive actions against update door 1 — the counters, forward only records a failure",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:admin_security: the PIN the app checks sensitive actions against update door 1 — the counters, forward only starts the ladder at five, with a lockout",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:admin_security: the PIN the app checks sensitive actions against update door 1 — the counters, forward only lets a lock be pushed later, and an expired one be cleared",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change accepts the self-serve patch the website sends when proof is uploaded",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a Guest who sets their own payment_status to verified",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a Guest who writes the Admin's verification fields",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a Guest who tries to bring the retired KYC fields back",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change bounds the refund a Guest may record when they withdraw a paid Booking",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change lets the Guest of a verified Booking still withdraw it",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a Guest who clears the Admin's rejection note without attaching a new proof",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a Guest who writes a field the lifecycle does not lend them",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a Guest who re-points their Booking at another identity",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a Guest a status that un-does an Admin decision",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a Guest whose Booking is not theirs, however small the patch",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what a Guest may change refuses a signed-out visitor any update",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what the Admin may change accepts the Admin patch that verifies a payment and reserves the stay",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what the Admin may change refuses a retired status, and accepts Approved only when the screenshot was verified",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what the Admin may change refuses Reserved while the money is still unverified, whoever asks",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what the Admin may change accepts Reserved from Payment Pending once the money is verified — with the marker",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what the Admin may change refuses a verification nobody signed: `verified` without the marker",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what the Admin may change refuses a verification signed in another Admin's name",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what the Admin may change refuses a Guest the Admin's verification patch",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:bookings: what the Admin may change refuses a status leaving a terminal one",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification lets a historical unclassified Booking choose a plan from its saved total without repricing it",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification recovers an absent legacy total only from the saved nightly rate and stay length",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification recovers a legacy camel-case totalAmount without consulting current rates",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification lets a Guest submit proof: reference, amount and the proof URL",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification refuses a Guest who marks the payment verified — from pending, from rejected, from unpaid",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification refuses a Guest who files a verification, in any of its spellings",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification refuses a Guest touching any verification field",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification lets the Admin verify or reject",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payments: proof and verification refuses the whole forged verification, status and amount together",
+      "kind": "unsupported evaluator method"
+    },
+    {
+      "name": "firestore-rules.test.ts:payment_references: the Admin catalogue refuses to rewrite or delete a reference that has been used",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:access_logs: the Smart Lock record records a lock touch by the person who made it",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    },
+    {
+      "name": "firestore-rules.test.ts:access_logs: the Smart Lock record still works now that live location is retired",
+      "kind": "assertion mismatch — not dismissed as an evaluator bug"
+    }
+  ]
+}

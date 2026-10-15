@@ -22,7 +22,7 @@ export const LINKS: { href: string; label: string; wide?: boolean }[] = [
   { href: '/faqs', label: 'FAQs', wide: true },
   { href: '/contact', label: 'Contact' },
 ]
-const DRAWER_LINKS = [...LINKS, { href: '/house-rules', label: 'House Rules' }, { href: '/legal', label: 'Terms' }]
+const DRAWER_LINKS = [...LINKS, { href: '/support', label: 'Support & Disputes' }, { href: '/house-rules', label: 'House Rules' }, { href: '/legal', label: 'Terms' }]
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false)

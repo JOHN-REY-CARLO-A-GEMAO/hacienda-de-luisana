@@ -1665,35 +1665,51 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Guest disputes / complaints
+    // Legacy disputes are frozen. Never return legacy internal_notes to Guests.
+    // An approved migration splits private content before access is restored via cases.
     match /disputes/{disputeId} {
-      function disputeWritable() {
-        return request.resource.data.keys()
-                 .hasOnly(['booking_id', 'guest_id', 'category', 'description', 'evidence_urls',
-                           'status', 'created_at', 'updated_at']);
-      }
-
-      allow create: if isSignedIn()
-        && request.resource.data.keys()
-             .hasAll(['booking_id', 'guest_id', 'category', 'description', 'status', 'created_at'])
-        && disputeWritable()
-        && request.resource.data.guest_id == request.auth.uid
-        && request.resource.data.status == 'open'
-        && request.resource.data.category is string
-        && request.resource.data.description is string
-        && request.resource.data.description.size() > 0
-        && request.resource.data.description.size() <= 2000;
-
-      allow read: if isAdmin()
-        || (isSignedIn() && resource.data.guest_id == request.auth.uid);
-
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['status', 'admin_response', 'internal_notes', 'updated_at', 'resolved_at', 'resolved_by'])
-        && request.resource.data.status in ['open', 'under_review', 'resolved', 'rejected'];
-
-      allow delete: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if false;
     }
+
+    function caseAccount() {
+      return isSignedIn()
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', 'anonymous') != 'anonymous';
+    }
+    function caseAdmin() {
+      return caseAccount() && (storedRole() == 'admin'
+        || (tokenEmail() in adminEmails() && request.auth.token.get('email_verified', false) == true));
+    }
+    function caseReadable(data) {
+      return caseAdmin() || (caseAccount() && data.visibility == 'guest' && data.guest_id == request.auth.uid);
+    }
+    match /cases/{caseId} {
+      allow read: if caseReadable(resource.data);
+      // All commands pass through the backend, including Admin actions.
+      allow write: if false;
+      match /activity/{eventId} {
+        allow read: if caseReadable(get(/databases/$(database)/documents/cases/$(caseId)).data);
+        allow write: if false;
+      }
+      match /evidence/{evidenceId} {
+        allow read: if caseReadable(get(/databases/$(database)/documents/cases/$(caseId)).data);
+        allow write: if false;
+      }
+    }
+    match /casePrivate/{caseId} {
+      allow read: if caseAdmin();
+      allow write: if false;
+      match /notes/{noteId} {
+        allow read: if caseAdmin();
+        allow write: if false;
+      }
+    }
+    // Inboxes, upload manifests, operation receipts, rate limits and policy are
+    // server-only. Callable APIs apply ownership and per-Admin read state.
+    match /caseNotifications/{id} { allow read, write: if false; }
+    match /caseUploads/{id} { allow read, write: if false; }
+    match /caseOperations/{id} { allow read, write: if false; }
+    match /casePolicy/{id} { allow read, write: if false; }
 
     // Guest & Admin notifications
     match /notifications/{notificationId} {

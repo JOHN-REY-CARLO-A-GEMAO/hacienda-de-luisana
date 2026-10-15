@@ -49,8 +49,8 @@ try {
     // SUPPLEMENTAL: real Postgres policy engine, not Supabase staging.
     requireFile(path.join(ROOT, '.cache/phase0/tools/node_modules/@electric-sql/pglite/package.json'), 'PGlite (prepare:phase0:supabase-rls)')
     exitCode = await execute(node, ['--test', '--test-reporter=tap', 'test/phase0/supabase/storage-rls.postgres.test.mjs'])
-  } else if (['web', 'rules', 'e2e', 'characterization', 'invariants'].includes(action)) {
-    const configs = { web: 'vitest.config.ts', rules: 'vitest.rules.config.ts', e2e: 'vitest.e2e.config.ts', characterization: 'vitest.phase0.config.ts', invariants: 'vitest.phase0.config.ts' }
+  } else if (['web', 'rules', 'rules-baseline', 'e2e', 'characterization', 'invariants'].includes(action)) {
+    const configs = { web: 'vitest.config.ts', rules: 'vitest.rules.config.ts', 'rules-baseline': 'vitest.rules-baseline.config.ts', e2e: 'vitest.e2e.config.ts', characterization: 'vitest.phase0.config.ts', invariants: 'vitest.phase0.config.ts' }
     exitCode = await vitest(configs[action])
   } else if (action === 'watch') {
     requireFile(binary('vitest/vitest.mjs'), 'locked npm dependencies')
