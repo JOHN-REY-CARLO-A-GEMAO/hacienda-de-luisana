@@ -76,6 +76,13 @@ service firebase.storage {
       allow write: if isAdminEmail() && request.resource == null;
     }
 
+    // Private case bytes have no Firebase download tokens. Only trusted
+    // callable handlers stream validated evidence after current authorization.
+    // Neither Guests nor Admin clients can list/read/write raw objects.
+    match /caseEvidence/{allPaths=**} {
+      allow read, write: if false;
+    }
+
     // Deny everything else by default
     match /{allPaths=**} {
       allow read, write: if false;

@@ -1,3 +1,4 @@
+import { SupportPage } from './pages/SupportPage'
 import { useEffect } from 'react'
 import { Link, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { homeForRole } from './lib/auth'
@@ -115,6 +116,7 @@ export default function App() {
           <Route path="/faqs" element={<FaqPage />} />
           <Route path="/house-rules" element={<HouseRulesPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/support" element={<SupportPage />} />
 
           <Route path="/book" element={<BookingPage />} />
           <Route path="/book/pay" element={<DownpaymentPage />} />

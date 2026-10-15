@@ -34,6 +34,7 @@ export function ContactPage() {
     >
       <section className="py-16 lg:py-20">
         <div className="mx-auto max-w-6xl px-5 lg:px-8">
+          <Link to="/support" className="btn-secondary mb-6">Report or track an issue</Link>
           <ContactDetails />
         </div>
       </section>

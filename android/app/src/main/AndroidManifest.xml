@@ -10,7 +10,9 @@
 
       There is deliberately nothing else here. An earlier build declared
       BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_CONNECT and READ_EXTERNAL_STORAGE,
-      but the app ships no Bluetooth, NFC, camera or file-picker code: the
+      but the app ships no Bluetooth, NFC or camera code. Case evidence uses
+      the Android Storage Access Framework with explicit per-file selection
+      and no broad storage permission: the
       RFID simulator on the Smart lock screen writes two Firestore documents
       and touches no radio. Declaring a permission the app never uses is a
       question an installer or a reviewer is entitled to ask, and there was no

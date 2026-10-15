@@ -165,3 +165,12 @@ Android: see [ANDROID.md](./ANDROID.md). Without a configured Firebase app the s
 - [APP_PLAN.md](./APP_PLAN.md) — the plan that led here (Tagalog), updated to the two-app architecture
 - [FIREBASE_SETUP.md](./FIREBASE_SETUP.md) — Firebase project, rules, rates document
 - [ANDROID.md](./ANDROID.md) — building the Admin app
+
+## Issue & Dispute Management
+
+Guest entry points: `/support` and each Booking's Issue & Dispute Center. Admin
+entry: the existing Disputes tab in the mobile app. See
+[implementation, contracts and verification gates](disputes/IMPLEMENTATION.md) and
+[ADR-0017](adr/0017-disputes-are-server-owned-cases-with-independent-appeals.md).
+[Latest local verification and unresolved release gates](disputes/VERIFICATION.md).
+Source implementation does not authorize deployment or legacy migration.
