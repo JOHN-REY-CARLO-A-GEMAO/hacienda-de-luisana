@@ -302,12 +302,23 @@ describe('the public website', () => {
     expect(book.text()).toContain('Plan Your Stay')
   })
 
-  it('offers Sign in while signed out, and the Guest’s own page once signed in', async () => {
+  // `/login` is the address this page used to have. It stays working by
+  // redirecting to `/guest/auth`, the canonical one, rather than dead-ending
+  // anyone holding an old link.
+  it('sends the old /login address to the Guest page', async () => {
     const page = openAt('/login')
-    expect(page.text()).toContain('Sign in')
+    await page.wait('Sign in as Guest')
+  }, TIMEOUT_MS)
+
+  it('offers Sign in on /guest/auth while signed out, and books the Guest straight in', async () => {
+    const page = openAt('/guest/auth')
+    await page.wait('Sign in as Guest')
 
     await signUp(page, 'maria@example.com')
-    await page.wait('Welcome back, Guest')
+    // This page has nothing left to say once a Guest is signed in: it sends
+    // them to the booking form, which is what they came here to start.
+    await page.wait('Plan Your Stay')
+    expect(page.text()).not.toContain('Sign in as Guest')
 
     // The Nav points a Guest at their own page, and at nothing else.
     expect(page.html()).toContain('href="/account"')

@@ -7,7 +7,13 @@ const mocks = vi.hoisted(() => ({ rows: [] as any[], command: vi.fn(), readError
 vi.mock('../../src/lib/firebase', () => ({ auth: { get currentUser() { return { uid: 'guest-one', isAnonymous: mocks.anonymous } } }, app: null, db: null, isUsingEmulators: false }))
 vi.mock('../../src/lib/disputes', async importOriginal => ({
   ...await importOriginal<typeof import('../../src/lib/disputes')>(),
-  subscribeCases: (_uid: string, _booking: string, next: (rows: any[]) => void, error: (e: Error) => void) => { mocks.readError ? error(new Error(mocks.readError)) : next(mocks.rows); return () => {} },
+  subscribeCases: (_uid: string, _booking: string, next: (rows: any[]) => void, error: (e: Error) => void) => {
+    // Firestore detaches a listener for good once it reports a failure: no later
+    // callback ever arrives on this subscription. The only way back is to
+    // subscribe again, so the mock fails or answers — it never does both.
+    if (mocks.readError) error(new Error(mocks.readError)); else next(mocks.rows)
+    return () => {}
+  },
   caseCommand: mocks.command,
   activityPage: async () => ({ items: [], hasMore: false }),
   subscribeEvidence: (_id: string, next: (files: any[]) => void) => { next([]); return () => {} },
@@ -41,6 +47,37 @@ describe('Guest dispute center', () => {
   })
   it('does not mistake a permission/network failure for an empty history', async () => {
     mocks.readError = 'Permission denied'; await render(); expect(container.querySelector('[role="alert"]')?.textContent).toContain('Permission denied'); expect(container.textContent).not.toContain('No reports yet')
+  })
+  it('does not offer a report form while the case store cannot be read', async () => {
+    // The production case today: the backend is not deployed, so the list query
+    // fails. Offering the form would promise a case reference that never arrives.
+    mocks.readError = 'The query requires an index.'
+    await render()
+    expect([...container.querySelectorAll('button')].some(b => b.textContent?.trim() === 'Report an Issue')).toBe(false)
+    expect(container.textContent).toContain('Reporting and case tracking are not available')
+    expect(container.textContent).toContain('contact page')
+  })
+  it('reopens the report form when a new subscription finds the store answering', async () => {
+    // The listener is gone once it errors, so the way back is subscribing again.
+    mocks.readError = 'The query requires an index.'
+    await render()
+    expect(container.textContent).toContain('Reporting and case tracking are not available')
+
+    mocks.readError = ''
+    await click('Try again')
+
+    expect(container.textContent).not.toContain('Reporting and case tracking are not available')
+    expect([...container.querySelectorAll('button')].some(b => b.textContent?.trim() === 'Report an Issue')).toBe(true)
+  })
+  it('keeps the typed report when a submission is not confirmed', async () => {
+    mocks.command.mockRejectedValue(new Error('Backend unavailable'))
+    await render(); await click('Report an Issue'); await write('This concern has enough detail to review.'); await submitForm(); await submitForm()
+    expect(container.textContent).toContain('Submission is not confirmed')
+    // The Guest is told to retry the same information, so the centre must stay
+    // open and the words they wrote must still be on the page.
+    expect(container.textContent).toContain('This concern has enough detail to review.')
+    expect(container.textContent).not.toContain('Reporting and case tracking are not available')
+    expect(container.textContent).toContain('Look for older reports')
   })
   it('suggests a duplicate without blocking a genuinely new incident', async () => {
     mocks.rows = [{ id: 'case-one', ...newCase({ action: 'create', operationId: 'operation', category: 'other', description: 'An earlier report of a concern.', bookingId: 'booking-one' }, { uid: 'guest-one', admin: false, privacy: false }, Date.now(), 'HDL-2026-000001', DEFAULT_POLICY) }]

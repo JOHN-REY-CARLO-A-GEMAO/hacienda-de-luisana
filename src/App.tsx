@@ -1,8 +1,6 @@
 import { SupportPage } from './pages/SupportPage'
 import { useEffect } from 'react'
-import { Link, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { homeForRole } from './lib/auth'
-import { useAuth } from './hooks/useAuth'
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Nav } from './components/Nav'
 import { Footer } from './components/Footer'
 import { MobileStickyCTA } from './components/MobileStickyCTA'
@@ -27,7 +25,6 @@ import { StatusPage } from './pages/StatusPage'
 import { Tutorial } from './components/Tutorial'
 import { GuestAuthPage } from './pages/AuthPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
-import { LoginForm } from './components/Auth/LoginForm'
 import { useReveal } from './lib/reveal'
 
 /**
@@ -129,7 +126,7 @@ export default function App() {
               not. Public and read-only: a Firebase web config is public by
               design, and the key is masked. */}
           <Route path="/status" element={<StatusPage />} />
-          <Route path="/login" element={<SignInPage />} />
+          <Route path="/login" element={<LoginRedirect />} />
           {/* The Guest's sign-in page. Email and Google arrive through the
               same session either way. */}
           <Route path="/guest/auth" element={<GuestAuthPage />} />
@@ -163,35 +160,10 @@ export default function App() {
   )
 }
 
-/** Where the sign-in form lives when nobody has a page to be turned away from. */
-function SignInPage() {
-  const { user, role } = useAuth()
-  return (
-    <div className="pt-32 pb-24 min-h-screen bg-cream-50 flex flex-col items-center">
-      <div className="w-full max-w-md px-5">
-        {user ? (
-          <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-8 text-center">
-            <div className="eyebrow">Signed in</div>
-            <h1 className="font-serif text-3xl mt-2 text-forest-900">
-              {role === 'admin' ? 'Admin account' : 'Welcome back, Guest'}
-            </h1>
-            <p className="mt-2 text-sm text-forest-700/70">{user.email ?? user.displayName}</p>
-            {role === 'admin' && (
-              <p className="mt-3 text-xs text-forest-700/70 leading-relaxed">
-                Management lives in the Hacienda de LuisAna Admin mobile app. This website only shows a Guest's
-                own bookings.
-              </p>
-            )}
-            <Link to={homeForRole(role)} className="btn-primary mt-6 inline-flex text-xs">
-              {role === 'admin' ? 'Back to the Hacienda' : 'Go to my bookings'}
-            </Link>
-          </div>
-        ) : (
-          <LoginForm />
-        )}
-      </div>
-    </div>
-  )
+/** `/login` is the address this page used to have. It stays working: anyone
+    still holding an old link is sent to `/guest/auth`, the canonical page. */
+function LoginRedirect() {
+  return <Navigate to="/guest/auth" replace />
 }
 
 /** The address of the retired web dashboards: a signpost to the Admin app. */
