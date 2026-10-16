@@ -161,7 +161,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: selectedReason,
+                initialValue: selectedReason,
                 isExpanded: true,
                 items: options
                     .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
@@ -356,10 +356,8 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         }
         return;
       case AdminAction.rejectPaymentProof:
-        final reason = await _askText('Reject payment proof',
-            'Why is the proof rejected? The Guest reads this.',
-            confirm: 'Next');
-        if (reason == null) return;
+        final reason = await _askRejectionReason(title: 'Reject Payment Proof');
+        if (reason == null || reason.isEmpty) return;
         if (!mounted) return;
         final resubmits = await showDialog<bool>(
           context: context,
@@ -426,16 +424,18 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         }
         return;
       case AdminAction.checkIn:
+        final checkInTime = DateFormatter.formatFull(DateTime.now());
         if (await showSecureConfirm(context,
             title: 'Check in ${booking.guestName}?',
-            body: 'The Booking becomes Checked-In for the stay recorded on it.')) {
+            body: 'Check-In Timestamp: $checkInTime\nScheduled Check-In: ${DateFormatter.toIsoDate(booking.checkInDate)}\n\nThe Booking becomes Checked-In for the stay recorded on it.')) {
           await _run(booking, action);
         }
         return;
       case AdminAction.beginStay:
+        final beginTime = DateFormatter.formatFull(DateTime.now());
         if (await showSecureConfirm(context,
             title: 'Begin the stay?',
-            body: 'The Booking becomes Staying — the Guest is on the property.')) {
+            body: 'Start Stay Timestamp: $beginTime\nScheduled Check-In: ${DateFormatter.toIsoDate(booking.checkInDate)}\n\nThe Booking becomes Staying — the Guest is on the property.')) {
           await _run(booking, action);
         }
         return;

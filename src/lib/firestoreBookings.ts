@@ -28,6 +28,7 @@ import { describeFirestoreFailure, failureLine } from './firebaseFailure'
 import { ACCOMMODATIONS } from '../config/site'
 import { bookingPolicyDB } from './bookingPolicyDB'
 import { ratesDB } from './ratesDB'
+import { createNotification, type NotificationType } from './notifications'
 import { dateToISOString } from './formatDate'
 import {
   applyAction,
@@ -855,6 +856,49 @@ export const cloudBookingsDB = {
     // one entry per state change, from the thing that made it.
     await writePatch(id, result.patch)
     await activityLogDB.append(result.entries)
+
+    if (result.ok && booking.uid) {
+      try {
+        let title = ''
+        let message = ''
+        let notifType: NotificationType = 'general'
+
+        if (action.type === 'Approve') {
+          title = 'Booking Approved! 🎉'
+          message = `Your booking for ${booking.check_in} → ${booking.check_out} has been approved.`
+          notifType = 'booking_approved'
+        } else if (action.type === 'Reject') {
+          title = 'Booking Request Declined'
+          message = `Your booking request was declined. ${action.reason ? 'Reason: ' + action.reason : ''}`
+          notifType = 'booking_rejected'
+        } else if (action.type === 'VerifyPayment') {
+          title = 'Payment Verified ✅'
+          message = `Your payment proof has been verified by the Hacienda.`
+          notifType = 'payment_verified'
+        } else if (action.type === 'RejectPaymentProof') {
+          title = 'Payment Proof Declined'
+          message = `Your payment proof was not accepted. ${action.reason ? 'Reason: ' + action.reason : ''}`
+          notifType = 'payment_rejected'
+        } else if (action.type === 'Cancel') {
+          title = 'Booking Cancelled'
+          message = `Your booking for ${booking.check_in} → ${booking.check_out} was cancelled.`
+          notifType = 'cancellation_result'
+        }
+
+        if (title) {
+          void createNotification({
+            userId: booking.uid,
+            bookingId: booking.id,
+            title,
+            message,
+            type: notifType,
+          })
+        }
+      } catch (err) {
+        console.warn('[Notifications] Notification creation failed:', err)
+      }
+    }
+
     return result
   },
 

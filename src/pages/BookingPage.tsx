@@ -92,10 +92,14 @@ export function BookingPage() {
   useEffect(() => {
     if (prefilled.current || (!user && !profile)) return
     prefilled.current = true
-    const profileName = profile?.display_name || (profile?.first_name ? `${profile.first_name} ${profile.last_name || ''}`.trim() : '')
+    const fullProfileName =
+      profile?.display_name ||
+      (profile?.first_name
+        ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' ')
+        : '')
     setForm((current) => ({
       ...current,
-      name: current.name || profileName || user?.displayName || '',
+      name: current.name || fullProfileName || user?.displayName || '',
       email: current.email || profile?.email || user?.email || '',
       phone: current.phone || profile?.phone || '',
     }))
@@ -125,6 +129,12 @@ export function BookingPage() {
       id: a.id,
       label: published?.accommodations[a.id]?.property_name?.trim() || a.name,
     })), [published])
+
+  useEffect(() => {
+    if (options.length > 0 && !options.some((o) => o.id === form.accommodation)) {
+      setForm((f) => ({ ...f, accommodation: options[0].id }))
+    }
+  }, [options, form.accommodation])
   const authoritativeQuote = useMemo(() => {
     if (!published) return undefined
     return quoteAccommodation(published, form.accommodation, {
