@@ -216,19 +216,30 @@ export function RegisterForm({
           <span className="text-xs font-semibold uppercase tracking-eyebrow text-forest-600">Contact Information</span>
         </div>
 
-        <label className="block">
+        <label className="block relative">
           <span className="label">Email</span>
-          <input
-            className="field"
-            type="email"
-            placeholder="you@email.com"
-            value={email}
-            onChange={(e) => onEmailChange(e.target.value)}
-            required
-            maxLength={254}
-            autoComplete="email"
-            spellCheck={false}
-          />
+          <div className="relative">
+            <input
+              className="field pr-16"
+              type="email"
+              placeholder="you@email.com"
+              value={email}
+              onChange={(e) => onEmailChange(e.target.value)}
+              required
+              maxLength={254}
+              autoComplete="email"
+              spellCheck={false}
+            />
+            {email && (
+              <button
+                type="button"
+                onClick={() => onEmailChange('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-forest-600 hover:text-forest-900 px-2 py-1 rounded bg-forest-900/5 hover:bg-forest-900/10 transition"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </label>
 
         <label className="block">
@@ -254,19 +265,30 @@ export function RegisterForm({
           <span className="text-xs font-semibold uppercase tracking-eyebrow text-forest-600">Account Security</span>
         </div>
 
-        <label className="block">
+        <label className="block relative">
           <span className="label">Password</span>
-          <input
-            className="field"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={MIN_PASSWORD_LENGTH}
-            maxLength={200}
-            autoComplete="new-password"
-          />
+          <div className="relative">
+            <input
+              className="field pr-16"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={MIN_PASSWORD_LENGTH}
+              maxLength={200}
+              autoComplete="new-password"
+            />
+            {password && (
+              <button
+                type="button"
+                onClick={() => setPassword('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-forest-600 hover:text-forest-900 px-2 py-1 rounded bg-forest-900/5 hover:bg-forest-900/10 transition"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           <div className="mt-2 flex items-center gap-2">
             <span className={`text-xs px-2 py-1 rounded-full ${password.length >= MIN_PASSWORD_LENGTH ? 'bg-emerald-50 text-emerald-700' : 'bg-forest-100 text-forest-600'}`}>
               {password.length >= MIN_PASSWORD_LENGTH ? '✓' : '○'} {MIN_PASSWORD_LENGTH}+ characters

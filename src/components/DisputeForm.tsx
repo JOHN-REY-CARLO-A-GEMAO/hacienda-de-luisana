@@ -55,6 +55,7 @@ export function DisputeForm({ bookingId, guestId }: { bookingId?: string; guestI
     <p className="text-sm my-3">For urgent safety or access concerns, use <Link className="underline" to="/contact">official contact channels</Link>. This is not an emergency or 24/7 response service.</p>
     {auth?.currentUser?.isAnonymous && <p role="alert">Link this booking identity to a recoverable account at <Link className="underline" to="/support">Support</Link> before reporting. A booking reference alone cannot recover ownership.</p>}
     {writeError && <p role="alert" className="my-3 text-red-800">{writeError}</p>}
+    {readError && <p role="alert" className="my-3 text-sm text-red-800">{readError}</p>}
     {unavailable && <p className="my-3 text-sm">Reporting and case tracking are not available at the moment, so a report submitted here could not reach the Hacienda. Please raise this through the <Link className="underline" to="/contact">contact page</Link> instead.</p>}
     {notice && <p role="status" className="my-3 text-sm">{notice}</p>}
     {show && !unavailable && <form className="space-y-3 border-y py-4" onSubmit={e => { e.preventDefault(); review ? void submit() : setReview(true) }}>

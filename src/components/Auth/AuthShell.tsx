@@ -44,6 +44,12 @@ export function AuthShell({
 
   return (
     <div className="w-full max-w-lg">
+      <div className="mb-6">
+        <div className="eyebrow text-forest-600">{intro.eyebrow}</div>
+        <h2 className="font-serif text-2xl lg:text-3xl mt-2 text-forest-900">{intro.title}</h2>
+        <p className="mt-2 text-xs lg:text-sm text-forest-700/85 leading-relaxed">{intro.body}</p>
+      </div>
+
       {error && (
         <div className="mb-5 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm px-4 py-3" role="alert">
           {error}

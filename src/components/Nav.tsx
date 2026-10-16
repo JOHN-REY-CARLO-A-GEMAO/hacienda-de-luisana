@@ -74,14 +74,14 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
+        <div className="hidden lg:flex items-center gap-1.5 xl:gap-2 flex-shrink-0">
           {/* Theme toggle */}
           <button
             type="button"
             onClick={toggleTheme}
             aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
             title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-            className={`p-2 rounded-full transition flex items-center justify-center ${
+            className={`p-2 rounded-full transition flex items-center justify-center shrink-0 ${
               transparent
                 ? 'text-cream-100 hover:text-white hover:bg-white/10'
                 : 'text-forest-700 dark:text-cream-100 hover:text-forest-900 dark:hover:text-white hover:bg-forest-900/5 dark:hover:bg-cream-100/10'
@@ -95,7 +95,7 @@ export function Nav() {
             <>
               <Link
                 to={homeForRole(role)}
-                className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition max-w-[140px] truncate ${
+                className={`text-xs px-2.5 py-1.5 rounded-full border whitespace-nowrap transition max-w-[120px] xl:max-w-[140px] truncate shrink-0 ${
                   transparent
                     ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
                     : 'border-forest-900/10 dark:border-cream-100/15 text-forest-700 dark:text-cream-200 hover:bg-forest-50 dark:hover:bg-forest-800'
@@ -106,7 +106,7 @@ export function Nav() {
               </Link>
               <button
                 onClick={() => void logout()}
-                className={`text-xs whitespace-nowrap ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 dark:text-cream-200/70 hover:text-forest-900 dark:hover:text-white'}`}
+                className={`text-xs whitespace-nowrap shrink-0 ${transparent ? 'text-cream-200 hover:text-white' : 'text-forest-600 dark:text-cream-200/70 hover:text-forest-900 dark:hover:text-white'}`}
               >
                 Sign out
               </button>
@@ -114,7 +114,7 @@ export function Nav() {
           ) : (
             <Link
               to="/guest/auth"
-              className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition ${
+              className={`text-xs px-2.5 py-1.5 rounded-full border whitespace-nowrap transition shrink-0 ${
                 transparent
                   ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
                   : 'border-forest-900/10 dark:border-cream-100/15 text-forest-700 dark:text-cream-200 hover:bg-forest-50 dark:hover:bg-forest-800'
@@ -129,8 +129,8 @@ export function Nav() {
             data-tour="nav-book"
             className={
               transparent
-                ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs px-3.5 py-2 shadow-glow whitespace-nowrap'
-                : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white text-xs px-3.5 py-2 shadow-soft whitespace-nowrap'
+                ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs px-3 py-2 shadow-glow whitespace-nowrap shrink-0'
+                : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white text-xs px-3 py-2 shadow-soft whitespace-nowrap shrink-0'
             }
           >
             Book Your Stay

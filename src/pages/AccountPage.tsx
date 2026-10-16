@@ -865,7 +865,7 @@ export function AccountPage() {
             confirmingWithdraw
               ? `Request ${reference(confirmingWithdraw)} for ${accommodationName(
                   confirmingWithdraw.accommodation,
-                )} (${confirmingWithdraw.check_in} → ${confirmingWithdraw.check_out}) will be cancelled and those dates released for other Guests. The Admin cannot undo this from their own app.`
+                )} (${confirmingWithdraw.check_in} → ${confirmingWithdraw.check_out}) will be cancelled and those dates released for other Guests. The Admin cannot undo this from their own app.\n\nCancellation & Refund Terms:\n• Pending / Payment Pending: Request is withdrawn immediately; no money is charged.\n• Approved / Reserved: Cancellations are settled per refund terms (100% refund if >14 days before check-in, 50% if 7–13 days, 0% within 7 days). Any paid security deposit is fully returned.`
               : ''
           }
           confirmLabel="Withdraw request"

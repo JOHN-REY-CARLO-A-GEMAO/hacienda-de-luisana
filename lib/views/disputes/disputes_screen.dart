@@ -132,9 +132,31 @@ class _CaseDetailState extends State<_CaseDetail> {
         DropdownButtonFormField<String>(initialValue: action, isExpanded: true, items: actions.map((a) => DropdownMenuItem(value: a, child: Text(DisputeModel.label(a)))).toList(), onChanged: (v) => update(() => action = v!)),
         if (action == 'assign') DropdownButtonFormField<String>(initialValue: directory.any((a) => a['uid'] == target) ? target : null, isExpanded: true, decoration: const InputDecoration(labelText: 'Admin (backend verifies independence)'), items: directory.map((a) => DropdownMenuItem(value: a['uid'] as String, child: Text(a['name'] as String))).toList(), onChanged: (v) => target = v!),
         if (action == 'priority') DropdownButtonFormField<String>(initialValue: priority, items: ['urgent', 'high', 'normal', 'low'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(), onChanged: (v) => priority = v!),
-        if (['duplicate', 'link', 'evidence_decision'].contains(action)) TextField(decoration: InputDecoration(labelText: action == 'evidence_decision' ? 'Evidence ID (from evidence list)' : 'Related/primary case document ID'), onChanged: (v) => evidenceId = v.trim()),
-        if (['hold', 'evidence_decision'].contains(action)) CheckboxListTile(title: Text(action == 'hold' ? 'Place retention hold (otherwise release)' : 'Keep restricted (otherwise release restriction)'), value: restrict, onChanged: (v) => update(() => restrict = v!)),
-        if (['propose', 'resolve', 'complete_remedy', 'final_decision', 'evidence_decision'].contains(action)) CheckboxListTile(title: Text(action == 'evidence_decision' ? 'Approve permanent sensitive-file deletion (hold must be absent)' : 'Remedy completed OR reasoned determination with no outstanding remedy'), value: completed, onChanged: (v) => update(() => completed = v!)),
+        if (['duplicate', 'link', 'evidence_decision'].contains(action))
+          TextField(
+            decoration: InputDecoration(
+              labelText: action == 'evidence_decision'
+                  ? 'Evidence ID (from evidence list)'
+                  : 'Related/primary case document ID',
+            ),
+            onChanged: (v) => evidenceId = v.trim(),
+          ),
+        if (['hold', 'evidence_decision'].contains(action))
+          CheckboxListTile(
+            title: Text(action == 'hold'
+                ? 'Place retention hold (otherwise release)'
+                : 'Keep restricted (otherwise release restriction)'),
+            value: restrict,
+            onChanged: (v) => update(() => restrict = v ?? false),
+          ),
+        if (['propose', 'resolve', 'complete_remedy', 'final_decision', 'evidence_decision'].contains(action))
+          CheckboxListTile(
+            title: Text(action == 'evidence_decision'
+                ? 'Approve permanent sensitive-file deletion (hold must be absent)'
+                : 'Remedy completed OR reasoned determination with no outstanding remedy'),
+            value: completed,
+            onChanged: (v) => update(() => completed = v ?? false),
+          ),
         if (['await_staff', 'propose', 'hold', 'enforce_remedy', 'extend_deadline'].contains(action)) TextButton(onPressed: () async {
           final picked = await showDatePicker(context: ctx, initialDate: due, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
           if (picked != null) update(() => due = DateTime(picked.year, picked.month, picked.day, 17));
