@@ -2,6 +2,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LoginForm, type AuthIntro } from '../components/Auth/LoginForm'
 import { TurnedAway } from '../components/Auth/ProtectedRoute'
+import { Logo } from '../components/Logo'
 
 /**
  * The Guest's sign-in page, `/guest/auth`.
@@ -18,14 +19,36 @@ import { TurnedAway } from '../components/Auth/ProtectedRoute'
  */
 function AuthShell({ intro, children }: { intro: AuthIntro; children: React.ReactNode }) {
   return (
-    <div className="pt-32 pb-24 min-h-screen bg-cream-50 flex flex-col items-center">
-      <div className="w-full max-w-md px-5">
-        <div className="text-center mb-6">
-          <div className="eyebrow">{intro.eyebrow}</div>
-          <h1 className="font-serif text-3xl mt-2 text-forest-900">{intro.title}</h1>
-          <p className="mt-2 text-sm text-forest-700/70">{intro.body}</p>
+    <div className="min-h-screen flex flex-col lg:flex-row bg-cream-50">
+      {/* Left: Property photograph (desktop 60%, mobile header) */}
+      <div className="lg:w-[60%] lg:h-screen lg:sticky lg:top-0 relative">
+        <div className="h-[30vh] lg:h-full">
+          <img
+            src="/images/gmaps/img-01.jpg"
+            alt="Hacienda de LuisAna main house at golden hour"
+            className="w-full h-full object-cover"
+          />
+          {/* Dark overlay for text legibility on mobile */}
+          <div className="lg:hidden absolute inset-0 bg-gradient-to-b from-forest-950/40 via-transparent to-forest-950/60" />
         </div>
-        {children}
+      </div>
+
+      {/* Right: White panel with form (desktop 40%, mobile below photo) */}
+      <div className="lg:w-[40%] flex flex-col bg-white min-h-[70vh] lg:min-h-screen">
+        {/* Logo positioned at top */}
+        <div className="px-6 lg:px-10 pt-8 lg:pt-12">
+          <Logo tone="dark" />
+        </div>
+
+        {/* Form content */}
+        <div className="flex-1 px-6 lg:px-10 py-6 lg:py-8 flex flex-col justify-center">
+          <div className="mb-8">
+            <div className="eyebrow text-sage-500">{intro.eyebrow}</div>
+            <h1 className="font-serif text-3xl lg:text-4xl mt-3 text-forest-900">{intro.title}</h1>
+            <p className="mt-3 text-sm lg:text-base text-forest-700/85 leading-relaxed">{intro.body}</p>
+          </div>
+          {children}
+        </div>
       </div>
     </div>
   )

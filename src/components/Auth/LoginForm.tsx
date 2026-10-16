@@ -1,24 +1,10 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { MIN_PASSWORD_LENGTH, describeAuthError, homeForRole } from '../../lib/auth'
-import { useAuth } from '../../hooks/useAuth'
-import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
-import { validateBirthdate, validateEmail, validateName, validatePhMobile } from '../../lib/validation'
-import { LEGAL_VERSION } from '../../lib/legal'
+import { AuthShell, type AuthIntro, type RegisterIntro } from './AuthShell'
+import { LoginFormOnly } from './LoginFormOnly'
+import { RegisterForm } from './RegisterForm'
+import { ResetPasswordForm } from './ResetPasswordForm'
 
 type Mode = 'login' | 'register' | 'reset'
-
-/**
- * Scoped copy for the page that hosts the form: Google and email both arrive
- * through the same session — only the heading a person reads changes.
- */
-export type AuthIntro = { eyebrow: string; title: string; body: string }
-
-/**
- * Scoped copy for the register mode. It says Guest because that is all a
- * sign-up can make (ADR-0005, ADR-0007).
- */
-export type RegisterIntro = AuthIntro & { submitLabel: string; successMessage: string }
 
 const DEFAULT_REGISTER_INTRO: RegisterIntro = {
   eyebrow: 'Create account',
@@ -29,15 +15,18 @@ const DEFAULT_REGISTER_INTRO: RegisterIntro = {
 }
 
 /**
- * The Guest's sign-in form.
+ * The Guest's sign-in form container.
+ *
+ * This component now serves as a thin wrapper that:
+ * - Manages mode switching (login/register/reset)
+ * - Manages shared state (email) across mode switches
+ * - Delegates to focused form components
+ * - Preserves the existing API for backward compatibility
  *
  * Signing up makes a Guest — there is no role to pick, because a role picked in a
  * browser is a role anybody could pick. The Admin is the address the Firestore
  * rules already allowlist, and signs into the mobile app, not here (ADR-0005,
  * ADR-0007).
- *
- * Every failure arrives as an AuthError with a message for a person, so this form
- * has no list of provider codes of its own to keep in step.
  */
 export function LoginForm({
   onSuccess,
@@ -48,73 +37,12 @@ export function LoginForm({
   intro?: AuthIntro
   registerIntro?: RegisterIntro
 }) {
-  const { login, register, loginWithGoogle, resetPassword, isConfigured, role } = useAuth()
   const [mode, setMode] = useState<Mode>('login')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [firstName, setFirstName] = useState('')
-  const [middleName, setMiddleName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [birthdate, setBirthdate] = useState('')
-  const [acceptTerms, setAcceptTerms] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  /**
-   * Registering an address that already has an account is not a failure to
-   * fix — it is a login wearing the wrong mode. Offer the one-click switch
-   * instead of leaving the person to find the link below.
-   */
   const [suggestLogin, setSuggestLogin] = useState(false)
-  /**
-   * One message per field, so a form with three problems says all three rather
-   * than making the person submit, read one, fix it, and submit again.
-   */
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-
-  /**
-   * What the register form checks before anything is sent to a provider.
-   *
-   * The same rules `validateRegistration` applies, so the person is told here
-   * and a caller that skipped this form is refused there: a one-character name,
-   * an impossible or too-young date of birth, and an unaccepted version of the
-   * Terms.
-   */
-  function validateRegisterFields(): Record<string, string> {
-    const problems: Record<string, string> = {}
-
-    if (displayName.trim()) {
-      const nameRes = validateName(displayName)
-      if (!nameRes.ok) problems.displayName = nameRes.message
-    }
-    if (firstName.trim()) {
-      const fnRes = validateName(firstName)
-      if (!fnRes.ok) problems.firstName = fnRes.message
-    }
-    if (lastName.trim()) {
-      const lnRes = validateName(lastName)
-      if (!lnRes.ok) problems.lastName = lnRes.message
-    }
-    if (middleName.trim()) {
-      const mnRes = validateName(middleName)
-      if (!mnRes.ok) problems.middleName = mnRes.message
-    }
-    if (phone.trim()) {
-      const phRes = validatePhMobile(phone)
-      if (!phRes.ok) problems.phone = phRes.message
-    }
-
-    const birth = validateBirthdate(birthdate)
-    if (!birth.ok) problems.birthdate = birth.message
-
-    if (!acceptTerms) {
-      problems.acceptTerms = 'Please accept the Terms and Conditions to create an account.'
-    }
-
-    return problems
-  }
+  // Preserve email across mode switches for the one-click login switch feature
+  const [email, setEmail] = useState('')
 
   const copy = {
     login: intro ?? {
@@ -136,345 +64,55 @@ export function LoginForm({
     setError(null)
     setInfo(null)
     setSuggestLogin(false)
-    setFieldErrors({})
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setInfo(null)
-    setSuggestLogin(false)
-    setLoading(true)
-
-    try {
-      if (mode === 'login') {
-        await login(email, password)
-        onSuccess?.()
-      } else if (mode === 'register') {
-        const problems = validateRegisterFields()
-        setFieldErrors(problems)
-        if (Object.keys(problems).length > 0) {
-          setLoading(false)
-          return
-        }
-        const constructedDisplayName = `${firstName.trim()} ${lastName.trim()}`.trim() || displayName
-        await register(email, password, {
-          firstName: firstName.trim(),
-          middleName: middleName.trim() || undefined,
-          lastName: lastName.trim(),
-          phone: phone.trim(),
-          displayName: constructedDisplayName || undefined,
-          birthdate: birthdate ? birthdate : undefined,
-          acceptedTerms: acceptTerms,
-        })
-        setInfo(registerIntro.successMessage)
-        onSuccess?.()
-      } else {
-        await resetPassword(email)
-        setInfo('Password reset email sent! Check your inbox.')
-      }
-    } catch (err) {
-      const described = describeAuthError(err)
-      setError(described.message)
-      setSuggestLogin(mode === 'register' && described.code === 'auth/email-already-in-use')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleGoogle = async () => {
-    setError(null)
-    setInfo(null)
-    setSuggestLogin(false)
-    setLoading(true)
-    try {
-      await loginWithGoogle()
-      onSuccess?.()
-    } catch (err) {
-      setError(describeAuthError(err).message)
-    } finally {
-      setLoading(false)
-    }
   }
 
   return (
-    <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 lg:p-10 w-full max-w-md mx-auto">
-      <div className="text-center mb-8">
-        <div className="eyebrow">{copy.eyebrow}</div>
-        <h2 className="font-serif text-3xl mt-2 text-forest-900">{copy.title}</h2>
-        <p className="mt-2 text-sm text-forest-700/70">{copy.body}</p>
-      </div>
-
-      {error && (
-        <div className="mb-5 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm px-4 py-3" role="alert">
-          {error}
-          {suggestLogin && (
-            <button
-              type="button"
-              onClick={() => switchMode('login')}
-              className="mt-2 block font-semibold underline underline-offset-4 hover:text-red-900"
-            >
-              Sign in instead — your email stays filled in
-            </button>
-          )}
-        </div>
+    <AuthShell
+      mode={mode}
+      intro={copy}
+      error={error}
+      info={info}
+      suggestLogin={suggestLogin}
+      onSwitchMode={switchMode}
+      onSwitchToLogin={() => switchMode('login')}
+    >
+      {mode === 'login' && (
+        <LoginFormOnly
+          intro={copy}
+          email={email}
+          onEmailChange={setEmail}
+          onSuccess={onSuccess}
+          onError={setError}
+          onInfo={setInfo}
+          onSwitchToReset={() => switchMode('reset')}
+          onSwitchToRegister={() => switchMode('register')}
+        />
       )}
-      {info && (
-        <div className="mb-5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm px-4 py-3">
-          {info}
-        </div>
+      {mode === 'register' && (
+        <RegisterForm
+          intro={registerIntro}
+          email={email}
+          onEmailChange={setEmail}
+          onSuccess={onSuccess}
+          onError={setError}
+          onInfo={setInfo}
+          onSuggestLogin={setSuggestLogin}
+          onSwitchToLogin={() => switchMode('login')}
+        />
       )}
-
-      {!isConfigured && (
-        <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 p-4">
-          <div className="text-[11px] uppercase tracking-eyebrow text-amber-800 font-semibold">
-            Demo mode — no Firebase configured
-          </div>
-          <p className="mt-1.5 text-xs text-amber-900/85 leading-relaxed">
-            Accounts and Bookings stay in this browser. Sign up as a Guest to walk the flow through. Copy{' '}
-            <code className="font-mono">.env.example</code> to <code className="font-mono">.env.local</code> with real
-            Firebase keys for cloud sign-in, or read <Link to="/status" className="underline">deployment status</Link>{' '}
-            for why this build has none.
-          </p>
-        </div>
+      {mode === 'reset' && (
+        <ResetPasswordForm
+          intro={copy}
+          email={email}
+          onEmailChange={setEmail}
+          onSuccess={onSuccess}
+          onError={setError}
+          onInfo={setInfo}
+        />
       )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {mode === 'register' && (
-          <>
-            <label className="block">
-              <span className="label">Display Name / Full Name</span>
-              <input
-                className="field"
-                placeholder="Juan Dela Cruz"
-                value={displayName}
-                onChange={(e) => {
-                  setDisplayName(e.target.value)
-                  const parts = e.target.value.trim().split(' ')
-                  if (parts.length > 1) {
-                    setFirstName(parts[0])
-                    setLastName(parts.slice(1).join(' '))
-                  } else {
-                    setFirstName(e.target.value)
-                  }
-                }}
-                autoComplete="name"
-                maxLength={80}
-                aria-invalid={fieldErrors.displayName ? true : undefined}
-              />
-              {fieldErrors.displayName && (
-                <span className="mt-1 block text-xs text-red-600">{fieldErrors.displayName}</span>
-              )}
-            </label>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="block">
-                <span className="label">First Name</span>
-                <input
-                  className="field"
-                  placeholder="Juan"
-                  value={firstName}
-                  onChange={(e) => {
-                    setFirstName(e.target.value)
-                    setDisplayName(`${e.target.value} ${lastName}`.trim())
-                  }}
-                  maxLength={80}
-                  aria-invalid={fieldErrors.firstName ? true : undefined}
-                />
-                {fieldErrors.firstName && (
-                  <span className="mt-1 block text-xs text-red-600">{fieldErrors.firstName}</span>
-                )}
-              </label>
-
-              <label className="block">
-                <span className="label">Last Name</span>
-                <input
-                  className="field"
-                  placeholder="Dela Cruz"
-                  value={lastName}
-                  onChange={(e) => {
-                    setLastName(e.target.value)
-                    setDisplayName(`${firstName} ${e.target.value}`.trim())
-                  }}
-                  maxLength={80}
-                  aria-invalid={fieldErrors.lastName ? true : undefined}
-                />
-                {fieldErrors.lastName && (
-                  <span className="mt-1 block text-xs text-red-600">{fieldErrors.lastName}</span>
-                )}
-              </label>
-            </div>
-
-            <label className="block">
-              <span className="label">Middle Name (optional)</span>
-              <input
-                className="field"
-                placeholder="Santos"
-                value={middleName}
-                onChange={(e) => setMiddleName(e.target.value)}
-                maxLength={80}
-                aria-invalid={fieldErrors.middleName ? true : undefined}
-              />
-              {fieldErrors.middleName && (
-                <span className="mt-1 block text-xs text-red-600">{fieldErrors.middleName}</span>
-              )}
-            </label>
-
-            <label className="block">
-              <span className="label">Mobile Phone Number (optional)</span>
-              <input
-                className="field"
-                placeholder="09171234567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                maxLength={15}
-                aria-invalid={fieldErrors.phone ? true : undefined}
-              />
-              <span className="text-[11px] text-forest-600 mt-1 block">Philippine format: 09XX XXX XXXX</span>
-              {fieldErrors.phone && (
-                <span className="mt-1 block text-xs text-red-600">{fieldErrors.phone}</span>
-              )}
-            </label>
-
-            <label className="block">
-              <span className="label">Date of birth</span>
-              <input
-                className="field"
-                type="date"
-                value={birthdate}
-                onChange={(e) => setBirthdate(e.target.value)}
-                required
-                aria-invalid={fieldErrors.birthdate ? true : undefined}
-              />
-              <span className="text-[11px] text-forest-600 mt-1 block">You must be at least 10 years old.</span>
-              {fieldErrors.birthdate && (
-                <span className="mt-1 block text-xs text-red-600">{fieldErrors.birthdate}</span>
-              )}
-            </label>
-
-            <label className="flex items-start gap-2 text-xs text-forest-800">
-              <input type="checkbox" className="mt-0.5" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
-              <span>
-                I have read and accept the{' '}
-                <Link to="/legal" className="underline">Terms and Conditions</Link> (version {LEGAL_VERSION}).
-              </span>
-            </label>
-            {fieldErrors.acceptTerms && (
-              <span className="block text-xs text-red-600">{fieldErrors.acceptTerms}</span>
-            )}
-          </>
-        )}
-
-        <label className="block">
-          <span className="label">Email</span>
-          <input
-            className="field"
-            type="email"
-            placeholder="you@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            maxLength={254}
-            autoComplete="email"
-            spellCheck={false}
-          />
-        </label>
-
-        {mode !== 'reset' && (
-          <label className="block">
-            <span className="label">Password</span>
-            <input
-              className="field"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={MIN_PASSWORD_LENGTH}
-              maxLength={200}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            />
-            {mode === 'register' && (
-              <span className="text-[11px] text-forest-600 mt-1 block">
-                At least {MIN_PASSWORD_LENGTH} characters
-              </span>
-            )}
-          </label>
-        )}
-
-        <button type="submit" disabled={loading} className="btn-primary w-full justify-center disabled:opacity-60">
-          {loading
-            ? 'Please wait…'
-            : mode === 'login'
-              ? 'Sign In'
-              : mode === 'register'
-                ? registerIntro.submitLabel
-                : 'Send Reset Link'}
-        </button>
-      </form>
-
-      {isConfigured && mode !== 'reset' && (
-        <>
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-forest-900/10" />
-            <span className="text-[11px] uppercase tracking-eyebrow text-forest-600">or</span>
-            <div className="h-px flex-1 bg-forest-900/10" />
-          </div>
-
-          <button
-            onClick={handleGoogle}
-            disabled={loading}
-            className="w-full rounded-full border border-forest-900/10 bg-white px-5 py-3 text-sm font-medium text-forest-800 hover:bg-cream-50 flex items-center justify-center gap-2 disabled:opacity-60"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-            </svg>
-            Continue with Google
-          </button>
-        </>
-      )}
-
-      <div className="mt-6 text-center text-xs text-forest-700 space-y-2">
-        {mode === 'login' && (
-          <>
-            <div>
-              <button onClick={() => switchMode('reset')} className="underline underline-offset-4 hover:text-forest-900">
-                Forgot password?
-              </button>
-            </div>
-            <div>
-              Don't have an account?{' '}
-              <button onClick={() => switchMode('register')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
-                Create one
-              </button>
-            </div>
-          </>
-        )}
-        {mode === 'register' && (
-          <div>
-            Already have an account?{' '}
-            <button onClick={() => switchMode('login')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
-              Sign in
-            </button>
-          </div>
-        )}
-        {mode === 'reset' && (
-          <div>
-            Remember your password?{' '}
-            <button onClick={() => switchMode('login')} className="font-semibold underline underline-offset-4 hover:text-forest-900">
-              Back to login
-            </button>
-          </div>
-        )}
-        <div className="pt-1 text-forest-600">
-          <Link to={homeForRole(role)} className="underline underline-offset-4 hover:text-forest-900">
-            {role === 'guest' ? 'Go to my bookings' : 'Continue browsing the Hacienda'}
-          </Link>
-        </div>
-      </div>
-    </div>
+    </AuthShell>
   )
 }
+
+// Re-export types for backward compatibility with existing imports
+export type { AuthIntro, RegisterIntro } from './AuthShell'
