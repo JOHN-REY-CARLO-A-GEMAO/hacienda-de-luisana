@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { describeAuthError } from '../../lib/auth'
+import { EMAIL_MAX, validateEmail } from '../../lib/validation'
 import { useAuth } from '../../hooks/useAuth'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import type { AuthIntro } from './AuthShell'
@@ -31,18 +32,26 @@ export function ResetPasswordForm({
 }: ResetPasswordFormProps) {
   const { resetPassword } = useAuth()
   const [loading, setLoading] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     onError(null)
     onInfo(null)
+
+    const emailRes = validateEmail(email)
+    if (!emailRes.ok) {
+      setEmailError(emailRes.message)
+      onError(emailRes.message)
+      return
+    }
+
     setLoading(true)
 
     try {
       const rateLimit = checkRateLimit('reset', LIMITS.reset)
       if (!rateLimit.ok) {
         onError(rateLimit.message)
-        setLoading(false)
         return
       }
 
@@ -66,15 +75,26 @@ export function ResetPasswordForm({
           type="email"
           placeholder="you@email.com"
           value={email}
-          onChange={(e) => onEmailChange(e.target.value)}
+          onChange={(e) => {
+            onEmailChange(e.target.value)
+            if (emailError) setEmailError(null)
+          }}
           required
-          maxLength={254}
+          maxLength={EMAIL_MAX}
           autoComplete="email"
           spellCheck={false}
+          aria-invalid={emailError ? true : undefined}
         />
+        {emailError && (
+          <span className="mt-1 block text-xs text-red-600">{emailError}</span>
+        )}
       </label>
 
-      <button type="submit" disabled={loading} className="btn-primary w-full justify-center disabled:opacity-60">
+      <button
+        type="submit"
+        disabled={loading || Boolean(emailError)}
+        className="btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+      >
         {loading ? 'Please wait…' : 'Send Reset Link'}
       </button>
     </form>

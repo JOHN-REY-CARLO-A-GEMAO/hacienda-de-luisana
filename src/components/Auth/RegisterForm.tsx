@@ -2,8 +2,15 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MIN_PASSWORD_LENGTH, describeAuthError } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
-import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
-import { validateBirthdate, validateName, validatePhMobile } from '../../lib/validation'
+import {
+  EMAIL_MAX,
+  NAME_MAX,
+  sanitizeNameInput,
+  sanitizePhoneInput,
+  validateBirthdate,
+  validateName,
+  validatePhMobile,
+} from '../../lib/validation'
 import { LEGAL_VERSION } from '../../lib/legal'
 import type { AuthIntro, RegisterIntro } from './AuthShell'
 
@@ -87,21 +94,31 @@ export function RegisterForm({
     return problems
   }
 
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     onError(null)
     onInfo(null)
     onSuggestLogin(false)
+
+    const problems = validateRegisterFields()
+    setFieldErrors(problems)
+    if (Object.keys(problems).length > 0) {
+      onError('Please correct the highlighted form errors before submitting.')
+      return
+    }
+
     setLoading(true)
 
     try {
-      const problems = validateRegisterFields()
-      setFieldErrors(problems)
-      if (Object.keys(problems).length > 0) {
-        setLoading(false)
-        return
-      }
-
       const constructedDisplayName = `${firstName.trim()} ${lastName.trim()}`.trim() || displayName
       await register(email, password, {
         firstName: firstName.trim(),
@@ -138,17 +155,26 @@ export function RegisterForm({
             placeholder="Juan Dela Cruz"
             value={displayName}
             onChange={(e) => {
-              setDisplayName(e.target.value)
-              const parts = e.target.value.trim().split(' ')
+              const clean = sanitizeNameInput(e.target.value)
+              setDisplayName(clean)
+              clearFieldError('displayName')
+              const parts = clean.trim().split(' ')
               if (parts.length > 1) {
                 setFirstName(parts[0])
                 setLastName(parts.slice(1).join(' '))
+                clearFieldError('firstName')
+                clearFieldError('lastName')
               } else {
-                setFirstName(e.target.value)
+                setFirstName(clean)
+              }
+            }}
+            onKeyDown={(e) => {
+              if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault()
               }
             }}
             autoComplete="name"
-            maxLength={80}
+            maxLength={NAME_MAX}
             aria-invalid={fieldErrors.displayName ? true : undefined}
           />
           {fieldErrors.displayName && (
@@ -164,10 +190,18 @@ export function RegisterForm({
               placeholder="Juan"
               value={firstName}
               onChange={(e) => {
-                setFirstName(e.target.value)
-                setDisplayName(`${e.target.value} ${lastName}`.trim())
+                const clean = sanitizeNameInput(e.target.value)
+                setFirstName(clean)
+                setDisplayName(`${clean} ${lastName}`.trim())
+                clearFieldError('firstName')
+                clearFieldError('displayName')
               }}
-              maxLength={80}
+              onKeyDown={(e) => {
+                if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                  e.preventDefault()
+                }
+              }}
+              maxLength={NAME_MAX}
               aria-invalid={fieldErrors.firstName ? true : undefined}
             />
             {fieldErrors.firstName && (
@@ -182,10 +216,18 @@ export function RegisterForm({
               placeholder="Dela Cruz"
               value={lastName}
               onChange={(e) => {
-                setLastName(e.target.value)
-                setDisplayName(`${firstName} ${e.target.value}`.trim())
+                const clean = sanitizeNameInput(e.target.value)
+                setLastName(clean)
+                setDisplayName(`${firstName} ${clean}`.trim())
+                clearFieldError('lastName')
+                clearFieldError('displayName')
               }}
-              maxLength={80}
+              onKeyDown={(e) => {
+                if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                  e.preventDefault()
+                }
+              }}
+              maxLength={NAME_MAX}
               aria-invalid={fieldErrors.lastName ? true : undefined}
             />
             {fieldErrors.lastName && (
@@ -200,8 +242,16 @@ export function RegisterForm({
             className="field"
             placeholder="Santos"
             value={middleName}
-            onChange={(e) => setMiddleName(e.target.value)}
-            maxLength={80}
+            onChange={(e) => {
+              setMiddleName(sanitizeNameInput(e.target.value))
+              clearFieldError('middleName')
+            }}
+            onKeyDown={(e) => {
+              if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault()
+              }
+            }}
+            maxLength={NAME_MAX}
             aria-invalid={fieldErrors.middleName ? true : undefined}
           />
           {fieldErrors.middleName && (
@@ -224,9 +274,12 @@ export function RegisterForm({
               type="email"
               placeholder="you@email.com"
               value={email}
-              onChange={(e) => onEmailChange(e.target.value)}
+              onChange={(e) => {
+                onEmailChange(e.target.value)
+                clearFieldError('email')
+              }}
               required
-              maxLength={254}
+              maxLength={EMAIL_MAX}
               autoComplete="email"
               spellCheck={false}
             />
@@ -247,9 +300,19 @@ export function RegisterForm({
           <input
             className="field"
             placeholder="09171234567"
+            type="tel"
+            inputMode="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            maxLength={15}
+            onChange={(e) => {
+              setPhone(sanitizePhoneInput(e.target.value))
+              clearFieldError('phone')
+            }}
+            onKeyDown={(e) => {
+              if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault()
+              }
+            }}
+            maxLength={20}
             aria-invalid={fieldErrors.phone ? true : undefined}
           />
           <span className="text-[11px] text-forest-600 mt-1 block">Philippine format: 09XX XXX XXXX</span>
@@ -273,7 +336,10 @@ export function RegisterForm({
               type="password"
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                clearFieldError('password')
+              }}
               required
               minLength={MIN_PASSWORD_LENGTH}
               maxLength={200}
@@ -302,7 +368,10 @@ export function RegisterForm({
             className="field"
             type="date"
             value={birthdate}
-            onChange={(e) => setBirthdate(e.target.value)}
+            onChange={(e) => {
+              setBirthdate(e.target.value)
+              clearFieldError('birthdate')
+            }}
             required
             aria-invalid={fieldErrors.birthdate ? true : undefined}
           />
@@ -320,7 +389,10 @@ export function RegisterForm({
             type="checkbox"
             className="mt-0.5 w-5 h-5 rounded border-forest-300 text-forest-700 focus:ring-forest-600"
             checked={acceptTerms}
-            onChange={(e) => setAcceptTerms(e.target.checked)}
+            onChange={(e) => {
+              setAcceptTerms(e.target.checked)
+              clearFieldError('acceptTerms')
+            }}
           />
           <span className="leading-relaxed">
             I have read and accept the{' '}
@@ -333,7 +405,11 @@ export function RegisterForm({
         )}
       </div>
 
-      <button type="submit" disabled={loading} className="btn-primary w-full justify-center disabled:opacity-60">
+      <button
+        type="submit"
+        disabled={loading || Object.keys(fieldErrors).length > 0}
+        className="btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+      >
         {loading ? 'Please wait…' : intro.submitLabel}
       </button>
     </form>

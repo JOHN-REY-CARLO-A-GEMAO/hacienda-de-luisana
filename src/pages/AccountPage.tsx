@@ -25,7 +25,14 @@ import {
   markNotificationRead,
   type AppNotification,
 } from '../lib/notifications'
-import { validateName, validatePhMobile, validateBirthdate } from '../lib/validation'
+import {
+  NAME_MAX,
+  sanitizeNameInput,
+  sanitizePhoneInput,
+  validateBirthdate,
+  validateName,
+  validatePhMobile,
+} from '../lib/validation'
 import { doc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 
@@ -528,7 +535,13 @@ export function AccountPage() {
                   <input
                     className="field"
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    maxLength={NAME_MAX}
+                    onChange={(e) => setFirstName(sanitizeNameInput(e.target.value))}
+                    onKeyDown={(e) => {
+                      if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                        e.preventDefault()
+                      }
+                    }}
                     required
                     placeholder="First Name"
                   />
@@ -538,7 +551,13 @@ export function AccountPage() {
                   <input
                     className="field"
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
+                    maxLength={NAME_MAX}
+                    onChange={(e) => setLastName(sanitizeNameInput(e.target.value))}
+                    onKeyDown={(e) => {
+                      if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                        e.preventDefault()
+                      }
+                    }}
                     required
                     placeholder="Last Name"
                   />
@@ -550,7 +569,13 @@ export function AccountPage() {
                 <input
                   className="field"
                   value={middleName}
-                  onChange={(e) => setMiddleName(e.target.value)}
+                  maxLength={NAME_MAX}
+                  onChange={(e) => setMiddleName(sanitizeNameInput(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                      e.preventDefault()
+                    }
+                  }}
                   placeholder="Middle Name"
                 />
               </label>
@@ -559,8 +584,16 @@ export function AccountPage() {
                 <span className="label">Mobile Phone Number *</span>
                 <input
                   className="field"
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={20}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                      e.preventDefault()
+                    }
+                  }}
                   required
                   placeholder="09171234567"
                 />

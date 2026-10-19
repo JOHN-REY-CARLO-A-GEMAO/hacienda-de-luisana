@@ -124,11 +124,13 @@ function ReviewComposer({
   // see the old `busy === false`.
   const submitted = useRef(false)
 
-  const overLimit = text.trim().length > REVIEW_MAX
-
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (busy || submitted.current) return
+    if (text.trim().length > REVIEW_MAX) {
+      setProblem(`Review must be at most ${REVIEW_MAX} characters`)
+      return
+    }
     submitted.current = true
     setBusy(true)
     setProblem(null)
@@ -209,10 +211,22 @@ function ReviewComposer({
         onChange={(event) => setText(event.target.value)}
         aria-describedby={`${formId}-count`}
       />
-      <p id={`${formId}-count`} className={`mt-1 text-[11px] ${overLimit ? 'text-red-800' : 'text-forest-600'}`}>
-        {text.length} / {REVIEW_MAX} characters
-        {overLimit ? ` — too long. A review must be at most ${REVIEW_MAX} characters.` : ''}
-      </p>
+      <div id={`${formId}-count`} className="mt-1 flex items-center justify-between text-[11px]">
+        <span className="text-forest-600/70">Detailed feedback helps other guests</span>
+        <span
+          className={`font-mono tabular-nums transition-colors ${
+            text.length > REVIEW_MAX
+              ? 'text-red-600 font-semibold'
+              : text.length >= REVIEW_MAX
+                ? 'text-amber-700 font-semibold'
+                : text.length >= REVIEW_MAX * 0.9
+                  ? 'text-amber-600 font-medium'
+                  : 'text-forest-600/70'
+          }`}
+        >
+          {text.length} / {REVIEW_MAX} characters
+        </span>
+      </div>
 
       <div className="mt-4">
         <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
@@ -234,7 +248,7 @@ function ReviewComposer({
         </div>
       </div>
 
-      <button type="submit" className="btn-primary text-xs mt-4" disabled={busy || overLimit}>
+      <button type="submit" className="btn-primary text-xs mt-4" disabled={busy}>
         {busy ? 'Saving…' : (submitLabel ?? (review ? 'Save my changes' : 'Submit review'))}
       </button>
 

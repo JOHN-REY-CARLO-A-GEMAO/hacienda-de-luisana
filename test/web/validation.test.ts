@@ -1,15 +1,32 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ADDITIONAL_NOTES_MAX,
+  EVENT_DETAIL_MAX,
+  MESSAGE_MAX,
   MIN_GUEST_AGE,
+  NAME_MAX,
+  REF_MAX,
   ageOn,
+  guestCountValid,
+  sanitizeAmountInput,
+  sanitizeDigitsOnly,
+  sanitizeNameInput,
+  sanitizePhoneInput,
+  sanitizeReferenceInput,
+  validateAdditionalNotes,
+  validateAddress,
   validateAmount,
   validateBirthdate,
   validateEmail,
+  validateEventDetail,
+  validateMessage,
+  validateName,
   validatePhMobile,
-  validateSearch,
-  validateStayDates,
-  validateStarRating,
   validateProofFile,
+  validateSearch,
+  validateStarRating,
+  validateStayDates,
+  validateSubject,
 } from '../../src/lib/validation'
 import { paginate, sortBy } from '../../src/lib/pagination'
 import {
@@ -156,3 +173,125 @@ describe('legal + categories', () => {
     expect(isActiveCategory('made-up')).toBe(false)
   })
 })
+
+describe('strict name validation and sanitization', () => {
+  it('validates names rejecting numbers and symbols', () => {
+    expect(validateName('Juan Dela Cruz').ok).toBe(true)
+    expect(validateName("Mary-Jane O'Connor").ok).toBe(true)
+    expect(validateName('José Niña').ok).toBe(true)
+    expect(validateName('Dr. Jose Rizal').ok).toBe(true)
+    // Rejects numbers
+    const numRes = validateName('Juan123')
+    expect(numRes.ok).toBe(false)
+    if (!numRes.ok) expect(numRes.message).toBe('Name cannot contain numbers')
+    // Rejects symbols
+    expect(validateName('Juan @ Dela Cruz').ok).toBe(false)
+    // Rejects empty or too short
+    expect(validateName('').ok).toBe(false)
+    expect(validateName('J').ok).toBe(false)
+    // Rejects too long
+    expect(validateName('A'.repeat(NAME_MAX + 1)).ok).toBe(false)
+  })
+
+  it('sanitizeNameInput strips numbers and disallowed symbols while keeping legitimate characters', () => {
+    expect(sanitizeNameInput('Juan123 Dela Cruz456')).toBe('Juan Dela Cruz')
+    expect(sanitizeNameInput("Maria-Clara O'Connor")).toBe("Maria-Clara O'Connor")
+    expect(sanitizeNameInput('José Niña')).toBe('José Niña')
+    expect(sanitizeNameInput('St. John')).toBe('St. John')
+    expect(sanitizeNameInput('John@Doe#123!')).toBe('JohnDoe')
+    expect(sanitizeNameInput('A'.repeat(100)).length).toBe(NAME_MAX)
+  })
+})
+
+describe('strict phone sanitization', () => {
+  it('sanitizePhoneInput strips letters and non-phone symbols', () => {
+    expect(sanitizePhoneInput('0917-123-4567')).toBe('0917-123-4567')
+    expect(sanitizePhoneInput('+63 (917) 123 4567')).toBe('+63 (917) 123 4567')
+    expect(sanitizePhoneInput('0917abc1234def')).toBe('09171234')
+    expect(sanitizePhoneInput('phone: 0917!@#123')).toBe('0917123')
+  })
+})
+
+describe('strict amount & reference sanitization', () => {
+  it('sanitizeAmountInput allows numbers and at most 2 decimal places, rejecting letters', () => {
+    expect(sanitizeAmountInput('1500')).toBe('1500')
+    expect(sanitizeAmountInput('1500.50')).toBe('1500.50')
+    expect(sanitizeAmountInput('1500.555')).toBe('1500.55')
+    expect(sanitizeAmountInput('abc1500def.75')).toBe('1500.75')
+    expect(sanitizeAmountInput('10.20.30')).toBe('10.20')
+  })
+
+  it('sanitizeReferenceInput allows alphanumeric and hyphens in uppercase, up to REF_MAX', () => {
+    expect(sanitizeReferenceInput('gcash-123-abc')).toBe('GCASH-123-ABC')
+    expect(sanitizeReferenceInput('ref#@!123')).toBe('REF123')
+    expect(sanitizeReferenceInput('a'.repeat(50)).length).toBe(REF_MAX)
+  })
+})
+
+describe('additional notes & event detail limits', () => {
+  it('validateAdditionalNotes enforces 500 character ceiling', () => {
+    expect(validateAdditionalNotes('').ok).toBe(true)
+    expect(validateAdditionalNotes('Arriving around 2 PM with family.').ok).toBe(true)
+    expect(validateAdditionalNotes('A'.repeat(ADDITIONAL_NOTES_MAX)).ok).toBe(true)
+    const over = validateAdditionalNotes('A'.repeat(ADDITIONAL_NOTES_MAX + 1))
+    expect(over.ok).toBe(false)
+    if (!over.ok) expect(over.message).toContain(String(ADDITIONAL_NOTES_MAX))
+  })
+
+  it('validateEventDetail enforces 160 character ceiling', () => {
+    expect(validateEventDetail('').ok).toBe(true)
+    expect(validateEventDetail('Golden Wedding Anniversary').ok).toBe(true)
+    expect(validateEventDetail('A'.repeat(EVENT_DETAIL_MAX)).ok).toBe(true)
+    const over = validateEventDetail('A'.repeat(EVENT_DETAIL_MAX + 1))
+    expect(over.ok).toBe(false)
+    if (!over.ok) expect(over.message).toContain(String(EVENT_DETAIL_MAX))
+  })
+})
+
+describe('address & subject validation', () => {
+  it('validateAddress accepts legitimate addresses with numbers, letters, and punctuation', () => {
+    expect(validateAddress('Block 4 Lot 12, Sample St., Brgy. San Isidro, Luisiana, Laguna').ok).toBe(true)
+    expect(validateAddress('#123/B Apt. 4-A').ok).toBe(true)
+    expect(validateAddress('').ok).toBe(false)
+    expect(validateAddress('Bad address <script>').ok).toBe(false)
+  })
+
+  it('validateSubject enforces character limits', () => {
+    expect(validateSubject('Booking Inquiry').ok).toBe(true)
+    expect(validateSubject('Hi').ok).toBe(false) // too short
+    expect(validateSubject('A'.repeat(121)).ok).toBe(false) // too long
+  })
+})
+
+describe('message & feedback validation', () => {
+  it('validateMessage accepts messages within character limits and rejects empty or over-limit', () => {
+    expect(validateMessage('Hello, I would like to inquire about booking availability.').ok).toBe(true)
+    expect(validateMessage('').ok).toBe(false)
+    expect(validateMessage('   ').ok).toBe(false)
+    expect(validateMessage('A'.repeat(MESSAGE_MAX)).ok).toBe(true)
+    const over = validateMessage('A'.repeat(MESSAGE_MAX + 1))
+    expect(over.ok).toBe(false)
+    if (!over.ok) expect(over.message).toContain(String(MESSAGE_MAX))
+  })
+})
+
+describe('numeric guest count validation', () => {
+  it('guestCountValid enforces minimum and maximum capacity', () => {
+    expect(guestCountValid(2, 35, 'Main Villa').ok).toBe(true)
+    expect(guestCountValid(0, 35, 'Main Villa').ok).toBe(false)
+    expect(guestCountValid(-1, 35, 'Main Villa').ok).toBe(false)
+    expect(guestCountValid(1.5 as any, 35, 'Main Villa').ok).toBe(false)
+    expect(guestCountValid(36, 35, 'Main Villa').ok).toBe(false)
+    const capExceeded = guestCountValid(40, 35, 'Main Villa')
+    expect(capExceeded.ok).toBe(false)
+    if (!capExceeded.ok) expect(capExceeded.message).toContain('35 guests')
+  })
+
+  it('sanitizeDigitsOnly extracts only numeric digits', () => {
+    expect(sanitizeDigitsOnly('abc123def456')).toBe('123456')
+    expect(sanitizeDigitsOnly('guests: 15!')).toBe('15')
+    expect(sanitizeDigitsOnly('123456789', 5)).toBe('12345')
+  })
+})
+
+

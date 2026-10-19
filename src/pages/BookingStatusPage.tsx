@@ -9,6 +9,7 @@ import { rememberedBookingId } from '../lib/bookingDraft'
 import { ensureGuestUid } from '../lib/guestAuth'
 import type { Booking } from '../lib/storage'
 import { ArrowRight, Sparkle } from '../lib/icons'
+import { EMAIL_MAX, REF_MAX, sanitizeReferenceInput } from '../lib/validation'
 
 type LocationState = { justSubmitted?: boolean; storage?: 'cloud' | 'local' }
 
@@ -212,11 +213,26 @@ export function BookingStatusPage() {
               <form onSubmit={(event) => void lookup(event)} className="mt-6 grid sm:grid-cols-2 gap-4 text-left">
                 <label className="block">
                   <span className="label">Reference</span>
-                  <input className="field" value={lookupRef} onChange={(event) => setLookupRef(event.target.value)} placeholder="HDL-1234" />
+                  <input
+                    className="field"
+                    value={lookupRef}
+                    maxLength={REF_MAX}
+                    onChange={(event) => setLookupRef(sanitizeReferenceInput(event.target.value))}
+                    placeholder="HDL-1234"
+                  />
                 </label>
                 <label className="block">
                   <span className="label">Email</span>
-                  <input className="field" type="email" value={lookupEmail} onChange={(event) => setLookupEmail(event.target.value)} placeholder="you@email.com" autoComplete="email" spellCheck={false} />
+                  <input
+                    className="field"
+                    type="email"
+                    maxLength={EMAIL_MAX}
+                    value={lookupEmail}
+                    onChange={(event) => setLookupEmail(event.target.value)}
+                    placeholder="you@email.com"
+                    autoComplete="email"
+                    spellCheck={false}
+                  />
                 </label>
                 {lookupError && <p className="sm:col-span-2 text-xs text-red-700">{lookupError}</p>}
                 <button type="submit" className="btn-primary text-xs sm:col-span-2 w-fit">Look up status</button>

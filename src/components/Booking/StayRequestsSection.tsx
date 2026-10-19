@@ -15,6 +15,7 @@
 // stored Booking can never disagree.
 
 import React from 'react'
+import { ADDITIONAL_NOTES_MAX, EVENT_DETAIL_MAX } from '../../lib/validation'
 import {
   EVENT_PURPOSES,
   MAX_BONFIRE_WOOD_SETS,
@@ -191,10 +192,22 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
             <input
               className="field"
               placeholder="e.g. 50th birthday lunch, baptism reception…"
-              maxLength={160}
+              maxLength={EVENT_DETAIL_MAX}
               value={values.event_purpose_detail}
-              onChange={(event) => onChange({ event_purpose_detail: event.target.value })}
+              onChange={(event) => onChange({ event_purpose_detail: event.target.value.slice(0, EVENT_DETAIL_MAX) })}
             />
+            <div className="mt-1 flex items-center justify-between text-[11px]">
+              <span className="text-forest-600/70 dark:text-cream-200/60">Briefly specify your gathering</span>
+              <span
+                className={`font-mono tabular-nums transition-colors ${
+                  (values.event_purpose_detail?.length || 0) >= EVENT_DETAIL_MAX
+                    ? 'text-amber-700 font-semibold dark:text-brass-300'
+                    : 'text-forest-600/70 dark:text-cream-200/60'
+                }`}
+              >
+                {values.event_purpose_detail?.length || 0} / {EVENT_DETAIL_MAX} characters
+              </span>
+            </div>
           </label>
         )}
         {values.event_purpose && (
@@ -213,11 +226,30 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
         <textarea
           className="field min-h-[84px] resize-y text-sm"
           placeholder="Anything else the Hacienda should know — arrival time, celebrations, accessibility needs…"
-          maxLength={1000}
+          maxLength={ADDITIONAL_NOTES_MAX}
           value={values.notes}
           data-tour-field="special-requests"
-          onChange={(event) => onChange({ notes: event.target.value })}
+          onChange={(event) => onChange({ notes: event.target.value.slice(0, ADDITIONAL_NOTES_MAX) })}
         />
+        <div className="mt-1 flex items-center justify-between text-[11px]">
+          <span className="text-forest-600/70 dark:text-cream-200/60">
+            Dietary needs, estimated arrival, or special celebrations
+          </span>
+          <span
+            className={`font-mono tabular-nums transition-colors ${
+              (values.notes?.length || 0) >= ADDITIONAL_NOTES_MAX
+                ? 'text-amber-700 font-semibold dark:text-brass-300'
+                : (values.notes?.length || 0) >= ADDITIONAL_NOTES_MAX * 0.9
+                  ? 'text-amber-600 dark:text-amber-400 font-medium'
+                  : 'text-forest-600/70 dark:text-cream-200/60'
+            }`}
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid="additional-notes-counter"
+          >
+            {values.notes?.length || 0} / {ADDITIONAL_NOTES_MAX} characters
+          </span>
+        </div>
       </label>
 
       <div className="mt-4">

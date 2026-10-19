@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CATEGORIES, caseCommand, caseDate, caseLabel, subscribeCases, subscribeEvidence, activityPage, uploadCaseEvidence, downloadCaseEvidence, type DisputeRecord, type CaseActivity, type CaseEvidence } from '../lib/disputes'
 import { auth } from '../lib/firebase'
+import { DISPUTE_DESCRIPTION_MAX, DISPUTE_MESSAGE_MAX } from '../lib/validation'
 
 export function DisputeForm({ bookingId, guestId }: { bookingId?: string; guestId: string }) {
   const [cases, setCases] = useState<DisputeRecord[]>([])
@@ -61,7 +62,24 @@ export function DisputeForm({ bookingId, guestId }: { bookingId?: string; guestI
     {show && !unavailable && <form className="space-y-3 border-y py-4" onSubmit={e => { e.preventDefault(); review ? void submit() : setReview(true) }}>
       {review ? <div><h3 className="font-semibold">Review before submitting</h3><p>{caseLabel(category)} · {bookingId ? 'Linked to this booking' : 'General support'}</p><p className="whitespace-pre-wrap">{description}</p><p className="text-xs mt-2">Your submitted explanation is retained as history. Add corrections later; do not include passwords, PINs, full card details or government IDs.</p></div> : <>
         <label className="block">Category<select className="field w-full" value={category} onChange={e => setCategory(e.target.value)}>{CATEGORIES.map(c => <option key={c} value={c}>{caseLabel(c)}</option>)}</select></label>
-        <label className="block">What happened?<textarea required minLength={10} maxLength={4000} rows={5} className="field w-full" value={description} onChange={e => setDescription(e.target.value)} /></label>
+        <label className="block">
+          <span className="label">What happened?</span>
+          <textarea
+            required
+            minLength={10}
+            maxLength={DISPUTE_DESCRIPTION_MAX}
+            rows={5}
+            className="field w-full"
+            value={description}
+            onChange={e => setDescription(e.target.value.slice(0, DISPUTE_DESCRIPTION_MAX))}
+          />
+          <div className="mt-1 flex items-center justify-between text-[11px]">
+            <span className="text-forest-600/70">Minimum 10 characters</span>
+            <span className={`font-mono tabular-nums ${description.length >= DISPUTE_DESCRIPTION_MAX ? 'text-amber-700 font-semibold' : 'text-forest-600/70'}`}>
+              {description.length} / {DISPUTE_DESCRIPTION_MAX} characters
+            </span>
+          </div>
+        </label>
         <p className="text-xs">Evidence is optional and can be added after submission. Redact unrelated sensitive details.</p>
       </>}
       {duplicate && <p className="text-amber-900 text-sm">You have an active case in this category. Check it below; you may still report a different incident.</p>}
@@ -122,7 +140,23 @@ function CaseDetail({ record: c, uid }: { record: DisputeRecord; uid: string }) 
     {page?.hasMore && <button type="button" className="underline" onClick={() => void activityPage(c.id, page.cursor).then(p => { setItems(prev => [...prev, ...p.items]); setPage(p) }).catch(e => setError(e.message))}>Load older activity</button>}
     {error && <p role="alert" className="text-red-800">{error}</p>}{progress && <p role="status">{progress}</p>}
     {!c.duplicate_of && <form className="space-y-3" onSubmit={e => { e.preventDefault(); void run(active ? 'message' : !c.final_decision && c.reopen_until && Date.now() <= c.reopen_until ? 'reopen' : 'request_reopen') }}>
-      <label className="block">{active ? 'Message / explanation' : 'Reason to reopen (new evidence, unfulfilled remedy, or procedural error)'}<textarea className="field w-full" rows={3} maxLength={4000} minLength={active ? 0 : 10} value={message} onChange={e => setMessage(e.target.value)} /></label>
+      <label className="block">
+        <span className="label">{active ? 'Message / explanation' : 'Reason to reopen (new evidence, unfulfilled remedy, or procedural error)'}</span>
+        <textarea
+          className="field w-full"
+          rows={3}
+          maxLength={DISPUTE_MESSAGE_MAX}
+          minLength={active ? 0 : 10}
+          value={message}
+          onChange={e => setMessage(e.target.value.slice(0, DISPUTE_MESSAGE_MAX))}
+        />
+        <div className="mt-1 flex items-center justify-between text-[11px]">
+          <span className="text-forest-600/70">{active ? 'Explain clearly without confidential credentials' : 'Minimum 10 characters required'}</span>
+          <span className={`font-mono tabular-nums ${message.length >= DISPUTE_MESSAGE_MAX ? 'text-amber-700 font-semibold' : 'text-forest-600/70'}`}>
+            {message.length} / {DISPUTE_MESSAGE_MAX} characters
+          </span>
+        </div>
+      </label>
       {active && <label className="block">Add evidence (up to five files, 10 MB each)<input ref={input} className="block my-2" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple disabled={busy} onChange={e => { const selected = Array.from(e.target.files || []); if (selected.length > 5 || selected.some(f => f.size > 10 * 1024 * 1024)) { setError('Choose at most five files of 10 MB each.'); e.target.value = ''; setUploads([]) } else { setError(''); setUploads(selected) } }} /></label>}
       <p className="text-xs">No passwords, PINs, full card details or government IDs. Redact unrelated information. Temporary uploads expire after 24 hours. Submitted history cannot be edited.</p>
       <div className="flex flex-wrap gap-2">

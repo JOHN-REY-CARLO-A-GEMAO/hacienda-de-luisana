@@ -9,7 +9,12 @@ import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib
 import { SmartImage } from '../components/SmartImage'
 import { useAuth } from '../hooks/useAuth'
 import {
+  EMAIL_MAX,
+  NAME_MAX,
   guestCountValid,
+  sanitizeNameInput,
+  sanitizePhoneInput,
+  validateAdditionalNotes,
   validateEmail,
   validateName,
   validatePhMobile,
@@ -225,6 +230,10 @@ export function BookingPage() {
       const email = validateEmail(form.email)
       if (!email.ok) return email.message
     }
+    if (key === 'special_requests') {
+      const notesCheck = validateAdditionalNotes(form.special_requests)
+      if (!notesCheck.ok) return notesCheck.message
+    }
     return undefined
   }
 
@@ -263,7 +272,9 @@ export function BookingPage() {
     if (!phone.ok) e.phone = phone.message
     const email = validateEmail(form.email)
     if (!email.ok) e.email = email.message
-    if (!acceptedTerms) e.special_requests = `Please read and accept the Terms and Conditions (version ${LEGAL_VERSION})`
+    const notesCheck = validateAdditionalNotes(form.special_requests)
+    if (!notesCheck.ok) e.special_requests = notesCheck.message
+    if (!acceptedTerms) e.special_requests = e.special_requests || `Please read and accept the Terms and Conditions (version ${LEGAL_VERSION})`
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -478,11 +489,25 @@ export function BookingPage() {
                   <input
                     type="number"
                     min={1}
+                    max={selectedAcc?.capacity}
                     inputMode="numeric"
                     className="field"
                     value={form.guests}
-                    onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
-                    onBlur={() => handleBlur('guests')}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                        e.preventDefault()
+                      }
+                    }}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '')
+                      set('guests', digits ? Math.max(1, Number(digits)) : ('' as any))
+                    }}
+                    onBlur={() => {
+                      if (!form.guests || Number(form.guests) < 1) {
+                        set('guests', 1)
+                      }
+                      handleBlur('guests')
+                    }}
                   />
                 </Field>
                 <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
@@ -509,8 +534,17 @@ export function BookingPage() {
                       className="field"
                       placeholder="Juan Dela Cruz"
                       value={form.name}
+                      maxLength={NAME_MAX}
                       data-tour-field="guest-name"
-                      onChange={(e) => set('name', e.target.value)}
+                      onChange={(e) => {
+                        const sanitized = sanitizeNameInput(e.target.value)
+                        set('name', sanitized)
+                      }}
+                      onKeyDown={(e) => {
+                        if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                          e.preventDefault()
+                        }
+                      }}
                       onBlur={() => handleBlur('name')}
                       autoComplete="name"
                     />
@@ -522,8 +556,14 @@ export function BookingPage() {
                     placeholder="09XX XXX XXXX"
                     type="tel"
                     inputMode="tel"
+                    maxLength={20}
                     value={form.phone}
                     onChange={(e) => set('phone', e.target.value)}
+                    onKeyDown={(e) => {
+                      if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                        e.preventDefault()
+                      }
+                    }}
                     onBlur={() => handleBlur('phone')}
                     autoComplete="tel"
                   />
@@ -533,6 +573,7 @@ export function BookingPage() {
                     className="field"
                     placeholder="you@email.com"
                     type="email"
+                    maxLength={EMAIL_MAX}
                     value={form.email}
                     onChange={(e) => set('email', e.target.value)}
                     onBlur={() => handleBlur('email')}
@@ -566,6 +607,7 @@ export function BookingPage() {
               }}
               published={published}
               fallback={addonFallbacks}
+              error={errors.special_requests}
             />
 
             {availability && !availability.available && (

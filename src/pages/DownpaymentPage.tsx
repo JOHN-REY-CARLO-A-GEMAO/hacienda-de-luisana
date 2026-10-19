@@ -28,7 +28,13 @@ import { amountMismatchNote, claimAgainstReceipt, runReceiptOcr, suggestedAmount
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
-import { validateAmount, validateProofFile } from '../lib/validation'
+import {
+  REF_MAX,
+  sanitizeAmountInput,
+  sanitizeReferenceInput,
+  validateAmount,
+  validateProofFile,
+} from '../lib/validation'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
 import { createNotification } from '../lib/notifications'
 
@@ -586,9 +592,15 @@ refund_policy_snapshot: published.refund ?? null,
                     inputMode="decimal"
                     autoComplete="off"
                     spellCheck={false}
+                    maxLength={12}
                     value={amount}
                     placeholder="0.00"
-                    onChange={(event) => setAmount(event.target.value)}
+                    onChange={(event) => setAmount(sanitizeAmountInput(event.target.value))}
+                    onKeyDown={(e) => {
+                      if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                        e.preventDefault()
+                      }
+                    }}
                   />
                 </label>
                 <label className="block">
@@ -598,8 +610,14 @@ refund_policy_snapshot: published.refund ?? null,
                     value={reference}
                     autoComplete="off"
                     spellCheck={false}
+                    maxLength={REF_MAX}
                     placeholder="GCash / Maya / bank ref"
-                    onChange={(event) => setReference(event.target.value)}
+                    onChange={(event) => setReference(sanitizeReferenceInput(event.target.value))}
+                    onKeyDown={(e) => {
+                      if (/[^a-zA-Z0-9-]/.test(e.key) && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                        e.preventDefault()
+                      }
+                    }}
                   />
                 </label>
               </div>

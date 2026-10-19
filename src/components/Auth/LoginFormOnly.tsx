@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { MIN_PASSWORD_LENGTH, describeAuthError } from '../../lib/auth'
+import { EMAIL_MAX, validateEmail } from '../../lib/validation'
 import { useAuth } from '../../hooks/useAuth'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import type { AuthIntro } from './AuthShell'
@@ -38,18 +39,34 @@ export function LoginFormOnly({
   const { login, loginWithGoogle, isConfigured } = useAuth()
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     onError(null)
     onInfo(null)
+
+    const errs: { email?: string; password?: string } = {}
+    const emailRes = validateEmail(email)
+    if (!emailRes.ok) errs.email = emailRes.message
+    if (!password) {
+      errs.password = 'Password is required'
+    } else if (password.length < MIN_PASSWORD_LENGTH) {
+      errs.password = `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs)
+      onError('Please correct the highlighted errors before signing in.')
+      return
+    }
+
     setLoading(true)
 
     try {
       const rateLimit = checkRateLimit('login', LIMITS.login)
       if (!rateLimit.ok) {
         onError(rateLimit.message)
-        setLoading(false)
         return
       }
 
@@ -87,12 +104,25 @@ export function LoginFormOnly({
             type="email"
             placeholder="you@email.com"
             value={email}
-            onChange={(e) => onEmailChange(e.target.value)}
+            onChange={(e) => {
+              onEmailChange(e.target.value)
+              if (fieldErrors.email) {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.email
+                  return next
+                })
+              }
+            }}
             required
-            maxLength={254}
+            maxLength={EMAIL_MAX}
             autoComplete="email"
             spellCheck={false}
+            aria-invalid={fieldErrors.email ? true : undefined}
           />
+          {fieldErrors.email && (
+            <span className="mt-1 block text-xs text-red-600">{fieldErrors.email}</span>
+          )}
         </label>
 
         <label className="block">
@@ -102,12 +132,25 @@ export function LoginFormOnly({
             type="password"
             placeholder="••••••••"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              if (fieldErrors.password) {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.password
+                  return next
+                })
+              }
+            }}
             required
             minLength={MIN_PASSWORD_LENGTH}
             maxLength={200}
             autoComplete="current-password"
+            aria-invalid={fieldErrors.password ? true : undefined}
           />
+          {fieldErrors.password && (
+            <span className="mt-1 block text-xs text-red-600">{fieldErrors.password}</span>
+          )}
           <div className="mt-2 text-right">
             <button
               type="button"
@@ -119,7 +162,11 @@ export function LoginFormOnly({
           </div>
         </label>
 
-        <button type="submit" disabled={loading} className="btn-primary w-full justify-center disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={loading || Boolean(fieldErrors.email) || Boolean(fieldErrors.password)}
+          className="btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+        >
           {loading ? 'Please wait…' : 'Sign In'}
         </button>
       </form>

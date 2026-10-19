@@ -12,7 +12,13 @@ import type { Booking } from '../../lib/storage'
 import { extractReceiptFields, runReceiptOcr, suggestedAmount, amountMismatchNote, type ReceiptAmount } from '../../lib/payments/ocr'
 import { nextProofAttempt } from '../../lib/payments'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
-import { validateAmount, validateReference } from '../../lib/validation'
+import {
+  REF_MAX,
+  sanitizeAmountInput,
+  sanitizeReferenceInput,
+  validateAmount,
+  validateReference,
+} from '../../lib/validation'
 import { LEGAL_VERSION } from '../../lib/legal'
 import { Link } from 'react-router-dom'
 
@@ -406,8 +412,14 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                 </span>
                 <input
                   value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  inputMode="numeric"
+                  onChange={(e) => setReference(sanitizeReferenceInput(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (/[^a-zA-Z0-9-]/.test(e.key) && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                      e.preventDefault()
+                    }
+                  }}
+                  maxLength={REF_MAX}
+                  inputMode="text"
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="e.g. 1234567890123"
@@ -423,7 +435,13 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                 )}
                 <input
                   value={amountClaimed}
-                  onChange={(e) => setAmountClaimed(e.target.value)}
+                  onChange={(e) => setAmountClaimed(sanitizeAmountInput(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                      e.preventDefault()
+                    }
+                  }}
+                  maxLength={12}
                   inputMode="decimal"
                   autoComplete="off"
                   spellCheck={false}

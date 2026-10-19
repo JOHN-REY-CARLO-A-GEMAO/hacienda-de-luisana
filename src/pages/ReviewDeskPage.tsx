@@ -215,7 +215,16 @@ export function ReviewDeskPage() {
                 </div>
                 <label className="block mt-6">
                   <span className="label">If you reject, the guest reads this</span>
-                  <textarea className="field min-h-[90px]" value={reason} onChange={(event) => setReason(event.target.value)} />
+                  <textarea
+                    className="field min-h-[90px]"
+                    maxLength={500}
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value.slice(0, 500))}
+                  />
+                  <div className="mt-1 flex items-center justify-between text-[11px]">
+                    <span className="text-forest-600/70">State clearly why the downpayment was rejected</span>
+                    <span className="font-mono tabular-nums text-forest-600/70">{reason.length} / 500 characters</span>
+                  </div>
                 </label>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <button type="button" className="btn-primary" disabled={busy} onClick={() => void decide('approve')}>

@@ -206,7 +206,7 @@ export function MessagesPage() {
             value={text}
             maxLength={MESSAGE_MAX}
             data-tour-field="message"
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => setText(e.target.value.slice(0, MESSAGE_MAX))}
             placeholder="Write a message…"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -219,9 +219,21 @@ export function MessagesPage() {
             Send
           </button>
         </div>
-        <p className="mt-1 text-[11px] text-forest-700/60 text-right">
-          {text.length}/{MESSAGE_MAX}
-        </p>
+        <div className="mt-1 flex items-center justify-between text-[11px]">
+          <span className="text-forest-600/70 dark:text-cream-200/60">Press Enter to send</span>
+          <span
+            className={`font-mono tabular-nums transition-colors ${
+              text.length >= MESSAGE_MAX
+                ? 'text-amber-700 font-semibold dark:text-brass-300'
+                : text.length >= MESSAGE_MAX * 0.9
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-forest-600/70 dark:text-cream-200/60'
+            }`}
+            aria-live="polite"
+          >
+            {text.length}/{MESSAGE_MAX} characters
+          </span>
+        </div>
         <ShareLocationBar sharing={sharing} />
         {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
       </div>
