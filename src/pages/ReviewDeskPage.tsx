@@ -47,6 +47,10 @@ export function ReviewDeskPage() {
 
   const decide = async (decision: 'approve' | 'reject') => {
     if (!selected) return
+    if (decision === 'reject' && !reason.trim()) {
+      setNotice({ tone: 'bad', text: 'Please enter a reason explaining why the downpayment was rejected.' })
+      return
+    }
     setBusy(true)
     setNotice(null)
     try {
@@ -219,7 +223,10 @@ export function ReviewDeskPage() {
                     className="field min-h-[90px]"
                     maxLength={500}
                     value={reason}
-                    onChange={(event) => setReason(event.target.value.slice(0, 500))}
+                    onChange={(event) => {
+                      setReason(event.target.value.slice(0, 500))
+                      if (notice?.tone === 'bad') setNotice(null)
+                    }}
                   />
                   <div className="mt-1 flex items-center justify-between text-[11px]">
                     <span className="text-forest-600/70">State clearly why the downpayment was rejected</span>
@@ -227,16 +234,21 @@ export function ReviewDeskPage() {
                   </div>
                 </label>
                 <div className="mt-5 flex flex-wrap gap-3">
-                  <button type="button" className="btn-primary" disabled={busy} onClick={() => void decide('approve')}>
-                    Approve downpayment
+                  <button
+                    type="button"
+                    className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={busy}
+                    onClick={() => void decide('approve')}
+                  >
+                    {busy ? 'Saving…' : 'Approve downpayment'}
                   </button>
                   <button
                     type="button"
-                    className="btn bg-red-700 text-white hover:bg-red-800"
+                    className="btn bg-red-700 text-white hover:bg-red-800 disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={busy || !reason.trim()}
                     onClick={() => void decide('reject')}
                   >
-                    Reject
+                    {busy ? 'Saving…' : 'Reject'}
                   </button>
                   <Link to={`/booking/status?id=${encodeURIComponent(selected.id)}`} className="btn-ghost text-xs">
                     Guest status page <ArrowRight size={14} />

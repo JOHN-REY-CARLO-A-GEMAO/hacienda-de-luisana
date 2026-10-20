@@ -1,10 +1,9 @@
 import { Link } from 'react-router-dom'
 import { PageShell } from '../components/PageShell'
 import { ContactDetails } from '../sections/ContactDetails'
-import { ContactInquiryForm } from '../components/ContactInquiryForm'
 
 /**
- * /contact — the Hacienda's channels and online inquiry form.
+ * /contact — the Hacienda's channels and contact details.
  *
  * Separate from the homepage's closing booking banner because a question and a
  * reservation are different intents: one ends in a reply, the other in a form.
@@ -37,9 +36,6 @@ export function ContactPage() {
         <div className="mx-auto max-w-6xl px-5 lg:px-8 space-y-12">
           <Link to="/support" className="btn-secondary">Report or track an issue</Link>
           <ContactDetails />
-          <div className="max-w-2xl pt-8 border-t border-forest-900/10">
-            <ContactInquiryForm />
-          </div>
         </div>
       </section>
     </PageShell>

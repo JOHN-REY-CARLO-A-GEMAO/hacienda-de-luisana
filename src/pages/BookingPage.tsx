@@ -195,6 +195,10 @@ export function BookingPage() {
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }))
     setErrors((e) => ({ ...e, [k]: undefined }))
+    if (status === 'error') {
+      setStatus('idle')
+      setErrorMsg('')
+    }
   }
 
   const validateSingleField = (key: keyof FormState): string | undefined => {
@@ -281,7 +285,11 @@ export function BookingPage() {
 
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    if (!validate()) return
+    if (!validate()) {
+      setStatus('error')
+      setErrorMsg('Please correct the highlighted form errors before continuing to downpayment.')
+      return
+    }
 
     // A successful synchronous form check is not enough to open the payment
     // step. The policy document may have changed since the page mounted, and a
@@ -643,7 +651,11 @@ export function BookingPage() {
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={status === 'submitting' || (availability !== null && !availability.available)}
+                disabled={
+                  status === 'submitting' ||
+                  (availability !== null && !availability.available) ||
+                  Object.values(errors).some(Boolean)
+                }
                 className="btn-primary w-full sm:w-auto disabled:opacity-70 disabled:cursor-not-allowed"
                 data-tour="submit-booking"
               >

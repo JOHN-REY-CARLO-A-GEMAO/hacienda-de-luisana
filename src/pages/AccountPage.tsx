@@ -92,6 +92,7 @@ export function AccountPage() {
   const [phone, setPhone] = useState(profile?.phone ?? '')
   const [birthdate, setBirthdate] = useState(profile?.birthdate ?? '')
   const [profileSaving, setProfileSaving] = useState(false)
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({})
   const [profileMsg, setProfileMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
 
   useEffect(() => {
@@ -104,40 +105,41 @@ export function AccountPage() {
     }
   }, [profile])
 
+  const clearProfileError = (field: string) => {
+    setProfileErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
+  }
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     setProfileMsg(null)
 
     if (!user?.uid) return
 
+    const errs: Record<string, string> = {}
     const fn = validateName(firstName)
-    if (!fn.ok) {
-      setProfileMsg({ tone: 'bad', text: 'First name: ' + fn.message })
-      return
-    }
+    if (!fn.ok) errs.firstName = 'First name: ' + fn.message
     const ln = validateName(lastName)
-    if (!ln.ok) {
-      setProfileMsg({ tone: 'bad', text: 'Last name: ' + ln.message })
-      return
-    }
+    if (!ln.ok) errs.lastName = 'Last name: ' + ln.message
     if (middleName.trim()) {
       const mn = validateName(middleName)
-      if (!mn.ok) {
-        setProfileMsg({ tone: 'bad', text: 'Middle name: ' + mn.message })
-        return
-      }
+      if (!mn.ok) errs.middleName = 'Middle name: ' + mn.message
     }
     const ph = validatePhMobile(phone)
-    if (!ph.ok) {
-      setProfileMsg({ tone: 'bad', text: ph.message })
-      return
-    }
+    if (!ph.ok) errs.phone = ph.message
     if (birthdate.trim()) {
       const bd = validateBirthdate(birthdate)
-      if (!bd.ok) {
-        setProfileMsg({ tone: 'bad', text: bd.message })
-        return
-      }
+      if (!bd.ok) errs.birthdate = bd.message
+    }
+
+    setProfileErrors(errs)
+    if (Object.keys(errs).length > 0) {
+      setProfileMsg({ tone: 'bad', text: 'Please resolve the highlighted profile errors before saving.' })
+      return
     }
 
     setProfileSaving(true)
@@ -536,7 +538,10 @@ export function AccountPage() {
                     className="field"
                     value={firstName}
                     maxLength={NAME_MAX}
-                    onChange={(e) => setFirstName(sanitizeNameInput(e.target.value))}
+                    onChange={(e) => {
+                      setFirstName(sanitizeNameInput(e.target.value))
+                      clearProfileError('firstName')
+                    }}
                     onKeyDown={(e) => {
                       if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
                         e.preventDefault()
@@ -544,7 +549,11 @@ export function AccountPage() {
                     }}
                     required
                     placeholder="First Name"
+                    aria-invalid={profileErrors.firstName ? true : undefined}
                   />
+                  {profileErrors.firstName && (
+                    <span className="mt-1 block text-xs text-red-600">{profileErrors.firstName}</span>
+                  )}
                 </label>
                 <label className="block">
                   <span className="label">Last Name *</span>
@@ -552,7 +561,10 @@ export function AccountPage() {
                     className="field"
                     value={lastName}
                     maxLength={NAME_MAX}
-                    onChange={(e) => setLastName(sanitizeNameInput(e.target.value))}
+                    onChange={(e) => {
+                      setLastName(sanitizeNameInput(e.target.value))
+                      clearProfileError('lastName')
+                    }}
                     onKeyDown={(e) => {
                       if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
                         e.preventDefault()
@@ -560,7 +572,11 @@ export function AccountPage() {
                     }}
                     required
                     placeholder="Last Name"
+                    aria-invalid={profileErrors.lastName ? true : undefined}
                   />
+                  {profileErrors.lastName && (
+                    <span className="mt-1 block text-xs text-red-600">{profileErrors.lastName}</span>
+                  )}
                 </label>
               </div>
 
@@ -570,14 +586,21 @@ export function AccountPage() {
                   className="field"
                   value={middleName}
                   maxLength={NAME_MAX}
-                  onChange={(e) => setMiddleName(sanitizeNameInput(e.target.value))}
+                  onChange={(e) => {
+                    setMiddleName(sanitizeNameInput(e.target.value))
+                    clearProfileError('middleName')
+                  }}
                   onKeyDown={(e) => {
                     if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
                       e.preventDefault()
                     }
                   }}
                   placeholder="Middle Name"
+                  aria-invalid={profileErrors.middleName ? true : undefined}
                 />
+                {profileErrors.middleName && (
+                  <span className="mt-1 block text-xs text-red-600">{profileErrors.middleName}</span>
+                )}
               </label>
 
               <label className="block">
@@ -588,7 +611,10 @@ export function AccountPage() {
                   inputMode="tel"
                   maxLength={20}
                   value={phone}
-                  onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
+                  onChange={(e) => {
+                    setPhone(sanitizePhoneInput(e.target.value))
+                    clearProfileError('phone')
+                  }}
                   onKeyDown={(e) => {
                     if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
                       e.preventDefault()
@@ -596,10 +622,14 @@ export function AccountPage() {
                   }}
                   required
                   placeholder="09171234567"
+                  aria-invalid={profileErrors.phone ? true : undefined}
                 />
                 <span className="text-[11px] text-forest-600 mt-1 block">
                   Philippine mobile format: 09XX XXX XXXX
                 </span>
+                {profileErrors.phone && (
+                  <span className="mt-1 block text-xs text-red-600">{profileErrors.phone}</span>
+                )}
               </label>
 
               <label className="block">
@@ -608,8 +638,15 @@ export function AccountPage() {
                   className="field"
                   type="date"
                   value={birthdate}
-                  onChange={(e) => setBirthdate(e.target.value)}
+                  onChange={(e) => {
+                    setBirthdate(e.target.value)
+                    clearProfileError('birthdate')
+                  }}
+                  aria-invalid={profileErrors.birthdate ? true : undefined}
                 />
+                {profileErrors.birthdate && (
+                  <span className="mt-1 block text-xs text-red-600">{profileErrors.birthdate}</span>
+                )}
               </label>
 
               <label className="block">
@@ -627,8 +664,8 @@ export function AccountPage() {
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={profileSaving}
-                  className="btn-primary text-xs disabled:opacity-60"
+                  disabled={profileSaving || Object.keys(profileErrors).length > 0}
+                  className="btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {profileSaving ? 'Saving Changes…' : 'Save Profile Changes'}
                 </button>

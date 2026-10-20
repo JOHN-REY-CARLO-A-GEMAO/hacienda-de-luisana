@@ -127,6 +127,10 @@ function ReviewComposer({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (busy || submitted.current) return
+    if (stars < 1 || stars > 5) {
+      setProblem('Please select a star rating from 1 to 5.')
+      return
+    }
     if (text.trim().length > REVIEW_MAX) {
       setProblem(`Review must be at most ${REVIEW_MAX} characters`)
       return
@@ -177,7 +181,10 @@ function ReviewComposer({
                 name={`${formId}-stars`}
                 value={n}
                 checked={stars === n}
-                onChange={() => setStars(n)}
+                onChange={() => {
+                  setStars(n)
+                  if (problem) setProblem(null)
+                }}
                 className="sr-only"
                 aria-label={`${n} star${n === 1 ? '' : 's'} — ${STAR_LABELS[n - 1]}`}
               />
@@ -208,7 +215,10 @@ function ReviewComposer({
         rows={4}
         placeholder="Optional. Tell other Guests what to expect."
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          setText(event.target.value)
+          if (problem) setProblem(null)
+        }}
         aria-describedby={`${formId}-count`}
       />
       <div id={`${formId}-count`} className="mt-1 flex items-center justify-between text-[11px]">
@@ -248,7 +258,11 @@ function ReviewComposer({
         </div>
       </div>
 
-      <button type="submit" className="btn-primary text-xs mt-4" disabled={busy}>
+      <button
+        type="submit"
+        className="btn-primary text-xs mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
+        disabled={busy || Boolean(problem)}
+      >
         {busy ? 'Saving…' : (submitLabel ?? (review ? 'Save my changes' : 'Submit review'))}
       </button>
 

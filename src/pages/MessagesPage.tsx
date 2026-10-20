@@ -27,6 +27,7 @@ export function MessagesPage() {
   const [category, setCategory] = useState('booking')
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [convoId, setConvoId] = useState<string | null>(null)
   const [cursor, setCursor] = useState<MessageCursor | null>(null)
@@ -111,32 +112,47 @@ export function MessagesPage() {
       setError('Sign in to message the Admin.')
       return
     }
-    const rl = checkRateLimit(`chat:${user.uid}`, LIMITS.chat)
-    if (!rl.ok) {
-      setError(rl.message)
+    if (!text.trim()) {
+      setError('Please type a message before sending.')
       return
     }
-    const result = await sendChatMessage({ convoId, uid: user.uid, text })
-    if (!result.ok) {
-      setError(result.message)
+    if (text.length > MESSAGE_MAX) {
+      setError(`Message cannot exceed ${MESSAGE_MAX} characters.`)
       return
     }
-    setText('')
+    setSending(true)
     setError(null)
-    if (!isFirebaseConfigured) {
-      setMessages((m) =>
-        mergeMessages(m, [
-          {
-            id: crypto.randomUUID(),
-            text: text.trim(),
-            at: new Date().toISOString(),
-            mine: true,
-            sender_uid: user.uid as string,
-          },
-        ]),
-      )
+    try {
+      const rl = checkRateLimit(`chat:${user.uid}`, LIMITS.chat)
+      if (!rl.ok) {
+        setError(rl.message)
+        return
+      }
+      const result = await sendChatMessage({ convoId, uid: user.uid, text })
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
+      setText('')
+      if (!isFirebaseConfigured) {
+        setMessages((m) =>
+          mergeMessages(m, [
+            {
+              id: crypto.randomUUID(),
+              text: text.trim(),
+              at: new Date().toISOString(),
+              mine: true,
+              sender_uid: user.uid as string,
+            },
+          ]),
+        )
+      }
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Message could not be sent. Please try again.')
+    } finally {
+      setSending(false)
     }
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }
 
   const retentionDays = retentionDaysLeft(retention)
@@ -206,7 +222,10 @@ export function MessagesPage() {
             value={text}
             maxLength={MESSAGE_MAX}
             data-tour-field="message"
-            onChange={(e) => setText(e.target.value.slice(0, MESSAGE_MAX))}
+            onChange={(e) => {
+              setText(e.target.value.slice(0, MESSAGE_MAX))
+              if (error) setError(null)
+            }}
             placeholder="Write a message…"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -215,8 +234,13 @@ export function MessagesPage() {
               }
             }}
           />
-          <button type="button" className="btn-primary text-xs" onClick={() => void send()}>
-            Send
+          <button
+            type="button"
+            disabled={sending || !text.trim() || text.length > MESSAGE_MAX || Boolean(error)}
+            className="btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={() => void send()}
+          >
+            {sending ? 'Sending…' : 'Send'}
           </button>
         </div>
         <div className="mt-1 flex items-center justify-between text-[11px]">
@@ -235,7 +259,7 @@ export function MessagesPage() {
           </span>
         </div>
         <ShareLocationBar sharing={sharing} />
-        {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
+        {error && <div role="alert" className="mt-2 rounded-xl bg-red-50 border border-red-200 p-2.5 text-xs text-red-700">{error}</div>}
       </div>
     </div>
   )

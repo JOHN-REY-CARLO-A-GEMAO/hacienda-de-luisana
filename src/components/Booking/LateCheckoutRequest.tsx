@@ -20,9 +20,17 @@ export const LateCheckoutRequest: React.FC<LateCheckoutRequestProps> = ({ bookin
 
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!actor || busy) return
-    setBusy(true)
     setNotice(null)
+    if (!actor) {
+      setNotice({ tone: 'bad', text: 'You must be signed in to submit an extension request.' })
+      return
+    }
+    if (hours < 1 || hours > 6 || isNaN(hours)) {
+      setNotice({ tone: 'bad', text: 'Please select a valid extension between 1 and 6 hours.' })
+      return
+    }
+    if (busy) return
+    setBusy(true)
 
     try {
       const requestData = {
@@ -106,8 +114,8 @@ export const LateCheckoutRequest: React.FC<LateCheckoutRequestProps> = ({ bookin
             <span className="font-bold text-forest-900">Calculated Fee: ₱{calculatedFee.toLocaleString()}</span>
             <button
               type="submit"
-              disabled={busy}
-              className="btn-primary text-xs disabled:opacity-50"
+              disabled={busy || !actor || hours < 1 || hours > 6 || isNaN(hours)}
+              className="btn-primary text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy ? 'Submitting…' : 'Submit Extension Request'}
             </button>

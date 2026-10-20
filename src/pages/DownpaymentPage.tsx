@@ -678,11 +678,22 @@ refund_policy_snapshot: published.refund ?? null,
                 </p>
               )}
 
+              {error && (
+                <div className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700" role="alert">
+                  {error}
+                </div>
+              )}
+
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={busy || !proofFile}
+                  disabled={
+                    busy ||
+                    !proofFile ||
+                    Boolean(offReceipt) ||
+                    Boolean(amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' }))
+                  }
                   onClick={() => void submit()}
                 >
                   {busy ? 'Submitting…' : 'Submit booking'}

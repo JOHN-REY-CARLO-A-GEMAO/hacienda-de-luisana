@@ -63,6 +63,7 @@ export function BookingStatusPage() {
   const [lookupRef, setLookupRef] = useState(params.get('ref') ?? '')
   const [lookupEmail, setLookupEmail] = useState('')
   const [lookupError, setLookupError] = useState('')
+  const [lookupPending, setLookupPending] = useState(false)
 
   const idFromUrl = params.get('id')
 
@@ -106,16 +107,21 @@ export function BookingStatusPage() {
       setLookupError('Enter the reference and the email on the booking.')
       return
     }
-    const mine = await cloudBookingsDB.list().catch(() => [])
-    const found = mine.find(
-      (item) => referenceOf(item).toUpperCase() === ref && item.email.trim().toLowerCase() === email,
-    )
-    if (!found) {
-      setLookupError('No booking matched that reference and email in this browser.')
-      setBooking(null)
-      return
+    setLookupPending(true)
+    try {
+      const mine = await cloudBookingsDB.list().catch(() => [])
+      const found = mine.find(
+        (item) => referenceOf(item).toUpperCase() === ref && item.email.trim().toLowerCase() === email,
+      )
+      if (!found) {
+        setLookupError('No booking matched that reference and email in this browser.')
+        setBooking(null)
+        return
+      }
+      setBooking(found)
+    } finally {
+      setLookupPending(false)
     }
-    setBooking(found)
   }
 
   const status = booking ? cloudBookingsDB.readStatus(booking) : 'Pending'
@@ -217,7 +223,10 @@ export function BookingStatusPage() {
                     className="field"
                     value={lookupRef}
                     maxLength={REF_MAX}
-                    onChange={(event) => setLookupRef(sanitizeReferenceInput(event.target.value))}
+                    onChange={(event) => {
+                      setLookupRef(sanitizeReferenceInput(event.target.value))
+                      if (lookupError) setLookupError('')
+                    }}
                     placeholder="HDL-1234"
                   />
                 </label>
@@ -228,14 +237,27 @@ export function BookingStatusPage() {
                     type="email"
                     maxLength={EMAIL_MAX}
                     value={lookupEmail}
-                    onChange={(event) => setLookupEmail(event.target.value)}
+                    onChange={(event) => {
+                      setLookupEmail(event.target.value)
+                      if (lookupError) setLookupError('')
+                    }}
                     placeholder="you@email.com"
                     autoComplete="email"
                     spellCheck={false}
                   />
                 </label>
-                {lookupError && <p className="sm:col-span-2 text-xs text-red-700">{lookupError}</p>}
-                <button type="submit" className="btn-primary text-xs sm:col-span-2 w-fit">Look up status</button>
+                {lookupError && (
+                  <div className="sm:col-span-2 rounded-xl bg-red-50 border border-red-200 p-3 text-xs text-red-700" role="alert">
+                    {lookupError}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={lookupPending || Boolean(lookupError)}
+                  className="btn-primary text-xs sm:col-span-2 w-fit disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {lookupPending ? 'Looking up…' : 'Look up status'}
+                </button>
               </form>
               <Link to="/book" className="btn-ghost mt-6 inline-flex text-xs">Start a booking</Link>
             </>

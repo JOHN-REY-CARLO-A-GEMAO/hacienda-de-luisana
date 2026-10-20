@@ -59,9 +59,17 @@ export function DisputeForm({ bookingId, guestId }: { bookingId?: string; guestI
     {readError && <p role="alert" className="my-3 text-sm text-red-800">{readError}</p>}
     {unavailable && <p className="my-3 text-sm">Reporting and case tracking are not available at the moment, so a report submitted here could not reach the Hacienda. Please raise this through the <Link className="underline" to="/contact">contact page</Link> instead.</p>}
     {notice && <p role="status" className="my-3 text-sm">{notice}</p>}
-    {show && !unavailable && <form className="space-y-3 border-y py-4" onSubmit={e => { e.preventDefault(); review ? void submit() : setReview(true) }}>
+    {show && !unavailable && <form className="space-y-3 border-y py-4" onSubmit={e => {
+      e.preventDefault()
+      if (description.trim().length < 10) {
+        setWriteError('Please provide at least 10 characters describing the issue.')
+        return
+      }
+      if (writeError) setWriteError('')
+      review ? void submit() : setReview(true)
+    }}>
       {review ? <div><h3 className="font-semibold">Review before submitting</h3><p>{caseLabel(category)} · {bookingId ? 'Linked to this booking' : 'General support'}</p><p className="whitespace-pre-wrap">{description}</p><p className="text-xs mt-2">Your submitted explanation is retained as history. Add corrections later; do not include passwords, PINs, full card details or government IDs.</p></div> : <>
-        <label className="block">Category<select className="field w-full" value={category} onChange={e => setCategory(e.target.value)}>{CATEGORIES.map(c => <option key={c} value={c}>{caseLabel(c)}</option>)}</select></label>
+        <label className="block">Category<select className="field w-full" value={category} onChange={e => { setCategory(e.target.value); if (writeError) setWriteError('') }}>{CATEGORIES.map(c => <option key={c} value={c}>{caseLabel(c)}</option>)}</select></label>
         <label className="block">
           <span className="label">What happened?</span>
           <textarea
@@ -71,7 +79,7 @@ export function DisputeForm({ bookingId, guestId }: { bookingId?: string; guestI
             rows={5}
             className="field w-full"
             value={description}
-            onChange={e => setDescription(e.target.value.slice(0, DISPUTE_DESCRIPTION_MAX))}
+            onChange={e => { setDescription(e.target.value.slice(0, DISPUTE_DESCRIPTION_MAX)); if (writeError) setWriteError('') }}
           />
           <div className="mt-1 flex items-center justify-between text-[11px]">
             <span className="text-forest-600/70">Minimum 10 characters</span>
@@ -83,7 +91,7 @@ export function DisputeForm({ bookingId, guestId }: { bookingId?: string; guestI
         <p className="text-xs">Evidence is optional and can be added after submission. Redact unrelated sensitive details.</p>
       </>}
       {duplicate && <p className="text-amber-900 text-sm">You have an active case in this category. Check it below; you may still report a different incident.</p>}
-      <div className="flex gap-3"><button className="btn-primary text-xs" disabled={busy}>{busy ? 'Checking submission…' : review ? 'Confirm and submit' : 'Review report'}</button><button type="button" className="btn-ghost text-xs" disabled={busy} onClick={() => review ? setReview(false) : setShow(false)}>{review ? 'Edit' : 'Cancel'}</button></div>
+      <div className="flex gap-3"><button className="btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed" disabled={busy || Boolean(writeError)}>{busy ? 'Checking submission…' : review ? 'Confirm and submit' : 'Review report'}</button><button type="button" className="btn-ghost text-xs" disabled={busy} onClick={() => review ? setReview(false) : setShow(false)}>{review ? 'Edit' : 'Cancel'}</button></div>
     </form>}
     {loading ? <p role="status">Loading cases…</p> : !cases.length && !readError ? <p className="text-sm">No reports yet.</p> : null}
     <div className="space-y-3 mt-4">{cases.filter(c => c.guest_id === guestId).map(c => <article key={c.id} className="rounded-xl border p-3">
@@ -139,7 +147,14 @@ function CaseDetail({ record: c, uid }: { record: DisputeRecord; uid: string }) 
     <ol className="space-y-2 max-h-96 overflow-auto" aria-label="Case activity">{[...items].reverse().map(i => <li key={i.id} className="border-l-2 pl-3"><span className="text-xs">{caseDate(i.created_at)} · {i.actor_role} · {caseLabel(i.action)}</span>{i.text && <p className="whitespace-pre-wrap">{i.text}</p>}{i.attachment_ids?.length > 0 && <p>{i.attachment_ids.length} attachment(s)</p>}</li>)}</ol>
     {page?.hasMore && <button type="button" className="underline" onClick={() => void activityPage(c.id, page.cursor).then(p => { setItems(prev => [...prev, ...p.items]); setPage(p) }).catch(e => setError(e.message))}>Load older activity</button>}
     {error && <p role="alert" className="text-red-800">{error}</p>}{progress && <p role="status">{progress}</p>}
-    {!c.duplicate_of && <form className="space-y-3" onSubmit={e => { e.preventDefault(); void run(active ? 'message' : !c.final_decision && c.reopen_until && Date.now() <= c.reopen_until ? 'reopen' : 'request_reopen') }}>
+    {!c.duplicate_of && <form className="space-y-3" onSubmit={e => {
+      e.preventDefault()
+      if (!active && message.trim().length < 10) {
+        setError('Minimum 10 characters required to reopen.')
+        return
+      }
+      void run(active ? 'message' : !c.final_decision && c.reopen_until && Date.now() <= c.reopen_until ? 'reopen' : 'request_reopen')
+    }}>
       <label className="block">
         <span className="label">{active ? 'Message / explanation' : 'Reason to reopen (new evidence, unfulfilled remedy, or procedural error)'}</span>
         <textarea
@@ -148,7 +163,7 @@ function CaseDetail({ record: c, uid }: { record: DisputeRecord; uid: string }) 
           maxLength={DISPUTE_MESSAGE_MAX}
           minLength={active ? 0 : 10}
           value={message}
-          onChange={e => setMessage(e.target.value.slice(0, DISPUTE_MESSAGE_MAX))}
+          onChange={e => { setMessage(e.target.value.slice(0, DISPUTE_MESSAGE_MAX)); if (error) setError('') }}
         />
         <div className="mt-1 flex items-center justify-between text-[11px]">
           <span className="text-forest-600/70">{active ? 'Explain clearly without confidential credentials' : 'Minimum 10 characters required'}</span>
@@ -160,7 +175,7 @@ function CaseDetail({ record: c, uid }: { record: DisputeRecord; uid: string }) 
       {active && <label className="block">Add evidence (up to five files, 10 MB each)<input ref={input} className="block my-2" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple disabled={busy} onChange={e => { const selected = Array.from(e.target.files || []); if (selected.length > 5 || selected.some(f => f.size > 10 * 1024 * 1024)) { setError('Choose at most five files of 10 MB each.'); e.target.value = ''; setUploads([]) } else { setError(''); setUploads(selected) } }} /></label>}
       <p className="text-xs">No passwords, PINs, full card details or government IDs. Redact unrelated information. Temporary uploads expire after 24 hours. Submitted history cannot be edited.</p>
       <div className="flex flex-wrap gap-2">
-        <button className="btn-primary text-xs" disabled={busy || (!message.trim() && !uploads.length)}>{busy ? 'Checking action…' : active ? 'Send message / evidence' : 'Request reopening'}</button>
+        <button className="btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed" disabled={busy || (!message.trim() && !uploads.length) || (!active && message.trim().length < 10) || Boolean(error)}>{busy ? 'Checking action…' : active ? 'Send message / evidence' : 'Request reopening'}</button>
         {c.status === 'resolution_proposed' && <><button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => { if (window.confirm('Accept this proposal? Any unfinished remedy remains outstanding.')) void run('accept') }}>Accept proposal</button>{!c.appeal_used && <button type="button" className="btn-secondary text-xs" disabled={busy || message.trim().length < 10} onClick={() => void run('contest')}>Contest &amp; request independent appeal</button>}</>}
         {active && <button type="button" className="btn-ghost text-xs" disabled={busy || !message.trim()} onClick={() => void run('withdraw_request')}>Request case withdrawal</button>}
       </div>
