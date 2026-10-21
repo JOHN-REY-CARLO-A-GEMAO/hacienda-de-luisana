@@ -390,10 +390,13 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             ticket: ticket);
         return;
       case AdminAction.cancel:
-        final reason = await _askText('Cancel Booking',
-            'Reason (optional). A Reserved Booking is settled under the published refund policy.',
-            confirm: 'Cancel Booking', optional: true);
-        if (reason == null) return;
+        final choice = await _askCancel(booking);
+        if (choice == null) return;
+        if (choice.reschedule) {
+          await _onReschedule(booking);
+          return;
+        }
+        final reason = choice.reason ?? '';
         double? damage;
         if (booking.rawStatus == BookingStatuses.reserved) {
           damage = await _askAmount('Damage deduction',
@@ -722,7 +725,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           const SizedBox(height: 12),
           _actionsCard(booking, actions, expiredButStored),
           const SizedBox(height: 12),
-          _stayCard(booking, now),
+          _stayCard(booking, now, activity.asData?.value ?? const []),
           if (booking.raw['late_checkout_request'] is Map) ...[
             const SizedBox(height: 12),
             _lateCheckoutCard(booking),
@@ -877,7 +880,158 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     );
   }
 
-  Widget _stayCard(BookingModel booking, DateTime now) {
+  /// When the stay was actually checked in, begun and checked out, read from the
+  /// Activity log (every one of those actions is logged with its time). Shown
+  /// only once the Booking has reached that stage; a stage reached before the
+  /// log recorded it says so instead of leaving the line out.
+  List<Widget> _stayRecordRows(
+      BookingModel booking, List<Map<String, dynamic>> log) {
+    DateTime? when(String action) {
+      DateTime? found;
+      for (final e in log) {
+        if ('${e['action']}' != action) continue;
+        final at = parseInstant(e['at']);
+        if (at != null && (found == null || at.isAfter(found))) found = at;
+      }
+      return found;
+    }
+
+    String show(DateTime? d) =>
+        d == null ? 'Date not recorded' : DateFormatter.formatFull(d.toLocal());
+
+    final status = booking.rawStatus;
+    final rows = <Widget>[];
+    if (['Checked-In', 'Staying', 'Checked-Out', 'Completed'].contains(status)) {
+      rows.add(_kv('Checked in', show(when('CheckIn'))));
+    }
+    if (['Staying', 'Checked-Out', 'Completed'].contains(status)) {
+      rows.add(_kv('Stay began', show(when('BeginStay'))));
+    }
+    if (['Checked-Out', 'Completed'].contains(status)) {
+      rows.add(_kv('Checked out', show(when('CheckOut'))));
+    }
+    return rows;
+  }
+
+  /// The cancel dialog: a reason from a list (like Reject), what the Guest gets
+  /// back under the policy stamped on the Booking, and a way out to Reschedule.
+  Future<_CancelChoice?> _askCancel(BookingModel booking) {
+    const reasons = [
+      'Guest requested cancellation',
+      'Accommodation unavailable',
+      'Payment problem',
+      'Weather or property closure',
+      'Other',
+    ];
+    var selected = reasons.first;
+    final remarks = TextEditingController();
+    String? dialogError;
+
+    // The owner's policy, not a computed refund: a paid booking is never
+    // refunded; the Guest may reschedule within three months; after that the
+    // payment is forfeited. The downpayment is non-refundable.
+    final paid = booking.rawStatus == BookingStatuses.reserved ||
+        (booking.rawStatus == BookingStatuses.approved &&
+            booking.toLifecycleDoc()['payment_status'] == 'verified');
+    final String refundLine = paid
+        ? 'Policy: the downpayment is non-refundable. The Guest may reschedule within 3 months; after that the payment is forfeited. Use "Reschedule instead" to keep the payment, or cancel to forfeit it.'
+        : 'No payment has been verified on this Booking, so nothing is charged and nothing is forfeited.';
+
+    return showDialog<_CancelChoice>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Cancel Booking',
+              style:
+                  GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(refundLine, style: const TextStyle(fontSize: 12)),
+                const SizedBox(height: 12),
+                const Text('Select cancellation reason:',
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  initialValue: selected,
+                  isExpanded: true,
+                  items: reasons
+                      .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        selected = val;
+                        dialogError = null;
+                      });
+                    }
+                  },
+                  decoration:
+                      const InputDecoration(border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  selected == 'Other'
+                      ? 'Remarks (Required for "Other"):'
+                      : 'Remarks (Optional):',
+                  style:
+                      const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: remarks,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                      hintText: 'Notes the Guest will read...',
+                      border: OutlineInputBorder()),
+                  onChanged: (_) {
+                    if (dialogError != null) {
+                      setDialogState(() => dialogError = null);
+                    }
+                  },
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 6),
+                  Text(dialogError!,
+                      style: const TextStyle(fontSize: 12, color: Colors.red)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Back')),
+            TextButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, const _CancelChoice.reschedule()),
+                child: const Text('Reschedule instead')),
+            ElevatedButton(
+              onPressed: () {
+                final text = remarks.text.trim();
+                if (selected == 'Other' && text.isEmpty) {
+                  setDialogState(
+                      () => dialogError = 'Please say why, so the Guest knows.');
+                  return;
+                }
+                final reason = selected == 'Other'
+                    ? text
+                    : (text.isNotEmpty ? '$selected ($text)' : selected);
+                Navigator.pop(ctx, _CancelChoice(reason));
+              },
+              child: const Text('Cancel Booking'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stayCard(BookingModel booking, DateTime now,
+      List<Map<String, dynamic>> log) {
     final hold = holdRemaining(booking.toLifecycleDoc(), now);
     return HaciendaCard(
       child: Column(
@@ -895,6 +1049,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               booking.specialRequests!.isNotEmpty)
             _kv('Notes', booking.specialRequests!),
           _kv('Submitted', DateFormatter.formatFull(booking.createdAt)),
+          ..._stayRecordRows(booking, log),
           if (isHoldExpirable(booking.rawStatus))
             _kv('Date hold',
                 booking.holdExpiresAt == null
@@ -1186,4 +1341,15 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         return AppColors.textMuted;
     }
   }
+}
+
+/// What the Admin chose in the cancel dialog: a reason to cancel, or a
+/// reschedule instead.
+class _CancelChoice {
+  final String? reason;
+  final bool reschedule;
+  const _CancelChoice(this.reason) : reschedule = false;
+  const _CancelChoice.reschedule()
+      : reason = null,
+        reschedule = true;
 }
