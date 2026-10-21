@@ -44,8 +44,6 @@ class LiveLocationPanel extends StatefulWidget {
 }
 
 class _LiveLocationPanelState extends State<LiveLocationPanel> {
-  static const Duration _tileRefresh = Duration(seconds: 10);
-
   StreamSubscription<LiveFix?>? _sub;
   LiveFix? _fix;
   bool _stopped = false;
