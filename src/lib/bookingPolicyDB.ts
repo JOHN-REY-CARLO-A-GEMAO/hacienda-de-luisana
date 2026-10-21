@@ -22,6 +22,32 @@ export const bookingPolicyDB = {
     }
   },
 
+  /**
+   * The two Guest-facing policy decisions that live in this document, from **one**
+   * read: the minimum lead time, and whether a price must be attested before a
+   * Booking may be written (ADR-0019).
+   *
+   * A single read is not a micro-optimisation. Both answers have to describe the
+   * same moment: a Guest whose dates were judged against the 30-day default while
+   * the attestation requirement was judged against a newer document would be told
+   * one policy and written under another. It also keeps a submit to one round trip
+   * to `site_config/booking`, which is what the rules will read a third time when
+   * they evaluate the write.
+   */
+  async getGuestPolicy(): Promise<{ minimumLeadTimeDays: number; quotesRequired: boolean }> {
+    if (!isCloud || !db) return { minimumLeadTimeDays: MINIMUM_BOOKING_LEAD_TIME_DAYS, quotesRequired: false }
+    try {
+      const snap = await getDocFromServer(doc(db, COLLECTION, DOC_ID))
+      const data = snap.exists() ? snap.data() : undefined
+      return {
+        minimumLeadTimeDays: configuredBookingLeadTimeDays(data ?? null),
+        quotesRequired: data?.quotes_required === true,
+      }
+    } catch {
+      throw new Error('Booking dates could not be checked right now. Please try again.')
+    }
+  },
+
   subscribe(callback: (days: number) => void): () => void {
     if (!isCloud || !db) {
       callback(MINIMUM_BOOKING_LEAD_TIME_DAYS)

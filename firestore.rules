@@ -127,9 +127,16 @@ service cloud.firestore {
     function validBookingPolicy() {
       // Preserve other Admin-owned settings/metadata on this document. Only
       // the new field is constrained; an absent field uses the shared default.
-      return !request.resource.data.keys().hasAny(['minimumBookingLeadTimeDays'])
-        || (request.resource.data.minimumBookingLeadTimeDays is int
-            && request.resource.data.minimumBookingLeadTimeDays > 0);
+      //
+      // `quotes_required` is constrained to a boolean because it is a security
+      // switch (ADR-0019): a truthy string, a 1, or a stray `{"x":1}` would read
+      // as "enforce" to one layer and not to another, and the two must not be able
+      // to disagree about whether price attestation is on.
+      return (!request.resource.data.keys().hasAny(['minimumBookingLeadTimeDays'])
+              || (request.resource.data.minimumBookingLeadTimeDays is int
+                  && request.resource.data.minimumBookingLeadTimeDays > 0))
+        && (!request.resource.data.keys().hasAny(['quotes_required'])
+            || request.resource.data.quotes_required is bool);
     }
 
     function meetsMinimumBookingLeadTime(checkIn) {
@@ -182,7 +189,8 @@ service cloud.firestore {
       return data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && data.check_out.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && meetsMinimumBookingLeadTime(data.check_in)
-        && validBookingMoneyInvariants(data);
+        && validBookingMoneyInvariants(data)
+        && validGuestQuote(data);
     }
 
     // ------------------------------------------------------------------
@@ -273,6 +281,100 @@ service cloud.firestore {
         // A Guest cannot claim to have sent less than the downpayment.
         && data.amount_claimed is number
         && data.amount_claimed >= data.amount_due;
+    }
+
+    // ------------------------------------------------------------------
+    // The server-attested price
+    // ------------------------------------------------------------------
+    //
+    // ADR-0018 recorded what this file stopped being able to do: re-derive a
+    // stay's price from the published rate card on every Guest write, because
+    // that descent crossed Firestore's 1,000-expression budget and an evaluation
+    // error arrives as the same bare `permission-denied` a refusal does. The
+    // arithmetic did not go away — it moved to a Cloud Function (`functions/
+    // src/pricing.ts`), which has no expression budget, and the function's answer
+    // is written to `booking_quotes/{id}`, a collection no client may write.
+    //
+    // What the rules check here is therefore small, and it is the whole point:
+    // a Booking's money must be *the figures some server already computed*, field
+    // for field. A console can still ask for a quote — that is a public price, and
+    // asking for it is what the website does — but it can no longer arrive with a
+    // number of its own choosing. Forging `stay_total` now means forging
+    // `booking_quotes/{id}` first, and there is no write path to that document.
+    //
+    // `site_config/booking.quotes_required` gates enforcement, and it is the
+    // Admin's to set (see the `site_config` block). Off — the default — this
+    // clause is inert, which is what makes the rules and the function deployable
+    // in either order: the outage of 2026-10-14 was a policy that outran what the
+    // deployment actually had.
+    function quotesRequired() {
+      let policy = /databases/$(database)/documents/site_config/booking;
+      // A ternary, not `exists(x) && get(x)…`: the rules language gives no
+      // guarantee that `&&` skips the operand it does not need, and `get()` on a
+      // missing document followed by `.data.get(…)` would throw. An expression
+      // that throws is a denial wearing a disguise — which is the exact failure
+      // this file has now been burned by twice.
+      return exists(policy) ? get(policy).data.get('quotes_required', false) == true : false;
+    }
+
+    function validGuestQuote(data) {
+      let enforced = quotesRequired();
+      // A quote id that cannot exist is what a Booking with none looks up, so the
+      // read always resolves to a snapshot and never to an error.
+      // `exists()` before `get()`, for the same reason the lead-time helper does:
+      // reading a document that is not there is not a refusal, it is an error, and
+      // an error is what this file has been burned by twice.
+      let path = /databases/$(database)/documents/booking_quotes/$(data.get('quote_id', '__none__'));
+      let found = exists(path) ? get(path).data : null;
+      // `{}` for "no such attestation", not a skipped call: an empty map reads back
+      // nulls and refuses, while a null dereference would throw — and this clause
+      // is evaluated even when its value is about to be discarded, because neither
+      // the offline evaluator nor a `let` binding promises laziness. A rule that
+      // can throw on a branch it does not use is how every booking in the estate
+      // got refused on 2026-10-14.
+      let attested = validAttestedQuote(found == null ? {} : found, data);
+      // So the gate is this one ternary, on a value that is safe either way: when
+      // the estate has not asked for attestation, the clause cannot refuse and
+      // cannot throw.
+      return enforced ? attested : true;
+    }
+
+    function validAttestedQuote(quote, data) {
+      // A quote issued to nobody in particular is a price, not an entitlement — it
+      // is what the website's public booking path receives before the Guest has an
+      // identity to bind to (ADR-0004). A quote bound to an account may only be
+      // spent by that account, which is what stops a live quote lifted from
+      // someone else's session being used to book under theirs.
+      let writerMatches = quote.get('bound_uid', '') == ''
+        || (isSignedIn() ? request.auth.uid == quote.get('bound_uid', '') : false);
+      // Amounts are compared in whole centavos because both sides are doubles that
+      // took different paths here — one computed in a Node process, one round
+      // tripped through a client and Firestore. `+ 0.5` before truncating is the
+      // same round-half-up the canonical pricing module uses; `int(a) == int(b)`
+      // on the raw products would refuse a legitimate quote on a float wobble,
+      // and a rule that refuses real bookings on rounding is worse than the gap
+      // it closes.
+      return request.time < quote.get('expires_at', request.time)
+        && writerMatches
+        && quote.get('accommodation', null) == data.get('accommodation', null)
+        && quote.get('check_in', null) == data.get('check_in', null)
+        && quote.get('check_out', null) == data.get('check_out', null)
+        && quote.get('guests', null) == data.get('guests', null)
+        && quote.get('pet_count', 0) == data.get('pet_count', 0)
+        && quote.get('late_checkout_hours', 0) == data.get('late_checkout_hours', 0)
+        && quote.get('rates_version', null) == data.get('policy_version', null)
+        && quote.get('rate_unit', null) == data.get('rate_unit', null)
+        && quote.get('rate_classification', null) == data.get('rate_classification', null)
+        && quote.get('nights', null) == data.get('nights', null)
+        && quote.get('payment_plan', null) == data.get('payment_plan', null)
+        && quote.get('policy_version', null) == data.get('policy_version', null)
+        && quote.get('policy_effective_date', null) == data.get('policy_effective_date', null)
+        && quote.get('refund_policy_snapshot', null) == data.get('refund_policy_snapshot', null)
+        && int(quote.get('rate_amount', 0) * 100 + 0.5) == int(data.get('rate_amount', 0) * 100 + 0.5)
+        && int(quote.get('stay_total', 0) * 100 + 0.5) == int(data.get('stay_total', 0) * 100 + 0.5)
+        && int(quote.get('amount_due', 0) * 100 + 0.5) == int(data.get('amount_due', 0) * 100 + 0.5)
+        && int(quote.get('balance_due', 0) * 100 + 0.5) == int(data.get('balance_due', 0) * 100 + 0.5)
+        && int(quote.get('security_deposit', 0) * 100 + 0.5) == int(data.get('security_deposit', 0) * 100 + 0.5);
     }
 
 
@@ -889,6 +991,21 @@ service cloud.firestore {
           // The closed vocabulary. This is also the whole of ADR-0009: a
           // location key is not on this list, so it is refused like any other
           // unknown key. Do NOT widen it to `hasAny`.
+          //
+          // …and once a Booking is attested (ADR-0019), its price leaves the
+          // vocabulary entirely. Without this line the attestation would be a
+          // one-time gate a Guest walks straight back through: create honestly,
+          // then `update` `stay_total` down and keep the split coherent — the
+          // arithmetic below still passes, because it checks the figures against
+          // each other and not against the estate. A Booking written before the
+          // switch carries no `quote_id`, so the plan-choice flow those records
+          // still need keeps working; an attested one cannot be re-priced by the
+          // person paying it.
+          && (old.get('quote_id', '') == ''
+              || !affected.hasAny(['payment_plan', 'rate_unit', 'rate_amount', 'rate_classification',
+                                   'nights', 'stay_total', 'amount_due', 'balance_due',
+                                   'security_deposit', 'policy_version', 'policy_effective_date',
+                                   'refund_policy_snapshot']))
           && affected.hasOnly(['status',
                       'payment_plan', 'payment_status', 'payment_proof_url', 'paymentProofUrl',
                       'payment_reject_reason', 'extractedRefNumber',

@@ -381,6 +381,17 @@ describe('official guest-count rates', () => {
     refuse({ payment_status: 'verified' }, 'pre-verified')
   })
 
+  /**
+   * GAP (recorded 2026-10-14, closed-by-construction 2026-10-21).
+   *
+   * These five still pass, and that is the point of the case: this suite runs with
+   * `site_config/booking` absent, which is the estate's default, which means the
+   * price attestation of ADR-0019 is switched off. What each forgery now needs to
+   * get through is the switch staying off — with `quotes_required: true`, all five
+   * are refused, and `test/rules/quote-attestation.rules.test.ts` proves it case
+   * for case. Read the two files as one contract: this one pins what the rule
+   * layer alone still cannot see, that one pins what the attestation closes.
+   */
   it('GAP (recorded, 2026-10-14): a coherent figure the published rate would not produce passes the rule layer', () => {
     // Not an assertion that this is good. An assertion that this is the line,
     // written where somebody has to move it. Every case below is internally
@@ -388,12 +399,16 @@ describe('official guest-count rates', () => {
     // Guest create, accept it — and each one used to be refused by the
     // derivation that crossed the expression budget.
     //
-    // The check that closes them is the Admin's, at approve, in
-    // `lib/services/booking_lifecycle.dart`; it does not re-derive the price
-    // from the published document today, and ADR-0018 records that as accepted
-    // rather than pretend it is enforced. When it is built, flip each case here
-    // to `deny` — this file is the tripwire for the gap closing and for it
-    // widening.
+    // What closes them is ADR-0019: a Cloud Function prices the stay from the
+    // published card, writes the answer to `booking_quotes/{id}` — which no client
+    // can write — and this file compares a Guest's figures against it field for
+    // field. That comparison is switched on by `site_config/booking.quotes_required`,
+    // so the state asserted below is the estate's default, not the end state: the
+    // five forgeries are refused the moment the Admin turns it on, which
+    // `test/rules/quote-attestation.rules.test.ts` asserts one case at a time.
+    // Until the function is deployed *and* the switch is set, ADR-0018's
+    // "accepted, interim" is the accurate description, and this case stays here so
+    // nobody has to discover that by trying.
     const passes = (overrides: DocData, note: string) =>
       expect(allow({ path: `bookings/official-gap-${note}`, method: 'create', auth: anonymousGuest(), requestData: officialBooking(overrides) }, officialStore), note).toBe(true)
 

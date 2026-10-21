@@ -27,6 +27,7 @@ import { activityLogStorage, bookingsDB, type Booking } from './storage'
 import { describeFirestoreFailure, failureLine } from './firebaseFailure'
 import { ACCOMMODATIONS } from '../config/site'
 import { bookingPolicyDB } from './bookingPolicyDB'
+import { attestationForStay, type AttestedQuote } from './quotesApi'
 import { ratesDB } from './ratesDB'
 import { createNotification, type NotificationType } from './notifications'
 import { dateToISOString } from './formatDate'
@@ -573,7 +574,11 @@ export const cloudBookingsDB = {
     // This is the public guest creation path; actor.now/source/uid must not
     // select the clock or grant an Admin exemption. Admin lifecycle updates
     // are separate and do not re-apply a creation-time constraint.
-    const dates = await this.validateGuestCheckIn(input.check_in)
+    // One read of `site_config/booking` for both policy decisions this path makes,
+    // so the date the Guest is allowed to book and the attestation the write will be
+    // judged against come from the same document version.
+    const policy = await bookingPolicyDB.getGuestPolicy()
+    const dates = validateMinimumBookingLeadTime(input.check_in, new Date(), policy.minimumLeadTimeDays)
     if (!dates.ok) throw Object.assign(new Error(dates.reason), { code: dates.code })
     // The submission entry is signed by the identity the Booking is being
     // attached to. The Activity rule refuses an entry whose `actor_id` is not the
@@ -613,11 +618,37 @@ export const cloudBookingsDB = {
       }
     }
 
+    // ADR-0019: what a stay costs is not the Guest's number to choose. The estate is
+    // asked to attest the price from `site_config/rates`, and the only thing this
+    // puts on the payload is the id of the answer — the figures stay as the page
+    // showed them, because quietly overwriting a total the Guest approved would be
+    // the worse dishonesty. If the two disagree, the write is denied and the
+    // diagnosis path above is what says why.
+    //
+    // With enforcement off, a failure here is survivable on purpose: the estate has
+    // not asked to refuse an unattested Booking, and a Guest must still be able to
+    // book while the functions are being deployed.
+    let attested: AttestedQuote | null = null
+    if (isCloud) {
+      attested = await attestationForStay({
+        accommodation: rest.accommodation,
+        check_in: rest.check_in,
+        check_out: rest.check_out,
+        guests: rest.guests,
+        // The two extras ride on the Booking as stay-request answers rather than as
+        // declared BookingState fields; the server prices them when present and
+        // treats absent as none, which is what the rules compare against too.
+        pet_count: (rest as { pet_count?: number }).pet_count,
+        late_checkout_hours: (rest as { late_checkout_hours?: number }).late_checkout_hours,
+      }, policy.quotesRequired)
+    }
+
     const submitter: Actor = actor ?? { actor: 'guest', actor_id: rest.uid ?? 'guest' }
     const at = instantOf(submitter)
     const holdExpiresAt = initialHoldExpiry(at)
     const withHold = {
       ...rest,
+      ...(attested ? { quote_id: attested.quoteId } : {}),
       payment_status: 'pending' as const,
       payment_plan: rest.payment_plan ?? 'down-payment',
       hold_expires_at: holdExpiresAt,

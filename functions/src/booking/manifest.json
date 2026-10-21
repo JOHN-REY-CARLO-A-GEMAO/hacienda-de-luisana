@@ -1,0 +1,42 @@
+{
+  "note": "Written by scripts/sync-booking-pricing.mjs. Checked by functions/test/booking-sync.test.ts.",
+  "source_dir": "src/lib/booking",
+  "entries": [
+    "rates.ts",
+    "money.ts",
+    "availability.ts",
+    "leadTime.ts"
+  ],
+  "files": {
+    "availability.ts": {
+      "source_sha256": "11e4ebb0f1368f2f2463b2cb0936c2ffd5ddbd5f6afdae6b17ee8066abf51e29",
+      "copy_sha256": "a826134c72fd52e62a836e3f97f78aa6eb5e556ef1d14f380bd55cd63f1ed636",
+      "bytes": 13479
+    },
+    "internal.ts": {
+      "source_sha256": "f895de96f398f57b0d222d17afe54e6c10f7aa6366f25abfd4e168e37dd8a3b7",
+      "copy_sha256": "bc4cd196fe972fe94654eb7ca9b62171da2420de18a21ed46de663df8f4bfdbe",
+      "bytes": 2425
+    },
+    "leadTime.ts": {
+      "source_sha256": "bd90912b197fb8f2260a8c15e18f2bdda2ae06515eb9ea3266eb13e3b12dbd0c",
+      "copy_sha256": "9d00c89412d92bd1887918913ee3dbdb272f22cf7334fcb72e99a47953b92a2b",
+      "bytes": 3768
+    },
+    "money.ts": {
+      "source_sha256": "2c81b0a1be0e185a60ef29ec7e4482bd4a66d1d0ead716921ec094d4f165015e",
+      "copy_sha256": "b04f41688449be1eda184546a6852905dbf27b6242a428e010c212d8f5a740c3",
+      "bytes": 11175
+    },
+    "rates.ts": {
+      "source_sha256": "b643819983924caec4eefd9d9f82c81d89f6cc5f0f1d8849bd77075f2293448e",
+      "copy_sha256": "3d8ce3ce61b8df909bdf962ef5946383943ada7a3e59ce540a81eb31a88bbcb5",
+      "bytes": 32064
+    },
+    "statuses.ts": {
+      "source_sha256": "f2ade5f06c48293b8bd97012c2c21d5d943af27ba9ebe20b19d39eda0649ea82",
+      "copy_sha256": "4d39161ccee23edd9e6850e67aa8653c43c57a05b630b0f8b7929b55317fb6b7",
+      "bytes": 6343
+    }
+  }
+}

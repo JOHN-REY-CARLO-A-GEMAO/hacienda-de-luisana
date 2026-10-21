@@ -1,6 +1,14 @@
 # The rule layer checks a Booking's coherence, not its price — and the gap that opens is written down
 
-**Status**: accepted, 2026-10-21. Amends [ADR-0010](./0010-money-and-audit-invariants-in-the-rule-layer.md) by narrowing one of its rows. Records the outcome of the work described in [`docs/HANDOFF-rules-budget.md`](../HANDOFF-rules-budget.md) §7, which left the gap described but not yet decided.
+**Status**: accepted 2026-10-21; **the gap below is closed by construction as of the same day**
+by [ADR-0019](./0019-a-price-is-attested-by-the-server-before-a-booking-may-carry-it.md), which
+attests the price in a Cloud Function and compares the Booking against it in the rules. That
+mechanism is **not deployed and not switched on** (`site_config/booking.quotes_required` defaults
+off), so this file remains the accurate description of a live project today, and its *Corrections*
+are unaffected. Amends [ADR-0010](./0010-money-and-audit-invariants-in-the-rule-layer.md) by
+narrowing one of its rows. Records the outcome of the work described in
+[`docs/HANDOFF-rules-budget.md`](../HANDOFF-rules-budget.md) §7, which left the gap described but
+not yet decided.
 
 ---
 
@@ -66,16 +74,26 @@ Two arguments were raised for why this does not matter, and neither holds:
   current check compares `amount_claimed` with `amount_due`, and both are numbers the
   Guest wrote.
 
-This is accepted as an **interim** posture, not a permanent one. What closes it is a
-re-derivation at the one moment it can still be refused cheaply — the Admin's approve
-step — reading `site_config/rates` server-side and refusing the transition when the
-Booking's money does not match the published rate for its dates and party. Until that
-exists, this ADR is where the gap is stated, and the tripwire is a test:
+This is accepted as an **interim** posture, not a permanent one. It was written expecting the
+fix to be a re-derivation at the Admin's approve step. What was actually built (ADR-0019, same
+day) re-derives one step earlier — the moment a Guest asks for a price — because that is the last
+moment a refusal is cheap: at approve, the Guest has paid, and refusing starts a refund. The
+function's answer is stored in a collection no client can write, and the rules compare the Booking
+against it, gated on a document the Admin flips. Deployment is outstanding, so until it happens
+this ADR is still the description of production.
+
+The tripwire is still a test, and it was kept rather than inverted, because it describes the
+un-enforced estate truthfully:
 
 - `test/rules/firestore-rules.test.ts`, *`GAP (recorded, 2026-10-14): a coherent
   figure the published rate would not produce passes the rule layer`* — five cases
-  that assert the current pass. Closing the gap means flipping them to `deny` in the
-  same change; widening it fails here first.
+  that assert the current pass. They still pass, and still must: that suite runs with
+  no `site_config/booking`, which is production's state today. The other half of the
+  tripwire is `test/rules/quote-attestation.rules.test.ts`, which runs the same
+  forgeries with `quotes_required: true` and asserts each one is refused. The pair is
+  the contract: if the enforced leg ever stops refusing them, the gap has reopened; if
+  the un-enforced leg stops passing, the default has quietly changed and Guests are
+  being refused for a reason no Admin chose.
 
 ## Corrections that came with writing this down
 

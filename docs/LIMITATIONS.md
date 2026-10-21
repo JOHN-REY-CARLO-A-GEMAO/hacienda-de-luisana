@@ -144,19 +144,35 @@ Things that remain **outside** the rules' reach, unchanged by the pass:
   (`lib/views/payments/payment_refs_screen.dart`) is the writer. Nothing marks a
   row spent automatically, so duplicate detection is still a contract function
   rather than a workflow. ADR-0018, *Corrections*, has the detail.
-- **The rules do not price a Booking.** They hold its figures coherent with each
-  other — one 22-hour stay, a known classification, the 50/50 split to the
-  centavo, a claim not below the downpayment, counts that are counts — and they
-  refuse a *rate document* whose shape cannot be priced. Reading
-  `site_config/rates` to re-derive the money on a Guest create was removed on
-  2026-10-14, because it crossed Firestore's 1,000-expression budget and an
-  evaluation error arrives as a plain `permission-denied`. So a Booking that is
-  coherent and under-priced — ₱1,000 for a ₱32,000 stay, a zeroed deposit, an
-  unpriced third pet, a fourth guest in a three-person unit, a refund policy the
-  Guest typed — passes the rule layer, and only the Admin reading the screenshot
-  stands between it and a stay. ADR-0018 records it as accepted and interim;
-  `GAP (recorded, 2026-10-14)` in `test/rules/firestore-rules.test.ts` pins it,
-  so closing the gap (re-deriving at approve) has to flip that case to `deny`.
+- **The rules do not price a Booking; the functions do, when the estate asks them to.**
+  The rules hold a Booking's figures coherent with each other — one 22-hour stay, a
+  known classification, the 50/50 split to the centavo, a claim not below the
+  downpayment, counts that are counts — and they refuse a *rate document* whose shape
+  cannot be priced. Re-deriving the money *inside* `firestore.rules` from
+  `site_config/rates` was deleted on 2026-10-14: it crossed Firestore's
+  1,000-expression budget, and an evaluation error arrives as the same bare
+  `permission-denied` as a refusal. What replaced it (ADR-0019, 2026-10-21) is a
+  quote the server attests into `booking_quotes/{id}` — a document no client can
+  write — and a rule clause that compares the Booking against it field for field.
+  **Enforcement is a switch, and it is currently off**: with
+  `site_config/booking.quotes_required` absent or `false`, a Booking that is coherent
+  and under-priced — ₱1,000 for a ₱32,000 stay, a zeroed deposit, an unpriced third
+  pet, a fourth guest in a three-person unit, a refund policy the Guest typed — still
+  passes the rule layer, and only the Admin reading the screenshot stands between it
+  and a stay. It is also **not yet deployed**: the mechanism exists in this tree and
+  in offline tests (both legs asserted per case in
+  `test/rules/quote-attestation.rules.test.ts`), so ADR-0018's "accepted and interim"
+  remains the accurate description of a live project today. The tripwire stays where
+  it was: `GAP (recorded, 2026-10-14)` in `test/rules/firestore-rules.test.ts` runs
+  un-enforced, and fails the day the clause stops refusing those five.
+- **Nothing ages out `booking_quotes` documents.** An expired attestation is dead to
+  the create path but is what `verifyBookingMoney` compares a Booking against
+  afterwards, so it is evidence rather than cache and is deliberately kept. Growth is
+  bounded by distinct (identity, stay, rates version) requests — a retry of the same
+  stay returns the same document, un-extended — not by bookings, so an abandoned form
+  costs one small row. If a bound is ever needed, `disputeMaintenance`'s schedule is
+  the place, with a floor of never deleting an attestation a live Booking still points
+  at.
 - Nothing server-side can count requests, throttle a client, or reverse a bad
   write; the rules can only decide per write.
 

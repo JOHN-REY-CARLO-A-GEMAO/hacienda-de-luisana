@@ -800,3 +800,62 @@ on any of the rules above (the only thing that can see an expression-budget fail
 a real deploy, so none of it is live; anything at all in the Admin app; and whether
 the published `site_config/rates` in the live project is shaped the way the new
 publication checks demand.
+
+---
+
+## 16. ADR-0019 pass — the price the estate attests (2026-10-21)
+
+Closes [ADR-0018](adr/0018-the-rule-layer-checks-coherence-not-price-and-the-gap-that-opens.md)'s
+recorded gap with a Cloud Function that prices a stay, a document no client can write, and a rule
+clause that compares a Booking against it. Decision:
+[ADR-0019](adr/0019-a-price-is-attested-by-the-server-before-a-booking-may-carry-it.md). Rollout
+order, deploy commands and evaluator hazards: [`docs/quotes/IMPLEMENTATION.md`](quotes/IMPLEMENTATION.md).
+
+**Nothing here is deployed and enforcement is off by default.** "Green" below means the mechanism
+and the switch are correct in this tree, not that a live project refuses forged prices.
+
+### Executed on this machine
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Web suite | `npm test` | **958 passed / 958** (68 files) — 9 new in `test/web/booking-quotes.test.ts` |
+| Rules (offline evaluator) | `npm run test:rules` | **328 passed / 328** (7 files) — 13 new in `test/rules/quote-attestation.rules.test.ts`, all 315 pre-existing still green |
+| Cloud Functions suite | `cd functions && npm test` | **218 passed / 218** — 13 new pricing cases (`functions/test/pricing.test.ts`), 10 new mirror-freshness cases (`functions/test/booking-sync.test.ts`) |
+| Mirror freshness gate | `npm run check:pricing` | clean; **proven to bite** by hand-editing a copy and re-running (exit 1, names the file) |
+| Types, web | `npx tsc -b` | 0 errors |
+| Types, functions | `cd functions && npx tsc --noEmit` | 0 errors |
+| End-to-end scenario | `node scripts/phase0/run.mjs e2e` | 44/44 (unchanged by this pass) |
+| Safety greps | `node scripts/phase0/run.mjs safety` | 44/0 |
+
+### What the new tests actually claim
+
+- **Two legs per forgery.** Every case in `quote-attestation.rules.test.ts` asserts the *same*
+  write is accepted with `quotes_required` off and refused with it on, and names whether a refusal
+  came from the attestation or from the pre-existing arithmetic gate (`nights: 2`,
+  `payment_plan: 'full'` are refused either way — asserting "the un-enforced path lets this
+  through" for those would have been false, so the table carries a per-case expectation).
+- **The clause cannot make an estate-wide mess.** A case asserts the identical write reaches the
+  identical verdict enforced vs un-enforced for a Booking the switch never covered (a proof
+  resubmission, a plan choice, a cancellation) — so ADR-0019 cannot be blamed for a legacy record's
+  refusal, and the historical-plan branch keeps its own tests in `firestore-rules.test.ts`.
+- **Re-pricing is closed, not just creation.** A Guest may resend a proof on an attested Booking;
+  the same write touching `stay_total` is refused. This clause was found by *attempting* it after
+  shipping the create-side guard: creating honestly and then updating the total was still legal,
+  which is the same hole with a different door.
+- **The client sends no money, provably.** `test/web/booking-quotes.test.ts` asserts the exact key
+  set handed to `quoteBooking` — six quoteable inputs, nothing else. The server-side test asserts a
+  forged `stay_total` in the payload is *not read*, which is stronger than "refused".
+- **One arithmetic is enforced by a hash, not by a promise.** `booking-sync.test.ts` reads the
+  manifest and also asserts the mirrored body *ends with* the website's file verbatim, so
+  regenerating a manifest to match a hand-edited copy does not clear it.
+
+### Not verified, and what would be needed
+
+| Gap | Why, and what closes it |
+| --- | --- |
+| **Firestore emulator** | `npm run test:emulator` (44 cases) has never run here — no Java. It is the only instrument that can see an expression-budget or read-limit failure, which is the exact failure mode ADR-0018 recorded. The new clauses are bounded by field count (~25 comparisons + one `exists()`/`get()` pair), but that is an argument, not a measurement. **Run before deploying rules.** |
+| Real `get()`/`exists()` against a live project | The offline evaluator is faithful for the constructs used here but is not Firestore. A forged write must be attempted from a signed-in console after deploy (step 5 of the checklist). |
+| `firebase deploy --only functions` | Requires the **Blaze** plan; not attempted. Until then `quoteBooking` does not exist in production, enforcement stays off, and ADR-0018's "accepted, interim" remains the true description. |
+| Flutter | No SDK in this environment; `flutter analyze`, `flutter test`, `flutter build apk` never run. The Payments screen does not call `verifyBookingMoney` yet. **No Dart change was needed for the security property** — that is the claim, and it is a claim about what the rules guarantee, not about tested Dart behaviour. |
+| Rate limiting | `spend()` in `quotes.ts` is in-process and per-instance. It is not a quota and there is no server-side throttle anywhere in this codebase. |
+| Quote-document retention | Nothing deletes expired attestations (deliberate: they are the evidence `verifyBookingMoney` compares against). Bounded by distinct request, not by bookings. `docs/LIMITATIONS.md`. |

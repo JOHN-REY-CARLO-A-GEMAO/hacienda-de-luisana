@@ -183,12 +183,25 @@ Two justifications that were raised and do **not** hold:
 
 1. Re-run the emulator repro against the current tree (§5). Confirm 6/6 ALLOW.
 2. Run the **full emulator suite** — the one that was never run.
-3. Decide the 11 tests (§6) and write the ADR (§7).
-4. **Build the Admin-side re-derivation** — the thing that actually closes the gap. This is the real remaining work; everything else is cleanup.
-5. Delete the dead helpers (§3), carefully.
+3. ~~Decide the 11 tests (§6) and write the ADR (§7).~~ **Done 2026-10-21.** The eleven were
+   re-written as five, and ADR-0018 was written.
+4. ~~**Build the Admin-side re-derivation** — the thing that actually closes the gap.~~ **Done
+   2026-10-21, differently and better:** [ADR-0019](adr/0019-a-price-is-attested-by-the-server-before-a-booking-may-carry-it.md)
+   attests the price at *booking* time (a callable + a client-unwritable document + two rule
+   clauses) instead of re-deriving at approve, so a wrong figure is refused before a Guest pays
+   rather than after. Implemented, tested offline, **not deployed**; the rollout order and the
+   Blaze-plan dependency are in [`docs/quotes/IMPLEMENTATION.md`](quotes/IMPLEMENTATION.md).
+5. ~~Delete the dead helpers (§3), carefully.~~ **Done 2026-10-21** — eight unreferenced functions,
+   brace-counted out of `firestore.rules`, with the suite green before and after.
 6. Wire a budget regression test. There is none, and nothing stops this recurring.
 7. Consider making `scripts/phase0` runnable on Windows — you asked for this earlier; it is untouched and needs a real design (no netns equivalent, plus this box has `.env.local` and an authenticated Firebase CLI, which `boundary.mjs` blocks by design).
 
 ## 9. Deploy
+
+**Status 2026-10-21:** step 3 and 5 are done; steps 1, 2 and 6 are not, and until 1 and 2 pass the
+sentence below still stands. ADR-0019's clauses are bounded by field count (~25 comparisons plus
+one `exists()`/`get()` pair on the Guest create), which is the shape the budget was the problem
+for — but "bounded" is an argument, not a measurement, and the offline evaluator cannot measure it.
+The emulator run is what turns it into a claim.
 
 `firestore.rules` at HEAD is **not deployable** — it breaks every guest booking. The change in the working tree makes it deployable **only if** steps 1–2 pass. Deploying is `firebase deploy --only firestore:rules --project hacienda-de-luisana`, and only on your explicit go-ahead.
