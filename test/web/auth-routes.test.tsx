@@ -315,9 +315,13 @@ async function fillAndSubmit(
   password?: string,
   extra: { name?: string } = {},
 ) {
-  if (extra.name !== undefined) {
-    const name = container.querySelector<HTMLInputElement>('input[autocomplete="name"]')
-    if (name) setValue(name, extra.name)
+  // Register mode has first name, last name and mobile number as required fields.
+  const given = container.querySelector<HTMLInputElement>('input[autocomplete="given-name"]')
+  if (given) {
+    const [first, ...rest] = (extra.name ?? 'Test Guest').split(' ')
+    setValue(given, first)
+    setValue(container.querySelector<HTMLInputElement>('input[autocomplete="family-name"]')!, rest.join(' ') || 'Guest')
+    setValue(container.querySelector<HTMLInputElement>('input[autocomplete="tel"]')!, '09171234567')
   }
   const birthdate = container.querySelector<HTMLInputElement>('input[type="date"]')
   if (birthdate) setValue(birthdate, AN_ADULT)
