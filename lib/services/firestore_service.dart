@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import '../models/admin_notification_model.dart';
 import '../models/booking_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
@@ -389,6 +390,38 @@ class FirestoreService implements PinSecurityRemote {
         'created_at': FieldValue.serverTimestamp(),
         'read': false,
       });
+    }
+  }
+
+  /// The Admin's own inbox: what Guests told the Hacienda from the website
+  /// (a booking submitted, a booking cancelled). The website writes these to
+  /// `notifications` with `user_id: 'admin'`. Sorted here, newest first, so no
+  /// composite index is needed.
+  Stream<List<AdminNotificationModel>> streamAdminNotifications() {
+    if (!isCloud) return Stream.value(const <AdminNotificationModel>[]);
+    return _firestore!
+        .collection('notifications')
+        .where('user_id', isEqualTo: 'admin')
+        .snapshots()
+        .map((snap) {
+      final list = snap.docs
+          .map((d) => AdminNotificationModel.fromJson(d.data(), d.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  /// Marks one inbox notification as read, so it leaves the Notification Center.
+  Future<void> markAdminNotificationRead(String id) async {
+    if (!isCloud) return;
+    try {
+      await _firestore!
+          .collection('notifications')
+          .doc(id)
+          .update({'read': true});
+    } catch (e) {
+      debugPrint('[notifications] could not mark $id read: $e');
     }
   }
 
