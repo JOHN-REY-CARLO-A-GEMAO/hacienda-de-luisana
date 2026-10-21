@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ROLE_LABELS, canOpenPage, pageRoles, type Role } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
@@ -23,6 +24,13 @@ import { LoginForm } from './LoginForm'
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, role, loading, isConfigured } = useAuth()
   const location = useLocation()
+  // Somebody who was signed in a moment ago and is not now has lost their session
+  // (expired, or ended elsewhere). Say so instead of showing a bare sign-in form.
+  const hadUser = useRef(false)
+  useEffect(() => {
+    if (user) hadUser.current = true
+  }, [user])
+  const sessionEnded = !user && hadUser.current
 
   if (loading) {
     return (
@@ -41,6 +49,11 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
       <div className="pt-28 pb-24 min-h-screen bg-cream-50 flex flex-col items-center">
         <div className="w-full max-w-md px-5">
+          {sessionEnded && (
+            <div role="alert" className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+              Your session has ended. Please sign in again to continue — nothing on your bookings was changed.
+            </div>
+          )}
           <LoginForm />
         </div>
         <p className="mt-6 text-xs text-forest-700/60 text-center max-w-sm px-5">
