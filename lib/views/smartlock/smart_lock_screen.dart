@@ -8,7 +8,6 @@ import '../../models/smart_lock_event_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/firestore_service.dart';
-import '../../services/notification_service.dart';
 import '../security/secure_action_sheet.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';

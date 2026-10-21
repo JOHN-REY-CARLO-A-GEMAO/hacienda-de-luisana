@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants/app_constants.dart';
-import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/accommodations.dart';
 import '../../services/booking_lifecycle.dart';
