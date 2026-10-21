@@ -19,74 +19,16 @@ export const EMAIL_MAX = 120
 export const MESSAGE_MAX = 1000
 export const REVIEW_MAX = 1000
 export const REF_MAX = 40
-export const ADDITIONAL_NOTES_MAX = 500
-export const EVENT_DETAIL_MAX = 160
-export const SUBJECT_MAX_LENGTH = 120
-export const ADDRESS_MAX_LENGTH = 200
-export const DISPUTE_MESSAGE_MAX = 4000
-export const DISPUTE_DESCRIPTION_MAX = 4000
 export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5MB
 export const ALLOWED_PROOF_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 export const MIN_BOOKING_NIGHTS = 1
 export const MAX_BOOKING_NIGHTS = 30
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const NAME_RE = /^[\p{L}' .\-]+$/u
+const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ' .\-]+$/
 const DIGITS_RE = /^\d+$/
 
 export type FieldResult = { ok: true; value: string } | { ok: false; message: string }
-
-/**
- * Filter out numbers and invalid symbols from name fields on the fly.
- * Allows letters (including accented/Unicode characters like ñ, é),
- * spaces, hyphens, periods, and apostrophes.
- */
-export function sanitizeNameInput(raw: string): string {
-  // Strip digits 0-9 and any character that is not a Unicode letter, space, apostrophe, period, or hyphen
-  return raw
-    .replace(/[0-9]/g, '')
-    .replace(/[^\p{L}\s'.-]/gu, '')
-    .slice(0, NAME_MAX)
-}
-
-/**
- * Filter out letters and non-phone characters on the fly.
- * Allows digits, +, -, (, ), and spaces.
- */
-export function sanitizePhoneInput(raw: string): string {
-  return raw.replace(/[^\d+\-()\s]/g, '').trimStart().slice(0, 20)
-}
-
-/**
- * Filter input strictly to digits only.
- */
-export function sanitizeDigitsOnly(raw: string, maxLen?: number): string {
-  const digits = raw.replace(/\D/g, '')
-  return maxLen ? digits.slice(0, maxLen) : digits
-}
-
-/**
- * Filter input for currency/amounts: allows numbers and at most one decimal point with up to 2 decimal places.
- */
-export function sanitizeAmountInput(raw: string): string {
-  let clean = raw.replace(/[^\d.]/g, '')
-  const parts = clean.split('.')
-  if (parts.length > 2) {
-    clean = parts[0] + '.' + parts.slice(1).join('')
-  }
-  const [integer, decimal] = clean.split('.')
-  if (decimal !== undefined) {
-    return `${integer}.${decimal.slice(0, 2)}`
-  }
-  return integer
-}
-
-/**
- * Filter input for transaction and booking references: alphanumeric and hyphens only, uppercase.
- */
-export function sanitizeReferenceInput(raw: string): string {
-  return raw.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase().slice(0, REF_MAX)
-}
 
 export function validateRequired(value: string, label: string): FieldResult {
   const v = value.trim()
@@ -105,11 +47,51 @@ export function validateEmail(raw: string): FieldResult {
 export function validateName(raw: string): FieldResult {
   const v = raw.trim()
   if (!v) return { ok: false, message: 'Please enter your full name' }
-  if (/[0-9]/.test(v)) return { ok: false, message: 'Name cannot contain numbers' }
   if (v.length < NAME_MIN) return { ok: false, message: 'Name looks too short' }
   if (v.length > NAME_MAX) return { ok: false, message: `Name must be at most ${NAME_MAX} characters` }
   if (!NAME_RE.test(v)) return { ok: false, message: 'Letters, spaces, hyphens and periods only' }
   return { ok: true, value: v }
+}
+
+/**
+ * One part of a person's name: first, middle or last.
+ *
+ * `validateName` says "full name" in its messages, which reads wrongly under a
+ * field labelled "First name". This one names the field it is checking, and
+ * knows that a middle name is optional (and may be a single initial) while a
+ * first and last name are neither.
+ */
+export function validateNamePart(
+  raw: string,
+  label: string,
+  { required = true, min = NAME_MIN }: { required?: boolean; min?: number } = {},
+): FieldResult {
+  const v = raw.trim().replace(/\s+/g, ' ')
+  if (!v) return required ? { ok: false, message: `${label} is required` } : { ok: true, value: '' }
+  if (v.length < min) return { ok: false, message: `${label} looks too short` }
+  if (v.length > NAME_MAX) return { ok: false, message: `${label} must be at most ${NAME_MAX} characters` }
+  if (!NAME_RE.test(v)) {
+    return { ok: false, message: `${label}: letters, spaces, hyphens, apostrophes and periods only` }
+  }
+  return { ok: true, value: v }
+}
+
+/**
+ * "First Middle Last": the one way the site writes a person's full name.
+ *
+ * The sign-up form, the profile page and the booking form all build the name
+ * from the same three parts, so a Guest sees the same name everywhere and the
+ * Admin reads the same name on the Booking that is on the account.
+ */
+export function composeFullName(parts: {
+  first?: string | null
+  middle?: string | null
+  last?: string | null
+}): string {
+  return [parts.first, parts.middle, parts.last]
+    .map((part) => (part ?? '').trim().replace(/\s+/g, ' '))
+    .filter(Boolean)
+    .join(' ')
 }
 
 /** Philippine mobile: 09XXXXXXXXX (11 digits). Does not truncate. */
@@ -278,42 +260,4 @@ export function guestCountValid(guests: number, absoluteMaximum?: number, proper
 
 export function looksLikeDigits(value: string): boolean {
   return DIGITS_RE.test(value)
-}
-
-export function validateAdditionalNotes(raw: string): FieldResult {
-  const v = raw.trim()
-  if (v.length > ADDITIONAL_NOTES_MAX) {
-    return { ok: false, message: `Additional notes must be at most ${ADDITIONAL_NOTES_MAX} characters` }
-  }
-  return { ok: true, value: v }
-}
-
-export function validateEventDetail(raw: string): FieldResult {
-  const v = raw.trim()
-  if (v.length > EVENT_DETAIL_MAX) {
-    return { ok: false, message: `Event details must be at most ${EVENT_DETAIL_MAX} characters` }
-  }
-  return { ok: true, value: v }
-}
-
-export function validateSubject(raw: string): FieldResult {
-  const v = raw.trim()
-  if (!v) return { ok: false, message: 'Please enter a subject' }
-  if (v.length < 3) return { ok: false, message: 'Subject must be at least 3 characters' }
-  if (v.length > SUBJECT_MAX_LENGTH) {
-    return { ok: false, message: `Subject must be at most ${SUBJECT_MAX_LENGTH} characters` }
-  }
-  return { ok: true, value: v }
-}
-
-export function validateAddress(raw: string): FieldResult {
-  const v = raw.trim()
-  if (!v) return { ok: false, message: 'Please enter an address' }
-  if (v.length > ADDRESS_MAX_LENGTH) {
-    return { ok: false, message: `Address must be at most ${ADDRESS_MAX_LENGTH} characters` }
-  }
-  if (!/^[\p{L}0-9\s,.\-#/()']+$/u.test(v)) {
-    return { ok: false, message: 'Address contains invalid characters' }
-  }
-  return { ok: true, value: v }
 }
