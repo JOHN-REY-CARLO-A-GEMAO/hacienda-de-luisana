@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/admin_notification_model.dart';
 import '../models/booking_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
@@ -94,6 +95,14 @@ final accommodationsProvider = Provider<List<Accommodation>>((ref) {
 final paymentInformationProvider = StreamProvider<Map<String, dynamic>?>((ref) {
   final service = ref.watch(firestoreServiceProvider);
   return service.streamPaymentInformation();
+});
+
+/// What Guests told the Hacienda from the website (new booking, guest
+/// cancellation), newest first.
+final adminNotificationsProvider =
+    StreamProvider<List<AdminNotificationModel>>((ref) {
+  final service = ref.watch(firestoreServiceProvider);
+  return service.streamAdminNotifications();
 });
 
 /// The Activity log of one Booking, oldest first.
