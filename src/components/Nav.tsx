@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Logo } from './Logo'
-import { Menu, Close, Sun, Moon } from '../lib/icons'
+import { Menu, Close, Sun, Moon, Bell } from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
+import { useNotifications } from '../hooks/useNotifications'
 import { useTheme } from '../context/ThemeContext'
 import { canOpenPage, homeForRole } from '../lib/auth'
 
 // The site's sections, as pages. Every entry is a real route: the homepage
 // carries a preview of each and links here for the detail, so a `/#section`
 // hash would land on a page that no longer holds that section. `wide` links
-// only show from the xl breakpoint so the floating bar never wraps on smaller
-// laptops; the drawer lists all of them.
+// only show from the 2xl breakpoint so the floating bar never wraps on smaller
+// laptops and the full-width bar never crowds the logo or the buttons; the
+// drawer lists all of them. The bar itself starts at `xl` (1280px): between
+// 1024px and 1279px the links, the account buttons and the logo cannot share
+// one row without overlapping, so those widths use the drawer instead.
 export const LINKS: { href: string; label: string; wide?: boolean }[] = [
   { href: '/', label: 'Home' },
   { href: '/stay', label: 'Stay' },
@@ -28,8 +32,16 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const location = useLocation()
-  const { user, role, logout } = useAuth()
+  const { user, profile, role, logout } = useAuth()
   const { isDark, toggleTheme } = useTheme()
+  const { unreadCount, signedIn } = useNotifications()
+  const initial = (
+    profile?.first_name?.trim()?.[0] ??
+    profile?.display_name?.trim()?.[0] ??
+    user?.email?.trim()?.[0] ??
+    'G'
+  ).toUpperCase()
+  const unreadLabel = unreadCount > 9 ? '9+' : String(unreadCount)
   const transparent = location.pathname === '/' && !scrolled
   // Once the visitor scrolls (or leaves the homepage) the bar detaches into a
   // floating pill; at the top of the homepage it sits flush over the hero.
@@ -51,7 +63,7 @@ export function Nav() {
       <div
         className={`pointer-events-auto transition-all duration-500 ease-out-expo ${
           floating
-            ? 'mx-2 sm:mx-3 mt-2 sm:mt-3 lg:mx-auto lg:max-w-6xl rounded-full bg-cream-50/90 dark:bg-forest-900/95 backdrop-blur-xl border border-forest-900/10 dark:border-cream-100/15 shadow-float'
+            ? 'mx-2 sm:mx-3 mt-2 sm:mt-3 lg:mx-auto lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl rounded-full bg-cream-50/90 dark:bg-forest-900/95 backdrop-blur-xl border border-forest-900/10 dark:border-cream-100/15 shadow-float'
             : 'mx-auto max-w-7xl bg-transparent border border-transparent'
         }`}
       >
@@ -60,12 +72,12 @@ export function Nav() {
           <Logo tone={transparent ? 'light' : isDark ? 'light' : 'dark'} />
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-2 xl:gap-4 2xl:gap-6 flex-shrink" aria-label="Site">
+        <nav className="hidden xl:flex items-center gap-4 2xl:gap-5 min-w-0 flex-shrink" aria-label="Site">
           {LINKS.map((l) => (
             <Link
               key={l.href}
               to={l.href}
-              className={`${l.wide ? 'hidden xl:inline-flex' : 'inline-flex'} text-[12px] xl:text-[13px] font-medium whitespace-nowrap transition ${
+              className={`${l.wide ? 'hidden 2xl:inline-flex' : 'inline-flex'} text-[13px] font-medium whitespace-nowrap transition ${
                 transparent ? 'text-cream-100 hover:text-white' : 'text-forest-800 dark:text-cream-100 hover:text-forest-950 dark:hover:text-white'
               }`}
             >
@@ -74,7 +86,7 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="hidden lg:flex items-center gap-1.5 xl:gap-2 flex-shrink-0">
+        <div className="hidden xl:flex items-center gap-2 flex-shrink-0">
           {/* Theme toggle */}
           <button
             type="button"
@@ -93,6 +105,42 @@ export function Nav() {
           {/* The Guest's own page; the Admin has no page on this website */}
           {user ? (
             <>
+              {signedIn && role !== 'admin' && (
+                <Link
+                  to="/account?tab=notifications"
+                  aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+                  title="Notifications"
+                  className={`relative p-2 rounded-full transition flex items-center justify-center shrink-0 ${
+                    transparent
+                      ? 'text-cream-100 hover:text-white hover:bg-white/10'
+                      : 'text-forest-700 dark:text-cream-100 hover:text-forest-900 dark:hover:text-white hover:bg-forest-900/5 dark:hover:bg-cream-100/10'
+                  }`}
+                >
+                  <Bell size={17} />
+                  {unreadCount > 0 && (
+                    <span
+                      className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-4 text-center"
+                      aria-hidden="true"
+                    >
+                      {unreadLabel}
+                    </span>
+                  )}
+                </Link>
+              )}
+              {signedIn && role !== 'admin' && (
+                <Link
+                  to="/account?tab=profile"
+                  aria-label="My Profile"
+                  title="My Profile"
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition ${
+                    transparent
+                      ? 'bg-cream-50/20 text-cream-50 hover:bg-cream-50/30'
+                      : 'bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white'
+                  }`}
+                >
+                  {initial}
+                </Link>
+              )}
               <Link
                 to={homeForRole(role)}
                 className={`text-xs px-2.5 py-1.5 rounded-full border whitespace-nowrap transition max-w-[120px] xl:max-w-[140px] truncate shrink-0 ${
@@ -137,7 +185,7 @@ export function Nav() {
           </Link>
         </div>
 
-        <div className="lg:hidden flex items-center gap-1.5">
+        <div className="xl:hidden flex items-center gap-1.5">
           <button
             type="button"
             onClick={toggleTheme}
@@ -164,7 +212,7 @@ export function Nav() {
 
       {/* Mobile drawer */}
       <div
-        className={`lg:hidden pointer-events-auto overflow-hidden transition-[max-height] duration-500 ${
+        className={`xl:hidden pointer-events-auto overflow-hidden transition-[max-height] duration-500 ${
           open ? 'max-h-[85vh]' : 'max-h-0'
         } ${floating ? 'mx-3 mt-2 rounded-[28px] shadow-float border border-forest-900/10 dark:border-cream-100/15' : 'border-t border-forest-900/5 dark:border-cream-100/10'} bg-cream-50 dark:bg-forest-950`}
       >
@@ -186,6 +234,16 @@ export function Nav() {
             {canOpenPage(role, '/account') && (
               <Link to="/account" className="btn-ghost w-full text-xs">
                 My Bookings (/account)
+              </Link>
+            )}
+            {signedIn && canOpenPage(role, '/account') && (
+              <Link to="/account?tab=profile" className="btn-ghost w-full text-xs">
+                My Profile
+              </Link>
+            )}
+            {signedIn && canOpenPage(role, '/account') && (
+              <Link to="/account?tab=notifications" className="btn-ghost w-full text-xs">
+                Notifications{unreadCount > 0 ? ` (${unreadCount} new)` : ''}
               </Link>
             )}
             <Link to="/legal" className="btn bg-cream-100 text-forest-800 w-full text-xs">
