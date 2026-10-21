@@ -88,6 +88,9 @@ function toRegister(page: ReturnType<typeof open>, birthdate = AN_ADULT, accept 
   write(email, 'newcomer@example.com')
   write(password, 'bahay-kubo-9')
   write(dob, birthdate)
+  write(page.container.querySelector<HTMLInputElement>('input[autocomplete="given-name"]')!, 'Juan')
+  write(page.container.querySelector<HTMLInputElement>('input[autocomplete="family-name"]')!, 'Dela Cruz')
+  write(page.container.querySelector<HTMLInputElement>('input[autocomplete="tel"]')!, '09171234567')
   if (accept) tick(page.container)
   return { email, password, dob }
 }
@@ -147,7 +150,7 @@ describe('registering refuses what the Terms do not allow', () => {
   it('refuses a one-character name instead of storing it', async () => {
     const page = open()
     toRegister(page)
-    const name = page.container.querySelector<HTMLInputElement>('input[autocomplete="name"]')!
+    const name = page.container.querySelector<HTMLInputElement>('input[autocomplete="given-name"]')!
     write(name, 'A')
 
     await submit(page.container)
@@ -165,6 +168,46 @@ describe('registering refuses what the Terms do not allow', () => {
 
     expect(page.text()).toContain('Please accept the Terms and Conditions to create an account.')
     expect(page.text()).toMatch(/date of birth/i)
+  })
+})
+
+describe('registering checks every field and shows every problem at once', () => {
+  it('asks for first name, last name, phone, email and password when they are empty', async () => {
+    const page = open()
+    page.click(page.byText('Create one'))
+
+    await submit(page.container)
+
+    const text = page.text()
+    expect(text).toContain('First name is required')
+    expect(text).toContain('Last name is required')
+    expect(text).toMatch(/mobile number/i)
+    expect(text).toMatch(/enter an email/i)
+    expect(text).toContain('Password is required')
+    expect(page.register).not.toHaveBeenCalled()
+  })
+
+  it('refuses a mobile number that is not a Philippine number', async () => {
+    const page = open()
+    toRegister(page)
+    write(page.container.querySelector<HTMLInputElement>('input[autocomplete="tel"]')!, '12345')
+
+    await submit(page.container)
+
+    expect(page.text()).toMatch(/11 digits|PH format/i)
+    expect(page.register).not.toHaveBeenCalled()
+  })
+
+  it('builds the full name as First Middle Last', async () => {
+    const page = open()
+    toRegister(page)
+    write(page.container.querySelector<HTMLInputElement>('input[autocomplete="additional-name"]')!, 'Santos')
+
+    await submit(page.container)
+
+    const registration = (page.register.mock.calls[0] as unknown as [string, string, { displayName?: string; middleName?: string }])[2]
+    expect(registration.displayName).toBe('Juan Santos Dela Cruz')
+    expect(registration.middleName).toBe('Santos')
   })
 })
 
