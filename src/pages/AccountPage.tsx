@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ROLE_LABELS } from '../lib/auth'
 import { effectiveStatus } from '../lib/booking'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
@@ -20,24 +20,50 @@ import { ReviewForm } from '../components/ReviewForm'
 import { DisputeForm } from '../components/DisputeForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
 import { ArrowRight, Calendar, Sparkle, Close, Bell, User, CheckCircle, Clock, XCircle, CreditCard, Home, MessageCircle, LogOut, Settings } from '../lib/icons'
+import { useNotifications } from '../hooks/useNotifications'
+import { notifyAdmin } from '../lib/notifications'
 import {
-  fetchUserNotifications,
-  markNotificationRead,
-  type AppNotification,
-} from '../lib/notifications'
-import {
-  NAME_MAX,
-  sanitizeNameInput,
-  sanitizePhoneInput,
+  composeFullName,
   validateBirthdate,
-  validateName,
+  validateNamePart,
   validatePhMobile,
 } from '../lib/validation'
 import { doc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 
-/** Statuses a Guest may still withdraw from themselves — the list firestore.rules allows. */
+/** A Guest withdraws a request nobody has acted on yet. */
 const WITHDRAWABLE = ['Pending']
+/**
+ * A Guest may also cancel after the Admin has acted (docs/HDL_FLOW_CORRECTED.md
+ * §11, and `guestSelfServeUpdate` in firestore.rules): the dates are released and,
+ * when money was verified, the refund is settled by the policy stamped on the Booking.
+ */
+const CANCELLABLE = ['Approved', 'Payment Pending', 'Reserved']
+
+/** How many months a Guest has to move a paid stay to a new date before the payment is forfeited. */
+const RESCHEDULE_WINDOW_MONTHS = 3
+
+/**
+ * The Hacienda's cancellation policy, in words, for the cancel dialog.
+ *
+ * It is the owner's rule, not a computed one: a paid booking is never refunded;
+ * the Guest may move it to a new date within three months; after that the payment
+ * is forfeited. The downpayment is non-refundable either way.
+ */
+function cancellationTerms(booking: Booking): string {
+  const status = effectiveStatus(booking)
+  const paid = status === 'Reserved' || (status === 'Approved' && booking.payment_status === 'verified')
+  if (!paid) {
+    return 'No payment has been verified on this booking yet, so nothing is charged. The dates are released.'
+  }
+  return [
+    'Cancellation policy:',
+    '• The downpayment is non-refundable.',
+    `• Instead of cancelling, you may reschedule to a new date within ${RESCHEDULE_WINDOW_MONTHS} months — contact the Admin to move your booking.`,
+    `• If it is not rescheduled within ${RESCHEDULE_WINDOW_MONTHS} months, the payment is forfeited.`,
+    'If you cancel now, you will not get a refund and the payment will not be moved to another date.',
+  ].join('\n')
+}
 
 function accommodationName(id: string) {
   return ACCOMMODATIONS.find((accommodation) => accommodation.id === id)?.name ?? id
@@ -80,10 +106,18 @@ function daysUntil(dateStr: string): number {
  */
 export function AccountPage() {
   const { user, profile, role, can, actor, logout, refresh } = useAuth()
-  const [activeTab, setActiveTab] = useState<'bookings' | 'profile'>('bookings')
+  const [params] = useSearchParams()
+  const tabParam = params.get('tab')
+  const [activeTab, setActiveTab] = useState<'bookings' | 'profile'>(tabParam === 'profile' ? 'profile' : 'bookings')
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
-  const [notificationSidebarOpen, setNotificationSidebarOpen] = useState(false)
+  const [notificationSidebarOpen, setNotificationSidebarOpen] = useState(tabParam === 'notifications')
+
+  // The header bell and this page open from ?tab=… and also react when it changes.
+  useEffect(() => {
+    if (tabParam === 'profile') setActiveTab('profile')
+    else if (tabParam === 'notifications') setNotificationSidebarOpen(true)
+  }, [tabParam])
 
   // Profile Form state
   const [firstName, setFirstName] = useState(profile?.first_name ?? '')
@@ -92,7 +126,6 @@ export function AccountPage() {
   const [phone, setPhone] = useState(profile?.phone ?? '')
   const [birthdate, setBirthdate] = useState(profile?.birthdate ?? '')
   const [profileSaving, setProfileSaving] = useState(false)
-  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({})
   const [profileMsg, setProfileMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
 
   useEffect(() => {
@@ -105,46 +138,43 @@ export function AccountPage() {
     }
   }, [profile])
 
-  const clearProfileError = (field: string) => {
-    setProfileErrors((prev) => {
-      if (!prev[field]) return prev
-      const next = { ...prev }
-      delete next[field]
-      return next
-    })
-  }
-
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     setProfileMsg(null)
 
     if (!user?.uid) return
 
-    const errs: Record<string, string> = {}
-    const fn = validateName(firstName)
-    if (!fn.ok) errs.firstName = 'First name: ' + fn.message
-    const ln = validateName(lastName)
-    if (!ln.ok) errs.lastName = 'Last name: ' + ln.message
-    if (middleName.trim()) {
-      const mn = validateName(middleName)
-      if (!mn.ok) errs.middleName = 'Middle name: ' + mn.message
+    const fn = validateNamePart(firstName, 'First name')
+    if (!fn.ok) {
+      setProfileMsg({ tone: 'bad', text: fn.message })
+      return
+    }
+    const ln = validateNamePart(lastName, 'Last name')
+    if (!ln.ok) {
+      setProfileMsg({ tone: 'bad', text: ln.message })
+      return
+    }
+    const mn = validateNamePart(middleName, 'Middle name', { required: false, min: 1 })
+    if (!mn.ok) {
+      setProfileMsg({ tone: 'bad', text: mn.message })
+      return
     }
     const ph = validatePhMobile(phone)
-    if (!ph.ok) errs.phone = ph.message
+    if (!ph.ok) {
+      setProfileMsg({ tone: 'bad', text: ph.message })
+      return
+    }
     if (birthdate.trim()) {
       const bd = validateBirthdate(birthdate)
-      if (!bd.ok) errs.birthdate = bd.message
-    }
-
-    setProfileErrors(errs)
-    if (Object.keys(errs).length > 0) {
-      setProfileMsg({ tone: 'bad', text: 'Please resolve the highlighted profile errors before saving.' })
-      return
+      if (!bd.ok) {
+        setProfileMsg({ tone: 'bad', text: bd.message })
+        return
+      }
     }
 
     setProfileSaving(true)
     try {
-      const displayName = `${firstName.trim()} ${lastName.trim()}`.trim()
+      const displayName = composeFullName({ first: firstName, middle: middleName, last: lastName })
       const payload = {
         uid: user.uid,
         role: profile?.role ?? 'guest',
@@ -185,9 +215,9 @@ export function AccountPage() {
   const [confirmingWithdraw, setConfirmingWithdraw] = useState<Booking | null>(null)
   const [viewingInvoice, setViewingInvoice] = useState<Booking | null>(null)
 
-  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [confirmingCancel, setConfirmingCancel] = useState<Booking | null>(null)
 
-  const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications])
+  const { items: notifications, unreadCount, markRead, markAllRead } = useNotifications()
 
   useEffect(() => {
     setLoading(true)
@@ -198,18 +228,9 @@ export function AccountPage() {
     return () => unsubscribe()
   }, [user?.uid])
 
-  useEffect(() => {
-    if (!user?.uid) return
-    void fetchUserNotifications(user.uid).then(setNotifications)
-  }, [user?.uid])
+  const handleMarkRead = (id: string) => markRead(id)
 
-  const handleMarkRead = async (id: string) => {
-    if (!user?.uid) return
-    await markNotificationRead(id, user.uid)
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
-  }
-
-  const withdraw = async (booking: Booking) => {
+  const withdraw = async (booking: Booking, how: 'withdraw' | 'cancel' = 'withdraw') => {
     if (!actor) return
     setBusy(booking.id)
     setNotice(null)
@@ -218,14 +239,34 @@ export function AccountPage() {
       // Admin has already taken past the point a Guest may reach alone.
       const result = await cloudBookingsDB.transition(
         booking.id,
-        { type: 'Cancel', reason: 'Withdrawn by the Guest from their own account page.' },
+        {
+          type: 'Cancel',
+          reason:
+            how === 'cancel'
+              ? 'Cancelled by the Guest from their own account page.'
+              : 'Withdrawn by the Guest from their own account page.',
+        },
         actor,
       )
       setNotice(
         result.ok
-          ? { tone: 'good', text: `Request ${reference(booking)} was withdrawn. Those dates are free again.` }
+          ? {
+              tone: 'good',
+              text:
+                how === 'cancel'
+                  ? `Booking ${reference(booking)} was cancelled. Those dates are free again.`
+                  : `Request ${reference(booking)} was withdrawn. Those dates are free again.`,
+            }
           : { tone: 'bad', text: result.reason },
       )
+      if (result.ok) {
+        void notifyAdmin({
+          bookingId: booking.id,
+          type: 'cancellation_by_guest',
+          title: how === 'cancel' ? 'Guest cancelled a booking' : 'Guest withdrew a request',
+          message: `${booking.guest_name} ${how === 'cancel' ? 'cancelled' : 'withdrew'} ${reference(booking)} (${booking.check_in} → ${booking.check_out}).`,
+        })
+      }
     } catch (error) {
       setNotice({
         tone: 'bad',
@@ -235,6 +276,7 @@ export function AccountPage() {
     } finally {
       setBusy(null)
       setConfirmingWithdraw(null)
+      setConfirmingCancel(null)
     }
   }
 
@@ -446,6 +488,15 @@ export function AccountPage() {
               <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="font-serif text-2xl text-forest-900">Notifications</h2>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void markAllRead()}
+                      className="text-xs underline text-forest-700 hover:text-forest-900"
+                    >
+                      Mark all read
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setNotificationSidebarOpen(false)}
@@ -537,46 +588,20 @@ export function AccountPage() {
                   <input
                     className="field"
                     value={firstName}
-                    maxLength={NAME_MAX}
-                    onChange={(e) => {
-                      setFirstName(sanitizeNameInput(e.target.value))
-                      clearProfileError('firstName')
-                    }}
-                    onKeyDown={(e) => {
-                      if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                        e.preventDefault()
-                      }
-                    }}
+                    onChange={(e) => setFirstName(e.target.value)}
                     required
                     placeholder="First Name"
-                    aria-invalid={profileErrors.firstName ? true : undefined}
                   />
-                  {profileErrors.firstName && (
-                    <span className="mt-1 block text-xs text-red-600">{profileErrors.firstName}</span>
-                  )}
                 </label>
                 <label className="block">
                   <span className="label">Last Name *</span>
                   <input
                     className="field"
                     value={lastName}
-                    maxLength={NAME_MAX}
-                    onChange={(e) => {
-                      setLastName(sanitizeNameInput(e.target.value))
-                      clearProfileError('lastName')
-                    }}
-                    onKeyDown={(e) => {
-                      if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                        e.preventDefault()
-                      }
-                    }}
+                    onChange={(e) => setLastName(e.target.value)}
                     required
                     placeholder="Last Name"
-                    aria-invalid={profileErrors.lastName ? true : undefined}
                   />
-                  {profileErrors.lastName && (
-                    <span className="mt-1 block text-xs text-red-600">{profileErrors.lastName}</span>
-                  )}
                 </label>
               </div>
 
@@ -585,51 +610,23 @@ export function AccountPage() {
                 <input
                   className="field"
                   value={middleName}
-                  maxLength={NAME_MAX}
-                  onChange={(e) => {
-                    setMiddleName(sanitizeNameInput(e.target.value))
-                    clearProfileError('middleName')
-                  }}
-                  onKeyDown={(e) => {
-                    if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                      e.preventDefault()
-                    }
-                  }}
+                  onChange={(e) => setMiddleName(e.target.value)}
                   placeholder="Middle Name"
-                  aria-invalid={profileErrors.middleName ? true : undefined}
                 />
-                {profileErrors.middleName && (
-                  <span className="mt-1 block text-xs text-red-600">{profileErrors.middleName}</span>
-                )}
               </label>
 
               <label className="block">
                 <span className="label">Mobile Phone Number *</span>
                 <input
                   className="field"
-                  type="tel"
-                  inputMode="tel"
-                  maxLength={20}
                   value={phone}
-                  onChange={(e) => {
-                    setPhone(sanitizePhoneInput(e.target.value))
-                    clearProfileError('phone')
-                  }}
-                  onKeyDown={(e) => {
-                    if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                      e.preventDefault()
-                    }
-                  }}
+                  onChange={(e) => setPhone(e.target.value)}
                   required
                   placeholder="09171234567"
-                  aria-invalid={profileErrors.phone ? true : undefined}
                 />
                 <span className="text-[11px] text-forest-600 mt-1 block">
                   Philippine mobile format: 09XX XXX XXXX
                 </span>
-                {profileErrors.phone && (
-                  <span className="mt-1 block text-xs text-red-600">{profileErrors.phone}</span>
-                )}
               </label>
 
               <label className="block">
@@ -638,15 +635,8 @@ export function AccountPage() {
                   className="field"
                   type="date"
                   value={birthdate}
-                  onChange={(e) => {
-                    setBirthdate(e.target.value)
-                    clearProfileError('birthdate')
-                  }}
-                  aria-invalid={profileErrors.birthdate ? true : undefined}
+                  onChange={(e) => setBirthdate(e.target.value)}
                 />
-                {profileErrors.birthdate && (
-                  <span className="mt-1 block text-xs text-red-600">{profileErrors.birthdate}</span>
-                )}
               </label>
 
               <label className="block">
@@ -664,8 +654,8 @@ export function AccountPage() {
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={profileSaving || Object.keys(profileErrors).length > 0}
-                  className="btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={profileSaving}
+                  className="btn-primary text-xs disabled:opacity-60"
                 >
                   {profileSaving ? 'Saving Changes…' : 'Save Profile Changes'}
                 </button>
@@ -869,6 +859,16 @@ export function AccountPage() {
                             Invoice
                           </button>
 
+                          {can('booking:update:own') && CANCELLABLE.includes(status) && (
+                            <button
+                              onClick={() => setConfirmingCancel(booking)}
+                              disabled={busy === booking.id}
+                              className="btn-ghost text-xs disabled:opacity-50 text-red-700 hover:bg-red-50"
+                            >
+                              {busy === booking.id ? 'Cancelling…' : 'Cancel booking'}
+                            </button>
+                          )}
+
                           {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
                             <button
                               onClick={() => setConfirmingWithdraw(booking)}
@@ -880,9 +880,9 @@ export function AccountPage() {
                           )}
                         </div>
 
-                        {!WITHDRAWABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
+                        {!WITHDRAWABLE.includes(status) && !CANCELLABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
                           <span className="text-[11px] text-forest-600 flex items-center gap-1">
-                            <Sparkle size={12} /> Contact Admin to modify
+                            <Sparkle size={12} /> Contact Admin to modify dates
                           </span>
                         )}
                       </div>
@@ -935,7 +935,7 @@ export function AccountPage() {
             confirmingWithdraw
               ? `Request ${reference(confirmingWithdraw)} for ${accommodationName(
                   confirmingWithdraw.accommodation,
-                )} (${confirmingWithdraw.check_in} → ${confirmingWithdraw.check_out}) will be cancelled and those dates released for other Guests. The Admin cannot undo this from their own app.\n\nCancellation & Refund Terms:\n• Pending / Payment Pending: Request is withdrawn immediately; no money is charged.\n• Approved / Reserved: Cancellations are settled per refund terms (100% refund if >14 days before check-in, 50% if 7–13 days, 0% within 7 days). Any paid security deposit is fully returned.`
+                )} (${confirmingWithdraw.check_in} → ${confirmingWithdraw.check_out}) will be cancelled and those dates released for other Guests. The Admin cannot undo this from their own app.\n\nNo money has been verified on a pending request, so nothing is charged and nothing is refunded.`
               : ''
           }
           confirmLabel="Withdraw request"
@@ -944,6 +944,24 @@ export function AccountPage() {
           onCancel={() => setConfirmingWithdraw(null)}
           onConfirm={() => {
             if (confirmingWithdraw) void withdraw(confirmingWithdraw)
+          }}
+        />
+
+        <ConfirmDialog
+          open={confirmingCancel !== null}
+          danger
+          title="Cancel this booking?"
+          body={
+            confirmingCancel
+              ? `${reference(confirmingCancel)} · ${accommodationName(confirmingCancel.accommodation)} (${confirmingCancel.check_in} → ${confirmingCancel.check_out}). The dates are released and this cannot be undone.\n\n${cancellationTerms(confirmingCancel)}`
+              : ''
+          }
+          confirmLabel="Cancel booking"
+          cancelLabel="Keep it"
+          busy={busy === confirmingCancel?.id}
+          onCancel={() => setConfirmingCancel(null)}
+          onConfirm={() => {
+            if (confirmingCancel) void withdraw(confirmingCancel, 'cancel')
           }}
         />
 
