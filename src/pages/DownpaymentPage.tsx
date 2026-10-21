@@ -28,15 +28,9 @@ import { amountMismatchNote, claimAgainstReceipt, runReceiptOcr, suggestedAmount
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
-import {
-  REF_MAX,
-  sanitizeAmountInput,
-  sanitizeReferenceInput,
-  validateAmount,
-  validateProofFile,
-} from '../lib/validation'
+import { validateAmount, validateProofFile } from '../lib/validation'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
-import { createNotification } from '../lib/notifications'
+import { createNotification, notifyAdmin } from '../lib/notifications'
 
 function peso(n: number): string {
   return `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
@@ -112,9 +106,28 @@ export function DownpaymentPage() {
    */
   const belowDueNow = dueNow !== null && Number(amount) > 0 && dueNow - Number(amount) >= 0.005
 
+  // No draft means the booking session ended (tab closed, browser cleared, or the
+  // page was opened directly), or the draft was incomplete. Say so on /book rather
+  // than dropping the Guest there with an empty form and no explanation.
   useEffect(() => {
-    if (!draft) navigate('/book', { replace: true })
-  }, [draft, navigate])
+    if (!draft) {
+      navigate('/book', {
+        replace: true,
+        state: {
+          notice:
+            'Your booking session has ended, so your details were cleared. Please enter your stay details again — nothing was submitted or charged.',
+        },
+      })
+    } else if (!accommodation) {
+      navigate('/book', {
+        replace: true,
+        state: {
+          notice:
+            'That accommodation is no longer valid for booking. Please choose an available accommodation and try again — nothing was submitted or charged.',
+        },
+      })
+    }
+  }, [draft, accommodation, navigate])
 
   // The published downpayment is the default claim, not the permanent one. Once
   // a screenshot is attached the field belongs to the receipt: re-filling it
@@ -268,8 +281,8 @@ export function DownpaymentPage() {
       // localStorage and is untouched.
       if (cloudBookingsDB.isCloud && !uid) {
         setError(
-          'We could not attach this booking to you, so it was not sent. Nothing was saved and your ' +
-            'screenshot is still here — please try again in a moment.',
+          'Your session has ended or could not be verified, so the booking was not sent. Nothing was saved ' +
+            'or charged and your screenshot is still here — please try again in a moment, or sign in again.',
         )
         return
       }
@@ -428,6 +441,12 @@ refund_policy_snapshot: published.refund ?? null,
            type: 'booking_submitted',
          })
        }
+       void notifyAdmin({
+         bookingId: booking.id,
+         title: 'New booking submitted',
+         message: `${draft.name.trim()} requested ${draft.accommodation} (${draft.check_in} → ${draft.check_out}) with a downpayment screenshot.`,
+         type: 'booking_submitted',
+       })
       clearBookingDraft()
       rememberBookingId(booking.id)
       navigate(`/booking/status?id=${encodeURIComponent(booking.id)}`, {
@@ -592,15 +611,9 @@ refund_policy_snapshot: published.refund ?? null,
                     inputMode="decimal"
                     autoComplete="off"
                     spellCheck={false}
-                    maxLength={12}
                     value={amount}
                     placeholder="0.00"
-                    onChange={(event) => setAmount(sanitizeAmountInput(event.target.value))}
-                    onKeyDown={(e) => {
-                      if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                        e.preventDefault()
-                      }
-                    }}
+                    onChange={(event) => setAmount(event.target.value)}
                   />
                 </label>
                 <label className="block">
@@ -610,14 +623,8 @@ refund_policy_snapshot: published.refund ?? null,
                     value={reference}
                     autoComplete="off"
                     spellCheck={false}
-                    maxLength={REF_MAX}
                     placeholder="GCash / Maya / bank ref"
-                    onChange={(event) => setReference(sanitizeReferenceInput(event.target.value))}
-                    onKeyDown={(e) => {
-                      if (/[^a-zA-Z0-9-]/.test(e.key) && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                        e.preventDefault()
-                      }
-                    }}
+                    onChange={(event) => setReference(event.target.value)}
                   />
                 </label>
               </div>
@@ -678,22 +685,11 @@ refund_policy_snapshot: published.refund ?? null,
                 </p>
               )}
 
-              {error && (
-                <div className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700" role="alert">
-                  {error}
-                </div>
-              )}
-
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={
-                    busy ||
-                    !proofFile ||
-                    Boolean(offReceipt) ||
-                    Boolean(amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' }))
-                  }
+                  disabled={busy || !proofFile}
                   onClick={() => void submit()}
                 >
                   {busy ? 'Submitting…' : 'Submit booking'}
