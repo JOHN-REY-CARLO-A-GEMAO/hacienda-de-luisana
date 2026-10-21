@@ -136,7 +136,12 @@ afterEach(() => {
 /** Sign up through the form on the page, the way a person does. */
 async function signUp(page: Page, email: string, name = 'Maria Santos') {
   click(page, /Create one/)
-  type(page, 'input[autocomplete="name"]', name)
+  // First and last name and a mobile number are required now; the name is split
+  // the way a person would fill the two boxes.
+  const [first, ...rest] = name.split(' ')
+  type(page, 'input[autocomplete="given-name"]', first)
+  type(page, 'input[autocomplete="family-name"]', rest.join(' ') || 'Guest')
+  type(page, 'input[autocomplete="tel"]', '09171234567')
   // A sign-up now has to satisfy the age rule and the Terms acceptance, the same
   // two things a person fills in before pressing the button.
   type(page, 'input[type="date"]', AN_ADULT)
