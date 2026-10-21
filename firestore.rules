@@ -266,18 +266,25 @@ service cloud.firestore {
         // note above on what the rule no longer enforces.
         && data.get('security_deposit', 0) is number
         && data.security_deposit >= 0
-        // The 50/50 split, computed exactly as `downPaymentAmount(stayTotal, 50)`
-        // computes it in src/lib/booking/money.ts:55-60 — `int(total * 50) / 100`
-        // truncates toward zero, which is `Math.floor` for a positive total, and
-        // the `/ 100.0` is float division on purpose. In a CEL-based language `/`
-        // between two ints is INTEGER division, which would truncate the
-        // centavos away and refuse every odd peso total as a mismatch.
+        // The 50/50 split, in whole centavos, against the same half the website
+        // computes. `src/lib/booking/money.ts:55-60` takes the published total to
+        // centavos and floors the half; `int(data.stay_total * 50)` is that half
+        // truncated *after* a float multiply, and the two can land a centavo apart —
+        // ₱1,024.10 halves to 51205 centavos on the page while `1024.10 * 50` is
+        // 51204.999… to the evaluator. The one-centavo window on the upper side is
+        // not leniency about rounding: fractional rates stay legal (only
+        // `down_payment_percent` is pinned), and a rule that refuses a real booking
+        // over ₱0.01 is worse than the half-centavo hole it would guard. What closes
+        // the hole is the closing sum below, which the window does not loosen. In a
+        // CEL-based language `/` between two ints is INTEGER division, which is why
+        // both sides are compared in centavos and never in pesos.
         && data.amount_due is number
-        && data.amount_due == int(data.stay_total * 50) / 100.0
-        // The split has to close: what is owed now plus what remains is the
-        // whole stay, with no peso unaccounted for in either direction.
+        && int(data.amount_due * 100 + 0.5) >= int(data.stay_total * 50)
+        && int(data.amount_due * 100 + 0.5) <= int(data.stay_total * 50) + 1
+        // The split has to close: what is owed now plus what remains is the whole
+        // stay, to the centavo, with no peso unaccounted for in either direction.
         && data.balance_due is number
-        && data.balance_due == data.stay_total - data.amount_due
+        && int(data.balance_due * 100 + 0.5) == int(data.stay_total * 100 + 0.5) - int(data.amount_due * 100 + 0.5)
         // A Guest cannot claim to have sent less than the downpayment.
         && data.amount_claimed is number
         && data.amount_claimed >= data.amount_due;
@@ -319,34 +326,52 @@ service cloud.firestore {
 
     function validGuestQuote(data) {
       let enforced = quotesRequired();
-      // A quote id that cannot exist is what a Booking with none looks up, so the
-      // read always resolves to a snapshot and never to an error.
-      // `exists()` before `get()`, for the same reason the lead-time helper does:
-      // reading a document that is not there is not a refusal, it is an error, and
-      // an error is what this file has been burned by twice.
-      let path = /databases/$(database)/documents/booking_quotes/$(data.get('quote_id', '__none__'));
+      // `data.get('quote_id', '__none__')` alone is not safe. The key is *absent* on
+      // every Booking the Admin app writes — no Dart file in `lib/` mentions
+      // `quote_id` at all — and a payload from anywhere else can carry it *present
+      // and null*. Interpolating a non-string into a path is an error rather than a
+      // miss, and an error in this file's history is not a refusal with a reason: it
+      // is every booking in the estate refused while the suite stayed green
+      // (2026-10-14). So the id is honoured only when it is a plausible string, and
+      // everything else looks up a document that cannot exist, which is a plain
+      // `false` — for an Admin, past this clause entirely.
+      let claimed = data.get('quote_id', '');
+      let quoted = claimed is string && claimed.size() > 0 && claimed.size() <= 64;
+      // Bound in a `let`, never interpolated inline: `$(quoted ? claimed : 'x')`
+      // does not parse as a path segment (the offline evaluator fails the whole
+      // clause, which reads as a refusal), so the value is resolved first and only
+      // the name is interpolated.
+      let lookup = quoted ? claimed : '__none__';
+      // `exists()` before `get()`, for the same reason the lead-time helper does.
+      let path = /databases/$(database)/documents/booking_quotes/$(lookup);
       let found = exists(path) ? get(path).data : null;
       // `{}` for "no such attestation", not a skipped call: an empty map reads back
-      // nulls and refuses, while a null dereference would throw — and this clause
-      // is evaluated even when its value is about to be discarded, because neither
-      // the offline evaluator nor a `let` binding promises laziness. A rule that
-      // can throw on a branch it does not use is how every booking in the estate
-      // got refused on 2026-10-14.
+      // nulls and refuses, while a null dereference would throw — and this clause is
+      // evaluated even when its value is about to be discarded, because `let`
+      // bindings are eager. The Admin half of the create rule reaches here as
+      // `isAdmin() || <this>`, so this must produce a boolean for a manual booking,
+      // never an error.
       let attested = validAttestedQuote(found == null ? {} : found, data);
-      // So the gate is this one ternary, on a value that is safe either way: when
-      // the estate has not asked for attestation, the clause cannot refuse and
-      // cannot throw.
-      return enforced ? attested : true;
+      // One nested ternary, value-safe on every branch: un-enforced cannot refuse
+      // and cannot throw; enforced without a usable id is a refusal, not an error;
+      // the comparison itself only ever reads a document that was proven to exist.
+      return enforced ? (quoted ? attested : false) : true;
     }
 
     function validAttestedQuote(quote, data) {
-      // A quote issued to nobody in particular is a price, not an entitlement — it
-      // is what the website's public booking path receives before the Guest has an
-      // identity to bind to (ADR-0004). A quote bound to an account may only be
-      // spent by that account, which is what stops a live quote lifted from
-      // someone else's session being used to book under theirs.
-      let writerMatches = quote.get('bound_uid', '') == ''
-        || (isSignedIn() ? request.auth.uid == quote.get('bound_uid', '') : false);
+      // A quote is bound to the identity that asked for it, and only that identity
+      // may spend it. The binding is checked against the writer, not against
+      // `data.uid`: the Booking's `uid` is a claim the create path lets the writer
+      // make (ADR-0004 mints it when the form opens), while `request.auth.uid` is
+      // the one identity here that Firestore vouches for. There is deliberately no
+      // escape hatch for an unbound quote — tightening this on 2026-10-22 also made
+      // `quoteBooking` require a signed-in caller, so an unbound attestation cannot
+      // be minted either; an old document that still has one simply refuses.
+      // Parenthesised deliberately: this evaluator (and the rules language's
+      // precedence generally) does not promise `==` binds tighter than `&&`, and
+      // `a && b == c` reading as `(a && b) == c` turns a string against a boolean —
+      // a refusal that looks like a policy decision.
+      let writerMatches = isSignedIn() && (request.auth.uid == quote.get('bound_uid', ''));
       // Amounts are compared in whole centavos because both sides are doubles that
       // took different paths here — one computed in a Node process, one round
       // tripped through a client and Firestore. `+ 0.5` before truncating is the

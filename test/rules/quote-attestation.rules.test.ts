@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compileRules, ruleTimestamp, type DocData, type Store } from './engine'
-import { allowlistedAdmin, anonymousGuest, bookingDoc, emailGuest, GUEST_UID, guestPaymentPatch, request } from './context'
+import { allowlistedAdmin, anonymousGuest, bookingDoc, emailGuest, GUEST_UID, OTHER_GUEST_UID, guestPaymentPatch, request } from './context'
 
 const decide = compileRules(readFileSync(join(__dirname, '../../firestore.rules'), 'utf8'))
 
@@ -79,7 +79,9 @@ const attestation = (overrides: DocData = {}): DocData => ({
   policy_effective_date: '2026-10-01',
   rates_version: 'official-v9',
   refund_policy_snapshot: null,
-  bound_uid: '',
+  // Bound to the writer: `firestore.rules` now requires the spend to come from this
+  // exact uid, and `quoteBooking` refuses to mint an unbound attestation at all.
+  bound_uid: GUEST_UID,
   created_at: ruleTimestamp(NOW),
   expires_at: ruleTimestamp('2026-10-01T05:00:00.000Z'),
   ...overrides,
@@ -178,15 +180,62 @@ describe('the server-attested price', () => {
     expect(submit(booked(), attestation({ expires_at: ruleTimestamp(NOW) }))).toBe(false)
   })
 
-  it('binds an attestation to the identity it was issued to', () => {
-    // An unbound quote is a price, not an entitlement — what the public booking
-    // path holds before there is an identity to bind it to (ADR-0004).
-    expect(submit(booked(), attestation({ bound_uid: '' }))).toBe(true)
+  it('binds an attestation to the identity it was issued to, and to nobody else', () => {
+    // Tightened on 2026-10-22 by the readiness audit. This clause used to accept an
+    // *unbound* attestation ("a price, not an entitlement"), because the callable
+    // could be reached without a signed-in caller. It can no longer be:
+    // `quoteBooking` refuses an unauthenticated call, so an unbound document is
+    // either a leftover or something that is not this function — and neither is a
+    // reason to let a write through carrying money the estate did not price for
+    // *this* Guest.
+    expect(submit(booked(), attestation({ bound_uid: GUEST_UID }))).toBe(true)
+    expect(submit(booked(), attestation({ bound_uid: '' }))).toBe(false)
     expect(submit(booked(), attestation({ bound_uid: 'someone-elses-uid' }))).toBe(false)
+    // A live, correctly-priced attestation naming another uid is refused even when
+    // the writer is signed in and every figure matches: the price is right and the
+    // entitlement is not.
+    expect(submit(booked(), attestation({ bound_uid: OTHER_GUEST_UID }))).toBe(false)
+    // And no writer at all: with the estate's switch on, a Booking arrives from an
+    // identity Firestore can vouch for, not from whoever holds the web API key.
     expect(decide(request({
-      method: 'create', path: 'bookings/forgery-attempt', auth: anonymousGuest('guest-uid-1'),
+      method: 'create', path: 'bookings/forgery-attempt', auth: null,
       requestData: booked(), time: NOW,
-    }), { store: store({}, attestation({ bound_uid: 'guest-uid-1' })) }).allow).toBe(true)
+    }), { store: store({}, attestation({ bound_uid: '' })) }).allow).toBe(false)
+  })
+
+  it('treats an unusable quote_id as a refusal, never as an evaluation error', () => {
+    // The landmine this case defuses: `quote_id` can be *present and null* — the
+    // Admin app writes nulls for fields it does not collect — and interpolating a
+    // non-string into a path is an error rather than a miss. An error is what
+    // refused every Guest booking on 2026-10-14; on the Admin's own create path it
+    // would have frozen manual bookings the day enforcement was switched on.
+    for (const unusable of [null, 123, '', 'x'.repeat(65), { id: 'quote-1' }]) {
+      expect(submit(booked({ quote_id: unusable }), attestation()), `a Guest was booked on an unusable quote_id: ${JSON.stringify(unusable)}`).toBe(false)
+    }
+    // The same value on an Admin create must still be *allowed*: the Admin is exempt
+    // from attestation, and an exemption that throws is not an exemption.
+    for (const unusable of [null, 123, '']) {
+      expect(decide(request({
+        method: 'create', path: 'bookings/walk-in-unusable-id', auth: allowlistedAdmin(),
+        requestData: booked({ stay_total: 1000, amount_due: 500, balance_due: 500, amount_claimed: 500, security_deposit: 0, quote_id: unusable }),
+        time: NOW,
+      }), { store: { 'site_config/rates': publishedRates, 'site_config/booking': { quotes_required: true } } }).allow).toBe(true)
+    }
+    // Enforcement off: an unusable id refuses nothing, because nothing was promised
+    // about it. (This is the case that would have broken every historical booking
+    // had the clause been written to require an id unconditionally.)
+    expect(submit(booked({ quote_id: null }), attestation(), false)).toBe(true)
+  })
+
+  it('does not refuse a fractional-peso total for the centavo the two halves floor apart', () => {
+    // ₱1,125.84 halves to 562.92 in `downPaymentAmount` (a floor) and to 562.91 in
+    // the rule's `int(stay_total * 50)` (a truncation). The window the rules carry
+    // now admits the estate's own figure; the *forgery* one centavo further out is
+    // still refused, so the invariant has not been traded away.
+    const fractional = { stay_total: 1125.84, rate_amount: 1125.84, amount_due: 562.92, balance_due: 562.92, amount_claimed: 562.92 }
+    expect(submit(booked(fractional), attestation(fractional))).toBe(true)
+    expect(submit(booked(fractional), attestation(fractional), false)).toBe(true)
+    expect(submit(booked({ ...fractional, amount_due: 562, balance_due: 563.84, amount_claimed: 562 }), attestation(fractional))).toBe(false)
   })
 
   it('compares money in whole centavos, so a float wobble is not a refusal', () => {

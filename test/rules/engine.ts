@@ -192,7 +192,27 @@ export type Decision = {
   allow: boolean
   /** Every `allow` statement that matched the request, with its outcome. */
   statements: { at: string; ops: string[]; result: boolean | 'error'; error?: string }[]
+  /**
+   * What this evaluation cost, counted rather than estimated: expression nodes
+   * visited and document reads issued.
+   *
+   * Firestore refuses to *deploy* a rules file whose evaluation exceeds its
+   * documented budget, and reports the failure as the same bare `permission-denied`
+   * a policy refusal produces — the incident `docs/HANDOFF-rules-budget.md` exists
+   * for. This evaluator had no opinion about cost at all, so a clause could be green
+   * here and undeployable in production. These numbers are the honest substitute for
+   * that measurement, with two caveats stated where they are used: the expression
+   * count is an **upper bound** (the engine visits every node of an eager `let`
+   * binding, whether or not the value ends up deciding anything), and the read count
+   * is the number to compare against Firestore's documented limit of 20 document
+   * reads for a single-document request. Neither replaces the emulator.
+   */
+  expressions: number
+  reads: number
 }
+
+/** Accumulated by the evaluator while a single decision is computed. */
+const measured = { expressions: 0, reads: 0 }
 
 /**
  * Two behaviours of the rules language that no public document pins down beyond
@@ -480,6 +500,8 @@ function evaluateCompiled(
 ): Decision {
   const store = options.store ?? {}
   const semantics = options.semantics ?? DEFAULT_SEMANTICS
+  measured.expressions = 0
+  measured.reads = 0
 
   // Clients address `bookings/abc`, but `match` declarations in both rule
   // languages are rooted at the service's own prefix — Firestore at
@@ -541,7 +563,7 @@ function evaluateCompiled(
         }
         const allowed = value
         statements.push({ at: rule.at, ops: statement.ops, result: allowed })
-        if (allowed) return { allow: true, statements }
+        if (allowed) return { allow: true, statements, expressions: measured.expressions, reads: measured.reads }
       } catch (error) {
         if (error instanceof UnsupportedConstructError) throw error
         statements.push({
@@ -553,7 +575,7 @@ function evaluateCompiled(
       }
     }
   }
-  return { allow: false, statements }
+  return { allow: false, statements, expressions: measured.expressions, reads: measured.reads }
 }
 
 function collectFunctions(chain: { rule: MatchRule; vars: Record<string, unknown> }[]): Map<string, FnBinding> {
@@ -615,7 +637,16 @@ function matchSegments(
   return { vars, consumed: cursor - index }
 }
 
+/**
+ * Grammar wrappers that hold exactly one child and perform no operation. Counting
+ * them would double every node in the file and make the measurement meaningless, so
+ * the counter counts *operations and operands*, which is the closest this
+ * interpreter can honestly get to Firestore's expression budget.
+ */
+const PASS_THROUGH_KINDS = new Set(['Expression', 'ExprInExpression', 'ParenSimpleExpression'])
+
 function evalExpr(node: Node, scope: Scope): unknown {
+  if (!PASS_THROUGH_KINDS.has(kind(node))) measured.expressions++
   switch (kind(node)) {
     case 'Expression':
     case 'ExprInExpression':
@@ -1186,9 +1217,12 @@ function lookupVariable(name: string, scope: Scope, node: Node): unknown {
   return unsupported(`the variable \`${name}\` at \`${text(node)}\``)
 }
 
+const READ_FUNCTIONS = new Set(['get', 'getAfter', 'getBefore', 'exists', 'existsAfter', 'existsBefore'])
+
 function globalCall(name: string, args: unknown[], scope: Scope, node: Node): unknown {
   const local = scope.functions.get(name)
   if (local) return callUserFunction(local, args, scope, name)
+  if (READ_FUNCTIONS.has(name)) measured.reads++
 
   switch (name) {
     case 'int': {

@@ -28,7 +28,7 @@ import { getAuth } from 'firebase-admin/auth'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { createHash } from 'node:crypto'
-import { deriveQuote, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift, type AuthoritativeMoney, type QuoteCause, type QuoteRequest } from './pricing'
+import { deriveQuote, MinuteBudget, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift, unattestedVerdict, type AuthoritativeMoney, type MoneyVerdict, type QuoteCause, type QuoteRequest } from './pricing'
 
 const options = { region: 'asia-southeast1', maxInstances: 5, memory: '512MiB' as const, timeoutSeconds: 60 }
 
@@ -54,18 +54,19 @@ function enabled(): void {
 }
 
 // A quote mints a document, so a caller who can call this 10,000 times can fill
-// Firestore. In-memory, per instance: it is a brake, not a boundary — the
-// boundary is that an unbounded number of quotes buys an attacker nothing, since
-// each one prices the stay correctly.
-const budget = new Map<string, { window: number; count: number }>()
+// Firestore. In-memory, per instance, and stale windows are dropped: it is a brake,
+// not a boundary — the boundary is that an unbounded number of quotes buys an
+// attacker nothing, since each one prices the stay correctly. What would have been a
+// leak is the Map growing one entry per caller forever, which the readiness audit of
+// 2026-10-22 turned into `MinuteBudget`.
+const rawLimit = Number(process.env.QUOTE_RATE_LIMIT_PER_MINUTE ?? 12)
+const budget = new MinuteBudget(Number.isInteger(rawLimit) && rawLimit >= 1 ? rawLimit : 12)
+
 function spend(key: string): void {
-  const window = Math.floor(Date.now() / 60_000)
-  const row = budget.get(key)
-  const limit = Number(process.env.QUOTE_RATE_LIMIT_PER_MINUTE ?? 12)
-  if (row && row.window === window && row.count >= limit) {
-    throw new HttpsError('resource-exhausted', 'Too many price requests from here. Wait a minute, then try again.')
+  const verdict = budget.take(key)
+  if (!verdict.ok) {
+    throw new HttpsError('resource-exhausted', `Too many price requests from here. Wait ${Math.ceil(verdict.retryAfterMs / 1000)}s, then try again.`)
   }
-  budget.set(key, { window, count: row && row.window === window ? row.count + 1 : 1 })
 }
 
 /**
@@ -100,10 +101,19 @@ async function isWriterAdmin(uid: string): Promise<boolean> {
 
 export const quoteBooking = onCall(options, async (request: CallableRequest) => {
   enabled()
+  // The attestation is bound to an identity, so an identity is a precondition — and
+  // `firestore.rules` now refuses an unbound attestation, so minting one would only
+  // hand out a document the write cannot use. The Guest flow signs in anonymously
+  // before the form is submitted (`src/lib/guestAuth.ts`), which is what makes this
+  // a check rather than a barrier.
+  const callerUid = request.auth?.uid ?? ''
+  if (callerUid === '') {
+    throw new HttpsError('unauthenticated', 'We need to reconnect you before we can confirm a price. Please try again.')
+  }
   const parsed = parseQuoteRequest(request.data)
   if (!parsed.ok) throw causeToError(parsed.cause, parsed.detail, parsed.guestMessage, parsed.status)
 
-  spend(request.auth?.uid ?? (request.rawRequest.ip ?? 'anonymous'))
+  spend(callerUid)
 
   const [ratesDoc, configDoc] = await Promise.all([
     db().doc('site_config/rates').get(),
@@ -115,7 +125,7 @@ export const quoteBooking = onCall(options, async (request: CallableRequest) => 
   })
   if (!derived.ok) throw causeToError(derived.cause, derived.detail, derived.guestMessage, derived.status)
 
-  const boundUid = request.auth?.uid ?? ''
+  const boundUid = callerUid
   const id = quoteIdFor(boundUid, parsed.value, derived.quote.rates_version)
   const ref = db().doc(`booking_quotes/${id}`)
   const existing = await ref.get()
@@ -217,7 +227,7 @@ export const verifyBookingMoney = onCall(options, async (request: CallableReques
     late_checkout_hours: booking.late_checkout_hours ?? 0,
   })
 
-  let verdict: 'MATCH' | 'MISMATCH' | 'NO_RATE' | 'UNPARSEABLE'
+  let verdict: MoneyVerdict['verdict']
   let mismatches: string[] = []
   let detail = ''
 
@@ -243,11 +253,13 @@ export const verifyBookingMoney = onCall(options, async (request: CallableReques
         detail = detail || 'the quote had already expired when the Booking was written'
       }
     } else {
-      // No quote document: a Booking from before the flag, or one written by an
-      // Admin. Compare what the record says with what the card says now.
-      mismatches = moneyMismatches(booking, fresh.quote)
-      verdict = mismatches.length === 0 ? 'MATCH' : 'MISMATCH'
-      detail = quoteId ? `booking_quotes/${quoteId} does not exist (it may have aged out)` : 'this Booking carries no quote reference'
+      // No usable quote document: a Booking from before the switch, or one an Admin
+      // wrote by hand. Compare what the record says with what the card says now — and
+      // do not call a republished card a wrong figure.
+      const verdict0 = unattestedVerdict(fresh, booking, String((ratesDoc.data() ?? {}).version ?? ''), quoteId !== '')
+      verdict = verdict0.verdict === 'MATCH' ? 'MATCH' : verdict0.verdict === 'MISMATCH' ? 'MISMATCH' : verdict0.verdict === 'NO_RATE' ? 'NO_RATE' : 'UNPARSEABLE'
+      mismatches = verdict0.mismatches
+      detail = verdict0.detail
     }
     if (ratesDoc.exists && ratesVersionDrift(booking, String((ratesDoc.data() ?? {}).version ?? ''))) {
       detail = detail || 'the Booking was stamped with an earlier rate version than the one published now'

@@ -29,9 +29,9 @@
       "bytes": 11175
     },
     "rates.ts": {
-      "source_sha256": "b643819983924caec4eefd9d9f82c81d89f6cc5f0f1d8849bd77075f2293448e",
-      "copy_sha256": "3d8ce3ce61b8df909bdf962ef5946383943ada7a3e59ce540a81eb31a88bbcb5",
-      "bytes": 32064
+      "source_sha256": "2a28a5c07ceeb96e9d074a26cac8f8a1abe48735d0e600686ad5fd2b178dda29",
+      "copy_sha256": "b0ea99576f22f712a63e34e9e5a75fcbf64fe9e90c746e71c627274dbf2aabb7",
+      "bytes": 32655
     },
     "statuses.ts": {
       "source_sha256": "f2ade5f06c48293b8bd97012c2c21d5d943af27ba9ebe20b19d39eda0649ea82",

@@ -146,7 +146,7 @@ Things that remain **outside** the rules' reach, unchanged by the pass:
   rather than a workflow. ADR-0018, *Corrections*, has the detail.
 - **The rules do not price a Booking; the functions do, when the estate asks them to.**
   The rules hold a Booking's figures coherent with each other — one 22-hour stay, a
-  known classification, the 50/50 split to the centavo, a claim not below the
+  known classification, the 50/50 split within one centavo, a claim not below the
   downpayment, counts that are counts — and they refuse a *rate document* whose shape
   cannot be priced. Re-deriving the money *inside* `firestore.rules` from
   `site_config/rates` was deleted on 2026-10-14: it crossed Firestore's
@@ -173,8 +173,25 @@ Things that remain **outside** the rules' reach, unchanged by the pass:
   costs one small row. If a bound is ever needed, `disputeMaintenance`'s schedule is
   the place, with a floor of never deleting an attestation a live Booking still points
   at.
+- **The currency of a price is a convention, not a check.** Nothing in `firestore.rules` or
+  `functions/src/pricing.ts` verifies that `rate_amount` and the totals are pesos; the published
+  card is a single-currency document by agreement, and `down_payment_percent == 50` is pinned
+  (`firestore.rules:464`) while currency is not. A card published in another currency prices
+  correctly and means something else.
+- **Turning enforcement off is a policy rollback, not a cost rollback.** `validGuestQuote` binds
+  the quote lookup and the comparison in `let` bindings, which Firestore evaluates when declared —
+  so with `site_config/booking.quotes_required` false the clause skips the *decision*, not the
+  *work* (measured: the two paths are within 40 nodes of each other, `test/rules/firestore-rule-limits.test.ts`).
+  Nobody is paying much; the point is that the number does not go back down, and the suite is what
+  says so.
+- **A stay below ₱1,000 total cannot be attested at all.** The rules' floor is not a policy the
+  callable can price around, so `deriveQuote` refuses with `QUOTE_BELOW_RULE_FLOOR` rather than
+  minting a quote the estate cannot write. If a legitimate rate card ever drops below that floor,
+  the floor is the thing to change, on both sides at once.
 - Nothing server-side can count requests, throttle a client, or reverse a bad
-  write; the rules can only decide per write.
+  write; the rules can only decide per write. A per-instance limiter does exist in
+  `quoteBooking` (`MinuteBudget`, default 12 mints per identity per minute, pruned at 4,096 rows),
+  and it is a brake on a runaway client, not a quota: it is per instance and resets on deploy.
 
 
 ## Flutter

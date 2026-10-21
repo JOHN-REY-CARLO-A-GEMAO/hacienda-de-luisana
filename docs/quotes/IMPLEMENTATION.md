@@ -12,7 +12,7 @@ numbers below are from a 2026-10-21 run on this checkout.
 
 | Path | What it is |
 | --- | --- |
-| `functions/src/pricing.ts` | The pure half: `parseQuoteRequest`, `deriveQuote`, `moneyMismatches`, `quotePayload`, `ratesVersionDrift`, `ATTESTED_KEYS`, the twelve refusal causes and their Guest sentences. No Firestore, no clock it does not receive. |
+| `functions/src/pricing.ts` | The pure half: `parseQuoteRequest`, `deriveQuote`, `moneyMismatches`, `quotePayload`, `ratesVersionDrift`, `ATTESTED_KEYS`, the thirteen refusal causes and their Guest sentences. No Firestore, no clock it does not receive. |
 | `functions/src/quotes.ts` | `quoteBooking` and `verifyBookingMoney`, the `onCall` pair: reads `site_config/*`, writes `booking_quotes/{id}`, stamps `money_checked*`. |
 | `functions/src/booking/*` | **Generated mirror** of `src/lib/booking/*` plus `manifest.json`. Never edit. |
 | `scripts/sync-booking-pricing.mjs` | The copier and the checker (`--check` exits 1 on drift). |
@@ -38,7 +38,10 @@ numbers below are from a 2026-10-21 run on this checkout.
    the page's; the rules refuse the write if they do not match the attestation.
 5. `firestore.rules`, evaluating the create: if `quotes_required` is `true`, load
    `booking_quotes/{data.quote_id}`, require it live and bound to this uid, and require all 19
-   priced fields to match (money to the centavo).
+   priced fields to match — money within one centavo, because `int(stay_total * 50)` in the rule
+   language and `downPaymentAmount`'s centavo arithmetic disagree on some totals (₱1,024.10 prices to
+   ₱512.05 on the page; `1024.10 * 50` truncates to 51204), and `balance_due` must close `stay_total`
+   exactly.
 6. Later: the Admin's Payments screen verifies the screenshot; optionally calls
    `verifyBookingMoney`, which compares the Booking with its attestation and with the *current*
    published card, and records `money_checked` — never rewriting money.
@@ -62,17 +65,23 @@ then flip the document. Turning the document off is the rollback and needs no re
 1. `npm run check:pricing` — the mirror is current. If it is not: `npm run sync:pricing`, then
    `cd functions && npx tsc --noEmit && npm test`.
 2. `npm test && npm run test:rules && npm run test:disputes` — expected on this checkout:
-   **958 web**, **328 rules**, **218 functions**. `npx tsc -b` and `npm run build` clean.
+   **958 web**, **334 rules**, **223 functions**. `npx tsc -b` and `npm run build` clean.
+   `npm run test:e2e` (44) and `npm run test:invariants` are separate: the latter is a
+   pre-existing **22 failed / 9 passed** of `DESIRED` cases, unchanged by this mechanism.
 3. Emulator first, always: `firebase emulators:exec --only firestore,functions --project demo-hdl "npm run test:emulator"`.
-   The offline evaluator in `test/rules/` does **not** model Firestore's 1,000-expression budget or
-   its read limits, so a suite that is green here can still fail to deploy (ADR-0018 is the story of
-   exactly that). The emulator is the only instrument on this machine that can see the class.
+   That runs `test/emulator/rules.emulator.test.ts` and, since 2026-10-22,
+   `test/emulator/quote-attestation.emulator.test.ts` — the attestation path, including the Admin
+   manual-booking case and the one-centavo tolerance. The offline evaluator now *measures* cost
+   (`test/rules/firestore-rule-limits.test.ts`) but does not model Firestore's 1,000-expression budget,
+   so a suite that is green here can still fail to deploy (ADR-0018 is the story of exactly that). The
+   emulator is the only instrument that can see the class.
 4. `firebase deploy --only firestore:rules`, then `firebase deploy --only functions`.
    **`functions` deployment requires the Blaze plan** — on the free Spark plan the deploy fails,
    and nothing in this ADR can be rolled out. The environment the Functions runtime reads must set
    `BOOKING_QUOTES_ENABLED=true`; the repository's `.env.example` names it beside
    `DISPUTES_ENABLED`, and `.env` files stay uncommitted. `QUOTE_TTL_MINUTES` optionally shortens
-   how long a price is honoured (default 30). Both callables ship in the existing `disputes`
+   how long a price is honoured (default 30), `QUOTE_RATE_LIMIT_PER_MINUTE` the mints per identity per
+   minute (default 12); all three are listed in the repository's `.env.example`. Both callables ship in the existing `disputes`
    codebase (`firebase.json` → `functions[0]`), so there is no second deploy target to configure.
 5. Confirm the refusal path from a signed-in Guest browser console *before* turning enforcement on:
    write a Booking by hand with a plausible `stay_total` and no `quote_id`; it must be refused once
@@ -115,12 +124,22 @@ built or run. The security property does not depend on any of it.
 - Rules are **OR-ed across every matching block**. Before adding a guard to `bookings`, check
   `grep -n "^\s*match " firestore.rules | sort | uniq -c` — the duplicate `payment_references` block
   in ADR-0018 is what happens otherwise.
-- `firestore-rule-limits.test.ts` counts only `let` bindings. It will not tell you a clause is too
-  expensive; `test/rules/engine.ts` models no expression budget either. Adding a counter is still
-  open work (`docs/HANDOFF-rules-budget.md` §8).
-- The centavo comparison exists because there is no `Math.round` in the rule language.
-  `int(x * 100 + 0.5)` is round-half-up, matching `roundMoney` in `src/lib/booking/internal.ts`.
-  Writing `x == y` for money would refuse honest quotes on float wobble; truncating would too.
+- `firestore-rule-limits.test.ts` counts `let` bindings *and*, since 2026-10-22, what a run costs:
+  `test/rules/engine.ts` reports `expressions` and `reads` on every `Decision`, and the file asserts a
+  read ceiling, a bounded enforced-vs-unenforced delta, an absolute canary ceiling and a zero-read Admin
+  path. Measured on the shipped file: Guest create 1,190 nodes / 8 reads, Admin create 240 / ≤1, Guest
+  update 533 / 2. The read count is in Firestore's units and passes; the expression count is in this
+  evaluator's grammar and is a **canary, not a certificate** — the unmodified path already exceeds 1,000
+  here while the same file deploys. Only the emulator can certify the budget (`docs/HANDOFF-rules-budget.md` §8).
+- The centavo comparison exists because there is no `Math.round` in the rule language, and because
+  `int(x * 100 + 0.5)` is how the callable rounds (`roundMoney`, `src/lib/booking/internal.ts`) while
+  `int(stay_total * 50)` floors. The rule therefore admits `amount_due` in a **one-centavo window** above
+  the floored half and demands that `balance_due` close the total to the exact centavo — writing
+  `x == y` for money refused honest quotes, and widening the window any further would start admitting
+  forgeries that do not also break the closing sum. Both sides are checked against one statement of the
+  agreement: `attestationSurvivesRuleLayer` in `functions/src/pricing.ts`, which `deriveQuote` runs
+  before it writes, so a figure the estate could not store is refused with `ATTESTATION_UNWRITABLE`
+  rather than minted as a quote that always denies.
 
 ## Not done, on purpose
 

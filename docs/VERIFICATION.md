@@ -853,9 +853,55 @@ and the switch are correct in this tree, not that a live project refuses forged 
 
 | Gap | Why, and what closes it |
 | --- | --- |
-| **Firestore emulator** | `npm run test:emulator` (44 cases) has never run here — no Java. It is the only instrument that can see an expression-budget or read-limit failure, which is the exact failure mode ADR-0018 recorded. The new clauses are bounded by field count (~25 comparisons + one `exists()`/`get()` pair), but that is an argument, not a measurement. **Run before deploying rules.** |
+| **Firestore emulator** | `npm run test:emulator` has never run here — no Java, no download. It is the only instrument that can see an expression-budget or read-limit failure, which is the exact failure mode ADR-0018 recorded. Since 2026-10-22 the offline evaluator *measures* cost (§17), which replaces the argument but not the run. **Run before deploying rules.** |
 | Real `get()`/`exists()` against a live project | The offline evaluator is faithful for the constructs used here but is not Firestore. A forged write must be attempted from a signed-in console after deploy (step 5 of the checklist). |
 | `firebase deploy --only functions` | Requires the **Blaze** plan; not attempted. Until then `quoteBooking` does not exist in production, enforcement stays off, and ADR-0018's "accepted, interim" remains the true description. |
 | Flutter | No SDK in this environment; `flutter analyze`, `flutter test`, `flutter build apk` never run. The Payments screen does not call `verifyBookingMoney` yet. **No Dart change was needed for the security property** — that is the claim, and it is a claim about what the rules guarantee, not about tested Dart behaviour. |
 | Rate limiting | `spend()` in `quotes.ts` is in-process and per-instance. It is not a quota and there is no server-side throttle anywhere in this codebase. |
 | Quote-document retention | Nothing deletes expired attestations (deliberate: they are the evidence `verifyBookingMoney` compares against). Bounded by distinct request, not by bookings. `docs/LIMITATIONS.md`. |
+
+---
+
+## 17. Production-readiness audit of the attestation (2026-10-22)
+
+The audit asked whether F13/F19/F1/F8 are safe to deploy and to activate, and required every check to
+carry a result from an actual run. Full findings, the item-by-item table and the residual risks:
+[`docs/quotes/READINESS.md`](quotes/READINESS.md).
+
+### Executed here
+
+| Check | Result |
+| --- | --- |
+| `npm run test:rules` | **334 / 334** (7 files) — §16's 328 plus the two attestation cases and four measured-cost assertions |
+| `npm test` | **958 / 958** (68 files) |
+| `npm run test:e2e` | **44 / 44** |
+| `npm run test:safety` | green |
+| `npm run check:pricing` | green — `src/lib/booking/rates.ts` → `functions/src/pricing.ts` mirror current |
+| `npx tsc -b`, `npm --prefix functions test` | clean, **223 / 223** |
+| `npm run test:invariants` | 22 failed / 9 passed — **reproduced identically in a worktree at `3a0c7e6`**, so all of it is the pre-existing `DESIRED` set, untouched by this mechanism |
+| `npm run test:rules:baseline`, `check:rules:baseline` | **BLOCKED** — the harness pins base commit `e5155de`, unreachable in this shallow clone (3 commits). Needs a full clone; it is the project's own "no security test weakened" instrument, so run it there |
+| `npm run test:qa:booking` | **BLOCKED** — Playwright missing |
+| `npm run test:emulator` | **BLOCKED** — no JVM, no egress to `storage.googleapis.com`; `test/emulator/quote-attestation.emulator.test.ts` (13 cases) is written and **has never been executed** |
+| `npm run test:flutter`, `test:flutter:analyze` | **BLOCKED** — no `flutter`/`dart`, and a `find` for `*.test.dart` in this tree returns nothing |
+
+Nothing was weakened to get these numbers: diffing every `it()` title under `test/rules/` between
+base `c0f443e` and this branch finds **zero removals or renames**, and across all of `test/` the count
+goes 1,204 → 1,214. The only deleted files are three scratch `*-probe` tests.
+
+### Measured, not estimated
+
+`test/rules/engine.ts` now reports `expressions` and `reads` for each `Decision`, and
+`test/rules/firestore-rule-limits.test.ts` asserts them: a Guest create with enforcement on costs
+**1,190 nodes / 8 document reads**, an Admin manual create **240 / ≤1**, a Guest update **533 / 2**.
+The read count is in Firestore's units (limit 20) and passes with room. The expression count is in this
+evaluator's grammar — the *unmodified* Guest path already exceeds Firestore's documented 1,000 by it —
+so it is a canary against a new descent, not a deployment certificate, and the assertions say so in
+those words. The measured delta between enforcement on and off is inside 40 nodes: `let` bindings are
+eager, so the clause's cost is paid whenever the switch is present, on or off.
+
+### Verdict recorded here
+
+Deploy with enforcement off: yes. Activate: not until the emulator run above has run once against this
+`firestore.rules`, a Flutter toolchain has looked at the Admin screens, and the callables are live with
+`BOOKING_QUOTES_ENABLED=true`. `site_config/booking.quotes_required` stays absent until then, which is
+the state every suite above was run in.

@@ -22,7 +22,7 @@
 import { doc, getDocFromServer } from 'firebase/firestore'
 import { connectFunctionsEmulator, getFunctions, httpsCallable, type Functions } from 'firebase/functions'
 import type { AuthoritativeMoney, QuoteRequest } from '../../functions/src/pricing'
-import { app, db, isFirebaseConfigured, isUsingEmulators } from './firebase'
+import { app, auth, db, isFirebaseConfigured, isUsingEmulators } from './firebase'
 
 /** What the page may show and the write may carry: the id, the figures, and how long they hold. */
 export type AttestedQuote = {
@@ -56,6 +56,13 @@ const functionsClient: { current: Functions | null } = { current: null }
 
 function backend(): Functions {
   if (!app) throw new QuoteRefusedError('BACKEND_UNAVAILABLE', 'Prices cannot be confirmed in demo mode. Use a connected Firebase project to book.', { retryable: false })
+  // The attestation is bound to an identity, and `firestore.rules` now refuses one
+  // that is not bound to the writer — so asking without a signed-in user would only
+  // trade a named refusal for a slower one. The Guest flow signs in anonymously
+  // before the form submits (`src/lib/guestAuth.ts`); this is the guard, not the fix.
+  if (!auth?.currentUser) {
+    throw new QuoteRefusedError('AUTH_REQUIRED', 'We need to reconnect you before we can confirm a price. Please try again in a moment.', { retryable: true })
+  }
   if (!functionsClient.current) {
     functionsClient.current = getFunctions(app, 'asia-southeast1')
     // Same host and port the disputes client connects to: one emulator, one region,

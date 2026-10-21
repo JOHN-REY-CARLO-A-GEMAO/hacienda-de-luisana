@@ -208,6 +208,17 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+// Fractional peso figures are allowed on purpose (₱1,999.50 is a real room rate),
+// and that is why `firestore.rules` compares the 50/50 split in whole centavos with a
+// one-centavo window rather than bit-for-bit: `downPaymentAmount` floors the half here
+// while the rule truncates `stay_total * 50`, and on a fractional total the two land a
+// centavo apart. Prohibiting the fraction would have been the smaller change and the
+// bigger outage — the Flutter Admin publishes through the rules alone, so a rule that
+// refused .50 pricing would stop the estate publishing at all.
+
+
+
+
 /**
  * YYYY-MM-DD, and a real calendar date (2026-02-30 is not one).
  *

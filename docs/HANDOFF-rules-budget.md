@@ -8,7 +8,7 @@
 
 `firestore.rules` exceeded Firestore's documented **1000-expression-per-request** limit on the guest booking `create`. Firestore reports an evaluation error as the same bare `permission-denied` a policy refusal produces, so **every guest booking was refused**, on every date, while the offline rules suite (`npm run test:rules`) reported green.
 
-`test/rules/engine.ts` has **no expression counter** (only a recursion guard at `:1234`), so no local tool can measure or regression-test this. Only the Firestore emulator detects it.
+`test/rules/engine.ts` now counts both: every `Decision` carries `expressions` (operations and operands visited) and `reads` (document lookups), and `test/rules/firestore-rule-limits.test.ts` asserts them per path. Read that as a **canary, not a certificate** — the counter's scale is this evaluator's grammar, not Firestore's, so only the emulator detects a real budget failure. What the canary does give is that a *new* descent cannot be added quietly: the assertions fail, and the failure message names this file.
 
 Reproduced on this machine before any change — `tmp-repro-out.txt`, run against HEAD, all three dates DENY, anonymous and authenticated.
 
@@ -51,7 +51,9 @@ Untracked — **yours, keep:**
 | `balance_due == stay_total - amount_due` | the split closes |
 | `amount_claimed >= amount_due` | cannot claim underpayment |
 
-The `/ 100.0` is load-bearing — CEL `/` between two ints is **integer division** and would truncate centavos. The formula matches `downPaymentAmount(stayTotal, 50)` at `src/lib/booking/money.ts:55-60` exactly.
+The `/ 100.0` is load-bearing — CEL `/` between two ints is **integer division** and would truncate centavos.
+
+**Corrected 2026-10-22:** the claim that this matched `downPaymentAmount(stayTotal, 50)` at `src/lib/booking/money.ts:55-60` *exactly* was false for any total whose peso value is odd — a half rounded half-up by the callable is not a half floored by the rule whenever the total is an odd number of centavos — ₱1,000.99 prices to ₱500.50 on the page and the old rule demanded exactly ₱500.49 — which is why the two rows above are now `int(amount_due * 100 + 0.5)` within `[int(stay_total * 50), int(stay_total * 50) + 1]` and a `balance_due` that closes `stay_total` to the centavo, so a forger still has to break one or the other. `attestationSurvivesRuleLayer` in `functions/src/pricing.ts` is the single statement of that agreement, tested on both sides, and the callable refuses to mint an attestation the rule layer would not accept (`ATTESTATION_UNWRITABLE`).
 
 The second call site — the guest plan-choice guard in the `allow update` block — was swapped the same way.
 
@@ -193,7 +195,7 @@ Two justifications that were raised and do **not** hold:
    Blaze-plan dependency are in [`docs/quotes/IMPLEMENTATION.md`](quotes/IMPLEMENTATION.md).
 5. ~~Delete the dead helpers (§3), carefully.~~ **Done 2026-10-21** — eight unreferenced functions,
    brace-counted out of `firestore.rules`, with the suite green before and after.
-6. Wire a budget regression test. There is none, and nothing stops this recurring.
+6. ~~Wire a budget regression test. There is none, and nothing stops this recurring.~~ **Done 2026-10-22** — the engine reports `expressions`/`reads` and `firestore-rule-limits.test.ts` asserts a read ceiling, a bounded enforcement delta, an absolute canary ceiling and a zero-read Admin path. It measures; it does not certify (§1).
 7. Consider making `scripts/phase0` runnable on Windows — you asked for this earlier; it is untouched and needs a real design (no netns equivalent, plus this box has `.env.local` and an authenticated Firebase CLI, which `boundary.mjs` blocks by design).
 
 ## 9. Deploy
@@ -201,7 +203,7 @@ Two justifications that were raised and do **not** hold:
 **Status 2026-10-21:** step 3 and 5 are done; steps 1, 2 and 6 are not, and until 1 and 2 pass the
 sentence below still stands. ADR-0019's clauses are bounded by field count (~25 comparisons plus
 one `exists()`/`get()` pair on the Guest create), which is the shape the budget was the problem
-for — but "bounded" is an argument, not a measurement, and the offline evaluator cannot measure it.
-The emulator run is what turns it into a claim.
+for — but "bounded" is an argument, not a measurement — and until 2026-10-22 the offline evaluator could not measure it either.
+It can now, and does: a Guest create with enforcement on measures **1,190** expression nodes and **8** document reads, an Admin create **240** and **≤1**, a Guest update **533** and **2**. The read count is comparable to Firestore's documented 20-read ceiling and passes with room; the expression count is *this* evaluator's grammar and is not comparable to the 1,000-expression budget (the unmodified file already exceeds it here while shipping in production). The emulator run is still what turns the first number into a claim and the second into none.
 
 `firestore.rules` at HEAD is **not deployable** — it breaks every guest booking. The change in the working tree makes it deployable **only if** steps 1–2 pass. Deploying is `firebase deploy --only firestore:rules --project hacienda-de-luisana`, and only on your explicit go-ahead.

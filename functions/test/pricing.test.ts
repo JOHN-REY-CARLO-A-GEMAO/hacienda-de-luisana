@@ -13,7 +13,7 @@
  */
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { deriveQuote, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift } from '../src/pricing'
+import { attestationSurvivesRuleLayer, deriveQuote, MinuteBudget, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift, unattestedVerdict, RULE_MIN_STAY_TOTAL } from '../src/pricing'
 
 /** The clock everything is measured against: 2026-10-01, 04:00 UTC. */
 const NOW = Date.parse('2026-10-01T04:00:00Z')
@@ -262,5 +262,104 @@ describe('the comparison the rules make, computed the same way', () => {
     assert.equal(a, quotePayload(price().request, 'official-v9'))
     assert.notEqual(a, quotePayload(price().request, 'official-v10'))
     assert.notEqual(a, quotePayload({ ...price().request, guests: 11 }, 'official-v9'))
+  })
+})
+
+describe('the attestation stays writable by the estate it will be checked against', () => {
+  /** The floor is the rule layer's, and it is asserted here rather than duplicated there silently. */
+  it('refuses to mint a quote the rule layer would refuse on its floor', () => {
+    const cheap = JSON.parse(JSON.stringify(published))
+    cheap.accommodations['main-house'].guest_pricing.weekday.base_rate = 900
+    cheap.accommodations['main-house'].guest_pricing.weekend_holiday.base_rate = 900
+    const parsed = parseQuoteRequest(request({ guests: 1 }))
+    assert.ok(parsed.ok)
+    const derived = deriveQuote(cheap, parsed.value, { now: NOW })
+    // 2026-10-31 is a Saturday, so the weekend schedule prices it; both halves of
+    // the schedule are cheap here, and either way the total is under the floor.
+    assert.equal(derived.ok, false)
+    assert.equal((derived as { cause: string }).cause, 'QUOTE_BELOW_RULE_FLOOR')
+    assert.equal(RULE_MIN_STAY_TOTAL, 1000)
+  })
+
+  it('checks the derived money against the rule text, centavo by centavo', () => {
+    const quote = price()
+    assert.deepEqual(attestationSurvivesRuleLayer(quote.money), [])
+    assert.deepEqual(attestationSurvivesRuleLayer({ ...quote.money, amount_due: 100, balance_due: quote.money.stay_total - 100 }), ['amount_due 100 is not the floored half of stay_total 6000 within one centavo'])
+    assert.ok(attestationSurvivesRuleLayer({ ...quote.money, stay_total: 999 }).join(';').includes('floor'))
+    // `nights` is typed as the literal 1 in the module; the guard still has to
+    // catch a record that somehow says otherwise, so the test casts past the type.
+    assert.deepEqual(attestationSurvivesRuleLayer({ ...quote.money, nights: 2 } as unknown as Parameters<typeof attestationSurvivesRuleLayer>[0]), ['nights 2 is not the single standard stay the rules allow'])
+    assert.ok(attestationSurvivesRuleLayer({ ...quote.money, security_deposit: -1 }).length > 0)
+  })
+
+  it('agrees with the rules on a fractional total, where the two halves once floored apart', () => {
+    // ₱1,125.84 is a real room rate. `downPaymentAmount` floors the half to 562.92;
+    // `int(stay_total * 50)` in the rules truncates to 562.91. Before the centavo
+    // window those two disagreed by one peso-unit and the estate could not write the
+    // Booking it had itself priced — the false refusal this case pins shut.
+    const fractional = JSON.parse(JSON.stringify(published))
+    fractional.accommodations['main-house'].guest_pricing.weekend_holiday.base_rate = 1125.84
+    fractional.accommodations['main-house'].guest_pricing.weekday.base_rate = 1125.84
+    const parsed = parseQuoteRequest(request({ guests: 1 }))
+    assert.ok(parsed.ok)
+    const derived = deriveQuote(fractional, parsed.value, { now: NOW })
+    assert.ok(derived.ok, JSON.stringify(derived))
+    const money = derived.quote.money
+    assert.equal(money.stay_total, 1125.84)
+    assert.equal(money.amount_due, 562.92)
+    assert.deepEqual(attestationSurvivesRuleLayer(money), [])
+  })
+
+  it('names a stale card rather than calling it a wrong figure', () => {
+    const quote = price()
+    const booking = {
+      accommodation: 'main-house', check_in: CHECK_IN, check_out: CHECK_OUT, guests: 10, pet_count: 0, late_checkout_hours: 0,
+      ...quote.money, quote_id: '',
+    }
+    const fresh = (() => {
+      const parsed = parseQuoteRequest(request())
+      assert.ok(parsed.ok)
+      const derived = deriveQuote(published, parsed.value, { now: NOW })
+      assert.ok(derived.ok)
+      return derived
+    })()
+
+    assert.equal(unattestedVerdict(fresh, booking, 'official-v9', false).verdict, 'MATCH')
+
+    const underpaid = unattestedVerdict(fresh, { ...booking, stay_total: 1000, amount_due: 500, balance_due: 500 }, 'official-v9', false)
+    assert.equal(underpaid.verdict, 'MISMATCH')
+    assert.ok(underpaid.mismatches.includes('stay_total'))
+
+    // Same disagreement, but the card the Booking was priced under is no longer the
+    // card published now: that is the estate moving, not the Guest cheating.
+    const moved = unattestedVerdict(fresh, { ...booking, stay_total: 1000, amount_due: 500, balance_due: 500, policy_version: 'official-v8' }, 'official-v9', false)
+    assert.equal(moved.verdict, 'STALE_CARD')
+    assert.match(moved.detail, /has moved since/)
+
+    const namedButGone = unattestedVerdict(fresh, { ...booking, quote_id: 'a'.repeat(32) }, 'official-v9', true)
+    assert.equal(namedButGone.verdict, 'MATCH')
+    assert.match(namedButGone.detail, /never written, or removed/)
+
+    const unpriceable = unattestedVerdict({ ok: false, cause: 'ACCOMMODATION_UNKNOWN', detail: 'gone', guestMessage: '', status: 'invalid-argument' } as never, booking, 'official-v9', false)
+    assert.equal(unpriceable.verdict, 'NO_RATE')
+    const malformed = unattestedVerdict({ ok: false, cause: 'NOT_A_STANDARD_STAY', detail: 'two nights', guestMessage: '', status: 'invalid-argument' } as never, booking, 'official-v9', false)
+    assert.equal(malformed.verdict, 'UNPARSEABLE')
+  })
+
+  it('brakes a caller without growing state forever', () => {
+    const budget = new MinuteBudget(3, 8)
+    const minute = Date.parse('2026-10-01T04:00:10Z')
+    for (let i = 0; i < 3; i++) assert.equal(budget.take('uid-1', minute).ok, true)
+    const blocked = budget.take('uid-1', minute)
+    assert.equal(blocked.ok, false)
+    assert.equal(blocked.retryAfterMs, 50_000)
+    // A different caller is unaffected, and the window rolls over.
+    assert.equal(budget.take('uid-2', minute).ok, true)
+    assert.equal(budget.take('uid-1', minute + 60_000).ok, true)
+    // The leak the audit found: one entry per caller, never released. Now stale
+    // windows are dropped once the table exceeds its bound, so a caller who cycles
+    // identities cannot grow it without limit.
+    for (let window = 0; window < 40; window++) budget.take(`caller-${window}`, minute + window * 60_000)
+    assert.ok(budget.size <= 12, `the budget table kept ${budget.size} rows after pruning`)
   })
 })

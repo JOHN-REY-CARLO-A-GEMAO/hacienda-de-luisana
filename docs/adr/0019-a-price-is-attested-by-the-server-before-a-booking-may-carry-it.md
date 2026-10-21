@@ -52,9 +52,11 @@ Four parts.
 3. **`validGuestQuote` in `firestore.rules`** — ANDed into the Guest create path. When
    `site_config/booking.quotes_required` is `true`, a Booking must carry a `quote_id` that
    resolves to a live (`request.time < expires_at`), identity-bound (`bound_uid`) attestation
-   whose 19 priced fields match the Booking's — money compared to the centavo, because
-   `Math.round` does not exist in the rules language and truncating a float product would refuse
-   an honest quote (`int(x * 100 + 0.5)` on both sides, matching `roundMoney`). When the switch is
+   whose 19 priced fields match the Booking's — money compared **within one centavo**, because
+   `Math.round` does not exist in the rules language and the two sides floor differently: the callable
+   rounds the half up (`int(x * 100 + 0.5)`, matching `roundMoney`) while `int(stay_total * 50)` in the
+   rule truncates, and on a float a product can land a centavo below its own exact value (₱1,024.10 →
+   51204.999…). Demanding equality refused honest quotes. When the switch is
    off the clause is `true`, so the estate's existing behaviour is preserved exactly.
 4. **`validAttestedQuote` on the update path** — a Guest may still resend a payment proof for an
    attested Booking, but may not re-price one: once `quote_id` is set, the twelve money and plan
@@ -188,3 +190,32 @@ not by a rule that now quietly assumes a deployment.
   than the merged document. All three are in *Verification notes* in
   `docs/quotes/IMPLEMENTATION.md`, because each one produces a denial that looks like a policy
   refusal — the same failure mode this ADR is about, one level down.
+
+## Amendment (2026-10-22, production-readiness audit)
+
+Four things this ADR stated or implied were corrected during the audit; none changes the decision.
+
+- **The centavo comparison is a window, not an equality.** `int(amount_due * 100 + 0.5)` must fall in
+  `[int(stay_total * 50), int(stay_total * 50) + 1]`, and `balance_due` must close `stay_total` to the
+  exact centavo. The tolerance is one centavo and no wider: it exists for float representation, not for
+  convenience. Because the rule floors each half independently, a forger must still break the closing
+  sum to be caught.
+- **The callable now refuses to mint what the estate cannot store.** `deriveQuote` runs
+  `attestationSurvivesRuleLayer` on its own figures first and answers `QUOTE_BELOW_RULE_FLOOR` (the
+  rule's ₱1,000 floor) or `ATTESTATION_UNWRITABLE` instead of writing an attestation the create clause
+  would deny — which would have been a self-inflicted outage dressed as a security check.
+- **An unusable `quote_id` is a denial, never an error.** The clause interpolated whatever
+  `request.resource.data.quote_id` happened to be into a path. No Admin screen writes `quote_id`, so
+  the key is absent on every manual Booking, and an engine error is indistinguishable from a refusal:
+  activation would have disabled manual bookings. The id is now type-checked and length-checked first.
+- **Turning enforcement off is a policy rollback, not a cost rollback.** `let` bindings are eager, so
+  the attestation's reads and comparisons are paid on every Guest create whichever way the switch sits
+  (asserted in `test/rules/firestore-rule-limits.test.ts`). Anyone reading an earlier draft of this ADR
+  as "off means free, so rollback is cheap" should stop; what makes rollback cheap is that the clause
+  *decides* nothing when off.
+
+And one tightening proposed during the audit was **reverted**: rejecting fractional published rates
+(whole pesos only) to make the two roundings agree exactly. Admin publishes the card through the rules
+alone, so a fractional figure already stored would have made every subsequent `deriveQuote` return
+`PUBLISHED_RATES_MALFORMED` and stopped online booking. A price of ₱1,999.50 is legal arithmetic for a
+hotel; the tolerance is the right answer and the floor is where it belongs.

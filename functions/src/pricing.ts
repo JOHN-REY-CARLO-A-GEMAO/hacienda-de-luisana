@@ -85,6 +85,8 @@ export type QuoteCause =
   | 'GUEST_COUNT_UNPRICED'
   | 'EXTRAS_UNPRICED'
   | 'NO_DOWN_PAYMENT_PUBLISHED'
+  | 'QUOTE_BELOW_RULE_FLOOR'
+  | 'ATTESTATION_UNWRITABLE'
 
 export interface QuoteRefusal {
   ok: false
@@ -101,6 +103,13 @@ export interface QuoteRefusal {
 
 export type QuoteResult = { ok: true; quote: DerivedQuote } | QuoteRefusal
 
+/** What the Admin's money check concludes about one Booking. */
+export type MoneyVerdict = {
+  verdict: 'MATCH' | 'MISMATCH' | 'NO_RATE' | 'UNPARSEABLE' | 'STALE_CARD'
+  mismatches: string[]
+  detail: string
+}
+
 const DAY_MS = 86_400_000
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -116,6 +125,8 @@ const GUEST_MESSAGES: Record<QuoteCause, string> = {
   GUEST_COUNT_UNPRICED: 'That party size is outside what this unit takes. Please adjust the guest count.',
   EXTRAS_UNPRICED: 'That extra is not something we can price online. Please note it in your request instead.',
   NO_DOWN_PAYMENT_PUBLISHED: 'We could not confirm the deposit for this stay. Please try again shortly.',
+  QUOTE_BELOW_RULE_FLOOR: 'That unit is priced below the smallest amount we can take online. Please contact the Hacienda and we will arrange it directly.',
+  ATTESTATION_UNWRITABLE: 'Prices are being updated right now, so we cannot take a booking this minute. Please try again shortly.',
 }
 
 function refuse(cause: QuoteCause, detail: string, status: QuoteRefusal['status'] = 'failed-precondition'): QuoteRefusal {
@@ -283,13 +294,8 @@ export function deriveQuote(
     )
   }
 
-  return {
-    ok: true,
-    quote: {
-      request,
-      rates_version: rates.version,
-      bracket: quoted.bracket,
-      money: {
+  const money: AuthoritativeMoney = {
+
         rate_unit: 'standard_stay',
         rate_amount: quoted.addons.rateAmount,
         rate_classification: quoted.classification,
@@ -302,7 +308,26 @@ export function deriveQuote(
         policy_version: rates.version,
         policy_effective_date: rates.effective_date,
         refund_policy_snapshot: rates.refund === undefined ? null : (rates.refund as PublishedRefundPolicy),
-      },
+
+  }
+
+  // Never hand out an attestation the estate's own rule layer would refuse. This is
+  // the seam between two pieces of arithmetic in two different files, and a
+  // divergence here reads to a Guest as a broken website rather than as a
+  // configuration the Admin can fix.
+  const unwritable = attestationSurvivesRuleLayer(money)
+  if (unwritable.length > 0) {
+    const cause = unwritable.some((problem) => problem.includes('floor')) ? 'QUOTE_BELOW_RULE_FLOOR' : 'ATTESTATION_UNWRITABLE'
+    return refuse(cause, `the derived figures would not survive validBookingMoneyInvariants: ${unwritable.join('; ')}`, 'internal')
+  }
+
+  return {
+    ok: true,
+    quote: {
+      request,
+      rates_version: rates.version,
+      bracket: quoted.bracket,
+      money,
     },
   }
 }
@@ -314,6 +339,85 @@ export const ATTESTED_KEYS = [
   'balance_due', 'security_deposit', 'payment_plan', 'policy_version', 'policy_effective_date',
   'refund_policy_snapshot',
 ] as const
+
+/**
+ * The floor `firestore.rules` refuses a Guest Booking under. It is a guard against
+ * nonsense rather than a price check, and it predates attestation — so a unit
+ * published below it has never been bookable online. Naming it here is what keeps the
+ * two layers from disagreeing: a quote the estate's own rule layer cannot accept must
+ * not be minted at all, because the alternative is a Guest who is quoted a price, told
+ * it is confirmed, and then refused by a rule they can neither see nor satisfy.
+ */
+export const RULE_MIN_STAY_TOTAL = 1000
+
+/** Centavos, half-up — the rounding `roundMoney` and `downPaymentAmount` use. */
+const cents = (value: number) => Math.floor(value * 100 + 0.5)
+
+/**
+ * Would `validBookingMoneyInvariants` accept a Booking carrying these figures?
+ *
+ * Re-implementing the rule text here is deliberate. This is the *boundary* between
+ * two pieces of arithmetic that live in different files, and the only way to know
+ * they agree is to state the expectation on both sides of it. A named cause turns a
+ * divergence into a log line an Admin can act on, instead of a `permission-denied` a
+ * Guest can do nothing about.
+ */
+export function attestationSurvivesRuleLayer(money: AuthoritativeMoney): string[] {
+  const problems: string[] = []
+  if (!(money.stay_total >= RULE_MIN_STAY_TOTAL)) {
+    problems.push(`stay_total ${money.stay_total} is under the rule layer's floor of ${RULE_MIN_STAY_TOTAL}`)
+  }
+  if (!(money.rate_amount > 0)) problems.push(`rate_amount ${money.rate_amount} is not positive`)
+  if (!(money.security_deposit >= 0)) problems.push(`security_deposit ${money.security_deposit} is negative`)
+  if (!(Number.isInteger(money.nights) && money.nights === 1)) {
+    problems.push(`nights ${money.nights} is not the single standard stay the rules allow`)
+  }
+  // The rule's own arithmetic: `int(stay_total * 50)` is the half in centavos,
+  // truncated, and it admits `amount_due` up to one centavo above that — which is
+  // what `downPaymentAmount`'s floor can produce on a fractional total.
+  const halfTruncated = Math.floor(money.stay_total * 50)
+  if (cents(money.amount_due) < halfTruncated || cents(money.amount_due) > halfTruncated + 1) {
+    problems.push(`amount_due ${money.amount_due} is not the floored half of stay_total ${money.stay_total} within one centavo`)
+  }
+  if (cents(money.balance_due) !== cents(money.stay_total) - cents(money.amount_due)) {
+    problems.push(`balance_due ${money.balance_due} plus amount_due ${money.amount_due} does not close stay_total ${money.stay_total}`)
+  }
+  return problems
+}
+
+/**
+ * A per-minute, per-caller budget, kept out of the handler so it can be tested
+ * without a Firestore.
+ *
+ * It is in-process and per instance: a brake, not a boundary. The boundary is that an
+ * unbounded number of quotes buys a caller nothing, because each one prices the stay
+ * correctly. But an unbounded *Map* is a gift to whoever can afford the invocations,
+ * so stale windows are dropped once the table grows — the leak this replaces was
+ * found by reading the code, not by an incident.
+ */
+export class MinuteBudget {
+  private readonly rows = new Map<string, { window: number; count: number }>()
+
+  constructor(private readonly limitPerMinute: number, private readonly maxRows = 4096) {}
+
+  take(key: string, now = Date.now()): { ok: boolean; retryAfterMs: number } {
+    const window = Math.floor(now / 60_000)
+    if (this.rows.size > this.maxRows) {
+      for (const [key, value] of [...this.rows]) if (value.window !== window) this.rows.delete(key)
+    }
+    const row = this.rows.get(key)
+    if (row && row.window === window && row.count >= this.limitPerMinute) {
+      return { ok: false, retryAfterMs: (window + 1) * 60_000 - now }
+    }
+    this.rows.set(key, row && row.window === window ? { window, count: row.count + 1 } : { window, count: 1 })
+    return { ok: true, retryAfterMs: 0 }
+  }
+
+  /** Diagnostics and test seam: how much state this instance is carrying. */
+  get size(): number {
+    return this.rows.size
+  }
+}
 
 /** A quote's own identity: the same request under the same document hashes the same. */
 export function quotePayload(request: QuoteRequest, ratesVersion: string): string {
@@ -350,3 +454,40 @@ export function ratesVersionDrift(stored: Record<string, unknown>, currentVersio
   return typeof stored.policy_version === 'string' && stored.policy_version !== currentVersion
 }
 
+/**
+ * The verdict for a Booking with no usable attestation — pre-switch, Admin-written,
+ * or one whose quote document is gone.
+ *
+ * `STALE_CARD` is the verdict that matters here. A Booking priced under a card that
+ * has since been republished is not evidence of a wrong figure: the estate promised
+ * that price, and re-pricing it now is a *policy* decision, not a check. Reported as
+ * `MISMATCH`, it invites an Admin to "correct" a stay the website legitimately sold;
+ * reported as `STALE_CARD`, it tells them the record can only be judged against the
+ * version it was written under — or against the quote document, if it still exists.
+ */
+export function unattestedVerdict(
+  fresh: QuoteResult,
+  booking: Record<string, unknown>,
+  currentRatesVersion: string,
+  hadQuoteId: boolean,
+): MoneyVerdict {
+  const reason = hadQuoteId
+    ? `the attestation it names is not there (${String(booking.quote_id)} — never written, or removed)`
+    : 'this Booking carries no quote reference'
+  if (!fresh.ok) {
+    if (fresh.cause === 'REQUEST_SHAPE' || fresh.cause === 'NOT_A_STANDARD_STAY') {
+      return { verdict: 'UNPARSEABLE', mismatches: [], detail: `${reason}; and the record cannot be priced as written: ${fresh.detail}` }
+    }
+    return { verdict: 'NO_RATE', mismatches: [], detail: `${reason}; and the card cannot price it today: ${fresh.detail}` }
+  }
+  const mismatches = moneyMismatches(booking, fresh.quote)
+  if (mismatches.length === 0) return { verdict: 'MATCH', mismatches: [], detail: reason }
+  if (ratesVersionDrift(booking, currentRatesVersion)) {
+    return {
+      verdict: 'STALE_CARD',
+      mismatches,
+      detail: `${reason}, and the published rate version has moved since it was written (${String(booking.policy_version ?? 'unstamped')} → ${currentRatesVersion})`,
+    }
+  }
+  return { verdict: 'MISMATCH', mismatches, detail: reason }
+}
