@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_formatter.dart';
+import '../../models/admin_notification_model.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
@@ -22,6 +23,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final bookingsAsync = ref.watch(bookingsStreamProvider);
+    final inbox = ref.watch(adminNotificationsProvider).valueOrNull ??
+        const <AdminNotificationModel>[];
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
@@ -98,6 +101,24 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             }
           }
 
+          // What Guests did on the website: a submitted booking, a cancellation.
+          for (final n in inbox) {
+            if (n.read) continue;
+            final cancelled = n.type == 'cancellation_by_guest';
+            items.add(_NotificationItem(
+              id: 'inbox-${n.id}',
+              inboxId: n.id,
+              title: n.title,
+              message: n.message,
+              type: 'inbox',
+              createdAt: n.createdAt,
+              bookingId: n.bookingId,
+              icon: cancelled ? Icons.event_busy : Icons.add_business,
+              accentColor:
+                  cancelled ? AppColors.statusAlert : AppColors.statusSuccess,
+            ));
+          }
+
           items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
           if (items.isEmpty) {
@@ -116,6 +137,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               final item = items[i];
               return InkWell(
                 onTap: () {
+                  if (item.inboxId != null) {
+                    ref
+                        .read(firestoreServiceProvider)
+                        .markAdminNotificationRead(item.inboxId!);
+                  }
                   if (item.type == 'payment_verification') {
                     Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const PaymentVerificationQueueScreen(),
@@ -191,10 +217,12 @@ class _NotificationItem {
   final String type;
   final DateTime createdAt;
   final String? bookingId;
+  final String? inboxId;
   final IconData icon;
   final Color accentColor;
 
   _NotificationItem({
+    this.inboxId,
     required this.id,
     required this.title,
     required this.message,
