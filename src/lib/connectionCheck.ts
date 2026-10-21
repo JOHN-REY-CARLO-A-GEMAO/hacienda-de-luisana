@@ -154,10 +154,10 @@ export async function runConnectionCheck(): Promise<Check[]> {
   // 4. Has firestore.rules refused a Booking write from this browser? Nothing else
   // in the app reports this, and it is the failure a Guest cannot act on: the
   // rules refused the create for one of a dozen reasons and the screen can only
-  // say so. `validAuthoritativeMoney` recomputing a money field out of
-  // `site_config/rates`, a `uid` the Guest identity never produced, a shape the
-  // rules refuse — all of them arrive as the same `permission-denied`, and all of
-  // them are fixed somewhere else entirely.
+  // say so. A money field that no longer matches the published card, a `uid`
+  // the Guest identity never produced, a shape the rules refuse — all of them
+  // arrive as the same `permission-denied`, and all of them are fixed somewhere
+  // else entirely.
   const refused = lastCloudWriteFailure()
   checks.push(
     refused

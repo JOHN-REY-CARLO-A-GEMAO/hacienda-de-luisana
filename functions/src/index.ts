@@ -8,6 +8,10 @@ import { createHash } from 'node:crypto';
 import { Actor, CaseRecord, Command, DAY, PolicyError, PrivateRecord, canRead, newCase, policyFrom, reduceCase, requireThat, text } from './domain';
 import { CHUNK_SIZE, MAX_FILE, TYPES, validateEvidence } from './evidence';
 import { calendarMonthsAfter, mayPurge, mayDeleteApprovedEvidence } from './privacy';
+// Re-exported so the price-confirmation callables deploy with this codebase and
+// are discovered by `firebase deploy --only functions`. They are gated on
+// BOOKING_QUOTES_ENABLED and touch no case data — see docs/quotes/IMPLEMENTATION.md.
+export { quoteBooking, verifyBookingMoney } from './quotes';
 initializeApp();
 const db = getFirestore();
 const options = { region: 'asia-southeast1', maxInstances: 5, memory: '512MiB' as const, timeoutSeconds: 120 };

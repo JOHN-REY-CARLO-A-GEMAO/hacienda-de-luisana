@@ -91,6 +91,17 @@ export type BookingState = {
   /** Exact refund terms captured at quote time; null means none was published. */
   refund_policy_snapshot?: PublishedRefundPolicy | null
   hold_expires_at?: string | null
+  /**
+   * The id of the estate's own price attestation for this stay (ADR-0019): a
+   * `booking_quotes/{id}` document written by `quoteBooking`, which no client can
+   * write. `firestore.rules` compares a Guest's Booking against it field for field
+   * when `site_config/booking.quotes_required` is on.
+   *
+   * Absent means the record predates attestation or was written while the estate had
+   * enforcement off. It is not the Guest's to choose, and it is not proof of
+   * payment — it is proof of a *price*.
+   */
+  quote_id?: string
   created_at?: string
 }
 

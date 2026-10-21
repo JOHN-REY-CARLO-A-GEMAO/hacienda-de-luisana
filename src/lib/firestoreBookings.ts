@@ -27,6 +27,7 @@ import { activityLogStorage, bookingsDB, type Booking } from './storage'
 import { describeFirestoreFailure, failureLine } from './firebaseFailure'
 import { ACCOMMODATIONS } from '../config/site'
 import { bookingPolicyDB } from './bookingPolicyDB'
+import { attestationForStay, type AttestedQuote } from './quotesApi'
 import { ratesDB } from './ratesDB'
 import { createNotification, type NotificationType } from './notifications'
 import { dateToISOString } from './formatDate'
@@ -387,7 +388,7 @@ async function explainGuestCreateRefusal(
   if (!input.uid?.trim()) {
     return {
       code: 'GUEST_IDENTITY_REQUIRED',
-      message: 'We could not attach this booking to a Guest identity, so nothing was saved. Please try again in a moment.',
+      message: 'We could not attach this booking to you, so nothing was saved. Please sign in again and resend, or try again in a moment.',
       field: 'payment',
     }
   }
@@ -573,7 +574,11 @@ export const cloudBookingsDB = {
     // This is the public guest creation path; actor.now/source/uid must not
     // select the clock or grant an Admin exemption. Admin lifecycle updates
     // are separate and do not re-apply a creation-time constraint.
-    const dates = await this.validateGuestCheckIn(input.check_in)
+    // One read of `site_config/booking` for both policy decisions this path makes,
+    // so the date the Guest is allowed to book and the attestation the write will be
+    // judged against come from the same document version.
+    const policy = await bookingPolicyDB.getGuestPolicy()
+    const dates = validateMinimumBookingLeadTime(input.check_in, new Date(), policy.minimumLeadTimeDays)
     if (!dates.ok) throw Object.assign(new Error(dates.reason), { code: dates.code })
     // The submission entry is signed by the identity the Booking is being
     // attached to. The Activity rule refuses an entry whose `actor_id` is not the
@@ -613,11 +618,37 @@ export const cloudBookingsDB = {
       }
     }
 
+    // ADR-0019: what a stay costs is not the Guest's number to choose. The estate is
+    // asked to attest the price from `site_config/rates`, and the only thing this
+    // puts on the payload is the id of the answer — the figures stay as the page
+    // showed them, because quietly overwriting a total the Guest approved would be
+    // the worse dishonesty. If the two disagree, the write is denied and the
+    // diagnosis path above is what says why.
+    //
+    // With enforcement off, a failure here is survivable on purpose: the estate has
+    // not asked to refuse an unattested Booking, and a Guest must still be able to
+    // book while the functions are being deployed.
+    let attested: AttestedQuote | null = null
+    if (isCloud) {
+      attested = await attestationForStay({
+        accommodation: rest.accommodation,
+        check_in: rest.check_in,
+        check_out: rest.check_out,
+        guests: rest.guests,
+        // The two extras ride on the Booking as stay-request answers rather than as
+        // declared BookingState fields; the server prices them when present and
+        // treats absent as none, which is what the rules compare against too.
+        pet_count: (rest as { pet_count?: number }).pet_count,
+        late_checkout_hours: (rest as { late_checkout_hours?: number }).late_checkout_hours,
+      }, policy.quotesRequired)
+    }
+
     const submitter: Actor = actor ?? { actor: 'guest', actor_id: rest.uid ?? 'guest' }
     const at = instantOf(submitter)
     const holdExpiresAt = initialHoldExpiry(at)
     const withHold = {
       ...rest,
+      ...(attested ? { quote_id: attested.quoteId } : {}),
       payment_status: 'pending' as const,
       payment_plan: rest.payment_plan ?? 'down-payment',
       hold_expires_at: holdExpiresAt,
@@ -637,22 +668,14 @@ export const cloudBookingsDB = {
       const ref = await addDoc(collection(db, COLLECTION), payload)
       await activityLogDB.append([submissionEntry(ref.id, submitter, at)])
 
-      // Automatically add payment reference to payment_references collection
-      // for Admin app to verify against
-      if (rest.payment_reference && rest.amount_claimed) {
-        try {
-          await addDoc(collection(db, 'payment_references'), {
-            reference: rest.payment_reference,
-            amount: rest.amount_claimed,
-            status: 'available',
-            booking_id: ref.id,
-            created_at: serverTimestamp(),
-          })
-        } catch (e) {
-          // Non-critical: don't fail the booking if this fails
-          console.warn('[Firestore] Failed to add payment reference to catalog:', e)
-        }
-      }
+      // The payment reference travels on the Booking (`payment_reference`,
+      // `amount_claimed`) and stops there. `payment_references` — the catalogue
+      // an Admin checks a proof against — is Admin-only in `firestore.rules`, and
+      // that is the right boundary: a Guest who could add a row to it could make
+      // any amount look expected. This used to attempt the write from here and
+      // swallow the refusal, which cost a rejected write on every booked payment
+      // and one console line nobody reads. The Admin's Payments screen is the
+      // one that curates the catalogue.
 
       lastWriteFailure = null
       // Return optimistic booking

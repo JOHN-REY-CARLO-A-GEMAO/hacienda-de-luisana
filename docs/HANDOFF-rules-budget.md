@@ -8,7 +8,7 @@
 
 `firestore.rules` exceeded Firestore's documented **1000-expression-per-request** limit on the guest booking `create`. Firestore reports an evaluation error as the same bare `permission-denied` a policy refusal produces, so **every guest booking was refused**, on every date, while the offline rules suite (`npm run test:rules`) reported green.
 
-`test/rules/engine.ts` has **no expression counter** (only a recursion guard at `:1234`), so no local tool can measure or regression-test this. Only the Firestore emulator detects it.
+`test/rules/engine.ts` now counts both: every `Decision` carries `expressions` (operations and operands visited) and `reads` (document lookups), and `test/rules/firestore-rule-limits.test.ts` asserts them per path. Read that as a **canary, not a certificate** — the counter's scale is this evaluator's grammar, not Firestore's, so only the emulator detects a real budget failure. What the canary does give is that a *new* descent cannot be added quietly: the assertions fail, and the failure message names this file.
 
 Reproduced on this machine before any change — `tmp-repro-out.txt`, run against HEAD, all three dates DENY, anonymous and authenticated.
 
@@ -51,11 +51,13 @@ Untracked — **yours, keep:**
 | `balance_due == stay_total - amount_due` | the split closes |
 | `amount_claimed >= amount_due` | cannot claim underpayment |
 
-The `/ 100.0` is load-bearing — CEL `/` between two ints is **integer division** and would truncate centavos. The formula matches `downPaymentAmount(stayTotal, 50)` at `src/lib/booking/money.ts:55-60` exactly.
+The `/ 100.0` is load-bearing — CEL `/` between two ints is **integer division** and would truncate centavos.
+
+**Corrected 2026-10-22:** the claim that this matched `downPaymentAmount(stayTotal, 50)` at `src/lib/booking/money.ts:55-60` *exactly* was false for any total whose peso value is odd — a half rounded half-up by the callable is not a half floored by the rule whenever the total is an odd number of centavos — ₱1,000.99 prices to ₱500.50 on the page and the old rule demanded exactly ₱500.49 — which is why the two rows above are now `int(amount_due * 100 + 0.5)` within `[int(stay_total * 50), int(stay_total * 50) + 1]` and a `balance_due` that closes `stay_total` to the centavo, so a forger still has to break one or the other. `attestationSurvivesRuleLayer` in `functions/src/pricing.ts` is the single statement of that agreement, tested on both sides, and the callable refuses to mint an attestation the rule layer would not accept (`ATTESTATION_UNWRITABLE`).
 
 The second call site — the guest plan-choice guard in the `allow update` block — was swapped the same way.
 
-**`validAuthoritativeMoney` and its helpers are still in the file and are now dead code.** `scheduledRate`, `classifyCheckIn`, `validPetCount`, `petFee`, `validLateCheckout`, `lateCheckoutFee`, `stayTotalWithAddons` have no remaining callers. **Do not wire them back.** (I attempted this deletion and broke the file; it needs doing carefully.)
+**`validAuthoritativeMoney` and its helpers were left in the file as dead code (deleted 2026-10-21 — see §5b).** `scheduledRate`, `classifyCheckIn`, `validPetCount`, `petFee`, `validLateCheckout`, `lateCheckoutFee`, `stayTotalWithAddons` have no remaining callers. **Do not wire them back.** (I attempted this deletion and broke the file; it needs doing carefully.)
 
 Keep: `validGuestSchedule`, `validAHouseSchedule`, `validAvailableUnits`, `isCanonicalAccommodation` (used by the rates-write path), and `validHistoricalPlanChoice` (used at the plan-choice guard).
 
@@ -102,6 +104,34 @@ npx firebase emulators:exec --project demo-hacienda --only auth,firestore "npx v
 Always `--project demo-hacienda`. Never run a deploy from this box.
 
 ---
+
+## 5b. Status after 2026-10-21 — read this before acting on anything below
+
+Done since this handoff was written, all verified by executing the rule text
+(`test:rules` **315/315**, `npm test` **949/949**, `test:e2e` **44/44**, safety
+**44/0**):
+
+- §4 steps 3–5 and §6 in full: the `.toSet()` rule bug, the `pin_hash` fixture,
+  the `access_logs` fixtures, the vacuous empty-diff rotation case, and the
+  eleven stale rate tests. The rate tests now assert each guarantee where it
+  lives — shape at publication, arithmetic at submission — plus one
+  `GAP (recorded, 2026-10-14)` case that pins the accepted gap as an assertion.
+  The first of the three ways §6 offered was chosen; nothing was deleted.
+- §7: written up as
+  `docs/adr/0018-the-rule-layer-checks-coherence-not-price-and-the-gap-that-opens.md`,
+  which also records three findings that turned up while reconciling: the
+  duplicate `match /payment_references/{refId}` block that OR-ed a
+  Guest-writable policy into the Admin's verification catalogue (now deleted,
+  with the website's doomed catalogue write), `holiday_dates` required at
+  publication, and whole-number counts required at submission.
+- §8 items 3, 4, 5.
+
+**Still open, in the handoff's own order:** §8 items 1 and 2 — boot the emulator
+and deploy, in that order, nothing below means anything to the live project until
+they run; item 6, the 1,000-expression counter in `test/rules/engine.ts`; item 7,
+deleting the dead helpers (`validAuthoritativeMoney` and friends — nothing
+references them now); and the Admin-side re-derivation at approve, which is the
+only thing that closes the money gap.
 
 ## 6. The 11 tests you must decide about
 
@@ -155,12 +185,25 @@ Two justifications that were raised and do **not** hold:
 
 1. Re-run the emulator repro against the current tree (§5). Confirm 6/6 ALLOW.
 2. Run the **full emulator suite** — the one that was never run.
-3. Decide the 11 tests (§6) and write the ADR (§7).
-4. **Build the Admin-side re-derivation** — the thing that actually closes the gap. This is the real remaining work; everything else is cleanup.
-5. Delete the dead helpers (§3), carefully.
-6. Wire a budget regression test. There is none, and nothing stops this recurring.
+3. ~~Decide the 11 tests (§6) and write the ADR (§7).~~ **Done 2026-10-21.** The eleven were
+   re-written as five, and ADR-0018 was written.
+4. ~~**Build the Admin-side re-derivation** — the thing that actually closes the gap.~~ **Done
+   2026-10-21, differently and better:** [ADR-0019](adr/0019-a-price-is-attested-by-the-server-before-a-booking-may-carry-it.md)
+   attests the price at *booking* time (a callable + a client-unwritable document + two rule
+   clauses) instead of re-deriving at approve, so a wrong figure is refused before a Guest pays
+   rather than after. Implemented, tested offline, **not deployed**; the rollout order and the
+   Blaze-plan dependency are in [`docs/quotes/IMPLEMENTATION.md`](quotes/IMPLEMENTATION.md).
+5. ~~Delete the dead helpers (§3), carefully.~~ **Done 2026-10-21** — eight unreferenced functions,
+   brace-counted out of `firestore.rules`, with the suite green before and after.
+6. ~~Wire a budget regression test. There is none, and nothing stops this recurring.~~ **Done 2026-10-22** — the engine reports `expressions`/`reads` and `firestore-rule-limits.test.ts` asserts a read ceiling, a bounded enforcement delta, an absolute canary ceiling and a zero-read Admin path. It measures; it does not certify (§1).
 7. Consider making `scripts/phase0` runnable on Windows — you asked for this earlier; it is untouched and needs a real design (no netns equivalent, plus this box has `.env.local` and an authenticated Firebase CLI, which `boundary.mjs` blocks by design).
 
 ## 9. Deploy
+
+**Status 2026-10-21:** step 3 and 5 are done; steps 1, 2 and 6 are not, and until 1 and 2 pass the
+sentence below still stands. ADR-0019's clauses are bounded by field count (~25 comparisons plus
+one `exists()`/`get()` pair on the Guest create), which is the shape the budget was the problem
+for — but "bounded" is an argument, not a measurement — and until 2026-10-22 the offline evaluator could not measure it either.
+It can now, and does: a Guest create with enforcement on measures **1,190** expression nodes and **8** document reads, an Admin create **240** and **≤1**, a Guest update **533** and **2**. The read count is comparable to Firestore's documented 20-read ceiling and passes with room; the expression count is *this* evaluator's grammar and is not comparable to the 1,000-expression budget (the unmodified file already exceeds it here while shipping in production). The emulator run is still what turns the first number into a claim and the second into none.
 
 `firestore.rules` at HEAD is **not deployable** — it breaks every guest booking. The change in the working tree makes it deployable **only if** steps 1–2 pass. Deploying is `firebase deploy --only firestore:rules --project hacienda-de-luisana`, and only on your explicit go-ahead.

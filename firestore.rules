@@ -127,9 +127,16 @@ service cloud.firestore {
     function validBookingPolicy() {
       // Preserve other Admin-owned settings/metadata on this document. Only
       // the new field is constrained; an absent field uses the shared default.
-      return !request.resource.data.keys().hasAny(['minimumBookingLeadTimeDays'])
-        || (request.resource.data.minimumBookingLeadTimeDays is int
-            && request.resource.data.minimumBookingLeadTimeDays > 0);
+      //
+      // `quotes_required` is constrained to a boolean because it is a security
+      // switch (ADR-0019): a truthy string, a 1, or a stray `{"x":1}` would read
+      // as "enforce" to one layer and not to another, and the two must not be able
+      // to disagree about whether price attestation is on.
+      return (!request.resource.data.keys().hasAny(['minimumBookingLeadTimeDays'])
+              || (request.resource.data.minimumBookingLeadTimeDays is int
+                  && request.resource.data.minimumBookingLeadTimeDays > 0))
+        && (!request.resource.data.keys().hasAny(['quotes_required'])
+            || request.resource.data.quotes_required is bool);
     }
 
     function meetsMinimumBookingLeadTime(checkIn) {
@@ -145,26 +152,6 @@ service cloud.firestore {
         && date >= today + duration.value(minimumBookingLeadTimeDays(), 'd');
     }
 
-    // New Booking money is derived from the Admin-owned rate document. The
-    // browser submits the snapshot, but cannot choose its values: this function
-    // recomputes the expected figures from property id + dates and refuses any
-    // mismatch. Existing Bookings remain readable and are not rewritten.
-    function validStayLength(data) {
-      let start = data.check_in.split('-');
-      let end = data.check_out.split('-');
-      let checkIn = timestamp.date(int(start[0]), int(start[1]), int(start[2]));
-      let checkOut = timestamp.date(int(end[0]), int(end[1]), int(end[2]));
-      return data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
-        && data.check_out.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
-        // One 22-hour standard stay is the only length a Guest may book online:
-        // the website quotes nothing else (quoteAccommodation refuses a
-        // multi-night range), so a longer `nights` here can only be a direct
-        // Firestore write trying to buy many nights at one stay's price.
-        // Admin-created records never reach this function (isAdmin() short
-        // -circuits the whole guest gate), so a manual longer stay is unaffected.
-        && data.nights is int && data.nights == 1
-        && checkOut == checkIn + duration.value(data.nights, 'd');
-    }
 
     // ------------------------------------------------------------------
     // The whole Guest-side gate for a create, in one call
@@ -190,10 +177,20 @@ service cloud.firestore {
     // them, because `isAdmin()` is the left side of the `||` at the call site.
     // ------------------------------------------------------------------
 
+    // The whole of what the rule layer demands of a Guest's create. Note the
+    // shape checks on both dates: they used to sit in `validStayLength`, which
+    // the 2026-10-14 removal left uncalled, and a `nights` of 1 proved against a
+    // `check_out` of "next Tuesday" is not a guarantee of anything.
+    //
+    // Admin-created records never reach this function — `isAdmin()`
+    // short-circuits the whole guest gate — so a manual longer stay is
+    // unaffected by the one-night arithmetic below.
     function validGuestCreate(data) {
       return data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && data.check_out.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && meetsMinimumBookingLeadTime(data.check_in)
-        && validBookingMoneyInvariants(data);
+        && validBookingMoneyInvariants(data)
+        && validGuestQuote(data);
     }
 
     // ------------------------------------------------------------------
@@ -247,6 +244,17 @@ service cloud.firestore {
         && data.nights == 1
         && data.rate_amount is number
         && data.rate_amount > 0
+        // A count, not a price. The rules do not know how many guests an
+        // Accommodation holds — that is the published schedule's business, and
+        // reading it here is the descent that broke the expression budget. What
+        // they can say without reading anything is that a Booking for zero, a
+        // fraction of, or a negative number of people or pets is not a Booking.
+        && data.guests is int
+        && data.guests >= 1
+        && data.get('pet_count', 0) is int
+        && data.get('pet_count', 0) >= 0
+        && data.get('late_checkout_hours', 0) is int
+        && data.get('late_checkout_hours', 0) >= 0
         && data.stay_total is number
         && data.stay_total > 0
         // The hard floor. A published rate is in the thousands, so nothing below
@@ -258,31 +266,142 @@ service cloud.firestore {
         // note above on what the rule no longer enforces.
         && data.get('security_deposit', 0) is number
         && data.security_deposit >= 0
-        // The 50/50 split, computed exactly as `downPaymentAmount(stayTotal, 50)`
-        // computes it in src/lib/booking/money.ts:55-60 — `int(total * 50) / 100`
-        // truncates toward zero, which is `Math.floor` for a positive total, and
-        // the `/ 100.0` is float division on purpose. In a CEL-based language `/`
-        // between two ints is INTEGER division, which would truncate the
-        // centavos away and refuse every odd peso total as a mismatch.
+        // The 50/50 split, in whole centavos, against the same half the website
+        // computes. `src/lib/booking/money.ts:55-60` takes the published total to
+        // centavos and floors the half; `int(data.stay_total * 50)` is that half
+        // truncated *after* a float multiply, and the two can land a centavo apart —
+        // ₱1,024.10 halves to 51205 centavos on the page while `1024.10 * 50` is
+        // 51204.999… to the evaluator. The one-centavo window on the upper side is
+        // not leniency about rounding: fractional rates stay legal (only
+        // `down_payment_percent` is pinned), and a rule that refuses a real booking
+        // over ₱0.01 is worse than the half-centavo hole it would guard. What closes
+        // the hole is the closing sum below, which the window does not loosen. In a
+        // CEL-based language `/` between two ints is INTEGER division, which is why
+        // both sides are compared in centavos and never in pesos.
         && data.amount_due is number
-        && data.amount_due == int(data.stay_total * 50) / 100.0
-        // The split has to close: what is owed now plus what remains is the
-        // whole stay, with no peso unaccounted for in either direction.
+        && int(data.amount_due * 100 + 0.5) >= int(data.stay_total * 50)
+        && int(data.amount_due * 100 + 0.5) <= int(data.stay_total * 50) + 1
+        // The split has to close: what is owed now plus what remains is the whole
+        // stay, to the centavo, with no peso unaccounted for in either direction.
         && data.balance_due is number
-        && data.balance_due == data.stay_total - data.amount_due
+        && int(data.balance_due * 100 + 0.5) == int(data.stay_total * 100 + 0.5) - int(data.amount_due * 100 + 0.5)
         // A Guest cannot claim to have sent less than the downpayment.
         && data.amount_claimed is number
         && data.amount_claimed >= data.amount_due;
     }
 
-    function scheduledRate(schedule, guests) {
-      return !(guests is int) || guests < schedule.get('min_guests', 0) ? -1
-        : (schedule.keys().hasAny(['max_guests']) && guests > schedule.max_guests) ? -1
-        : guests <= schedule.get('base_max_guests', 0) ? schedule.get('base_rate', -1)
-        : schedule.keys().hasAny(['excess_per_guest'])
-          ? schedule.base_rate + (guests - schedule.base_max_guests) * schedule.excess_per_guest
-        : -1;
+    // ------------------------------------------------------------------
+    // The server-attested price
+    // ------------------------------------------------------------------
+    //
+    // ADR-0018 recorded what this file stopped being able to do: re-derive a
+    // stay's price from the published rate card on every Guest write, because
+    // that descent crossed Firestore's 1,000-expression budget and an evaluation
+    // error arrives as the same bare `permission-denied` a refusal does. The
+    // arithmetic did not go away — it moved to a Cloud Function (`functions/
+    // src/pricing.ts`), which has no expression budget, and the function's answer
+    // is written to `booking_quotes/{id}`, a collection no client may write.
+    //
+    // What the rules check here is therefore small, and it is the whole point:
+    // a Booking's money must be *the figures some server already computed*, field
+    // for field. A console can still ask for a quote — that is a public price, and
+    // asking for it is what the website does — but it can no longer arrive with a
+    // number of its own choosing. Forging `stay_total` now means forging
+    // `booking_quotes/{id}` first, and there is no write path to that document.
+    //
+    // `site_config/booking.quotes_required` gates enforcement, and it is the
+    // Admin's to set (see the `site_config` block). Off — the default — this
+    // clause is inert, which is what makes the rules and the function deployable
+    // in either order: the outage of 2026-10-14 was a policy that outran what the
+    // deployment actually had.
+    function quotesRequired() {
+      let policy = /databases/$(database)/documents/site_config/booking;
+      // A ternary, not `exists(x) && get(x)…`: the rules language gives no
+      // guarantee that `&&` skips the operand it does not need, and `get()` on a
+      // missing document followed by `.data.get(…)` would throw. An expression
+      // that throws is a denial wearing a disguise — which is the exact failure
+      // this file has now been burned by twice.
+      return exists(policy) ? get(policy).data.get('quotes_required', false) == true : false;
     }
+
+    function validGuestQuote(data) {
+      let enforced = quotesRequired();
+      // `data.get('quote_id', '__none__')` alone is not safe. The key is *absent* on
+      // every Booking the Admin app writes — no Dart file in `lib/` mentions
+      // `quote_id` at all — and a payload from anywhere else can carry it *present
+      // and null*. Interpolating a non-string into a path is an error rather than a
+      // miss, and an error in this file's history is not a refusal with a reason: it
+      // is every booking in the estate refused while the suite stayed green
+      // (2026-10-14). So the id is honoured only when it is a plausible string, and
+      // everything else looks up a document that cannot exist, which is a plain
+      // `false` — for an Admin, past this clause entirely.
+      let claimed = data.get('quote_id', '');
+      let quoted = claimed is string && claimed.size() > 0 && claimed.size() <= 64;
+      // Bound in a `let`, never interpolated inline: `$(quoted ? claimed : 'x')`
+      // does not parse as a path segment (the offline evaluator fails the whole
+      // clause, which reads as a refusal), so the value is resolved first and only
+      // the name is interpolated.
+      let lookup = quoted ? claimed : '__none__';
+      // `exists()` before `get()`, for the same reason the lead-time helper does.
+      let path = /databases/$(database)/documents/booking_quotes/$(lookup);
+      let found = exists(path) ? get(path).data : null;
+      // `{}` for "no such attestation", not a skipped call: an empty map reads back
+      // nulls and refuses, while a null dereference would throw — and this clause is
+      // evaluated even when its value is about to be discarded, because `let`
+      // bindings are eager. The Admin half of the create rule reaches here as
+      // `isAdmin() || <this>`, so this must produce a boolean for a manual booking,
+      // never an error.
+      let attested = validAttestedQuote(found == null ? {} : found, data);
+      // One nested ternary, value-safe on every branch: un-enforced cannot refuse
+      // and cannot throw; enforced without a usable id is a refusal, not an error;
+      // the comparison itself only ever reads a document that was proven to exist.
+      return enforced ? (quoted ? attested : false) : true;
+    }
+
+    function validAttestedQuote(quote, data) {
+      // A quote is bound to the identity that asked for it, and only that identity
+      // may spend it. The binding is checked against the writer, not against
+      // `data.uid`: the Booking's `uid` is a claim the create path lets the writer
+      // make (ADR-0004 mints it when the form opens), while `request.auth.uid` is
+      // the one identity here that Firestore vouches for. There is deliberately no
+      // escape hatch for an unbound quote — tightening this on 2026-10-22 also made
+      // `quoteBooking` require a signed-in caller, so an unbound attestation cannot
+      // be minted either; an old document that still has one simply refuses.
+      // Parenthesised deliberately: this evaluator (and the rules language's
+      // precedence generally) does not promise `==` binds tighter than `&&`, and
+      // `a && b == c` reading as `(a && b) == c` turns a string against a boolean —
+      // a refusal that looks like a policy decision.
+      let writerMatches = isSignedIn() && (request.auth.uid == quote.get('bound_uid', ''));
+      // Amounts are compared in whole centavos because both sides are doubles that
+      // took different paths here — one computed in a Node process, one round
+      // tripped through a client and Firestore. `+ 0.5` before truncating is the
+      // same round-half-up the canonical pricing module uses; `int(a) == int(b)`
+      // on the raw products would refuse a legitimate quote on a float wobble,
+      // and a rule that refuses real bookings on rounding is worse than the gap
+      // it closes.
+      return request.time < quote.get('expires_at', request.time)
+        && writerMatches
+        && quote.get('accommodation', null) == data.get('accommodation', null)
+        && quote.get('check_in', null) == data.get('check_in', null)
+        && quote.get('check_out', null) == data.get('check_out', null)
+        && quote.get('guests', null) == data.get('guests', null)
+        && quote.get('pet_count', 0) == data.get('pet_count', 0)
+        && quote.get('late_checkout_hours', 0) == data.get('late_checkout_hours', 0)
+        && quote.get('rates_version', null) == data.get('policy_version', null)
+        && quote.get('rate_unit', null) == data.get('rate_unit', null)
+        && quote.get('rate_classification', null) == data.get('rate_classification', null)
+        && quote.get('nights', null) == data.get('nights', null)
+        && quote.get('payment_plan', null) == data.get('payment_plan', null)
+        && quote.get('policy_version', null) == data.get('policy_version', null)
+        && quote.get('policy_effective_date', null) == data.get('policy_effective_date', null)
+        && quote.get('refund_policy_snapshot', null) == data.get('refund_policy_snapshot', null)
+        && int(quote.get('rate_amount', 0) * 100 + 0.5) == int(data.get('rate_amount', 0) * 100 + 0.5)
+        && int(quote.get('stay_total', 0) * 100 + 0.5) == int(data.get('stay_total', 0) * 100 + 0.5)
+        && int(quote.get('amount_due', 0) * 100 + 0.5) == int(data.get('amount_due', 0) * 100 + 0.5)
+        && int(quote.get('balance_due', 0) * 100 + 0.5) == int(data.get('balance_due', 0) * 100 + 0.5)
+        && int(quote.get('security_deposit', 0) * 100 + 0.5) == int(data.get('security_deposit', 0) * 100 + 0.5);
+    }
+
 
     // The documented A-House occupancy: three guests, at the base rate, and
     // three in total. It is the one unit with a hard physical limit, so it alone
@@ -310,105 +429,16 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
-    // Charges added on top of the published rate
-    //
-    // Pets and a late checkout are part of the stay total rather than a second
-    // payment, so one Booking is one receipt and one 50/50 split. They are
-    // recomputed here from the Admin-owned document exactly as the client
-    // recomputes them; the browser submits the figures and cannot choose them.
-    //
-    // Each is plain integer arithmetic, which the rules language evaluates
-    // directly. A figure priced by a list lookup could not be checked here at
-    // all — the rules language has no lambda — and a rule that cannot check a
-    // figure does not get to require it. That is why the wedding arrangement is
-    // published as an Accommodation rather than as a package.
-    //
-    // An extra nobody has priced refuses the Booking: a pet with no published
-    // fee, or an extension with no hourly rate, is not the guest's to decide.
-    // ------------------------------------------------------------------
-
-    function validPetCount(published, data) {
-      let pets = data.get('pet_count', 0);
-      let policy = published.get('pet_policy', null);
-      return pets is int && pets >= 0
-        && (pets == 0 || (policy is map
-          && policy.get('fee_per_pet', -1) is number
-          && policy.fee_per_pet > 0
-          && pets <= policy.get('max_pets', 100)));
-    }
-
-    function petFee(published, data) {
-      let pets = data.get('pet_count', 0);
-      let policy = published.get('pet_policy', null);
-      // `/ 100.0`, not `/ 100`: the rules language is CEL-based, and `/` between
-      // two ints is *integer* division — int(30000) / 100 would be fine, but any
-      // fee with centavos (or an odd peso figure downstream) would truncate and
-      // stop agreeing with the client's roundMoney, refusing every such Booking
-      // as a money mismatch. The float literal forces float division, which is
-      // what the centavo arithmetic below was always meant to be.
-      return pets > 0 && policy is map && policy.get('fee_per_pet', 0) is number
-        ? int(pets * policy.fee_per_pet * 100 + 0.5) / 100.0
-        : 0;
-    }
-
-    function validLateCheckout(published, data) {
-      let hours = data.get('late_checkout_hours', 0);
-      let rate = published.get('late_checkout_per_hour', null);
-      return hours is int && hours >= 0 && (hours == 0 || (rate is number && rate >= 0));
-    }
-
-    function lateCheckoutFee(published, data) {
-      let hours = data.get('late_checkout_hours', 0);
-      let rate = published.get('late_checkout_per_hour', 0);
-      // `/ 100.0` for the same reason as petFee: int/int division truncates.
-      return hours > 0 && rate is number ? int(hours * rate * 100 + 0.5) / 100.0 : 0;
-    }
-
-    // The classification of a check-in date under the published holiday list: a
-    // Friday or Saturday check-in, or any Admin-listed holiday, is the
-    // weekend_holiday rate; everything else is a weekday. One function so
-    // validAuthoritativeMoney does not hold two more names for it.
-    //
-    // Firestore's dayOfWeek is Monday=1 ... Sunday=7. Sunday 2 PM is a weekday
-    // start; the weekend nights are Friday and Saturday.
-    function classifyCheckIn(published, data) {
-      let date = data.check_in.split('-');
-      let checkIn = timestamp.date(int(date[0]), int(date[1]), int(date[2]));
-      let holidays = published.get('holiday_dates', []);
-      let holiday = holidays is list && data.check_in in holidays;
-      return checkIn.dayOfWeek() in [5, 6] || holiday ? 'weekend_holiday' : 'weekday';
-    }
-
-    // The stay total: the accommodation's own published figure plus the charges
-    // published for pets and a late checkout.
-    //
-    // Its own function on purpose. Rules cap a function at ten variables and
-    // validAuthoritativeMoney already sits near that ceiling, so the addon
-    // arithmetic gets names of its own here instead of crowding that one.
-    function stayTotalWithAddons(published, base, data) {
-      let pets = int(petFee(published, data) * 100 + 0.5) / 100.0;
-      let hours = int(lateCheckoutFee(published, data) * 100 + 0.5) / 100.0;
-      // `/ 100.0` — float division — is load-bearing, not style. With `/ 100`
-      // the runtime's integer division truncates the centavos away, so the
-      // total this function returns stops matching the stay_total the client
-      // computed with roundMoney (exact to centavos) whenever the published
-      // figures carry centavos or an odd number of pesos. The Booking is then
-      // refused by `data.stay_total == total` — as a bare permission-denied,
-      // indistinguishable from a policy decision, and invisible to the offline
-      // engine, whose `/` is floating-point. Same for `due` below.
-      return int((base + pets + hours) * 100 + 0.5) / 100.0;
-    }
-
-    // ------------------------------------------------------------------
     // The canonical Accommodation set
     //
     // One Accommodation identity, shared by the website and the Admin app, is
     // these three ids and no others. The rule layer is where that list lives
     // because the rules are the enforcement: neither app may invent a name, a
     // capacity or a price for an Accommodation, and neither may publish a
-    // fourth. A Booking that names anything else reads as no rate and is refused
-    // by the `rate is map` check in validAuthoritativeMoney below, so this list
-    // and the Booking write agree by construction.
+    // fourth. A Booking that names anything else is refused by the shape checks
+    // on the write itself; the id list is what `validPublishedAccommodation`
+    // demands of a document, so this list and the two writes agree by
+    // construction.
     //
     // `Villa LuisAna` is the estate, not an Accommodation — the Hacienda's own
     // name appears in no member of this list.
@@ -459,72 +489,18 @@ service cloud.firestore {
 
     function validRatesDocument() {
       let data = request.resource.data;
+      // `holiday_dates` must be present and a list — `[]` when the estate has
+      // configured none, because the classification of a check-in date is read
+      // out of it and an absent field is not the same answer as an empty list.
+      // This used to be checked on every Guest Booking create, inside the pass
+      // that also re-derived the price; that pass is gone (see the note above
+      // `validBookingMoneyInvariants`), and this is where the guarantee lives
+      // now: a document nobody can classify against is not one to publish.
       return data.get('accommodations', null) != null
+        && data.get('holiday_dates', null) is list
         && validPublishedAccommodations(data.accommodations);
     }
 
-    function validAuthoritativeMoney(data) {
-      let published = get(/databases/$(database)/documents/site_config/rates).data;
-      // Resolved off the document already read above, rather than through
-      // hasConfiguredRate, which read it twice more (`exists` + `get`) to ask
-      // whether the Accommodation was present. A Booking naming anything else
-      // now reads as `null` and is refused by the `rate is map` check below,
-      // which is the same refusal as an evaluation error and cheaper.
-      //
-      // Inlined rather than held in a `let`: this function is at the rules
-      // language's ceiling of ten bindings, and an eleventh does not compile.
-      let rate = published.get('accommodations', {}).get(data.accommodation, null);
-      let pricing = rate.get('guest_pricing', {});
-      let allowThreeGuestCap = data.accommodation == 'house-a-camping';
-      let holidayDates = published.get('holiday_dates', []);
-      let classification = classifyCheckIn(published, data);
-      let schedule = classification == 'weekend_holiday'
-        ? pricing.get('weekend_holiday', {}) : pricing.get('weekday', {});
-      let amount = scheduledRate(schedule, data.guests);
-      // `amount` is the accommodation's own published figure. The addons are
-      // recorded separately and `total` is what the 50/50 split is taken from, so
-      // a Booking states what it is paying for rather than one larger number.
-      // The sum is its own function: rules cap a function at ten variables, and
-      // validAuthoritativeMoney is already near that ceiling, so the extra names
-      // belong in a function of their own rather than here.
-      let total = stayTotalWithAddons(published, amount, data);
-      // 50% of the total, floored at whole centavos, exactly as the client's
-      // downPaymentAmount floors it. `/ 100.0` keeps this a float division; the
-      // client's figure keeps its centavos, and the two must agree for
-      // `data.amount_due == due` to hold on every quote the Rates screen can
-      // publish — including odd peso totals and centavo rates.
-      let due = int(total * 50) / 100.0;
-      return published.keys().hasAny(['holiday_dates'])
-        && holidayDates is list
-        && rate is map
-        && rate.get('active', true) == true
-        && rate.get('rate_unit', '') == 'standard_stay'
-        && !rate.keys().hasAny(['nightly_rate', 'reservation_fee_amount'])
-        && pricing is map
-        && pricing.get('units_per_booking', 1) == 1
-        && validGuestSchedule(pricing.get('weekday', {}), allowThreeGuestCap)
-        && validGuestSchedule(pricing.get('weekend_holiday', {}), allowThreeGuestCap)
-        && rate.get('down_payment_percent', 0) == 50
-        && rate.get('security_deposit', -1) is number
-        && rate.security_deposit >= 0
-        && validStayLength(data)
-        && data.nights >= 1 
-        && amount is number && amount > 0
-        && validPetCount(published, data)
-        && validLateCheckout(published, data)
-        && float(data.rate_amount) == float(amount)
-        && data.rate_unit == 'standard_stay'
-        && data.rate_classification == classification
-        && float(data.stay_total) == float(total)
-        && data.payment_plan == 'down-payment'
-        && float(data.amount_due) == float(due)
-        && float(data.security_deposit) == float(rate.security_deposit)
-        && float(data.balance_due) == float(total - due)
-        && float(data.amount_claimed) >= float(due)
-        && data.policy_version == published.version
-        && data.policy_effective_date == published.effective_date
-        && data.get('refund_policy_snapshot', null) == published.get('refund', null);
-    }
 
     // Payment choices on old `Payment Pending` records must use the total and
     // rate/policy fields already saved on that Booking. Never re-read the
@@ -626,7 +602,9 @@ service cloud.firestore {
     // added (legacy Payment Pending records choosing a plan need that).
     function pricingSnapshotImmutable() {
       let old = resource.data;
-      let frozenHere = old.keys().toSet().intersection(['nights', 'rate_amount', 'rate_unit',
+      // `keys()` already returns a Set, so the frozen-key list is the only
+      // operand that needs `toSet()` — `Set` has no `toSet()` of its own.
+      let frozenHere = old.keys().intersection(['nights', 'rate_amount', 'rate_unit',
         'rate_classification', 'stay_total', 'total_amount', 'totalAmount',
         'security_deposit', 'amount_due', 'balance_due', 'policy_version',
         'policy_effective_date', 'refund_policy_snapshot'].toSet());
@@ -1038,6 +1016,21 @@ service cloud.firestore {
           // The closed vocabulary. This is also the whole of ADR-0009: a
           // location key is not on this list, so it is refused like any other
           // unknown key. Do NOT widen it to `hasAny`.
+          //
+          // …and once a Booking is attested (ADR-0019), its price leaves the
+          // vocabulary entirely. Without this line the attestation would be a
+          // one-time gate a Guest walks straight back through: create honestly,
+          // then `update` `stay_total` down and keep the split coherent — the
+          // arithmetic below still passes, because it checks the figures against
+          // each other and not against the estate. A Booking written before the
+          // switch carries no `quote_id`, so the plan-choice flow those records
+          // still need keeps working; an attested one cannot be re-priced by the
+          // person paying it.
+          && (old.get('quote_id', '') == ''
+              || !affected.hasAny(['payment_plan', 'rate_unit', 'rate_amount', 'rate_classification',
+                                   'nights', 'stay_total', 'amount_due', 'balance_due',
+                                   'security_deposit', 'policy_version', 'policy_effective_date',
+                                   'refund_policy_snapshot']))
           && affected.hasOnly(['status',
                       'payment_plan', 'payment_status', 'payment_proof_url', 'paymentProofUrl',
                       'payment_reject_reason', 'extractedRefNumber',
@@ -1210,35 +1203,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Payment references catalog — Admin-managed list of valid GCash/bank references
-    // that new bookings are checked against. Automatically populated when a guest
-    // submits a booking with a payment_reference.
-    match /payment_references/{refId} {
-      function validReferenceShape() {
-        return request.resource.data.keys()
-                 .hasOnly(['reference', 'amount', 'status', 'booking_id', 'created_at'])
-          && request.resource.data.reference is string
-          && request.resource.data.reference.size() > 0
-          && request.resource.data.amount is number
-          && request.resource.data.amount > 0
-          && request.resource.data.status in ['available', 'used', 'invalid']
-          && request.resource.data.booking_id is string
-          && request.resource.data.created_at is timestamp;
-      }
-
-      allow read: if isAdmin();
-      // Admin can create anytime
-      allow create: if isAdmin() && validReferenceShape();
-      // Guest can create only when submitting a booking (with booking_id)
-      allow create: if isSignedIn()
-        && validReferenceShape()
-        && request.resource.data.booking_id != null
-        && request.resource.data.status == 'available';
-      allow update: if isAdmin()
-        && validReferenceShape()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
-      allow delete: if isAdmin();
-    }
+    // Payment references — one policy, a few lines below.
+    //
+    // This collection used to be declared twice: a shape-checked block here and
+    // the Admin-curated block just after it. Firestore ORs every `match` whose
+    // path fits, so the looser of the two silently won — and its
+    // `allow create: if isSignedIn() && …` let any signed-in Guest write a row
+    // into the catalogue the Admin verifies proofs against. That is how a ₱500
+    // receipt gets made to look like an expected payment for a ₱32,000 stay.
+    // The duplicate is gone; the writer the surviving policy admits is the
+    // Admin, and nobody else.
 
     // Site config — including the published rates at site_config/rates that
     // the app's Rates screen writes (public read, Admin write).
@@ -1284,11 +1258,18 @@ service cloud.firestore {
       allow create: if isAdmin()
         && request.resource.data.keys().hasAll(['reference', 'amount', 'status'])
         && request.resource.data.status in ['available', 'used', 'void'];
+      // The two guards below are the whole point of the collection: the
+      // reference and the amount are what a proof is matched against, so an
+      // edit may never move them, and a spent reference may never be made
+      // available again — a `void` row that returned to `available` is the same
+      // reference sold to a second Booking.
       allow update: if isAdmin()
         && request.resource.data.keys().hasAll(['reference', 'amount', 'status'])
         && request.resource.data.status in ['available', 'used', 'void']
         && request.resource.data.reference == resource.data.reference
-        && request.resource.data.amount == resource.data.amount;
+        && request.resource.data.amount == resource.data.amount
+        && !(resource.data.get('status', '') in ['used', 'void']
+             && request.resource.data.status == 'available');
       // Only a reference nothing has ever paid with may be removed. A `used`
       // entry is evidence of which reference paid for which stay, and voiding
       // it does not stop that being evidence — so `void` is kept as well as

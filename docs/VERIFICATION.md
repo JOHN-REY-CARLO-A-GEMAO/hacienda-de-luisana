@@ -750,3 +750,158 @@ unmodified repository. Confirmed by evaluating `HEAD`'s rules with the unmodifie
 fixture: `create` denied; padding the hash to 47 characters allowed. Left unfixed
 here because it predates ADR-0016 and belongs to the ADR-0015 doors, but the rules
 suite is red on that case until the constant is padded.
+
+---
+
+## 15. Re-verification, 2026-10-21 — the rules reconciled, and the suite green again
+
+Everything in §2 and §14.4 is a dated record of its own pass. This section is the
+current state of the same commands, on the same class of machine (Linux, no Java,
+no Flutter SDK), after the reconciliation described in `docs/HANDOFF-rules-budget.md`
+and ADR-0018.
+
+| Suite | Command | Result |
+| --- | --- | --- |
+| Rules + storage + engine + limits + hygiene | `npm run test:rules` | **315 / 315** (was 272 / 51 failing at the start of this pass) |
+| Web unit + component + integration | `npm test` | 67 files / **949 / 949** |
+| End-to-end scenario, 42 steps | `npm run test:e2e` | **44 / 44** |
+| Phase 0 safety (loopback, env, secrets, isolation) | `node scripts/phase0/run.mjs safety` | **44 / 0** |
+| Production build | `npm run build` (`tsc -b && vite build`) | clean; `tsc -b` exits 0 |
+| Flutter analyze / test / integration | `npm run test:flutter` | **not run — no Flutter/Dart SDK in this environment** 🔴 |
+| Firebase Emulator rules suite | `npm run test:emulator` | **not run — no Java** 🔴 and still the canonical gate |
+| `test/phase0` characterization / invariants / archive e2e | `node scripts/phase0/run.mjs …` | **red at HEAD and red at the baseline**: 13 / 102, 22 / 31, and 84 files / 8 failures. They pin an *earlier* tree — one case asserts that 210 baseline files are byte-identical, and `package-lock.json` is gone — so they are an archive of that verification, not a check on this one. |
+
+**What the rules changed.** `firestore.rules` gained four things and lost none of its
+teeth: the duplicate `match /payment_references/{refId}` block that had been OR-ing
+a Guest-writable policy into the Admin's verification catalogue is deleted (a spent
+row may now only be `void`-ed, and never returned to `available`);
+`pricingSnapshotImmutable()` no longer calls `toSet()` on a `Set`, which is a
+rules-language error that made the money-snapshot guard unevaluable; `holiday_dates`
+is required — as a list, `[]` included — on any published rate document; and a
+Booking's `guests`, `pet_count` and `late_checkout_hours` must be whole non-negative
+numbers. `src/lib/firestoreBookings.ts` stopped attempting a `payment_references`
+write it could not be allowed to make.
+
+**What was verified about the verification.** Three of the five clusters of red were
+stale *tests*, not stale policy: `adminSecurityDoc()`'s 36-character `pin_hash`
+against a `size() >= 40` rule; `access_logs` fixtures that filed a Guest's `uid`
+under an Admin's auth and then expected the write to pass; and eleven
+`official guest-count rates` cases still asserting the deleted price derivation. The
+last cluster is rewritten to test each guarantee where it now lives (publication
+versus submission), and the accepted gap is kept as an assertion rather than a
+footnote: `GAP (recorded, 2026-10-14)` proves that an under-priced, coherent Booking
+passes the rule layer today, so the day the Admin's approve step re-derives the price
+that test has to move. The empty-diff `admin_security` rotation case was passing
+vacuously — `affectedKeys().hasOnly([...])` is true for an empty set — and now changes
+the salt, so it exercises the door.
+
+**Still not verified here, in order of how much it matters**: the emulator's verdict
+on any of the rules above (the only thing that can see an expression-budget failure);
+a real deploy, so none of it is live; anything at all in the Admin app; and whether
+the published `site_config/rates` in the live project is shaped the way the new
+publication checks demand.
+
+---
+
+## 16. ADR-0019 pass — the price the estate attests (2026-10-21)
+
+Closes [ADR-0018](adr/0018-the-rule-layer-checks-coherence-not-price-and-the-gap-that-opens.md)'s
+recorded gap with a Cloud Function that prices a stay, a document no client can write, and a rule
+clause that compares a Booking against it. Decision:
+[ADR-0019](adr/0019-a-price-is-attested-by-the-server-before-a-booking-may-carry-it.md). Rollout
+order, deploy commands and evaluator hazards: [`docs/quotes/IMPLEMENTATION.md`](quotes/IMPLEMENTATION.md).
+
+**Nothing here is deployed and enforcement is off by default.** "Green" below means the mechanism
+and the switch are correct in this tree, not that a live project refuses forged prices.
+
+### Executed on this machine
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Web suite | `npm test` | **958 passed / 958** (68 files) — 9 new in `test/web/booking-quotes.test.ts` |
+| Rules (offline evaluator) | `npm run test:rules` | **328 passed / 328** (7 files) — 13 new in `test/rules/quote-attestation.rules.test.ts`, all 315 pre-existing still green |
+| Cloud Functions suite | `cd functions && npm test` | **218 passed / 218** — 13 new pricing cases (`functions/test/pricing.test.ts`), 10 new mirror-freshness cases (`functions/test/booking-sync.test.ts`) |
+| Mirror freshness gate | `npm run check:pricing` | clean; **proven to bite** by hand-editing a copy and re-running (exit 1, names the file) |
+| Types, web | `npx tsc -b` | 0 errors |
+| Types, functions | `cd functions && npx tsc --noEmit` | 0 errors |
+| End-to-end scenario | `node scripts/phase0/run.mjs e2e` | 44/44 (unchanged by this pass) |
+| Safety greps | `node scripts/phase0/run.mjs safety` | 44/0 |
+
+### What the new tests actually claim
+
+- **Two legs per forgery.** Every case in `quote-attestation.rules.test.ts` asserts the *same*
+  write is accepted with `quotes_required` off and refused with it on, and names whether a refusal
+  came from the attestation or from the pre-existing arithmetic gate (`nights: 2`,
+  `payment_plan: 'full'` are refused either way — asserting "the un-enforced path lets this
+  through" for those would have been false, so the table carries a per-case expectation).
+- **The clause cannot make an estate-wide mess.** A case asserts the identical write reaches the
+  identical verdict enforced vs un-enforced for a Booking the switch never covered (a proof
+  resubmission, a plan choice, a cancellation) — so ADR-0019 cannot be blamed for a legacy record's
+  refusal, and the historical-plan branch keeps its own tests in `firestore-rules.test.ts`.
+- **Re-pricing is closed, not just creation.** A Guest may resend a proof on an attested Booking;
+  the same write touching `stay_total` is refused. This clause was found by *attempting* it after
+  shipping the create-side guard: creating honestly and then updating the total was still legal,
+  which is the same hole with a different door.
+- **The client sends no money, provably.** `test/web/booking-quotes.test.ts` asserts the exact key
+  set handed to `quoteBooking` — six quoteable inputs, nothing else. The server-side test asserts a
+  forged `stay_total` in the payload is *not read*, which is stronger than "refused".
+- **One arithmetic is enforced by a hash, not by a promise.** `booking-sync.test.ts` reads the
+  manifest and also asserts the mirrored body *ends with* the website's file verbatim, so
+  regenerating a manifest to match a hand-edited copy does not clear it.
+
+### Not verified, and what would be needed
+
+| Gap | Why, and what closes it |
+| --- | --- |
+| **Firestore emulator** | `npm run test:emulator` has never run here — no Java, no download. It is the only instrument that can see an expression-budget or read-limit failure, which is the exact failure mode ADR-0018 recorded. Since 2026-10-22 the offline evaluator *measures* cost (§17), which replaces the argument but not the run. **Run before deploying rules.** |
+| Real `get()`/`exists()` against a live project | The offline evaluator is faithful for the constructs used here but is not Firestore. A forged write must be attempted from a signed-in console after deploy (step 5 of the checklist). |
+| `firebase deploy --only functions` | Requires the **Blaze** plan; not attempted. Until then `quoteBooking` does not exist in production, enforcement stays off, and ADR-0018's "accepted, interim" remains the true description. |
+| Flutter | No SDK in this environment; `flutter analyze`, `flutter test`, `flutter build apk` never run. The Payments screen does not call `verifyBookingMoney` yet. **No Dart change was needed for the security property** — that is the claim, and it is a claim about what the rules guarantee, not about tested Dart behaviour. |
+| Rate limiting | `spend()` in `quotes.ts` is in-process and per-instance. It is not a quota and there is no server-side throttle anywhere in this codebase. |
+| Quote-document retention | Nothing deletes expired attestations (deliberate: they are the evidence `verifyBookingMoney` compares against). Bounded by distinct request, not by bookings. `docs/LIMITATIONS.md`. |
+
+---
+
+## 17. Production-readiness audit of the attestation (2026-10-22)
+
+The audit asked whether F13/F19/F1/F8 are safe to deploy and to activate, and required every check to
+carry a result from an actual run. Full findings, the item-by-item table and the residual risks:
+[`docs/quotes/READINESS.md`](quotes/READINESS.md).
+
+### Executed here
+
+| Check | Result |
+| --- | --- |
+| `npm run test:rules` | **334 / 334** (7 files) — §16's 328 plus the two attestation cases and four measured-cost assertions |
+| `npm test` | **958 / 958** (68 files) |
+| `npm run test:e2e` | **44 / 44** |
+| `npm run test:safety` | green |
+| `npm run check:pricing` | green — `src/lib/booking/rates.ts` → `functions/src/pricing.ts` mirror current |
+| `npx tsc -b`, `npm --prefix functions test` | clean, **223 / 223** |
+| `npm run test:invariants` | 22 failed / 9 passed — **reproduced identically in a worktree at `3a0c7e6`**, so all of it is the pre-existing `DESIRED` set, untouched by this mechanism |
+| `npm run test:rules:baseline`, `check:rules:baseline` | **BLOCKED** — the harness pins base commit `e5155de`, unreachable in this shallow clone (3 commits). Needs a full clone; it is the project's own "no security test weakened" instrument, so run it there |
+| `npm run test:qa:booking` | **BLOCKED** — Playwright missing |
+| `npm run test:emulator` | **BLOCKED** — no JVM, no egress to `storage.googleapis.com`; `test/emulator/quote-attestation.emulator.test.ts` (13 cases) is written and **has never been executed** |
+| `npm run test:flutter`, `test:flutter:analyze` | **BLOCKED** — no `flutter`/`dart`, and a `find` for `*.test.dart` in this tree returns nothing |
+
+Nothing was weakened to get these numbers: diffing every `it()` title under `test/rules/` between
+base `c0f443e` and this branch finds **zero removals or renames**, and across all of `test/` the count
+goes 1,204 → 1,214. The only deleted files are three scratch `*-probe` tests.
+
+### Measured, not estimated
+
+`test/rules/engine.ts` now reports `expressions` and `reads` for each `Decision`, and
+`test/rules/firestore-rule-limits.test.ts` asserts them: a Guest create with enforcement on costs
+**1,190 nodes / 8 document reads**, an Admin manual create **240 / ≤1**, a Guest update **533 / 2**.
+The read count is in Firestore's units (limit 20) and passes with room. The expression count is in this
+evaluator's grammar — the *unmodified* Guest path already exceeds Firestore's documented 1,000 by it —
+so it is a canary against a new descent, not a deployment certificate, and the assertions say so in
+those words. The measured delta between enforcement on and off is inside 40 nodes: `let` bindings are
+eager, so the clause's cost is paid whenever the switch is present, on or off.
+
+### Verdict recorded here
+
+Deploy with enforcement off: yes. Activate: not until the emulator run above has run once against this
+`firestore.rules`, a Flutter toolchain has looked at the Admin screens, and the callables are live with
+`BOOKING_QUOTES_ENABLED=true`. `site_config/booking.quotes_required` stays absent until then, which is
+the state every suite above was run in.
