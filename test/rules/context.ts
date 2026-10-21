@@ -206,7 +206,11 @@ export const ADMIN_SECURITY_NOW = DEFAULT_REQUEST_TIME
 
 export const adminSecurityDoc = (overrides: DocData = {}, at: number = ADMIN_SECURITY_NOW): DocData => ({
   uid: ADMIN_UID,
-  pin_hash: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=', // 44 chars: 32 bytes, base64
+  // 44 characters, which is what `isAdminSecurityShape()` asks for (>= 40) and
+  // what a 32-byte PBKDF2-SHA256 digest is when base64-encoded. The constant
+  // here used to be 36 characters — 26 bytes — so this fixture's own `create`
+  // case failed against the rule for no reason but its length.
+  pin_hash: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=', // 44 chars: 32 bytes, base64
   salt: 'c2FsdHNhbHRzYWx0c2FsdA==', // 24 chars: 16 bytes, base64
   iterations: 100000,
   failed_attempts: 0,

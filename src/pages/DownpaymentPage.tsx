@@ -281,8 +281,8 @@ export function DownpaymentPage() {
       // localStorage and is untouched.
       if (cloudBookingsDB.isCloud && !uid) {
         setError(
-          'Your session has ended or could not be verified, so the booking was not sent. Nothing was saved ' +
-            'or charged and your screenshot is still here — please try again in a moment, or sign in again.',
+          'We could not attach this booking to you, so the booking was not sent. Nothing was saved or ' +
+            'charged and your screenshot is still here — please sign in again and resend it.',
         )
         return
       }

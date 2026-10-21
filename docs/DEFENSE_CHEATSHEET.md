@@ -231,11 +231,19 @@ requires the Security PIN.
 - **No PayMongo / QR Ph integration.** There is no gateway, no webhook, no
   merchant link. The Guest is shown the published GCash number and bank account
   and transfers manually. **I cannot claim automated payment verification.**
-- `canAutoVerifyFromOcr` is hard-coded off, so the reference catalogue is a
-  tested contract and a rule — **not a wired workflow**.
+- `canAutoVerifyFromOcr` is hard-coded off, so nothing marks a reference spent:
+  the catalogue is curated, and duplicate detection stays a human comparing two
+  screens. It is **not** an automatic match-and-settle workflow.
 - OCR runs client-side, so a determined Guest controls what gets extracted.
-- The Admin's Payment-references screen is an in-memory list; it never writes to
-  the cloud collection.
+  (`src/lib/payments/ocr.ts` loads Tesseract.js in the browser — there is no
+  server-side OCR and no cloud Vision call.)
+- The Admin's Payment-references screen **is** live-backed: `payment_refs_screen.dart`
+  subscribes to `payment_references` snapshots and `add()`s rows with a server
+  timestamp. What it does not do is consume them — no approve step marks a row
+  `used`, and that is the half that would make the catalogue a control. (On
+  2026-10-21 the rules around it were tightened: a duplicate `match` block had
+  left the collection writable by any signed-in Guest, which is a route to
+  making a wrong amount look expected. ADR-0018 *Corrections*.)
 
 **Why scoped this way**
 PayMongo needs a merchant account and **secret** keys. A client app cannot hold
@@ -279,9 +287,17 @@ Three answers that are always true:
 1. **"Is this complete?"** → "No. Here is exactly where the line is." Then stop.
 2. **"Why isn't X built?"** → "Deadline. Two to three days of work, and I chose
    a correct online system over a half-built offline one."
-3. **"How do you know it works?"** → "853 web tests and 229 Dart tests, and the
-   three red ones are deliberate — they're documented invariants we haven't
-   fixed yet, not flakes." (Real: 853 pass, 229 pass, 3 intentional-red.)
+3. **"How do you know it works?"** → "The web suite runs the shipped code: 949
+   tests green, `npm run build` clean, and the 42-step end-to-end scenario passes
+   44/44 against the real modules on their offline adapters. The Firestore rules
+   are executed as text by an in-repo evaluator — 315 green assertions — and the
+   44-case emulator suite that is the canonical check has never run here, because
+   this machine has no Java. Flutter analyze/test/build were never run: no SDK.
+   Some `test/phase0` suites are red and say why in their headers: they pin an
+   earlier baseline (one asserts 210 files are byte-identical) and their DESIRED
+   cases are invariants recorded before they were built."
+   (Real, 2026-10-21: 949 / 315 / 44 / 44 green; characterization 13-of-102 and
+   invariants 22-of-31 red, both pre-existing; `docs/VERIFICATION.md` §15.)
 
 Never claim 2, 3, 7, 9 or 12 is fully met. Never say "70% complete" — let them
 score it.

@@ -34,6 +34,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { canOpenPage, createSession, homeForRole, permissionsOf, roleForEmail, type SessionStore } from '../../src/lib/auth'
 import { createLocalPorts } from '../../src/lib/authLocal'
+import { guestRegistration } from '../web/registration-fixture'
 import { TERMS, recordAcceptance, isAcceptanceCurrent, LEGAL_VERSION } from '../../src/lib/legal'
 import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
 import { bookingsDB, type Booking } from '../../src/lib/storage'
@@ -113,6 +114,22 @@ beforeAll(() => {
   vi.setSystemTime(new Date('2026-09-01T02:00:00Z'))
 })
 afterAll(() => vi.useRealTimers())
+
+/**
+ * Run one step with the wall clock standing on a stay date, then put the pinned
+ * creation clock back. The stay has to be acted on the day it happens: Begin
+ * Stay refuses before the check-in date and the Credential window is the stay
+ * dates, so a scenario that files both on the day it *booked* is describing a
+ * Guest who checked in a month early.
+ */
+async function onTheDay(iso: string, run: () => Promise<void>) {
+  vi.setSystemTime(new Date(iso))
+  try {
+    await run()
+  } finally {
+    vi.setSystemTime(new Date('2026-09-01T02:00:00Z'))
+  }
+}
 
 const CHECK_IN = '2026-10-05'
 const CHECK_OUT = '2026-10-07'
@@ -204,7 +221,13 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
   it('step 1 — the Guest registers on the website and the session resolves the guest role', async () => {
     const ports = createLocalPorts()
     guest = createSession(ports.auth, ports.profiles)
-    const user = await guest.register({ email: GUEST_EMAIL, password: GUEST_PASSWORD, displayName: 'Juan Dela Cruz' })
+    // What a sign-up has to carry now that the age rule and the Terms acceptance
+    // are enforced in `validateRegistration` and not only in the form.
+    const user = await guest.register(guestRegistration({
+      email: GUEST_EMAIL,
+      password: GUEST_PASSWORD,
+      displayName: 'Juan Dela Cruz',
+    }))
     guestUid = user.uid
     const state = guest.getState()
     expect(state.status).toBe('signed-in')
@@ -594,21 +617,31 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
   // -------------------------------------------------------------------------
 
   it('step 23 — check-in starts the stay', async () => {
-    const checkIn = await cloudBookingsDB.transition(bookingId, { type: 'CheckIn' }, { actor: 'admin', actor_id: ADMIN_UID })
-    expect(checkIn.ok).toBe(true)
-    const staying = await cloudBookingsDB.transition(bookingId, { type: 'BeginStay' }, { actor: 'admin', actor_id: ADMIN_UID })
-    expect(staying.ok).toBe(true)
-    expect((await cloudBookingsDB.get(bookingId))?.status).toBe('Staying')
-    note(23, 'Check-in → Staying', 'executed', `status=${(await cloudBookingsDB.get(bookingId))?.status}`)
+    await onTheDay(`${CHECK_IN}T02:00:00Z`, async () => {
+      const checkIn = await cloudBookingsDB.transition(bookingId, { type: 'CheckIn' }, { actor: 'admin', actor_id: ADMIN_UID })
+      expect(checkIn.ok).toBe(true)
+      const staying = await cloudBookingsDB.transition(bookingId, { type: 'BeginStay' }, { actor: 'admin', actor_id: ADMIN_UID })
+      expect(staying.ok).toBe(true)
+      expect((await cloudBookingsDB.get(bookingId))?.status).toBe('Staying')
+      note(23, 'Check-in → Staying', 'executed', `status=${(await cloudBookingsDB.get(bookingId))?.status}`)
+    })
   })
 
   it('step 24 — a valid credential on the stay dates is granted, and the row the contract writes is accepted', () => {
     const booking = { status: 'Staying', check_in: CHECK_IN, check_out: CHECK_OUT, ref_id: 'HDL-1' }
     const decision = doorDecision({ refId: 'HDL-1', credentialRevoked: false, today: CHECK_IN, booking })
     expect(decision.result).toBe('granted')
-    const row = accessLogDoc({ result: 'granted', reason: decision.reason, uid: GUEST_UID })
-    expect(decide({ path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(GUEST_UID), requestData: row })).toBe(false)
-    expect(decide({ path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(), requestData: row })).toBe(true)
+    // A Guest may not file a grant — the row records that *the Admin* handed the
+    // key over. And the writer's own `uid` has to be on it, so the Admin's row
+    // carries the Admin: an Audit Log is attributed, not merely asserted.
+    expect(decide({
+      path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(GUEST_UID),
+      requestData: accessLogDoc({ result: 'granted', reason: decision.reason, uid: GUEST_UID }),
+    })).toBe(false)
+    expect(decide({
+      path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(),
+      requestData: accessLogDoc({ result: 'granted', reason: decision.reason, uid: ADMIN_UID }),
+    })).toBe(true)
     note(24, 'Authorized unlock', 'contract', `decision=granted; guest access_logs create denied, admin create accepted by rule text`)
   })
 
@@ -655,14 +688,16 @@ describe('final end-to-end scenario — client → admin → Smart Lock → secu
   })
 
   it('step 28 — the stay ends and the Booking completes', async () => {
-    const out = await cloudBookingsDB.transition(bookingId, { type: 'CheckOut' }, { actor: 'admin', actor_id: ADMIN_UID })
-    expect(out.ok).toBe(true)
-    const done = await cloudBookingsDB.transition(bookingId, { type: 'Complete' }, { actor: 'admin', actor_id: ADMIN_UID })
-    expect(done.ok).toBe(true)
-    const after = await cloudBookingsDB.get(bookingId)
-    expect(after?.status).toBe('Completed')
-    const history = await cloudBookingsDB.history(bookingId)
-    note(28, 'Check-out → Completed, with the whole stay on the Activity log', 'executed', `status=${after?.status}, activity entries=${history.length}`)
+    await onTheDay(`${CHECK_OUT}T06:00:00Z`, async () => {
+      const out = await cloudBookingsDB.transition(bookingId, { type: 'CheckOut' }, { actor: 'admin', actor_id: ADMIN_UID })
+      expect(out.ok).toBe(true)
+      const done = await cloudBookingsDB.transition(bookingId, { type: 'Complete' }, { actor: 'admin', actor_id: ADMIN_UID })
+      expect(done.ok).toBe(true)
+      const after = await cloudBookingsDB.get(bookingId)
+      expect(after?.status).toBe('Completed')
+      const history = await cloudBookingsDB.history(bookingId)
+      note(28, 'Check-out → Completed, with the whole stay on the Activity log', 'executed', `status=${after?.status}, activity entries=${history.length}`)
+    })
   })
 
   // -------------------------------------------------------------------------

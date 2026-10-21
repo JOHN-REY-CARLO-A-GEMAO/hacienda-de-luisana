@@ -230,241 +230,189 @@ describe('official guest-count rates', () => {
     }
   })
 
-  it('adds the published pet fee to the stay total and the 50/50 split', () => {
-    // The rates document publishes a ₱300 per-pet fee; the store the rules read
-    // carries it. A Booking with no pets is unaffected by its presence.
-    const withPets = structuredClone(officialStore)
-    withPets['site_config/rates'].pet_policy = { fee_per_pet: 300, max_pets: 5 }
-
-    // No pets declared: the stay is the published rate and nothing else.
-    expect(allow({
-      path: 'bookings/official-no-pets', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({ pet_count: 0 }),
-    }, withPets)).toBe(true)
-
-    // One pet: ₱300 on top of ₱5,000, so the down payment is on ₱5,300.
-    expect(allow({
-      path: 'bookings/official-one-pet', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({
-        pet_count: 1, rate_amount: 5000, stay_total: 5300, amount_due: 2650, balance_due: 2650,
-      }),
-    }, withPets)).toBe(true)
-
-    // Two pets: the fee is per pet, so ₱600.
-    expect(allow({
-      path: 'bookings/official-two-pets', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({
-        pet_count: 2, rate_amount: 5000, stay_total: 5600, amount_due: 2800, balance_due: 2800,
-      }),
-    }, withPets)).toBe(true)
-
-    // The fee cannot be skipped by declaring no pets while pricing one in.
-    expect(deny({
-      path: 'bookings/official-pet-underreported', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({ pet_count: 0, stay_total: 5300, amount_due: 2650, balance_due: 2650 }),
-    }, withPets)).toBe(true)
-
-    // Nor can it be quietly left out of the stay total.
-    expect(deny({
-      path: 'bookings/official-pet-not-charged', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({
-        pet_count: 1, rate_amount: 5000, stay_total: 5000, amount_due: 2500, balance_due: 2500,
-      }),
-    }, withPets)).toBe(true)
-
-    // A pet with no published fee is not a guest's to price: refused.
-    expect(deny({
-      path: 'bookings/official-pet-unpriced', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({ pet_count: 1, stay_total: 5300, amount_due: 2650, balance_due: 2650 }),
-    }, officialStore)).toBe(true)
-
-    // Past the published cap is refused however it is priced.
-    expect(deny({
-      path: 'bookings/official-pet-over-cap', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({
-        pet_count: 6, rate_amount: 5000, stay_total: 6800, amount_due: 3400, balance_due: 3400,
-      }),
-    }, withPets)).toBe(true)
-  })
-
-  it('adds the published late-checkout rate to the stay total', () => {
-    const withExtension = structuredClone(officialStore)
-    withExtension['site_config/rates'].late_checkout_per_hour = 250
-
-    // Two hours past noon: ₱500 on top of ₱5,000.
-    expect(allow({
-      path: 'bookings/official-two-hours', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({
-        late_checkout_hours: 2, rate_amount: 5000, stay_total: 5500, amount_due: 2750, balance_due: 2750,
-      }),
-    }, withExtension)).toBe(true)
-
-    // The hour cannot be kept for free by leaving it out of the total.
-    expect(deny({
-      path: 'bookings/official-hours-unpaid', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({
-        late_checkout_hours: 2, rate_amount: 5000, stay_total: 5000, amount_due: 2500, balance_due: 2500,
-      }),
-    }, withExtension)).toBe(true)
-
-    // An extension with no published hourly rate is refused.
-    expect(deny({
-      path: 'bookings/official-hours-unpriced', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({
-        late_checkout_hours: 2, stay_total: 5500, amount_due: 2750, balance_due: 2750,
-      }),
-    }, officialStore)).toBe(true)
-
-    // Pet fee and late checkout together, each on the published rate.
-    const combined = structuredClone(officialStore)
-    combined['site_config/rates'].pet_policy = { fee_per_pet: 300 }
-    combined['site_config/rates'].late_checkout_per_hour = 250
-    expect(allow({
-      path: 'bookings/official-pet-and-hours', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({
-        pet_count: 1, late_checkout_hours: 2, rate_amount: 5000,
-        stay_total: 5800, amount_due: 2900, balance_due: 2900,
-      }),
-    }, combined)).toBe(true)
-  })
-
-  it('validates one A-House unit for up to three guests at a flat per-unit rate', () => {
-    // Three guests at the base rate, which is also the cap.
-    expect(allow({ path: 'bookings/official-a-house', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
-      accommodation: 'house-a-camping', guests: 3, rate_amount: 1000, rate_classification: 'weekday',
-      rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
-    }) }, officialStore)).toBe(true)
-    // A fourth is past the documented limit: the unit cannot hold it, so the
-    // Booking is refused whatever the guest claims to have paid for it.
-    expect(deny({ path: 'bookings/official-a-house-fourth', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
-      accommodation: 'house-a-camping', guests: 4, rate_amount: 1500, rate_classification: 'weekday',
-      rate_unit: 'standard_stay', stay_total: 1500, amount_due: 750, security_deposit: 0, balance_due: 750,
-    }) }, officialStore)).toBe(true)
-    // Nor can a fifth.
-    expect(deny({ path: 'bookings/official-a-house-over-cap', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
-      accommodation: 'house-a-camping', guests: 5, rate_amount: 2000, rate_classification: 'weekday',
-      rate_unit: 'standard_stay', stay_total: 2000, amount_due: 1000, security_deposit: 0, balance_due: 1000,
-    }) }, officialStore)).toBe(true)
-  })
-
-  // The A-House occupancy is published from the Admin app and also typed by hand
-  // into the Firebase console, and a console edit lands without ever passing
-  // through `validatePublishedRates`. So the shape the rules actually meet is not
-  // guaranteed to be the documented one, and the rules have to fail closed on the
-  // difference: a Guest asking for an ordinary three-guest stay is refused,
-  // because a schedule the rules cannot price is not one a Guest may book against.
+  // -------------------------------------------------------------------------
+  // A Guest's money at the rule layer: what it decides, and where the rest went
+  // -------------------------------------------------------------------------
+  // These cases used to assert that a Guest create re-derived the price out of
+  // `site_config/rates` — the pet fee, the late-checkout hour, the A-House
+  // occupancy, the classification of the check-in date, the exact refund policy
+  // the Booking must carry. It no longer does any of that. The derivation was
+  // removed on 2026-10-14 because it crossed Firestore's documented
+  // 1000-expression budget for a single write, and an evaluation error is
+  // reported as the same bare `permission-denied` a real refusal produces: every
+  // Guest Booking was refused, on every date, while this suite still reported
+  // green. See docs/HANDOFF-rules-budget.md and ADR-0018.
   //
-  // Each shape below is a drift that reached the live document at least once.
-  // None of them is a question about the guest count, so none of them may be
-  // answered by refusing only the larger bookings: every one has to refuse the
-  // smallest one too. One `it` per drift, so a weakened rule names the drift it
-  // let through instead of only the first.
-  describe('an A-House schedule that drifts from the documented occupancy', () => {
-    const documented = { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 3 }
+  // So the guarantees split, and the suite tests each where it now lives:
+  //
+  //   AT PUBLICATION (`site_config/rates`, below). A rate the rules cannot price
+  //   may not be published at all — a drifted A-House occupancy, a retired
+  //   `nightly_rate` / `reservation_fee_amount`, a missing holiday list. The
+  //   expression budget is plentiful on that path, so the shape checks stayed.
+  //
+  //   AT SUBMISSION (`bookings` create, below). The Guest's own figures must be
+  //   coherent with each other: one 22-hour stay, a known classification, a
+  //   positive rate, the 50/50 split to the centavo, a balance that closes, a
+  //   claim not below the down payment, counts that are counts.
+  //
+  // What falls between the two lines is a recorded gap, not a hidden one — the
+  // last case below asserts it, so the day the Admin's approve step re-derives
+  // the price (the thing that closes it) this file has to change with it.
 
-    // The smallest stay the A-House sells: three guests, no pets, no extension,
-    // weekday. Nothing about it is contentious, so a refusal can only come from
-    // the published shape.
-    const threeGuestStay = officialBooking({
-      accommodation: 'house-a-camping', guests: 3, rate_amount: 1000, rate_classification: 'weekday',
-      rate_unit: 'standard_stay', stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500,
-    })
+  /** The published rates document with one edit applied, as the Rates screen writes it. */
+  const publishedWith = (edit: (rates: DocData) => void): DocData => {
+    const rates = structuredClone(canonicalRatesDocument)
+    edit(rates)
+    return rates
+  }
 
-    // Replaces one schedule of the A-House and leaves every other field alone, so
-    // the shape is the only variable.
-    const drifted = (patch: DocData, which: 'weekday' | 'weekend_holiday' = 'weekday'): Store => {
-      const store = structuredClone(officialStore)
-      const rates = store['site_config/rates']! as DocData
-      const house = (rates.accommodations as DocData)['house-a-camping'] as DocData
-      const pricing = house.guest_pricing as DocData
+  /** The A-House's schedule, with the named fields replaced. */
+  const aHouse = (which: 'weekday' | 'weekend_holiday', patch: DocData) =>
+    publishedWith((rates) => {
+      const pricing = ((rates.accommodations as DocData)['house-a-camping'] as DocData).guest_pricing as DocData
       pricing[which] = patch
-      return store
-    }
-
-    const stay = (id: string) =>
-      allow({ path: `bookings/${id}`, method: 'create', auth: anonymousGuest(), requestData: threeGuestStay },
-        drifted({ ...documented }))
-    const refuse = (id: string, patch: DocData, which: 'weekday' | 'weekend_holiday' = 'weekday') =>
-      deny({ path: `bookings/${id}`, method: 'create', auth: anonymousGuest(), requestData: threeGuestStay },
-        drifted(patch, which))
-
-    // The control. Without it a refusal below could be the fixture's doing.
-    it('admits the three-guest stay on the documented shape', () => {
-      expect(stay('ahouse-documented')).toBe(true)
     })
 
-    // The cap pulled down below the included occupancy, so the third guest would
-    // be refused by `scheduledRate`. The shape is not the documented one, so the
-    // whole schedule is.
-    it('refuses a cap pulled below the included occupancy', () => {
-      expect(refuse('ahouse-cap-lowered', { ...documented, max_guests: 2 })).toBe(true)
-    })
+  const documentedAHouse = { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 3 }
 
-    // The cap stretched to admit a fourth guest the unit cannot hold, together
-    // with the excess rule that would price it. This is the pair
-    // `validAHouseSchedule` exists to refuse.
-    it('refuses a cap and excess rule that admit a fourth guest', () => {
-      expect(refuse('ahouse-fourth-allowed', {
-        min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500,
-      })).toBe(true)
-    })
-
-    // An excess rule on a cap that already equals the included count: it prices a
-    // guest the unit cannot take, so nothing can ever charge it.
-    it('refuses an excess rule on the flat per-unit rate', () => {
-      expect(refuse('ahouse-excess-on-flat', { ...documented, excess_per_guest: 500 })).toBe(true)
-    })
-
-    // The base occupancy stretched up to the cap: the cap stops meaning anything
-    // and the fourth guest becomes free rather than ₱500.
-    it('refuses a base occupancy stretched past three', () => {
-      expect(refuse('ahouse-base-stretched', { ...documented, base_max_guests: 4 })).toBe(true)
-    })
-
-    // One schedule corrected and the other left behind. Both are priced on a
-    // booking, so both are checked: a weekday stay is refused over a drifted
-    // weekend schedule, which is how a half-finished console edit hides.
-    it('refuses a stay when only the other schedule has drifted', () => {
-      expect(refuse('ahouse-weekend-behind', { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4 }, 'weekend_holiday')).toBe(true)
-    })
-  })
-
-  it('rejects manipulated totals, invalid counts and multi-stays', () => {
-    expect(deny({ path: 'bookings/official-tampered', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ stay_total: 1 }) }, officialStore)).toBe(true)
-    expect(deny({ path: 'bookings/official-count', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 0 }) }, officialStore)).toBe(true)
-    expect(deny({ path: 'bookings/official-multi', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ check_out: '2026-10-28', nights: 2 }) }, officialStore)).toBe(true)
-    expect(deny({ path: 'bookings/official-wrong-class', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ rate_classification: 'weekend_holiday' }) }, officialStore)).toBe(true)
-  })
-
-  it('fails closed for retired flat/fixed-fee rates and missing holiday configuration', () => {
-    const withFee = structuredClone(officialStore)
-    ;((withFee['site_config/rates'].accommodations as DocData)['main-house'] as DocData).reservation_fee_amount = 750
-    expect(deny({ path: 'bookings/official-fixed-fee', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, withFee)).toBe(true)
-    const withNightly = structuredClone(officialStore)
-    ;((withNightly['site_config/rates'].accommodations as DocData)['main-house'] as DocData).nightly_rate = 5000
-    expect(deny({ path: 'bookings/official-flat-rate', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, withNightly)).toBe(true)
-    const noHolidayList = structuredClone(officialStore)
-    delete noHolidayList['site_config/rates'].holiday_dates
-    expect(deny({ path: 'bookings/official-missing-holidays', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, noHolidayList)).toBe(true)
-  })
-
-  it('captures the exact published refund policy and rejects a guest-edited copy', () => {
-    const refund = {
-      refund_percent: 50,
-      deposit_refund_percent: 100,
-      tiers: [{ min_days_before_check_in: 7, refund_percent: 75 }],
-    }
-    const withRefund = structuredClone(officialStore)
-    withRefund['site_config/rates'].refund = refund
+  it('publishes the canonical rates document, and refuses a shape the rules cannot price', () => {
+    // The control first: everything below this line that is refused has to be
+    // refused for its own shape, not because the fixture is unaffordable.
     expect(allow({
-      path: 'bookings/official-refund-snapshot', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({ refund_policy_snapshot: refund }),
-    }, withRefund)).toBe(true)
-    expect(deny({
-      path: 'bookings/official-refund-tampered', method: 'create', auth: anonymousGuest(),
-      requestData: officialBooking({ refund_policy_snapshot: { ...refund, refund_percent: 100 } }),
-    }, withRefund)).toBe(true)
+      path: 'site_config/rates', method: 'create', auth: allowlistedAdmin(),
+      requestData: publishedWith(() => {}),
+    }, officialStore)).toBe(true)
+
+    const refuse = (edit: (rates: DocData) => void) =>
+      deny({ path: 'site_config/rates', method: 'create', auth: allowlistedAdmin(), requestData: publishedWith(edit) }, officialStore)
+
+    // A retired fee shape on an Accommodation: the flat `nightly_rate` and the
+    // fixed `reservation_fee_amount` are both fields a Guest's money is no
+    // longer priced by, so a document that carries them is not publishable.
+    expect(refuse((rates) => { ((rates.accommodations as DocData)['main-house'] as DocData).nightly_rate = 5000 })).toBe(true)
+    expect(refuse((rates) => { ((rates.accommodations as DocData)['main-house'] as DocData).reservation_fee_amount = 750 })).toBe(true)
+
+    // No holiday list at all. The classification of a check-in date is read out
+    // of `holiday_dates`, and `[]` — "none configured" — is an answer while an
+    // absent field is not. This is where the check moved from when the Guest
+    // create stopped reading the document.
+    expect(refuse((rates) => { delete rates.holiday_dates })).toBe(true)
+
+    // A fourth Accommodation, or a dropped one: the estate is three units.
+    expect(refuse((rates) => { (rates.accommodations as DocData).villa = {} })).toBe(true)
+    expect(refuse((rates) => { delete (rates.accommodations as DocData).annex })).toBe(true)
+
+    // A published split that is not the rule's 50%.
+    expect(refuse((rates) => { ((rates.accommodations as DocData)['main-house'] as DocData).down_payment_percent = 30 })).toBe(true)
   })
+
+  it('refuses a published A-House schedule that drifts from the documented occupancy', () => {
+    // Three guests is both the included count and the ceiling, and no excess
+    // rule hangs off it: there is no fourth guest the unit could price. Each
+    // drift below reaches the document the same way — a hand edit in the
+    // Firebase console, which never passes through `validatePublishedRates` —
+    // and each is refused on the Admin's write.
+    const drifts: Array<[string, DocData, 'weekday' | 'weekend_holiday']> = [
+      // The cap pulled below the included occupancy: the third guest would be
+      // outside the unit's own ceiling.
+      ['cap below occupancy', { ...documentedAHouse, max_guests: 2 }, 'weekday'],
+      // The cap stretched to admit a fourth guest, with the excess rule that
+      // would price it. This pair is what `validAHouseSchedule` exists to refuse.
+      ['fourth guest, priced', { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4, excess_per_guest: 500 }, 'weekday'],
+      // An excess rule on a flat per-unit rate: it prices a guest the unit
+      // cannot take, so nothing may ever charge it.
+      ['excess on the flat rate', { ...documentedAHouse, excess_per_guest: 500 }, 'weekday'],
+      // The base occupancy stretched up to the cap: the cap stops meaning
+      // anything and a fourth guest becomes free rather than refused.
+      ['base stretched past three', { ...documentedAHouse, base_max_guests: 4 }, 'weekday'],
+      // One schedule corrected and the other left behind. A half-finished edit
+      // hides exactly like this, so both schedules are checked, not just the
+      // one a given Booking prices against.
+      ['the other schedule drifted', { min_guests: 1, base_max_guests: 3, base_rate: 1000, max_guests: 4 }, 'weekend_holiday'],
+    ]
+    for (const [name, patch, which] of drifts) {
+      expect(deny({
+        path: 'site_config/rates', method: 'create', auth: allowlistedAdmin(), requestData: aHouse(which, patch),
+      }, officialStore), `published A-House drift accepted: ${name}`).toBe(true)
+    }
+
+    // …and the documented shape is accepted, so a refusal above is the drift's.
+    expect(allow({
+      path: 'site_config/rates', method: 'create', auth: allowlistedAdmin(), requestData: aHouse('weekday', documentedAHouse),
+    }, officialStore)).toBe(true)
+  })
+
+  it('holds a Guest’s own figures to one coherent quote', () => {
+    // The baseline: the published weekday rate for ten guests, one 22-hour
+    // stay, half of it claimed as paid.
+    expect(allow({ path: 'bookings/official-coherent', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, officialStore)).toBe(true)
+
+    const refuse = (overrides: DocData, note: string) =>
+      expect(deny({ path: `bookings/official-${note}`, method: 'create', auth: anonymousGuest(), requestData: officialBooking(overrides) }, officialStore), note).toBe(true)
+
+    // Below the hard floor: nothing real is priced at a peso.
+    refuse({ stay_total: 1, amount_due: 0.5, balance_due: 0.5, amount_claimed: 0.5 }, 'floor')
+    // A stay longer than one 22-hour standard stay is not a Guest's to book.
+    refuse({ check_out: '2026-10-28', nights: 2 }, 'nights')
+    // A classification the rate card does not have.
+    refuse({ rate_classification: 'peak_season' }, 'classification')
+    // A retired rate unit.
+    refuse({ rate_unit: 'nightly' }, 'rate-unit')
+    // A plan that is not the published 50%.
+    refuse({ payment_plan: 'pay-at-check-in' }, 'plan')
+    // The split must close: half now plus the rest is the stay, exactly.
+    refuse({ amount_due: 2400 }, 'split-open')
+    refuse({ balance_due: 2600 }, 'balance-open')
+    // …and the claim cannot be under the down payment.
+    refuse({ amount_claimed: 2400 }, 'under-claimed')
+    // Zero, negative and fractional people are not a guest count. What the
+    // Accommodation actually holds is the published schedule's business, and
+    // reading it here is the descent that broke the budget — see the recorded
+    // gap below for what that costs.
+    refuse({ guests: 0 }, 'no-guests')
+    refuse({ guests: -1 }, 'negative-guests')
+    refuse({ guests: 1.5 }, 'fractional-guests')
+    // A charge that subtracts money is not a charge.
+    refuse({ pet_count: -1 }, 'negative-pets')
+    refuse({ late_checkout_hours: -2 }, 'negative-hours')
+    // The screenshot is what a Pending Booking is born with (ADR-0012).
+    refuse({ payment_proof_url: '' }, 'no-proof')
+    // And a Booking cannot arrive already verified, or already Approved.
+    refuse({ payment_status: 'verified' }, 'pre-verified')
+  })
+
+  it('GAP (recorded, 2026-10-14): a coherent figure the published rate would not produce passes the rule layer', () => {
+    // Not an assertion that this is good. An assertion that this is the line,
+    // written where somebody has to move it. Every case below is internally
+    // coherent — so the rules, which no longer read `site_config/rates` on a
+    // Guest create, accept it — and each one used to be refused by the
+    // derivation that crossed the expression budget.
+    //
+    // The check that closes them is the Admin's, at approve, in
+    // `lib/services/booking_lifecycle.dart`; it does not re-derive the price
+    // from the published document today, and ADR-0018 records that as accepted
+    // rather than pretend it is enforced. When it is built, flip each case here
+    // to `deny` — this file is the tripwire for the gap closing and for it
+    // widening.
+    const passes = (overrides: DocData, note: string) =>
+      expect(allow({ path: `bookings/official-gap-${note}`, method: 'create', auth: anonymousGuest(), requestData: officialBooking(overrides) }, officialStore), note).toBe(true)
+
+    // A ₱1,000 quote for a stay the card prices at ₱5,000, and a deposit
+    // zeroed, both sit inside the arithmetic the rules still check.
+    passes({ stay_total: 1000, rate_amount: 1000, amount_due: 500, balance_due: 500, security_deposit: 0 }, 'under-quote')
+    // Three pets the estate has not priced, on a stay that ignores them.
+    passes({ pet_count: 3 }, 'unpriced-pets')
+    // Four guests in a unit documented to hold three.
+    passes({ accommodation: 'house-a-camping', guests: 4, rate_amount: 1000, stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500 }, 'over-capacity')
+    // A refund policy the Guest wrote, rather than the one published: the
+    // snapshot is stored verbatim and nothing compares it here.
+    passes({ refund_policy_snapshot: { refund_percent: 100, deposit_refund_percent: 100 } }, 'refund-copy')
+    // A weekend classification on a Monday check-in, which is what a Guest
+    // choosing the schedule by hand — rather than the card classifying it —
+    // would file.
+    passes({ check_in: '2026-10-26', check_out: '2026-10-27', rate_classification: 'weekend_holiday', rate_amount: 6000, stay_total: 6000, amount_due: 3000, balance_due: 3000 }, 'own-classification')
+  })
+
 
   it('keeps an existing booking rate, classification, policy and money snapshot immutable', () => {
     const original = officialBooking({
@@ -861,7 +809,10 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
     })
 
     it('refuses a rotation that keeps the old hash', () => {
-      expect(update(doc, rotated({ pin_hash: doc.pin_hash as string }))).toBe('denied')
+      // The salt moves and the digest does not: a re-stamp dressed up as a
+      // rotation. Door 2 asks for a different `pin_hash`, and Door 1 will not
+      // take a `salt` among its two counter keys, so both halves refuse it.
+      expect(update(doc, rotated({ pin_hash: doc.pin_hash as string, salt: 'bmV3c2FsdG5ld3NhbHRuZXdz' }))).toBe('denied')
     })
 
     it('refuses a rotation out of a live lock, and accepts one past it', () => {
@@ -2075,8 +2026,13 @@ describe('conversations and messages', () => {
 
 describe('access_logs: the Smart Lock record', () => {
   it('records a lock touch by the person who made it', () => {
+    // A `granted` row is the record that a door opened, so only the Admin (the
+    // app, or a hardware gateway acting as one) may file one — and whoever
+    // writes the row writes it against their own uid, which is what makes the
+    // line attributable. The fixture therefore carries the Admin's uid in the
+    // Admin's case: the app stamps `uid: auth.uid` on every write.
     expect(deny({ path: 'access_logs/log-1', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc() })).toBe(true)
-    expect(allow({ path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(), requestData: accessLogDoc() })).toBe(true)
+    expect(allow({ path: 'access_logs/log-1', method: 'create', auth: allowlistedAdmin(), requestData: accessLogDoc({ uid: ADMIN_UID }) })).toBe(true)
     expect(allow({ path: 'access_logs/log-2', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ result: 'denied', reason: 'expired-booking' }) })).toBe(true)
   })
 
@@ -2108,7 +2064,10 @@ describe('access_logs: the Smart Lock record', () => {
 
   it('still works now that live location is retired', () => {
     // The guarantee the tracker removal had to keep: the door log is untouched.
-    expect(allow({ path: 'access_logs/log-7', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ reason: 'rfid-card' }) })).toBe(true)
+    // A Guest may still file a refusal against their own Credential — what they
+    // may not do is grant themselves entry (see the `granted` clause above).
+    expect(allow({ path: 'access_logs/log-7', method: 'create', auth: anonymousGuest(), requestData: accessLogDoc({ result: 'denied', reason: 'rfid-card' }) })).toBe(true)
+    expect(allow({ path: 'access_logs/log-8', method: 'create', auth: allowlistedAdmin(), requestData: accessLogDoc({ uid: ADMIN_UID, reason: 'rfid-card' }) })).toBe(true)
   })
 })
 

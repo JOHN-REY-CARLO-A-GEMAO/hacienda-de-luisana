@@ -750,3 +750,53 @@ unmodified repository. Confirmed by evaluating `HEAD`'s rules with the unmodifie
 fixture: `create` denied; padding the hash to 47 characters allowed. Left unfixed
 here because it predates ADR-0016 and belongs to the ADR-0015 doors, but the rules
 suite is red on that case until the constant is padded.
+
+---
+
+## 15. Re-verification, 2026-10-21 — the rules reconciled, and the suite green again
+
+Everything in §2 and §14.4 is a dated record of its own pass. This section is the
+current state of the same commands, on the same class of machine (Linux, no Java,
+no Flutter SDK), after the reconciliation described in `docs/HANDOFF-rules-budget.md`
+and ADR-0018.
+
+| Suite | Command | Result |
+| --- | --- | --- |
+| Rules + storage + engine + limits + hygiene | `npm run test:rules` | **315 / 315** (was 272 / 51 failing at the start of this pass) |
+| Web unit + component + integration | `npm test` | 67 files / **949 / 949** |
+| End-to-end scenario, 42 steps | `npm run test:e2e` | **44 / 44** |
+| Phase 0 safety (loopback, env, secrets, isolation) | `node scripts/phase0/run.mjs safety` | **44 / 0** |
+| Production build | `npm run build` (`tsc -b && vite build`) | clean; `tsc -b` exits 0 |
+| Flutter analyze / test / integration | `npm run test:flutter` | **not run — no Flutter/Dart SDK in this environment** 🔴 |
+| Firebase Emulator rules suite | `npm run test:emulator` | **not run — no Java** 🔴 and still the canonical gate |
+| `test/phase0` characterization / invariants / archive e2e | `node scripts/phase0/run.mjs …` | **red at HEAD and red at the baseline**: 13 / 102, 22 / 31, and 84 files / 8 failures. They pin an *earlier* tree — one case asserts that 210 baseline files are byte-identical, and `package-lock.json` is gone — so they are an archive of that verification, not a check on this one. |
+
+**What the rules changed.** `firestore.rules` gained four things and lost none of its
+teeth: the duplicate `match /payment_references/{refId}` block that had been OR-ing
+a Guest-writable policy into the Admin's verification catalogue is deleted (a spent
+row may now only be `void`-ed, and never returned to `available`);
+`pricingSnapshotImmutable()` no longer calls `toSet()` on a `Set`, which is a
+rules-language error that made the money-snapshot guard unevaluable; `holiday_dates`
+is required — as a list, `[]` included — on any published rate document; and a
+Booking's `guests`, `pet_count` and `late_checkout_hours` must be whole non-negative
+numbers. `src/lib/firestoreBookings.ts` stopped attempting a `payment_references`
+write it could not be allowed to make.
+
+**What was verified about the verification.** Three of the five clusters of red were
+stale *tests*, not stale policy: `adminSecurityDoc()`'s 36-character `pin_hash`
+against a `size() >= 40` rule; `access_logs` fixtures that filed a Guest's `uid`
+under an Admin's auth and then expected the write to pass; and eleven
+`official guest-count rates` cases still asserting the deleted price derivation. The
+last cluster is rewritten to test each guarantee where it now lives (publication
+versus submission), and the accepted gap is kept as an assertion rather than a
+footnote: `GAP (recorded, 2026-10-14)` proves that an under-priced, coherent Booking
+passes the rule layer today, so the day the Admin's approve step re-derives the price
+that test has to move. The empty-diff `admin_security` rotation case was passing
+vacuously — `affectedKeys().hasOnly([...])` is true for an empty set — and now changes
+the salt, so it exercises the door.
+
+**Still not verified here, in order of how much it matters**: the emulator's verdict
+on any of the rules above (the only thing that can see an expression-budget failure);
+a real deploy, so none of it is live; anything at all in the Admin app; and whether
+the published `site_config/rates` in the live project is shaped the way the new
+publication checks demand.

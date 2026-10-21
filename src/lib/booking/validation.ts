@@ -348,7 +348,7 @@ export function validateBookingPayload(
   if (!input.uid?.trim()) {
     return failure(
       'GUEST_IDENTITY_REQUIRED',
-      'We could not attach this booking to a Guest identity, so nothing was saved. Please enable sign-in or try again in a moment.',
+      'We could not attach this booking to you, so nothing was saved. Please sign in again and resend, or try again in a moment.',
       'payment',
     )
   }

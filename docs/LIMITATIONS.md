@@ -6,7 +6,7 @@ results were; this one is the standing list of things the system does **not** do
 ## Emulator / real Firebase
 
 Rules are verified by **executing their text** with the in-repo evaluator
-(`test/rules/engine.ts`) — 151 assertions, **supplemental** verification. The
+(`test/rules/engine.ts`) — 315 assertions as of 2026-10-21, **supplemental** verification. The
 Firebase Emulator Suite, which is the **canonical** verification, did **not** run
 in this environment: no Java runtime, and the emulator JAR host
 (`storage.googleapis.com`) is unreachable. `test/emulator/rules.emulator.test.ts`
@@ -17,7 +17,20 @@ end-to-end scenario ran the website's real modules on their offline adapters.
 
 ## OCR
 
-There is **no image-to-text engine** (no Tesseract, no cloud Vision API). `runReceiptOcr` / `extractReceiptFields` parse **text sidecars and filename-like strings** with regex — and can mis-capture on prose (a receipt that says "Transaction Receipt" yields the word, not the number). Guests must confirm or type the reference and amount. **OCR never sets `payment_status` to verified** (`canAutoVerifyFromOcr()` returns `false`). A real pipeline would need: image → server-side function → OCR engine → text → reference + amount → user confirmation → payment submission → admin verification, with the API key in the function's secret store — never in web JS, the Flutter APK, public config, or Git. There is no `functions/` directory in this repository.
+Receipt OCR runs **in the browser**: `src/lib/payments/ocr.ts` lazily imports
+`tesseract.js` (`recognize`) so the bundle, the tests and the demo pages never pay
+for it until a Guest actually uploads a screenshot, and `extractReceiptFields`
+then parses whatever text comes back — a text sidecar or a filename-shaped string
+parses the same way, and prose mis-captures (a receipt that says "Transaction
+Receipt" yields the word, not the number). There is no cloud Vision API and no
+function that reads the image: nothing that runs where a key could be kept. A
+hosted pipeline would be image → function → engine → text → reference + amount →
+confirmation → submission → Admin verification, with the key in the function's
+secret store — never in web JS, the Flutter APK, public config, or Git.
+`functions/` exists and holds the Dispute API (`npm run deploy:functions`); it
+holds no OCR. Guests confirm or type the reference and amount either way, and
+**OCR never sets `payment_status` to verified**: `canAutoVerifyFromOcr()` returns
+`false`.
 
 ## Rate limiting
 
@@ -45,7 +58,7 @@ The version is displayed and the checkbox is required by the UI, but acceptance 
 
 **The Admin-side role mirror needs a first run by an allowlisted Admin.** `firestore.rules` can read `profiles/{uid}.role`; Realtime Database rules cannot read Firestore, so a Profile-promoted Admin is admitted by `live_location_admins/{uid}`, which only an address on the bootstrap allowlist may write. Until an allowlisted Admin has opened the app once after deploying the database rules, a promoted Admin gets a refused read and the panel says so.
 
-**Retention has no scheduler in this repository.** `messages_expires_at` is stamped and the policy is unit-tested, but Firestore Security Rules cannot delete on a schedule and there is no `functions/` directory here. The TTL policy and the `sweepMessages` function to deploy are written out in `docs/MESSAGING.md` § 4. Until they are deployed, the stamp is a schedule with nobody on it.
+**Retention has no scheduler in this repository.** `messages_expires_at` is stamped and the policy is unit-tested, but Firestore Security Rules cannot delete on a schedule, and the deployed `functions/` directory is the Dispute API alone — nothing is scheduled to run this sweep. The TTL policy and the `sweepMessages` function to deploy are written out in `docs/MESSAGING.md` § 4. Until they are deployed, the stamp is a schedule with nobody on it.
 
 ## Cache and cookies
 
@@ -120,9 +133,30 @@ Things that remain **outside** the rules' reach, unchanged by the pass:
 - OCR (`runReceiptOcr`, regex over text) is a convenience; it never sets a
   payment state, and the rules do not care whether a human or a regex filled the
   form in.
-- The `payment_references` catalogue is Admin-only and now void-only once used,
-  but no screen consumes it (see above), so duplicate detection is still a
-  contract function rather than a workflow.
+- The `payment_references` catalogue is Admin-only. It was not, until
+  2026-10-21: a **duplicate `match` block** in `firestore.rules` OR-ed
+  `allow create: if isSignedIn()` into the collection, so any signed-in Guest
+  could write a row into the catalogue the Admin verifies proofs against — the
+  route by which a ₱500 receipt is made to look expected for a ₱32,000 stay.
+  The duplicate is deleted, a spent row may now only be `void`-ed (never
+  rewritten, never re-listed as `available`, never deleted), and the website no
+  longer attempts its own catalogue write. The Admin's Payments screen
+  (`lib/views/payments/payment_refs_screen.dart`) is the writer. Nothing marks a
+  row spent automatically, so duplicate detection is still a contract function
+  rather than a workflow. ADR-0018, *Corrections*, has the detail.
+- **The rules do not price a Booking.** They hold its figures coherent with each
+  other — one 22-hour stay, a known classification, the 50/50 split to the
+  centavo, a claim not below the downpayment, counts that are counts — and they
+  refuse a *rate document* whose shape cannot be priced. Reading
+  `site_config/rates` to re-derive the money on a Guest create was removed on
+  2026-10-14, because it crossed Firestore's 1,000-expression budget and an
+  evaluation error arrives as a plain `permission-denied`. So a Booking that is
+  coherent and under-priced — ₱1,000 for a ₱32,000 stay, a zeroed deposit, an
+  unpriced third pet, a fourth guest in a three-person unit, a refund policy the
+  Guest typed — passes the rule layer, and only the Admin reading the screenshot
+  stands between it and a stay. ADR-0018 records it as accepted and interim;
+  `GAP (recorded, 2026-10-14)` in `test/rules/firestore-rules.test.ts` pins it,
+  so closing the gap (re-deriving at approve) has to flip that case to `deny`.
 - Nothing server-side can count requests, throttle a client, or reverse a bad
   write; the rules can only decide per write.
 
@@ -179,14 +213,14 @@ suite and must not be reported as one. Two further gaps:
   for the new delete door either. That gap is ADR-0015's, not ADR-0016's: the
   collection was added with supplemental cases only and the canonical file was
   never extended. **The emulator has therefore never evaluated this rule.**
-- **A pre-existing fixture bug sits next to these cases and makes them red.**
-  `adminSecurityDoc()` in `test/rules/context.ts` supplies a 36-character
-  `pin_hash`, but `isAdminSecurityShape()` requires `size() >= 40`, so the
-  suite's own `admin_security` *create* case fails on the unmodified repository.
-  The comment above the fixture claims 44 characters; the string is 36. Fixing it
-  is a one-line pad of that constant — deliberately **not** done here, since it
-  predates ADR-0016 and belongs to the ADR-0015 doors. Expect the rules suite to
-  be red on that case until it is.
+- **The fixture bug that sat next to these cases is fixed** (2026-10-21).
+  `adminSecurityDoc()` in `test/rules/context.ts` supplied a 36-character
+  `pin_hash` while `isAdminSecurityShape()` requires `size() >= 40`, so every
+  `admin_security` case in the suite failed on an unmodified repository; the
+  comment claimed 44. The fixture now pads to 44. The rotation case beside it
+  was also passing vacuously — it wrote the same `pin_hash` and `pin_updated_at`
+  back and expected a permission denial, which an *empty* diff grants; it now
+  changes the salt as well, so the door is really exercised.
 
 **An Admin locked out of Firebase is not helped by any of this.** The PIN gate
 sits behind sign-in, so a forgotten *account password* is a different problem with

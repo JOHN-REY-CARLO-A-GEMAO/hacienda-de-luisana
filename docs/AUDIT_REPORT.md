@@ -110,6 +110,14 @@ hacienda-de-luisana/
 #### [P1-01] Unauthenticated Public Booking Creation Bypass Boundaries (F01, F02)
 - **Status / Behavior**: Unauthenticated guests can create `Pending` bookings via `firestore.rules`. While standard 1-night stay pricing is strictly validated by `validAuthoritativeMoney`, multi-night or custom bookings constructed directly via Firestore client calls could create inconsistent state if rate rules fail to evaluate.
 - **Location**: `firestore.rules` (`validGuestCreate`, `validAuthoritativeMoney`), `src/lib/booking/submit.ts`.
+- **Correction, 2026-10-21**: this finding's conditional — "if rate rules fail to
+  evaluate" — is what actually happened. On 2026-10-14 the derivation crossed
+  Firestore's 1,000-expression budget, every evaluation became an error reported as
+  `permission-denied`, and no Guest booking could be created at all. The derivation
+  is gone, `validAuthoritativeMoney` and its helpers are deleted, and what the rule
+  layer does and does not decide is now written down in
+  [ADR-0018](./adr/0018-the-rule-layer-checks-coherence-not-price-and-the-gap-that-opens.md).
+  `src/lib/booking/submit.ts` is now `src/lib/firestoreBookings.ts`.
 - **Impact**: Mismatched booking totals, corrupted financial snapshots.
 - **Recommended Fix**: Re-verify all booking pricing snapshots on the Admin app during the `Approve` step before confirming dates.
 

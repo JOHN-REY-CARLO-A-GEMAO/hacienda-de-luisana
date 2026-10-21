@@ -55,7 +55,7 @@ The `/ 100.0` is load-bearing — CEL `/` between two ints is **integer division
 
 The second call site — the guest plan-choice guard in the `allow update` block — was swapped the same way.
 
-**`validAuthoritativeMoney` and its helpers are still in the file and are now dead code.** `scheduledRate`, `classifyCheckIn`, `validPetCount`, `petFee`, `validLateCheckout`, `lateCheckoutFee`, `stayTotalWithAddons` have no remaining callers. **Do not wire them back.** (I attempted this deletion and broke the file; it needs doing carefully.)
+**`validAuthoritativeMoney` and its helpers were left in the file as dead code (deleted 2026-10-21 — see §5b).** `scheduledRate`, `classifyCheckIn`, `validPetCount`, `petFee`, `validLateCheckout`, `lateCheckoutFee`, `stayTotalWithAddons` have no remaining callers. **Do not wire them back.** (I attempted this deletion and broke the file; it needs doing carefully.)
 
 Keep: `validGuestSchedule`, `validAHouseSchedule`, `validAvailableUnits`, `isCanonicalAccommodation` (used by the rates-write path), and `validHistoricalPlanChoice` (used at the plan-choice guard).
 
@@ -102,6 +102,34 @@ npx firebase emulators:exec --project demo-hacienda --only auth,firestore "npx v
 Always `--project demo-hacienda`. Never run a deploy from this box.
 
 ---
+
+## 5b. Status after 2026-10-21 — read this before acting on anything below
+
+Done since this handoff was written, all verified by executing the rule text
+(`test:rules` **315/315**, `npm test` **949/949**, `test:e2e` **44/44**, safety
+**44/0**):
+
+- §4 steps 3–5 and §6 in full: the `.toSet()` rule bug, the `pin_hash` fixture,
+  the `access_logs` fixtures, the vacuous empty-diff rotation case, and the
+  eleven stale rate tests. The rate tests now assert each guarantee where it
+  lives — shape at publication, arithmetic at submission — plus one
+  `GAP (recorded, 2026-10-14)` case that pins the accepted gap as an assertion.
+  The first of the three ways §6 offered was chosen; nothing was deleted.
+- §7: written up as
+  `docs/adr/0018-the-rule-layer-checks-coherence-not-price-and-the-gap-that-opens.md`,
+  which also records three findings that turned up while reconciling: the
+  duplicate `match /payment_references/{refId}` block that OR-ed a
+  Guest-writable policy into the Admin's verification catalogue (now deleted,
+  with the website's doomed catalogue write), `holiday_dates` required at
+  publication, and whole-number counts required at submission.
+- §8 items 3, 4, 5.
+
+**Still open, in the handoff's own order:** §8 items 1 and 2 — boot the emulator
+and deploy, in that order, nothing below means anything to the live project until
+they run; item 6, the 1,000-expression counter in `test/rules/engine.ts`; item 7,
+deleting the dead helpers (`validAuthoritativeMoney` and friends — nothing
+references them now); and the Admin-side re-derivation at approve, which is the
+only thing that closes the money gap.
 
 ## 6. The 11 tests you must decide about
 

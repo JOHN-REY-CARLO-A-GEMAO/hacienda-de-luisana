@@ -387,7 +387,7 @@ async function explainGuestCreateRefusal(
   if (!input.uid?.trim()) {
     return {
       code: 'GUEST_IDENTITY_REQUIRED',
-      message: 'We could not attach this booking to a Guest identity, so nothing was saved. Please try again in a moment.',
+      message: 'We could not attach this booking to you, so nothing was saved. Please sign in again and resend, or try again in a moment.',
       field: 'payment',
     }
   }
@@ -637,22 +637,14 @@ export const cloudBookingsDB = {
       const ref = await addDoc(collection(db, COLLECTION), payload)
       await activityLogDB.append([submissionEntry(ref.id, submitter, at)])
 
-      // Automatically add payment reference to payment_references collection
-      // for Admin app to verify against
-      if (rest.payment_reference && rest.amount_claimed) {
-        try {
-          await addDoc(collection(db, 'payment_references'), {
-            reference: rest.payment_reference,
-            amount: rest.amount_claimed,
-            status: 'available',
-            booking_id: ref.id,
-            created_at: serverTimestamp(),
-          })
-        } catch (e) {
-          // Non-critical: don't fail the booking if this fails
-          console.warn('[Firestore] Failed to add payment reference to catalog:', e)
-        }
-      }
+      // The payment reference travels on the Booking (`payment_reference`,
+      // `amount_claimed`) and stops there. `payment_references` — the catalogue
+      // an Admin checks a proof against — is Admin-only in `firestore.rules`, and
+      // that is the right boundary: a Guest who could add a row to it could make
+      // any amount look expected. This used to attempt the write from here and
+      // swallow the refusal, which cost a rejected write on every booked payment
+      // and one console line nobody reads. The Admin's Payments screen is the
+      // one that curates the catalogue.
 
       lastWriteFailure = null
       // Return optimistic booking
