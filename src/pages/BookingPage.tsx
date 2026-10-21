@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams, Link, useNavigate } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { saveBookingDraft } from '../lib/bookingDraft'
@@ -9,12 +9,8 @@ import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib
 import { SmartImage } from '../components/SmartImage'
 import { useAuth } from '../hooks/useAuth'
 import {
-  EMAIL_MAX,
-  NAME_MAX,
+  composeFullName,
   guestCountValid,
-  sanitizeNameInput,
-  sanitizePhoneInput,
-  validateAdditionalNotes,
   validateEmail,
   validateName,
   validatePhMobile,
@@ -62,7 +58,9 @@ type FormState = {
 type Errors = Partial<Record<keyof FormState, string>>
 
 export function BookingPage() {
-  const { user, profile } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
+  const location = useLocation()
+  const sessionNotice = (location.state as { notice?: string } | null)?.notice ?? ''
   const { minimumBookingLeadTimeDays, earliestCheckIn } = useBookingPolicy()
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -91,24 +89,33 @@ export function BookingPage() {
   const [availability, setAvailability] = useState<{ available: boolean; heldBy: number } | null>(null)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
 
-  // A signed-in Guest does not type their own details again. Filled once, and
-  // only into fields they have left empty: a name they are typing is theirs.
+  // A signed-in Guest does not type their own details again. Filled once the
+  // account has finished loading (so the Profile is there, not just the sign-in),
+  // and only into fields they have left empty: a name they are typing is theirs.
+  // The name is always First + Middle + Last, the same way the account shows it.
   const prefilled = useRef(false)
+  const [usedAccount, setUsedAccount] = useState(false)
   useEffect(() => {
-    if (prefilled.current || (!user && !profile)) return
+    if (prefilled.current || authLoading || !user || user.isAnonymous) return
     prefilled.current = true
     const fullProfileName =
+      composeFullName({ first: profile?.first_name, middle: profile?.middle_name, last: profile?.last_name }) ||
       profile?.display_name ||
-      (profile?.first_name
-        ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' ')
-        : '')
+      user.displayName ||
+      ''
+    const next = {
+      name: fullProfileName,
+      email: profile?.email || user.email || '',
+      phone: profile?.phone || '',
+    }
     setForm((current) => ({
       ...current,
-      name: current.name || fullProfileName || user?.displayName || '',
-      email: current.email || profile?.email || user?.email || '',
-      phone: current.phone || profile?.phone || '',
+      name: current.name || next.name,
+      email: current.email || next.email,
+      phone: current.phone || next.phone,
     }))
-  }, [user, profile])
+    setUsedAccount(Boolean(next.name || next.email || next.phone))
+  }, [user, profile, authLoading])
 
   const selectedAcc = useMemo(
     () => ACCOMMODATIONS.find((a) => a.id === form.accommodation),
@@ -195,10 +202,6 @@ export function BookingPage() {
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }))
     setErrors((e) => ({ ...e, [k]: undefined }))
-    if (status === 'error') {
-      setStatus('idle')
-      setErrorMsg('')
-    }
   }
 
   const validateSingleField = (key: keyof FormState): string | undefined => {
@@ -233,10 +236,6 @@ export function BookingPage() {
     if (key === 'email') {
       const email = validateEmail(form.email)
       if (!email.ok) return email.message
-    }
-    if (key === 'special_requests') {
-      const notesCheck = validateAdditionalNotes(form.special_requests)
-      if (!notesCheck.ok) return notesCheck.message
     }
     return undefined
   }
@@ -276,20 +275,14 @@ export function BookingPage() {
     if (!phone.ok) e.phone = phone.message
     const email = validateEmail(form.email)
     if (!email.ok) e.email = email.message
-    const notesCheck = validateAdditionalNotes(form.special_requests)
-    if (!notesCheck.ok) e.special_requests = notesCheck.message
-    if (!acceptedTerms) e.special_requests = e.special_requests || `Please read and accept the Terms and Conditions (version ${LEGAL_VERSION})`
+    if (!acceptedTerms) e.special_requests = `Please read and accept the Terms and Conditions (version ${LEGAL_VERSION})`
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    if (!validate()) {
-      setStatus('error')
-      setErrorMsg('Please correct the highlighted form errors before continuing to downpayment.')
-      return
-    }
+    if (!validate()) return
 
     // A successful synchronous form check is not enough to open the payment
     // step. The policy document may have changed since the page mounted, and a
@@ -457,6 +450,11 @@ export function BookingPage() {
             noValidate
             className="lg:col-span-2 bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 lg:p-10 space-y-8"
           >
+            {sessionNotice && (
+              <div role="alert" className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+                {sessionNotice}
+              </div>
+            )}
             {status === 'error' && (
               <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
                 {errorMsg}
@@ -497,25 +495,11 @@ export function BookingPage() {
                   <input
                     type="number"
                     min={1}
-                    max={selectedAcc?.capacity}
                     inputMode="numeric"
                     className="field"
                     value={form.guests}
-                    onKeyDown={(e) => {
-                      if (['e', 'E', '+', '-', '.'].includes(e.key)) {
-                        e.preventDefault()
-                      }
-                    }}
-                    onChange={(e) => {
-                      const digits = e.target.value.replace(/\D/g, '')
-                      set('guests', digits ? Math.max(1, Number(digits)) : ('' as any))
-                    }}
-                    onBlur={() => {
-                      if (!form.guests || Number(form.guests) < 1) {
-                        set('guests', 1)
-                      }
-                      handleBlur('guests')
-                    }}
+                    onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
+                    onBlur={() => handleBlur('guests')}
                   />
                 </Field>
                 <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
@@ -535,24 +519,25 @@ export function BookingPage() {
 
             <div className="pt-2 border-t border-forest-900/5">
               <h2 className="font-serif text-2xl text-forest-900 mt-6">Your Details</h2>
+              {usedAccount ? (
+                <p className="mt-2 text-xs text-emerald-800">
+                  Filled in from your account. You can change any of it for this booking, and update your
+                  profile any time from <Link to="/account?tab=profile" className="underline">My Profile</Link>.
+                </p>
+              ) : !user ? (
+                <p className="mt-2 text-xs text-forest-700">
+                  Have an account? <Link to="/guest/auth" className="underline">Sign in</Link> and these fields fill themselves.
+                </p>
+              ) : null}
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
                 <div className="sm:col-span-2" data-tour="guest-details">
-                  <Field label="Name" error={errors.name}>
+                  <Field label="Full name (First Middle Last)" error={errors.name}>
                     <input
                       className="field"
                       placeholder="Juan Dela Cruz"
                       value={form.name}
-                      maxLength={NAME_MAX}
                       data-tour-field="guest-name"
-                      onChange={(e) => {
-                        const sanitized = sanitizeNameInput(e.target.value)
-                        set('name', sanitized)
-                      }}
-                      onKeyDown={(e) => {
-                        if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                          e.preventDefault()
-                        }
-                      }}
+                      onChange={(e) => set('name', e.target.value)}
                       onBlur={() => handleBlur('name')}
                       autoComplete="name"
                     />
@@ -564,14 +549,8 @@ export function BookingPage() {
                     placeholder="09XX XXX XXXX"
                     type="tel"
                     inputMode="tel"
-                    maxLength={20}
                     value={form.phone}
                     onChange={(e) => set('phone', e.target.value)}
-                    onKeyDown={(e) => {
-                      if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                        e.preventDefault()
-                      }
-                    }}
                     onBlur={() => handleBlur('phone')}
                     autoComplete="tel"
                   />
@@ -581,7 +560,6 @@ export function BookingPage() {
                     className="field"
                     placeholder="you@email.com"
                     type="email"
-                    maxLength={EMAIL_MAX}
                     value={form.email}
                     onChange={(e) => set('email', e.target.value)}
                     onBlur={() => handleBlur('email')}
@@ -615,7 +593,6 @@ export function BookingPage() {
               }}
               published={published}
               fallback={addonFallbacks}
-              error={errors.special_requests}
             />
 
             {availability && !availability.available && (
@@ -651,11 +628,7 @@ export function BookingPage() {
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={
-                  status === 'submitting' ||
-                  (availability !== null && !availability.available) ||
-                  Object.values(errors).some(Boolean)
-                }
+                disabled={status === 'submitting' || (availability !== null && !availability.available)}
                 className="btn-primary w-full sm:w-auto disabled:opacity-70 disabled:cursor-not-allowed"
                 data-tour="submit-booking"
               >
