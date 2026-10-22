@@ -30,11 +30,7 @@
       :root {
         --canvas-bg: #FAF7F2;
         --canvas-text: #15241B;
-        color-scheme: light dark;
-      }
-      html.dark {
-        --canvas-bg: #0D1711;
-        --canvas-text: #FAF7F2;
+        color-scheme: light;
       }
       html, body {
         background-color: var(--canvas-bg);
@@ -43,19 +39,20 @@
       }
     </style>
     <script>
+      /*
+       * One brand theme: cream paper and dark green ink, the way the Hacienda's
+       * own material is printed. There is no theme switch in the navbar any
+       * more, so this no longer follows the OS or a stored preference — a
+       * visitor who chose dark while the switch existed would otherwise be
+       * stuck on a theme they cannot leave. `styles.css` keeps its `.dark`
+       * rules; nothing applies the class.
+       */
       (function() {
         try {
-          var saved = localStorage.getItem('hdl_theme');
-          var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var isDark = saved === 'dark' || (!saved && systemDark);
-          if (isDark) {
-            document.documentElement.classList.add('dark');
-            document.documentElement.style.colorScheme = 'dark';
-          } else {
-            document.documentElement.classList.remove('dark');
-            document.documentElement.style.colorScheme = 'light';
-          }
+          localStorage.removeItem('hdl_theme');
         } catch (e) {}
+        document.documentElement.classList.remove('dark');
+        document.documentElement.style.colorScheme = 'light';
       })();
     </script>
 

@@ -131,7 +131,7 @@ export function Accommodations() {
                           </li>
                         ))}
                       </ul>
-                      <div className="mt-3 text-[11px] text-forest-700/60">{a.sleeping.source}</div>
+                      <div className="mt-3 text-[11px] text-forest-700/75">{a.sleeping.source}</div>
                     </div>
                   )}
 

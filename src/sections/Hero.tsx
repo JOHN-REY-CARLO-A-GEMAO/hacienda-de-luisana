@@ -27,7 +27,7 @@ export function Hero() {
   return (
     <section
       ref={section}
-      className="hero relative h-[100svh] min-h-[640px] w-full overflow-hidden bg-forest-950 text-cream-50"
+      className="hero relative min-h-[100svh] w-full overflow-hidden bg-forest-950 text-cream-50 lg:h-[100svh]"
       data-motion={reducedMotion ? 'reduced' : 'full'}
     >
       {/* Layer 0 — sky & photograph (moves slowest) */}
@@ -63,8 +63,11 @@ export function Hero() {
       </div>
 
       {/* Layer 1 — content */}
-      <div className="relative z-10 h-full flex flex-col">
-        <div className="flex-1 flex items-center">
+      <div className="relative z-10 flex flex-col min-h-[100svh] lg:h-full lg:min-h-0">
+        {/* `pt` clears the fixed bar: below `lg` the hero grows with its own
+            copy instead of squeezing it into 100svh, so the location chip and
+            the headline can never slide up under the navbar. */}
+        <div className="flex-1 flex items-start lg:items-center pt-[86px] pb-10 lg:py-0">
           <div className="mx-auto max-w-7xl w-full px-5 lg:px-8">
             <div ref={content} className="hero-layer max-w-2xl animate-fade-in" data-hero-layer="content">
               <div className="inline-flex items-center gap-2 rounded-full border border-cream-100/30 bg-forest-950/45 backdrop-blur-md px-3.5 py-1.5 text-xs text-cream-100 font-medium">

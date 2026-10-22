@@ -17,6 +17,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from '../../src/App'
 import { AuthProvider } from '../../src/context/AuthContext'
 import { LINKS as NAV_LINKS } from '../../src/components/Nav'
+import { FAQS } from '../../src/config/site'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -38,14 +39,35 @@ const PAGES: ReadonlyArray<{ path: string; heading: string }> = [
   { path: '/contact', heading: 'Talk to the Hacienda' },
 ]
 
-/** Every path the site links to from the nav or the footer. */
+/**
+ * Every path the site links to.
+ *
+ * /rates and /faqs are no longer separate entries in the bar — they are the
+ * detail behind "Stay & Rates" and "Contact" — but both keep their addresses
+ * and are linked from the consolidated page and the footer, so they are listed
+ * here the way the footer links them.
+ */
 const LINKED_PATHS = [
   ...NAV_LINKS.map((l) => l.href),
+  '/rates',
+  '/faqs',
   '/house-rules',
   '/legal',
   '/book',
   '/account',
   '/messages',
+]
+
+/** The proposed bar, in order. Listed rather than derived from LINKS, so a
+    link silently disappearing from the bar fails here. */
+const PRIMARY_NAV = [
+  { href: '/', label: 'Home' },
+  { href: '/stay', label: 'Stay & Rates' },
+  { href: '/experience', label: 'Experience' },
+  { href: '/gallery', label: 'Gallery' },
+  { href: '/location', label: 'Location' },
+  { href: '/reviews', label: 'Reviews' },
+  { href: '/contact', label: 'Contact' },
 ]
 
 /** The anchors the homepage still carries, and the hero and intro scroll to. */
@@ -123,6 +145,42 @@ describe('the homepage previews and the pages behind them', () => {
     const hidden = reveals.filter((el) => !el.classList.contains('in'))
     expect(hidden, `${hidden.length} reveal blocks on /faqs are stuck invisible`).toEqual([])
     expect(page.text()).toContain('Common questions')
+  })
+
+  it('shows the seven primary destinations directly, with no More menu', () => {
+    expect(NAV_LINKS.map((l) => l.label)).toEqual(PRIMARY_NAV.map((l) => l.label))
+    expect(NAV_LINKS.map((l) => l.href)).toEqual(PRIMARY_NAV.map((l) => l.href))
+
+    const page = open('/')
+    const siteNav = page.container.querySelector('nav[aria-label="Site"]')
+    expect(siteNav, 'the desktop bar has no nav[aria-label="Site"]').toBeTruthy()
+    const links = [...siteNav!.querySelectorAll('a')].map((a) => ({
+      href: a.getAttribute('href'),
+      label: (a.textContent ?? '').trim(),
+    }))
+    expect(links).toEqual(PRIMARY_NAV)
+    // No disclosure control and no hidden destination inside the bar.
+    expect(siteNav!.querySelector('[aria-haspopup], [aria-expanded], [role="menu"]')).toBeNull()
+    expect((siteNav!.textContent ?? '').replace(/\s+/g, ' ')).not.toMatch(/\bMore\b/)
+  })
+
+  it('answers "how much" on Stay & Rates and "can I ask?" on Contact', () => {
+    // "Stay & Rates" is one destination: the rooms and what they cost, on one
+    // page. /rates stays reachable for anyone holding that address.
+    const stay = open('/stay')
+    expect(stay.text()).toContain('Accommodations at the Hacienda')
+    expect(stay.text()).toContain("Rates & What's Included")
+    expect(stay.text()).toContain('Deposit & payment')
+    expect(stay.text()).toContain('₱1,000')
+    expect(stay.container.querySelectorAll('a[href="/rates"]').length).toBeGreaterThan(0)
+    expect(stay.container.querySelector('#rates'), '/stay has no rates section').toBeTruthy()
+
+    // "Contact" carries the FAQs; /faqs still exists and is linked from here.
+    const contact = open('/contact')
+    expect(contact.text()).toContain('Talk to the Hacienda')
+    expect(contact.container.querySelector('#faqs'), '/contact has no FAQ section').toBeTruthy()
+    for (const f of FAQS) expect(contact.text()).toContain(f.q)
+    expect(contact.container.querySelectorAll('a[href="/faqs"]').length).toBeGreaterThan(0)
   })
 
   it('links to every dedicated page from the nav or the footer', () => {
