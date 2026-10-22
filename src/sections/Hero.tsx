@@ -122,7 +122,7 @@ export function Hero() {
         </div>
 
         {/* Bottom strip: scene marker, scroll cue, at-a-glance facts (all from config) */}
-        <div className="mx-auto max-w-7xl w-full px-5 lg:px-8 pb-24 lg:pb-9 flex items-end justify-between gap-6">
+        <div className="mx-auto max-w-7xl w-full px-5 lg:px-8 pb-10 lg:pb-9 flex items-end justify-between gap-6">
           <div className="hidden sm:block text-[11px] uppercase tracking-eyebrow text-cream-100/60">
             <span className="font-serif text-2xl text-cream-50/90 not-italic tracking-normal mr-3">01</span>
             {BUSINESS.tagline}

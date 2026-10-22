@@ -3,7 +3,6 @@ import { useEffect } from 'react'
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Nav } from './components/Nav'
 import { Footer } from './components/Footer'
-import { MobileStickyCTA } from './components/MobileStickyCTA'
 import { Home } from './pages/Home'
 import { StayPage } from './pages/StayPage'
 import { RatesPage } from './pages/RatesPage'
@@ -76,7 +75,6 @@ function WebsiteLayout() {
         <Outlet />
       </main>
       <Footer />
-      <MobileStickyCTA />
       <Tutorial />
     </div>
   )

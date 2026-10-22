@@ -1,7 +1,6 @@
 import { PageShell } from '../components/PageShell'
 import { Accommodations } from '../sections/Accommodations'
 import { Amenities } from '../sections/Amenities'
-import { Rates } from '../sections/Rates'
 import { BUSINESS } from '../config/site'
 import { Link } from 'react-router-dom'
 
@@ -15,23 +14,21 @@ import { Link } from 'react-router-dom'
  * there is one description of each accommodation in the codebase and not two
  * that can drift apart.
  *
- * The `Rates` section is mounted here too, so the nav's single "Stay & Rates"
- * link reaches both the rooms and what they cost. /rates keeps its own address
- * and its own page: a bookmark, a footer link or a search result that says
- * /rates still opens the full rate tables, and the link at the foot of this
- * page goes there for anyone who wants the figures without the rooms above.
+ * Rates have their own page. Keeping the full rate tables out of this page
+ * avoids making guests read the same UI twice while preserving a direct link
+ * for anyone comparing accommodations and prices.
  */
 export function StayPage() {
   return (
     <PageShell
-      eyebrow="Stay &amp; Rates"
+      eyebrow="Stay"
       title="Accommodations at the Hacienda"
       lead={
         <p>
           Three ways to stay on the same grounds, from the private Main House to an A-frame camping
           unit. Every stay is a standard {BUSINESS.policies.standardStayHours}-hour booking — check-in
           from {BUSINESS.policies.checkIn}, check-out by {BUSINESS.policies.checkOut}. Rates for each
-          accommodation are below, with the deposit, inclusions and extras.
+          accommodation are available on the Rates &amp; Fees page.
         </p>
       }
     >
@@ -40,23 +37,22 @@ export function StayPage() {
           <a href="#stay" className="btn-ghost text-xs">
             Accommodations
           </a>
-          <a href="#rates" className="btn-ghost text-xs">
+          <Link to="/rates" className="btn-ghost text-xs">
             Rates &amp; fees
-          </a>
+          </Link>
         </div>
       </nav>
 
       <Accommodations />
       <Amenities />
-      <Rates />
 
       <div className="mx-auto max-w-3xl px-5 lg:px-8 py-14">
         <p className="text-sm text-forest-800/80 dark:text-cream-200/80 leading-relaxed">
-          Prefer the figures on a page of their own?{' '}
+          Ready to compare prices?{' '}
           <Link to="/rates" className="underline underline-offset-2">
             Rates &amp; Fees
           </Link>{' '}
-          has the same tables, and the{' '}
+          lists current rates, inclusions, deposits and extras. The{' '}
           <Link to="/faqs" className="underline underline-offset-2">
             FAQs
           </Link>{' '}

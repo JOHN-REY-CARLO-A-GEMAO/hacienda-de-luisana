@@ -62,7 +62,7 @@ const LINKED_PATHS = [
     link silently disappearing from the bar fails here. */
 const PRIMARY_NAV = [
   { href: '/', label: 'Home' },
-  { href: '/stay', label: 'Stay & Rates' },
+  { href: '/stay', label: 'Stay' },
   { href: '/experience', label: 'Experience' },
   { href: '/gallery', label: 'Gallery' },
   { href: '/location', label: 'Location' },
@@ -164,23 +164,23 @@ describe('the homepage previews and the pages behind them', () => {
     expect((siteNav!.textContent ?? '').replace(/\s+/g, ' ')).not.toMatch(/\bMore\b/)
   })
 
-  it('answers "how much" on Stay & Rates and "can I ask?" on Contact', () => {
-    // "Stay & Rates" is one destination: the rooms and what they cost, on one
-    // page. /rates stays reachable for anyone holding that address.
+  it('keeps rates and FAQs on their own focused pages', () => {
     const stay = open('/stay')
     expect(stay.text()).toContain('Accommodations at the Hacienda')
-    expect(stay.text()).toContain("Rates & What's Included")
-    expect(stay.text()).toContain('Deposit & payment')
-    expect(stay.text()).toContain('₱1,000')
+    expect(stay.container.querySelector('#rates'), '/stay repeats the rates UI').toBeNull()
     expect(stay.container.querySelectorAll('a[href="/rates"]').length).toBeGreaterThan(0)
-    expect(stay.container.querySelector('#rates'), '/stay has no rates section').toBeTruthy()
 
-    // "Contact" carries the FAQs; /faqs still exists and is linked from here.
+    const rates = open('/rates')
+    expect(rates.text()).toContain("Rates & What's Included")
+    expect(rates.text()).toContain('Deposit & payment')
+
     const contact = open('/contact')
     expect(contact.text()).toContain('Talk to the Hacienda')
-    expect(contact.container.querySelector('#faqs'), '/contact has no FAQ section').toBeTruthy()
-    for (const f of FAQS) expect(contact.text()).toContain(f.q)
+    expect(contact.container.querySelector('#faqs'), '/contact repeats the FAQ UI').toBeNull()
     expect(contact.container.querySelectorAll('a[href="/faqs"]').length).toBeGreaterThan(0)
+
+    const faqs = open('/faqs')
+    for (const f of FAQS) expect(faqs.text()).toContain(f.q)
   })
 
   it('links to every dedicated page from the nav or the footer', () => {
@@ -223,7 +223,7 @@ describe('the homepage previews and the pages behind them', () => {
     const page = open('/')
     const bookLinks = [...page.container.querySelectorAll('a[href^="/book"]')]
     expect(bookLinks.length, 'the homepage must still reach the booking form').toBeGreaterThan(0)
-    for (const anchor of ['hero-cta', 'accommodation-cta', 'nav-book', 'mobile-cta']) {
+    for (const anchor of ['hero-cta', 'accommodation-cta', 'nav-book']) {
       expect(page.container.querySelector(`[data-tour="${anchor}"]`), `data-tour="${anchor}" is gone`).toBeTruthy()
     }
   })
