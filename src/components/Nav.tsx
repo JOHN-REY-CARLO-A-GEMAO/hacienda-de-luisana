@@ -31,9 +31,9 @@ export const LINKS: NavLink[] = [
 
 /** Pages that are linked from a page or the footer rather than the bar. */
 export const SECONDARY_LINKS: NavLink[] = [
-  { href: '/support', label: 'Support & Disputes' },
-  { href: '/house-rules', label: 'House Rules' },
-  { href: '/legal', label: 'Terms' },
+  { href: '/support', label: 'Support & disputes' },
+  { href: '/house-rules', label: 'House rules' },
+  { href: '/legal', label: 'Terms & policies' },
 ]
 
 /** True when `pathname` sits in the section `link` stands for. */
@@ -231,8 +231,8 @@ export function Nav() {
               data-tour="nav-book"
               className={
                 transparent
-                  ? 'btn bg-cream-50 text-forest-900 hover:bg-white text-xs h-9 px-4 shadow-glow whitespace-nowrap shrink-0'
-                  : 'btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white text-xs h-9 px-4 shadow-soft whitespace-nowrap shrink-0'
+                  ? 'btn btn-sm bg-cream-50 text-forest-900 hover:bg-white shadow-glow whitespace-nowrap shrink-0'
+                  : 'btn btn-sm bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white shadow-soft whitespace-nowrap shrink-0'
               }
             >
               Book Your Stay
@@ -245,7 +245,7 @@ export function Nav() {
             <Link
               to="/book"
               aria-label="Book your stay"
-              className={`btn text-xs h-10 px-2.5 min-[360px]:px-3.5 sm:px-4 whitespace-nowrap ${
+              className={`btn btn-sm h-10 whitespace-nowrap min-[360px]:px-3.5 sm:px-4 ${
                 transparent
                   ? 'bg-cream-50 text-forest-900 hover:bg-white'
                   : 'bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white'

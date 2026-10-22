@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { ArrowRight } from '../lib/icons'
 import { ParallaxImage } from '../components/ParallaxImage'
 import { SceneHeader } from '../components/Scene'
@@ -15,7 +16,7 @@ import { BUSINESS } from '../config/site'
  */
 export function Intro() {
   return (
-    <section id="intro" className="relative py-24 lg:py-36 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 overflow-hidden transition-colors duration-300">
+    <section id="intro" className="relative section-full bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 overflow-hidden transition-colors duration-300">
       {/* Soft light wash behind the collage */}
       <div
         className="pointer-events-none absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full opacity-60 dark:opacity-20 blur-3xl"
@@ -23,7 +24,7 @@ export function Intro() {
         aria-hidden="true"
       />
 
-      <div className="relative mx-auto max-w-7xl px-5 lg:px-8 grid lg:grid-cols-12 gap-14 lg:gap-16 items-center">
+      <Container width="wide" className="relative grid lg:grid-cols-12 gap-14 lg:gap-16 items-center">
         {/* Layered collage */}
         <div className="lg:col-span-7 relative reveal">
           <ParallaxImage
@@ -82,7 +83,7 @@ export function Intro() {
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
           </a>
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

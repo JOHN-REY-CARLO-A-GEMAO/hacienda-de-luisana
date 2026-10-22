@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { TERMS } from '../lib/legal'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { formatRefundPolicySummary } from '../lib/booking'
-import { Alert, Card, Container, PageHeader } from '../components/ui'
+import { Alert, Card, Container, Page, PageHeader } from '../components/ui'
 
 /**
  * /legal — the terms a Guest accepts, in one canonical copy.
@@ -16,7 +16,7 @@ export function LegalPage() {
   const published = usePublishedRates()
 
   return (
-    <div className="min-h-screen bg-cream-50 pb-24 pt-28">
+    <Page>
       <Container width="narrow">
         <PageHeader
           eyebrow="Policies"
@@ -61,6 +61,6 @@ export function LegalPage() {
           </Link>
         </div>
       </Container>
-    </div>
+    </Page>
   )
 }

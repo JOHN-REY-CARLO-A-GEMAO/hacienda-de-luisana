@@ -37,7 +37,7 @@ import {
 import { officialAddonFallbacks } from '../lib/stayRequests'
 import { StayRequestsSection, AddonFeeSummary } from '../components/Booking/StayRequestsSection'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
-import { Alert, CheckboxRow, Container, Field, PageHeader } from '../components/ui'
+import { Alert, CheckboxRow, Container, Field, Input, Page, PageHeader, Select } from '../components/ui'
 
 type FormState = {
   check_in: string
@@ -427,7 +427,7 @@ export function BookingPage() {
   }
 
   return (
-    <div className="relative pt-28 pb-24 bg-cream-50 min-h-screen">
+    <Page className="relative">
       {/* Visual shell only — soft countryside wash behind the form; the form itself is untouched */}
       <div
         className="pointer-events-none absolute -top-32 right-[-10%] h-[560px] w-[560px] rounded-full opacity-70 blur-3xl"
@@ -475,7 +475,7 @@ export function BookingPage() {
             {status === 'error' && <Alert tone="danger">{errorMsg}</Alert>}
 
             <div>
-              <h2 className="font-serif text-2xl text-forest-900">Stay Details</h2>
+              <h2 className="h2">Stay details</h2>
               <p id="booking-lead-time" className="mt-2 text-sm text-forest-700">
                 Book at least {minimumBookingLeadTimeDays} days before check-in.
                 Earliest check-in: {earliestCheckIn} (Philippine time).
@@ -483,8 +483,7 @@ export function BookingPage() {
               <div className="mt-6" data-tour="stay-details">
                 <div className="grid sm:grid-cols-2 gap-5">
                   <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
-                    <select
-                      className="field appearance-none pr-10"
+                    <Select
                       value={form.accommodation}
                       onChange={(e) => {
                         set('accommodation', e.target.value)
@@ -495,14 +494,13 @@ export function BookingPage() {
                       {options.map((o) => (
                         <option key={o.id} value={o.id}>{o.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   </Field>
                   <Field label="Number of guests" error={errors.guests}>
-                    <input
+                    <Input
                       type="number"
                       min={1}
                       inputMode="numeric"
-                      className="field"
                       value={form.guests}
                       onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
                       onBlur={() => handleBlur('guests')}
@@ -511,9 +509,9 @@ export function BookingPage() {
                 </div>
 
                 {calendarNotice && (
-                  <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <Alert tone="warning" className="mt-5">
                     {calendarNotice}
-                  </div>
+                  </Alert>
                 )}
 
                 <AvailabilityCalendar
@@ -533,9 +531,8 @@ export function BookingPage() {
 
                 <div className="mt-5 grid sm:grid-cols-2 gap-5">
                   <Field label="Selected check-in" error={errors.check_in}>
-                    <input
+                    <Input
                       type="date"
-                      className="field"
                       min={earliestCheckIn}
                       aria-describedby="booking-lead-time"
                       value={form.check_in}
@@ -545,9 +542,8 @@ export function BookingPage() {
                     />
                   </Field>
                   <Field label="Selected check-out" error={errors.check_out}>
-                    <input
+                    <Input
                       type="date"
-                      className="field"
                       min={form.check_in >= earliestCheckIn ? form.check_in : earliestCheckIn}
                       value={form.check_out}
                       data-tour-field="check-out"
@@ -563,7 +559,7 @@ export function BookingPage() {
             </div>
 
             <div className="pt-2 border-t border-forest-900/5">
-              <h2 className="font-serif text-2xl text-forest-900 mt-6">Your Details</h2>
+              <h2 className="h2 mt-8">Your details</h2>
               {usedAccount ? (
                 <p className="mt-2 text-xs text-emerald-800">
                   Filled in from your account. You can change any of it for this booking, and update your
@@ -577,8 +573,7 @@ export function BookingPage() {
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
                 <div className="sm:col-span-2" data-tour="guest-details">
                   <Field label="Full name (First Middle Last)" error={errors.name}>
-                    <input
-                      className="field"
+                    <Input
                       placeholder="Juan Dela Cruz"
                       value={form.name}
                       data-tour-field="guest-name"
@@ -589,8 +584,7 @@ export function BookingPage() {
                   </Field>
                 </div>
                 <Field label="Mobile number" error={errors.phone}>
-                  <input
-                    className="field"
+                  <Input
                     placeholder="09XX XXX XXXX"
                     type="tel"
                     inputMode="tel"
@@ -601,8 +595,7 @@ export function BookingPage() {
                   />
                 </Field>
                 <Field label="Email" error={errors.email}>
-                  <input
-                    className="field"
+                  <Input
                     placeholder="you@email.com"
                     type="email"
                     value={form.email}
@@ -780,7 +773,7 @@ export function BookingPage() {
           </aside>
         </div>
       </Container>
-    </div>
+    </Page>
   )
 }
 

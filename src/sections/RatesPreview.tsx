@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { ACCOMMODATIONS, FEES } from '../config/site'
 import { SceneHeader } from '../components/Scene'
@@ -26,8 +27,8 @@ export function RatesPreview() {
   const active = ACCOMMODATIONS.filter((a) => a.active)
 
   return (
-    <section id="rates" className="py-20 lg:py-28 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 transition-colors duration-300">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="rates" className="section-roomy bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 transition-colors duration-300">
+      <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader
             index="05"
@@ -95,7 +96,7 @@ export function RatesPreview() {
             <ArrowRight size={13} />
           </Link>
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

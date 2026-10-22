@@ -125,7 +125,6 @@ body {
 .btn {
   @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-all duration-300 ease-out-expo focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-forest-600 focus-visible:ring-offset-cream-50 dark:focus-visible:ring-brass-400 dark:focus-visible:ring-offset-forest-950 disabled:opacity-50 disabled:pointer-events-none;
 }
-.btn-sm { @apply px-4 py-2 text-xs; }
 .btn-primary {
   @apply btn bg-forest-700 text-cream-50 hover:bg-forest-800 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white shadow-soft;
 }
@@ -148,6 +147,14 @@ body {
 .btn-danger-quiet {
   @apply btn bg-transparent text-red-700 border border-red-700/25 hover:bg-red-50 dark:text-red-300 dark:border-red-300/30 dark:hover:bg-red-950/40;
 }
+/* Compact size — declared after the variants on purpose: each variant re-applies
+   the `btn` base (and therefore its 48px padding), so the size modifier has to
+   come last to win. A `btn-sm` without a variant still needs `btn`. */
+.btn-sm { @apply px-4 py-2 text-xs; }
+/* Large: a page's single hero action, and nothing else. */
+.btn-lg { @apply px-8 py-4 text-base; }
+/* On a dark photograph or a forest band: cream fill, forest ink. */
+.btn-on-dark { @apply btn bg-cream-50 text-forest-950 hover:bg-white shadow-soft; }
 
 /* Icon-only control */
 .icon-btn {
@@ -180,11 +187,23 @@ body {
 .alert-warning { @apply bg-amber-50 border-amber-200 text-amber-900; }
 .alert-danger { @apply bg-red-50 border-red-200 text-red-800; }
 
+/* Tables — the only two tables in the site (settings report, invoice) share this */
+.data-table { @apply w-full text-left text-xs; }
+.data-table thead { @apply bg-cream-100 text-forest-700 dark:bg-forest-900/60 dark:text-cream-200; }
+.data-table th { @apply px-4 py-2 font-semibold; }
+.data-table tbody tr { @apply border-t border-forest-900/5 dark:border-cream-100/10; }
+.data-table td { @apply px-4 py-2 align-top; }
+
 /* Small uppercase data label above a value */
 .data-label { @apply text-[10px] uppercase tracking-eyebrow text-forest-600 dark:text-cream-200/60; }
 
-/* Section spacing rhythm */
+/* Section spacing rhythm — three named heights, so a section never picks its
+   own padding. `section` = a section of a detail page, `section-roomy` = a
+   preview on the homepage, `section-full` = a homepage scene. `section-tight`
+   is for a band inside a page (a form step, a summary strip). */
 .section { @apply py-16 lg:py-24; }
+.section-roomy { @apply py-20 lg:py-28; }
+.section-full { @apply py-24 lg:py-36; }
 .section-tight { @apply py-12 lg:py-16; }
 
 /* No scrollbar helper */

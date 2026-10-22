@@ -30,6 +30,7 @@ import {
   type PublishedRates,
 } from '../../lib/booking'
 import { Clock, Flame, Paw } from '../../lib/icons'
+import { Field, Input, Select, Textarea } from '../ui'
 
 export type StayRequestsFormValues = {
   pet_count: number
@@ -58,7 +59,7 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
 
   return (
     <div className="pt-2 border-t border-forest-900/5" data-tour="stay-requests">
-      <h2 className="font-serif text-2xl text-forest-900 mt-6">Add-ons &amp; Requests</h2>
+      <h2 className="h2 mt-6">Add-ons &amp; Requests</h2>
       <p className="mt-2 text-sm text-forest-700 leading-relaxed">
         All optional. Quantities are reviewed by the Hacienda with your booking — nothing here is
         confirmed until the Admin approves it.
@@ -132,10 +133,12 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
               ? ` Extra hours are ${formatPesos(fallback.late_checkout_per_hour)} per hour, subject to availability and Admin approval.`
               : ' Extra hours are subject to availability and Admin approval.'}
           </p>
-          <label className="mt-3 block">
-            <span className="sr-only">Additional hours after 12:00 noon check-out</span>
-            <select
-              className="field text-sm w-full sm:max-w-xs"
+          <div className="mt-3 sm:max-w-xs">
+            <label className="sr-only" htmlFor="late-checkout-hours">
+              Additional hours after 12:00 noon check-out
+            </label>
+            <Select
+              id="late-checkout-hours"
               aria-label="Late checkout hours"
               value={values.late_checkout_hours}
               onChange={(event) => {
@@ -154,14 +157,16 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
                     : ''}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </div>
         </div>
       </div>
 
       {/* Event / purpose */}
       <fieldset className="mt-5">
-        <legend className="label">Event / purpose of stay <span className="normal-case tracking-normal text-forest-500">(optional)</span></legend>
+        <legend className="label">
+          Event / purpose of stay <span className="font-normal normal-case tracking-normal text-forest-500">(optional)</span>
+        </legend>
         <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Event or purpose of stay">
           {EVENT_PURPOSES.map((purpose) => {
             const selected = values.event_purpose === purpose.id
@@ -187,28 +192,29 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
           })}
         </div>
         {values.event_purpose === 'other' && (
-          <label className="mt-3 block">
-            <span className="label">Tell us about your event</span>
-            <input
-              className="field"
+          <Field
+            className="mt-3"
+            label="Tell us about your event"
+            hint={
+              <span className="flex items-center justify-between gap-3">
+                <span>Briefly specify your gathering</span>
+                <span
+                  className={`font-mono tabular-nums ${
+                    (values.event_purpose_detail?.length || 0) >= EVENT_DETAIL_MAX ? 'font-semibold text-amber-700' : ''
+                  }`}
+                >
+                  {values.event_purpose_detail?.length || 0} / {EVENT_DETAIL_MAX} characters
+                </span>
+              </span>
+            }
+          >
+            <Input
               placeholder="e.g. 50th birthday lunch, baptism reception…"
               maxLength={EVENT_DETAIL_MAX}
               value={values.event_purpose_detail}
               onChange={(event) => onChange({ event_purpose_detail: event.target.value.slice(0, EVENT_DETAIL_MAX) })}
             />
-            <div className="mt-1 flex items-center justify-between text-[11px]">
-              <span className="text-forest-600/70 dark:text-cream-200/60">Briefly specify your gathering</span>
-              <span
-                className={`font-mono tabular-nums transition-colors ${
-                  (values.event_purpose_detail?.length || 0) >= EVENT_DETAIL_MAX
-                    ? 'text-amber-700 font-semibold dark:text-brass-300'
-                    : 'text-forest-600/70 dark:text-cream-200/60'
-                }`}
-              >
-                {values.event_purpose_detail?.length || 0} / {EVENT_DETAIL_MAX} characters
-              </span>
-            </div>
-          </label>
+          </Field>
         )}
         {values.event_purpose && (
           <p className="mt-2 text-xs text-forest-700/70 leading-relaxed">
@@ -221,36 +227,38 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
       </fieldset>
 
       {/* Additional notes */}
-      <label className="mt-5 block">
-        <span className="label">Additional notes <span className="normal-case tracking-normal text-forest-500">(optional)</span></span>
-        <textarea
-          className="field min-h-[84px] resize-y text-sm"
+      <Field
+        className="mt-5"
+        label="Additional notes"
+        hint={
+          <span className="flex items-center justify-between gap-3">
+            <span>Dietary needs, estimated arrival, or special celebrations</span>
+            <span
+              className={`font-mono tabular-nums ${
+                (values.notes?.length || 0) >= ADDITIONAL_NOTES_MAX
+                  ? 'font-semibold text-amber-700'
+                  : (values.notes?.length || 0) >= ADDITIONAL_NOTES_MAX * 0.9
+                    ? 'font-medium text-amber-600'
+                    : ''
+              }`}
+              aria-live="polite"
+              aria-atomic="true"
+              data-testid="additional-notes-counter"
+            >
+              {values.notes?.length || 0} / {ADDITIONAL_NOTES_MAX} characters
+            </span>
+          </span>
+        }
+      >
+        <Textarea
+          className="min-h-[84px] resize-y"
           placeholder="Anything else the Hacienda should know — arrival time, celebrations, accessibility needs…"
           maxLength={ADDITIONAL_NOTES_MAX}
           value={values.notes}
           data-tour-field="special-requests"
           onChange={(event) => onChange({ notes: event.target.value.slice(0, ADDITIONAL_NOTES_MAX) })}
         />
-        <div className="mt-1 flex items-center justify-between text-[11px]">
-          <span className="text-forest-600/70 dark:text-cream-200/60">
-            Dietary needs, estimated arrival, or special celebrations
-          </span>
-          <span
-            className={`font-mono tabular-nums transition-colors ${
-              (values.notes?.length || 0) >= ADDITIONAL_NOTES_MAX
-                ? 'text-amber-700 font-semibold dark:text-brass-300'
-                : (values.notes?.length || 0) >= ADDITIONAL_NOTES_MAX * 0.9
-                  ? 'text-amber-600 dark:text-amber-400 font-medium'
-                  : 'text-forest-600/70 dark:text-cream-200/60'
-            }`}
-            aria-live="polite"
-            aria-atomic="true"
-            data-testid="additional-notes-counter"
-          >
-            {values.notes?.length || 0} / {ADDITIONAL_NOTES_MAX} characters
-          </span>
-        </div>
-      </label>
+      </Field>
 
       <div className="mt-4">
         <AddonFeeBreakdown lines={lines} />

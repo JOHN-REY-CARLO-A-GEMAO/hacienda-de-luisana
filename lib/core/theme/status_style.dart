@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../../models/booking_model.dart';
+import '../../models/room_model.dart';
 import '../../services/booking_lifecycle.dart';
 
 /// One place that decides what a Booking status looks like in the Admin app.
@@ -48,6 +49,18 @@ class StatusStyle {
     }
   }
 
+  /// A room's availability, used by the Rooms screen.
+  static Color room(RoomStatus status) {
+    switch (status) {
+      case RoomStatus.available:
+        return AppColors.statusSuccess;
+      case RoomStatus.occupied:
+        return AppColors.statusAlert;
+      case RoomStatus.maintenance:
+        return AppColors.accentGoldDark;
+    }
+  }
+
   /// The legacy model enum, still used by the Bookings list.
   static Color colorForEnum(BookingStatus status) {
     switch (status) {
@@ -61,6 +74,24 @@ class StatusStyle {
         return AppColors.textMuted;
       case BookingStatus.cancelled:
         return AppColors.statusAlert;
+    }
+  }
+
+  /// A Guest's late-checkout request: `approved` | `pending` | else.
+  static Color lateCheckout(String status) =>
+      status == 'approved' ? AppColors.statusSuccess : AppColors.accentGoldDark;
+
+  /// A refund's own lifecycle, independent of the Booking it belongs to.
+  static Color refund(String status) {
+    switch (status) {
+      case 'completed':
+      case 'refunded':
+        return AppColors.statusSuccess;
+      case 'rejected':
+      case 'failed':
+        return AppColors.statusAlert;
+      default:
+        return AppColors.accentGoldDark;
     }
   }
 

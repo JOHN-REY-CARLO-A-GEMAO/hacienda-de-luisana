@@ -10,18 +10,7 @@ import { ensureGuestUid } from '../lib/guestAuth'
 import type { Booking } from '../lib/storage'
 import { ArrowRight, Sparkle } from '../lib/icons'
 import { EMAIL_MAX, REF_MAX, sanitizeReferenceInput } from '../lib/validation'
-import {
-  Alert,
-  Card,
-  Container,
-  Field,
-  Input,
-  LoadingPanel,
-  PageHeader,
-  StatusBadge,
-  statusHeadline,
-  statusMeaning,
-} from '../components/ui'
+import { Alert, Card, Container, Field, Input, LoadingPanel, Page, PageHeader, StatusBadge, statusHeadline, statusMeaning } from '../components/ui'
 
 type LocationState = { justSubmitted?: boolean; storage?: 'cloud' | 'local' }
 
@@ -104,7 +93,7 @@ export function BookingStatusPage() {
   const accommodation = ACCOMMODATIONS.find((item) => item.id === booking?.accommodation)
 
   return (
-    <div className="min-h-screen bg-cream-50 pb-24 pt-28">
+    <Page>
       <Container width="narrow">
         <Card padding="lg" data-tour="booking-success">
           {loading ? (
@@ -260,6 +249,6 @@ export function BookingStatusPage() {
           )}
         </Card>
       </Container>
-    </div>
+    </Page>
   )
 }

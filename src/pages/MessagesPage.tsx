@@ -18,7 +18,8 @@ import { retentionDaysLeft, retentionElapsed } from '../lib/chatRetention'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { MESSAGE_MAX } from '../lib/validation'
 import { formatDateTime } from '../lib/formatDate'
-import { Alert, Card, Container, Field, Input, LoadingPanel, PageHeader, Select } from '../components/ui'
+import { Alert, Card, Container, EmptyState, Field, Input, LoadingPanel, Page, PageHeader, Select } from '../components/ui'
+import { MessageCircle } from '../lib/icons'
 
 /** How many older messages one "Load earlier messages" press fetches. */
 const OLDER_PAGE_SIZE = 30
@@ -160,7 +161,7 @@ export function MessagesPage() {
   const retentionSwept = retentionElapsed(retention)
 
   return (
-    <div className="min-h-screen bg-cream-50 pb-24 pt-28">
+    <Page>
       <Container width="form">
         <PageHeader
           eyebrow="Messages"
@@ -184,7 +185,7 @@ export function MessagesPage() {
           }
         />
 
-        <div className="mt-6">
+        <div className="card-tight mt-6 p-4">
           <Field label="Topic">
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
               {inquiries.map((c) => (
@@ -204,7 +205,12 @@ export function MessagesPage() {
             </Alert>
           )}
           {status === 'ready' && messages.length === 0 && (
-            <p className="p-4 text-sm text-forest-700/70">No messages yet. Send a question below.</p>
+            <EmptyState
+              compact
+              icon={MessageCircle}
+              title="No messages yet"
+              body="Send a question below and the Admin answers here."
+            />
           )}
           {status === 'ready' && messages.length > 0 && (
             <>
@@ -222,10 +228,14 @@ export function MessagesPage() {
               <ul className="space-y-3">
                 {messages.map((m) => (
                   <li key={m.id} className={`text-sm ${m.mine ? 'text-right' : ''}`}>
-                    <span className="inline-block max-w-[85%] rounded-2xl bg-cream-100 px-3 py-2 text-left text-forest-900">
+                    <span
+                      className={`inline-block max-w-[85%] rounded-2xl px-3.5 py-2.5 text-left leading-relaxed ${
+                        m.mine ? 'bg-forest-700 text-cream-50' : 'bg-cream-100 text-forest-900'
+                      }`}
+                    >
                       {m.text}
                     </span>
-                    <div className="text-[10px] text-forest-600 mt-1">{formatDateTime(m.at, 'Time unavailable')}</div>
+                    <div className="data-label mt-1">{formatDateTime(m.at, 'Time unavailable')}</div>
                   </li>
                 ))}
               </ul>
@@ -284,7 +294,7 @@ export function MessagesPage() {
           </Alert>
         )}
       </Container>
-    </div>
+    </Page>
   )
 }
 

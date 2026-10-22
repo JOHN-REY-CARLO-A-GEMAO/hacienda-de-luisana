@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { useEffect, useState } from 'react'
 import { AIRBNB_RATING, REVIEWS, type Review } from '../config/site'
 import { Star, Sparkle, ArrowRight } from '../lib/icons'
@@ -19,8 +20,8 @@ export function Reviews() {
   const empty = REVIEWS.length === 0
 
   return (
-    <section id="reviews" className="py-24 lg:py-32 bg-cream-100/40">
-      <div className="mx-auto max-w-6xl px-5 lg:px-8">
+    <section id="reviews" className="section-full bg-cream-100/40">
+      <Container width="content">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
           <SceneHeader
             index="08"
@@ -117,7 +118,7 @@ export function Reviews() {
             </div>
           </>
         )}
-      </div>
+      </Container>
     </section>
   )
 }

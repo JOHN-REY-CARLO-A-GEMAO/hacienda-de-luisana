@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart' as legacy;
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/status_style.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';

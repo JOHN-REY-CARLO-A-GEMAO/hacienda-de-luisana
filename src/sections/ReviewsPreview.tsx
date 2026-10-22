@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { AIRBNB_RATING, REVIEWS } from '../config/site'
 import { Star, ArrowRight } from '../lib/icons'
@@ -22,8 +23,8 @@ export function ReviewsPreview() {
   const shown = REVIEWS.slice(0, PREVIEW_COUNT)
 
   return (
-    <section id="reviews" className="py-20 lg:py-28 bg-cream-100/40 dark:bg-forest-950 transition-colors duration-300">
-      <div className="mx-auto max-w-6xl px-5 lg:px-8">
+    <section id="reviews" className="section-roomy bg-cream-100/40 dark:bg-forest-950 transition-colors duration-300">
+      <Container width="content">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader
             index="08"
@@ -94,7 +95,7 @@ export function ReviewsPreview() {
             of the review.
           </p>
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

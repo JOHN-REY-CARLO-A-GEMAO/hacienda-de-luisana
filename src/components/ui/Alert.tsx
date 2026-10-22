@@ -24,6 +24,7 @@ export function Alert({
   children,
   className = '',
   actions,
+  role,
 }: {
   tone?: AlertTone
   /** A short bold lead-in, when the message needs a headline. */
@@ -31,12 +32,19 @@ export function Alert({
   children?: ReactNode
   className?: string
   actions?: ReactNode
+  /**
+   * Overrides how the message is announced. A danger tone interrupts by
+   * default — right for an action that just failed, wrong for a standing
+   * description of the evidence on screen (the booking page's reading of an
+   * uploaded receipt, say), which would otherwise talk over the real error.
+   */
+  role?: 'alert' | 'status'
 }) {
-  const urgent = tone === 'danger' || tone === 'warning'
+  const urgent = role ? role === 'alert' : tone === 'danger' || tone === 'warning'
   return (
     <div
       className={`alert ${TONE_CLASS[tone]} ${className}`}
-      role={urgent ? 'alert' : 'status'}
+      role={role ?? (urgent ? 'alert' : 'status')}
       aria-live={urgent ? 'assertive' : 'polite'}
     >
       <div className="flex items-start gap-2.5">

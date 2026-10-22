@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { STATS } from '../config/site'
 
 /** Facts strip that closes Scene 02 — values come from site config only. */
@@ -12,7 +13,7 @@ export function Stats() {
         }}
         aria-hidden="true"
       />
-      <div className="relative mx-auto max-w-7xl px-5 lg:px-8 py-14 lg:py-20">
+      <Container width="wide" className="relative py-14 lg:py-20">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-y-10">
           {STATS.map((s, i) => (
             <div
@@ -27,7 +28,7 @@ export function Stats() {
             </div>
           ))}
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

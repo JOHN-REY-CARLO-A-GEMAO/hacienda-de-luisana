@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { NEARBY } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
 import { SceneHeader } from '../components/Scene'
@@ -5,8 +6,8 @@ import { ArrowRight, Clock, Compass, MapPin } from '../lib/icons'
 
 export function Nearby() {
   return (
-    <section id="nearby" className="py-24 lg:py-36 bg-cream-100/60">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="nearby" className="section-full bg-cream-100/60">
+      <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
           <SceneHeader
             index="04"
@@ -71,7 +72,7 @@ export function Nearby() {
             </article>
           ))}
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

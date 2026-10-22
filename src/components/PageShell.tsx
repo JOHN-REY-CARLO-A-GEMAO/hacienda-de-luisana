@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from '../lib/icons'
-import { Container, PageHeader, type Width } from './ui'
+import { Container, Page, PageHeader, type Width } from './ui'
 
 /**
  * The frame every public page wears: one `h1`, an eyebrow, a lead paragraph,
@@ -34,7 +34,7 @@ export function PageShell({
   width?: Extract<Width, 'narrow' | 'content'>
 }) {
   return (
-    <div className="min-h-screen bg-cream-50 pb-24 pt-28 text-forest-900 lg:pt-36">
+    <Page>
       <Container width={width}>
         <PageHeader eyebrow={eyebrow} title={title} lead={lead} />
       </Container>
@@ -55,6 +55,6 @@ export function PageShell({
           )}
         </div>
       </Container>
-    </div>
+    </Page>
   )
 }

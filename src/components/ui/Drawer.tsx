@@ -1,61 +1,13 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useId, useRef, type ReactNode } from 'react'
 import { Close } from '../../lib/icons'
+import { useOverlay } from './overlay'
 
 /**
- * The one overlay for both the notification drawer and the invoice dialog.
- *
- * Behaviour decided once: Escape closes, the backdrop closes, focus moves into
- * the panel and returns to the control that opened it, Tab stays inside, and
- * the page behind stops scrolling. Neither overlay is a route — it is a layer
- * over the page the Guest is already on.
+ * The two overlay shapes: a panel that slides in from the right, and a centred
+ * dialog. Both are layered over the page the Guest is already on — neither is a
+ * route — and both get their keyboard, focus and scroll behaviour from
+ * `useOverlay`, so no surface can forget one of them.
  */
-function useOverlay(open: boolean, onClose: () => void, panel: React.RefObject<HTMLDivElement | null>) {
-  const restoreTo = useRef<HTMLElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    if (document.activeElement instanceof HTMLElement) restoreTo.current = document.activeElement
-    document.body.dataset.scrollLocked = 'true'
-    const focusTimer = window.setTimeout(() => {
-      const target = panel.current?.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      )
-      ;(target ?? panel.current)?.focus()
-    }, 0)
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onClose()
-        return
-      }
-      if (event.key !== 'Tab' || !panel.current) return
-      const focusable = Array.from(
-        panel.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((element) => element.offsetParent !== null)
-      if (focusable.length === 0) return
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.clearTimeout(focusTimer)
-      window.removeEventListener('keydown', onKeyDown)
-      delete document.body.dataset.scrollLocked
-      restoreTo.current?.focus?.()
-    }
-  }, [open, onClose, panel])
-}
 
 /** A panel that slides in from the right: notifications, filters, detail. */
 export function Drawer({
@@ -97,7 +49,7 @@ export function Drawer({
       >
         <header className="flex items-start justify-between gap-4 border-b border-forest-900/10 px-6 py-5">
           <div className="min-w-0">
-            <h2 id={titleId} className="font-serif text-2xl text-forest-900">
+            <h2 id={titleId} className="h3">
               {title}
             </h2>
             {description && <p className="mt-1 text-xs text-forest-700/80">{description}</p>}

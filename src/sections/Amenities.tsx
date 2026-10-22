@@ -1,11 +1,12 @@
+import { Container } from '../components/ui'
 import { AMENITIES } from '../config/site'
 import { SceneHeader } from '../components/Scene'
 import { AMENITY_ICONS } from '../lib/icons'
 
 export function Amenities() {
   return (
-    <section id="amenities" className="py-24 lg:py-32 bg-cream-50">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="amenities" className="section-roomy bg-cream-50">
+      <Container width="wide">
         <SceneHeader
           index="05"
           eyebrow="Amenities"
@@ -33,7 +34,7 @@ export function Amenities() {
             )
           })}
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

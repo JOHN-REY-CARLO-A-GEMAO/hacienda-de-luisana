@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/status_style.dart';
 import '../../models/room_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/accommodations.dart';
@@ -108,11 +109,7 @@ class RoomsScreen extends ConsumerWidget {
     // With no status document the Accommodation reads as under maintenance:
     // it is the state that refuses rather than the state that sells.
     final current = status ?? RoomStatus.maintenance;
-    final statusColor = switch (current) {
-      RoomStatus.available => AppColors.statusSuccess,
-      RoomStatus.occupied => AppColors.statusAlert,
-      RoomStatus.maintenance => Colors.amber.shade800,
-    };
+    final statusColor = StatusStyle.room(current);
 
     // Occupancy and money belong to the published rates document, so they are
     // shown from there. Nothing here computes or defaults a figure.

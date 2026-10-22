@@ -6,6 +6,7 @@ import 'package:provider/provider.dart' as legacy;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/status_style.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
@@ -110,7 +111,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               if (dialogError != null) ...[
                 const SizedBox(height: 6),
                 Text(dialogError!,
-                    style: const TextStyle(fontSize: 12, color: Colors.red)),
+                    style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
               ],
             ],
           ),
@@ -200,7 +201,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               if (dialogError != null) ...[
                 const SizedBox(height: 6),
                 Text(dialogError!,
-                    style: const TextStyle(fontSize: 12, color: Colors.red)),
+                    style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
               ],
             ],
           ),
@@ -259,7 +260,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               if (dialogError != null) ...[
                 const SizedBox(height: 6),
                 Text(dialogError!,
-                    style: const TextStyle(fontSize: 12, color: Colors.red)),
+                    style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
               ],
             ],
           ),
@@ -996,7 +997,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 if (dialogError != null) ...[
                   const SizedBox(height: 6),
                   Text(dialogError!,
-                      style: const TextStyle(fontSize: 12, color: Colors.red)),
+                      style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
                 ],
               ],
             ),
@@ -1136,7 +1137,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     final hours = req['hours'] ?? 1;
     final fee = req['fee'] ?? (hours * 250);
     final status = (req['status'] ?? 'pending').toString();
-    final statusColor = status == 'approved' ? AppColors.statusSuccess : AppColors.accentGoldDark;
+    final statusColor = StatusStyle.lateCheckout(status);
 
     return HaciendaCard(
       borderColor: AppColors.accentGold,

@@ -6,7 +6,7 @@ import { auth, googleProvider } from '../lib/firebase'
 import { DisputeForm } from '../components/DisputeForm'
 import { EMAIL_MAX } from '../lib/validation'
 import { caseInbox, readCaseNotification, caseDate, type CaseNotification } from '../lib/disputes'
-import { Alert, Card, Container, EmptyState, Field, Input, PageHeader } from '../components/ui'
+import { Alert, Card, Container, EmptyState, Field, Input, Page, PageHeader } from '../components/ui'
 import { Bell, MessageCircle } from '../lib/icons'
 
 /**
@@ -66,11 +66,11 @@ export function SupportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream-50 pb-24 pt-28">
+    <Page>
       <Container width="narrow">
         <PageHeader
           eyebrow="Support"
-          title="Support &amp; Disputes"
+          title="Support & disputes"
           lead={
             <p>
               Report a booking concern from{' '}
@@ -252,6 +252,6 @@ export function SupportPage() {
           </div>
         )}
       </Container>
-    </div>
+    </Page>
   )
 }

@@ -298,23 +298,25 @@ function CaseDetail({ record: c, uid }: { record: DisputeRecord; uid: string }) 
       }
       void run(active ? 'message' : !c.final_decision && c.reopen_until && Date.now() <= c.reopen_until ? 'reopen' : 'request_reopen')
     }}>
-      <label className="block">
-        <span className="label">{active ? 'Message / explanation' : 'Reason to reopen (new evidence, unfulfilled remedy, or procedural error)'}</span>
-        <textarea
-          className="field w-full"
+      <Field
+        label={active ? 'Message / explanation' : 'Reason to reopen (new evidence, unfulfilled remedy, or procedural error)'}
+        hint={
+          <span className="flex items-center justify-between gap-3">
+            <span>{active ? 'Explain clearly without confidential credentials' : 'Minimum 10 characters required'}</span>
+            <span className={`font-mono tabular-nums ${message.length >= DISPUTE_MESSAGE_MAX ? 'font-semibold text-amber-700' : ''}`}>
+              {message.length} / {DISPUTE_MESSAGE_MAX} characters
+            </span>
+          </span>
+        }
+      >
+        <Textarea
           rows={3}
           maxLength={DISPUTE_MESSAGE_MAX}
           minLength={active ? 0 : 10}
           value={message}
           onChange={e => { setMessage(e.target.value.slice(0, DISPUTE_MESSAGE_MAX)); if (error) setError('') }}
         />
-        <div className="mt-1 flex items-center justify-between text-[11px]">
-          <span className="text-forest-600/70">{active ? 'Explain clearly without confidential credentials' : 'Minimum 10 characters required'}</span>
-          <span className={`font-mono tabular-nums ${message.length >= DISPUTE_MESSAGE_MAX ? 'text-amber-700 font-semibold' : 'text-forest-600/70'}`}>
-            {message.length} / {DISPUTE_MESSAGE_MAX} characters
-          </span>
-        </div>
-      </label>
+      </Field>
       {active && <label className="block">Add evidence (up to five files, 10 MB each)<input ref={input} className="block my-2" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple disabled={busy} onChange={e => { const selected = Array.from(e.target.files || []); if (selected.length > 5 || selected.some(f => f.size > 10 * 1024 * 1024)) { setError('Choose at most five files of 10 MB each.'); e.target.value = ''; setUploads([]) } else { setError(''); setUploads(selected) } }} /></label>}
       <p className="text-xs">No passwords, PINs, full card details or government IDs. Redact unrelated information. Temporary uploads expire after 24 hours. Submitted history cannot be edited.</p>
       <div className="flex flex-wrap gap-2">

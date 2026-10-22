@@ -7,7 +7,7 @@ import { usePublishedRates } from '../hooks/usePublishedRates'
 import { unitsForAccommodation } from '../lib/booking'
 import { readLocalPaymentProof, type Booking } from '../lib/storage'
 import { ArrowRight } from '../lib/icons'
-import { Alert, Card, Container, EmptyState, MessageScreen, PageHeader } from '../components/ui'
+import { Alert, Card, Container, EmptyState, Field, MessageScreen, Page, PageHeader, StatusBadge, Textarea } from '../components/ui'
 
 function referenceOf(booking: Booking): string {
   return (booking.ref_id || booking.id.slice(0, 8)).toUpperCase()
@@ -118,7 +118,7 @@ export function ReviewDeskPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream-50 pb-24 pt-28">
+    <Page>
       <Container width="wide">
         <PageHeader
           eyebrow={demo ? 'Demo review desk' : 'Admin review'}
@@ -157,18 +157,20 @@ export function ReviewDeskPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedId(booking.id)}
-                    className={`w-full text-left rounded-2xl border p-4 ${
-                      active ? 'bg-forest-900 text-cream-50 border-forest-900' : 'bg-white border-forest-900/10'
+                    className={`card-tight w-full p-4 text-left transition-colors ${
+                      active ? 'border-forest-900 bg-forest-900 text-cream-50' : 'hover:border-forest-900/25'
                     }`}
                   >
-                    <div className="text-[10px] uppercase tracking-eyebrow opacity-70">{referenceOf(booking)}</div>
+                    <div className="data-label opacity-70">{referenceOf(booking)}</div>
                     <div className="font-serif text-xl mt-1">{booking.guest_name}</div>
                     <div className={`text-xs mt-1 ${active ? 'text-cream-100/80' : 'text-forest-700'}`}>
                       {ACCOMMODATIONS.find((item) => item.id === booking.accommodation)?.name || booking.accommodation}
                       {' · '}
                       {booking.check_in} → {booking.check_out}
                     </div>
-                    <div className={`mt-2 text-[11px] ${active ? 'text-amber-200' : 'text-amber-800'}`}>Pending</div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <StatusBadge status="Pending" />
+                    </div>
                   </button>
                 </li>
               )
@@ -183,22 +185,20 @@ export function ReviewDeskPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="eyebrow">Reviewing</div>
-                    <h2 className="font-serif text-3xl text-forest-900 mt-1">{selected.guest_name}</h2>
+                    <h2 className="h2 mt-1">{selected.guest_name}</h2>
                     <p className="text-sm text-forest-700 mt-1">
                       {selected.email} · {selected.phone}
                     </p>
                   </div>
-                  <span className="rounded-full bg-amber-100 text-amber-900 text-[11px] uppercase tracking-eyebrow px-3 py-1">
-                    Pending
-                  </span>
+                  <StatusBadge status="Pending" />
                 </div>
                 <dl className="mt-5 grid sm:grid-cols-2 gap-3 text-sm">
                   <div>
-                    <dt className="text-[10px] uppercase tracking-eyebrow text-forest-600">Dates</dt>
+                    <dt className="data-label">Dates</dt>
                     <dd>{selected.check_in} → {selected.check_out}</dd>
                   </div>
                   <div>
-                    <dt className="text-[10px] uppercase tracking-eyebrow text-forest-600">Amount claimed</dt>
+                    <dt className="data-label">Amount claimed</dt>
                     <dd>
                       {typeof selected.amount_claimed === 'number'
                         ? `₱${selected.amount_claimed.toLocaleString('en-PH')}`
@@ -207,12 +207,12 @@ export function ReviewDeskPage() {
                     </dd>
                   </div>
                   <div className="sm:col-span-2">
-                    <dt className="text-[10px] uppercase tracking-eyebrow text-forest-600">Reference</dt>
+                    <dt className="data-label">Reference</dt>
                     <dd className="font-mono text-xs">{selected.payment_reference || 'None on the form'}</dd>
                   </div>
                 </dl>
                 <div className="mt-5">
-                  <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Downpayment screenshot</div>
+                  <div className="data-label">Downpayment screenshot</div>
                   {proofSrc ? (
                     <img src={proofSrc} alt="Downpayment proof" className="mt-2 max-h-80 rounded-2xl border border-forest-900/10 object-contain bg-cream-50" />
                   ) : selected.payment_proof_url ? (
@@ -220,15 +220,23 @@ export function ReviewDeskPage() {
                       Proof stored at <span className="font-mono">{selected.payment_proof_url}</span>. Open it from the Admin app when this is a cloud booking.
                     </p>
                   ) : (
-                    <p className="mt-2 text-sm text-red-800">
+                    <p className="mt-2 text-sm text-red-800" role="alert">
                       No screenshot is attached. Approval will be refused until a proof is on the booking.
                     </p>
                   )}
                 </div>
-                <label className="block mt-6">
-                  <span className="label">If you reject, the guest reads this</span>
-                  <textarea
-                    className="field min-h-[90px]"
+                <Field
+                  className="mt-6"
+                  label="If you reject, the guest reads this"
+                  hint={
+                    <span className="flex items-center justify-between gap-3">
+                      <span>State clearly why the downpayment was rejected</span>
+                      <span className="font-mono tabular-nums">{reason.length} / 500 characters</span>
+                    </span>
+                  }
+                >
+                  <Textarea
+                    className="min-h-[90px]"
                     maxLength={500}
                     value={reason}
                     onChange={(event) => {
@@ -236,15 +244,11 @@ export function ReviewDeskPage() {
                       if (notice?.tone === 'bad') setNotice(null)
                     }}
                   />
-                  <div className="mt-1 flex items-center justify-between text-[11px]">
-                    <span className="text-forest-600/70">State clearly why the downpayment was rejected</span>
-                    <span className="font-mono tabular-nums text-forest-600/70">{reason.length} / 500 characters</span>
-                  </div>
-                </label>
+                </Field>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <button
                     type="button"
-                    className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="btn-primary"
                     disabled={busy}
                     onClick={() => void decide('approve')}
                   >
@@ -252,7 +256,7 @@ export function ReviewDeskPage() {
                   </button>
                   <button
                     type="button"
-                    className="btn bg-red-700 text-white hover:bg-red-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="btn-danger"
                     disabled={busy || !reason.trim()}
                     onClick={() => void decide('reject')}
                   >
@@ -267,6 +271,6 @@ export function ReviewDeskPage() {
           </Card>
         </div>
       </Container>
-    </div>
+    </Page>
   )
 }

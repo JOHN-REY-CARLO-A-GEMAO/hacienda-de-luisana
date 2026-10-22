@@ -1,3 +1,4 @@
+import { Alert } from '../ui'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CalendarAvailabilityState } from '../../lib/booking'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
@@ -302,16 +303,24 @@ export function AvailabilityCalendar({
           </p>
         )}
         {loadState === 'error' && (
-          <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-            <span><strong>Availability unknown.</strong> {error}</span>
-            <button type="button" onClick={() => void load(true)} className="font-semibold underline underline-offset-2">Try again</button>
-          </div>
+          <Alert
+            tone="danger"
+            className="mt-3 text-xs"
+            title="Availability unknown."
+            actions={
+              <button type="button" onClick={() => void load(true)} className="text-xs font-semibold underline underline-offset-2">
+                Try again
+              </button>
+            }
+          >
+            {error}
+          </Alert>
         )}
         {loadState === 'ready' && checkIn && checkOut && (
-          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-            <strong>Selected stay:</strong> {fullDate(checkIn)} check-in → {fullDate(checkOut)} checkout.
-            Checkout is a boundary, so another Guest may check in on {fullDate(checkOut)}.
-          </p>
+          <Alert tone="success" className="mt-3 text-xs" title="Selected stay:">
+            {fullDate(checkIn)} check-in → {fullDate(checkOut)} checkout. Checkout is a boundary, so another
+            Guest may check in on {fullDate(checkOut)}.
+          </Alert>
         )}
       </div>
 

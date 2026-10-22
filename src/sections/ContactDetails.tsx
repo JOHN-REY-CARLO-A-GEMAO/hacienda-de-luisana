@@ -75,7 +75,7 @@ export function ContactDetails() {
             href={BUSINESS.contact.messenger}
             target="_blank"
             rel="noreferrer"
-            className="btn bg-forest-800 text-cream-50 hover:bg-forest-900"
+            className="btn-primary"
           >
             Message Hacienda <ArrowRight size={16} />
           </a>

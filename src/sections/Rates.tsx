@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { SceneHeader } from '../components/Scene'
 import { ACCOMMODATIONS, FEES, LISTINGS, type Fee } from '../config/site'
@@ -38,8 +39,8 @@ export function Rates() {
     .filter((x) => x.figures !== undefined)
 
   return (
-    <section id="rates" className="py-24 lg:py-36 bg-cream-50">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="rates" className="section-full bg-cream-50">
+      <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
           <SceneHeader
             index="05"
@@ -160,7 +161,7 @@ export function Rates() {
             </span>
           </p>
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

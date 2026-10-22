@@ -1,3 +1,4 @@
+import { Alert } from '../ui'
 import { useRef, useState } from 'react'
 import { usePaymentInformation } from '../../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from './PaymentInformationPanel'
@@ -61,10 +62,13 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   if (status !== 'Payment Pending') {
     if (booking.payment_status === 'verified' && (status === 'Reserved' || status === 'Payment Verified')) {
       return (
-        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs text-emerald-900 leading-relaxed">
-          <strong className="block">Your payment was verified — your Reservation is confirmed.</strong>
+        <Alert
+          tone="success"
+          className="text-xs"
+          title="Your payment was verified — your Reservation is confirmed."
+        >
           Show this page at check-in. The refundable Security deposit is settled after inspection.
-        </div>
+        </Alert>
       )
     }
     return null
@@ -217,10 +221,10 @@ export function PaymentStep({ booking }: { booking: Booking }) {
             your proof below.
           </p>
           {options.length === 0 ? (
-            <p className="mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
+            <Alert tone="warning" className="mt-3 text-xs">
               This historical Booking has no usable saved stay total or rate snapshot. Please contact the
               Admin for the original quote — the current rate card will not reprice it.
-            </p>
+            </Alert>
           ) : (
             <div className="mt-3 space-y-2">
               {options.map((option) => (
@@ -280,10 +284,9 @@ export function PaymentStep({ booking }: { booking: Booking }) {
           </div>
 
           {booking.payment_status === 'rejected' && booking.payment_reject_reason && (
-            <p className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
-              <strong className="block">Your proof was not accepted.</strong>
+            <Alert tone="danger" className="mt-2 text-xs" title="Your proof was not accepted.">
               {booking.payment_reject_reason}
-            </p>
+            </Alert>
           )}
 
           {booking.payment_proof_url && !sent && booking.payment_status !== 'rejected' ? (
@@ -369,9 +372,9 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   </span>
                 )}
                 {!ocrBusy && ocrNotes.length > 0 && (
-                  <span className="block mt-1 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-2 py-1.5 leading-relaxed">
+                  <Alert tone="warning" role="status" className="mt-1 text-[11px]">
                     {ocrNotes.join(' ')}
-                  </span>
+                  </Alert>
                 )}
               </label>
               {/* Two or more figures on one receipt is a question, not a detail. A GCash
@@ -379,8 +382,8 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   `Total Amount Sent` (what left the sender), and they disagree
                   whenever a fee was charged — so the Guest says which they sent. */}
               {amountCandidates.length > 1 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2.5">
-                  <span className="block text-[11px] font-medium text-amber-900">
+                <Alert tone="warning" role="status" className="text-[11px]">
+                  <span className="block font-medium">
                     This receipt shows {amountCandidates.length} different amounts. Which one did you send?
                   </span>
                   <div className="mt-1.5 space-y-1">
@@ -402,7 +405,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                       </label>
                     ))}
                   </div>
-                </div>
+                </Alert>
               )}
               <label className="block">
                 <span className="block text-xs font-medium text-forest-900">Reference number</span>
@@ -450,9 +453,9 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                 />
               </label>
               {amountMismatchNote(Number(amountClaimed) || 0, owed) && (
-                <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-2 py-1.5 leading-relaxed">
+                <Alert tone="warning" role="status" className="text-[11px]">
                   {amountMismatchNote(Number(amountClaimed) || 0, owed)}
-                </p>
+                </Alert>
               )}
               <label className="flex items-start gap-2 text-[11px] text-forest-700 leading-relaxed cursor-pointer">
                 <input
@@ -478,15 +481,9 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       )}
 
       {message && (
-        <p
-          className={`mt-3 text-xs rounded-xl px-3 py-2 leading-relaxed border ${
-            message.tone === 'good'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-              : 'bg-red-50 text-red-800 border-red-200'
-          }`}
-        >
+        <Alert tone={message.tone === 'good' ? 'success' : 'danger'} className="mt-3 text-xs">
           {message.text}
-        </p>
+        </Alert>
       )}
     </div>
   )

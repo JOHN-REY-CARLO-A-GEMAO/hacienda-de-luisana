@@ -31,7 +31,7 @@ import { displayedRate } from '../sections/Accommodations'
 import { validateAmount, validateProofFile } from '../lib/validation'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
 import { createNotification, notifyAdmin } from '../lib/notifications'
-import { Alert, Container, PageHeader } from '../components/ui'
+import { Alert, Container, Field, Input, Page, PageHeader, RequestBadge } from '../components/ui'
 
 function peso(n: number): string {
   return `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
@@ -464,7 +464,7 @@ refund_policy_snapshot: published.refund ?? null,
   }
 
   return (
-    <div className="relative min-h-screen bg-cream-50 pb-24 pt-28">
+    <Page className="relative">
       <Container width="wide" className="relative">
         <PageHeader
           eyebrow="Step 2 of 3"
@@ -484,7 +484,7 @@ refund_policy_snapshot: published.refund ?? null,
             {error && <Alert tone="danger">{error}</Alert>}
 
             <div className="card p-6 sm:p-8">
-              <h2 className="font-serif text-2xl text-forest-900">How to pay</h2>
+              <h2 className="h2">How to pay</h2>
               <p className="mt-3 text-sm text-forest-800/80 leading-relaxed">
                 Pay only through the Admin-published QR code or account below. Never send money to a third
                 party claiming to be staff, and never share a password, PIN, or one-time code.
@@ -520,10 +520,8 @@ refund_policy_snapshot: published.refund ?? null,
 
             <div className="card p-6 sm:p-8" data-tour="payment-proof">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="font-serif text-2xl text-forest-900">Screenshot</h2>
-                <span className="rounded-full bg-amber-100 text-amber-900 text-[10px] uppercase tracking-eyebrow px-2.5 py-1">
-                  Required
-                </span>
+                <h2 className="h2">Screenshot</h2>
+                <RequestBadge status="required" label="Required" />
               </div>
               <p className="mt-2 text-sm text-forest-700/80">
                 A photo of the GCash, Maya, or bank receipt. JPG, PNG, or WEBP, under 5 MB.
@@ -576,8 +574,8 @@ refund_policy_snapshot: published.refund ?? null,
                   and `Total Amount Sent` (what left the sender), and they disagree
                   whenever a fee was charged. */}
               {amountCandidates.length > 1 && (
-                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3">
-                  <span className="block text-xs font-medium text-amber-900">
+                <Alert tone="warning" role="status" className="mt-4 text-xs">
+                  <span className="block font-medium">
                     This screenshot shows {amountCandidates.length} different amounts. Which one did you send?
                   </span>
                   <div className="mt-2 space-y-1.5">
@@ -599,14 +597,12 @@ refund_policy_snapshot: published.refund ?? null,
                       </label>
                     ))}
                   </div>
-                </div>
+                </Alert>
               )}
 
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
-                <label className="block">
-                  <span className="label">Amount on the screenshot</span>
-                  <input
-                    className="field"
+                <Field label="Amount on the screenshot">
+                  <Input
                     inputMode="decimal"
                     autoComplete="off"
                     spellCheck={false}
@@ -614,18 +610,16 @@ refund_policy_snapshot: published.refund ?? null,
                     placeholder="0.00"
                     onChange={(event) => setAmount(event.target.value)}
                   />
-                </label>
-                <label className="block">
-                  <span className="label">Reference number <span className="normal-case tracking-normal text-forest-500">(optional)</span></span>
-                  <input
-                    className="field"
+                </Field>
+                <Field label="Reference number" hint="Optional.">
+                  <Input
                     value={reference}
                     autoComplete="off"
                     spellCheck={false}
                     placeholder="GCash / Maya / bank ref"
                     onChange={(event) => setReference(event.target.value)}
                   />
-                </label>
+                </Field>
               </div>
 
               {/* The claim against the evidence for it. `submit` refuses this, so it
@@ -634,12 +628,8 @@ refund_policy_snapshot: published.refund ?? null,
                   engine read wrong, because OCR is a hint and the Admin is the one
                   who reads the screenshot. */}
               {amountCandidates.length > 0 && (offReceipt || claimOffReceipt) && (
-                <div
-                  className={`mt-4 rounded-2xl border px-4 py-3 ${
-                    offReceipt ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50/60'
-                  }`}
-                >
-                  <span className={`block text-xs font-medium ${offReceipt ? 'text-red-700' : 'text-amber-900'}`}>
+                <Alert tone={offReceipt ? 'danger' : 'warning'} role="status" className="mt-4 text-xs">
+                  <span className="block font-medium">
                     {offReceipt ??
                       (belowDueNow
                         ? `You are claiming an amount this screenshot does not show. It is also below the ${peso(dueNow!)} down payment this Booking asks for, so this still cannot be submitted until the amount is corrected.`
@@ -659,7 +649,7 @@ refund_policy_snapshot: published.refund ?? null,
                       ))}
                     </div>
                   )}
-                  <label className="mt-2 flex items-start gap-2 text-xs text-amber-900 cursor-pointer">
+                  <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs">
                     <input
                       type="checkbox"
                       name="claim-off-receipt"
@@ -671,7 +661,7 @@ refund_policy_snapshot: published.refund ?? null,
                       My screenshot says a different amount. I typed it above from the receipt.
                     </span>
                   </label>
-                </div>
+                </Alert>
               )}
 
               {/* `submit` refuses a claim below `dueNow`, so this page says the claim cannot
@@ -679,9 +669,9 @@ refund_policy_snapshot: published.refund ?? null,
                   happen — and still says it when the claim clears the threshold,
                   because a claim above `dueNow` does reach a person. */}
               {amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' }) && (
-                <p className="mt-4 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
+                <Alert tone="warning" role="status" className="mt-4 text-xs">
                   {amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' })}
-                </p>
+                </Alert>
               )}
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -708,7 +698,7 @@ refund_policy_snapshot: published.refund ?? null,
           <StaySummary draft={draft} accommodationName={accommodation?.name} image={accommodation?.images[0]} nights={nights} addonLines={addonLines} />
         </div>
       </Container>
-    </div>
+    </Page>
   )
 }
 

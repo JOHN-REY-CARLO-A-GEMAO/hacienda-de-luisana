@@ -134,6 +134,25 @@ export function StatusBadge({
   )
 }
 
+/**
+ * A small request-state pill, for something the Guest asked for that the Admin
+ * has not answered yet: an add-on, a late checkout, a pet fee.
+ *
+ * These are not Booking statuses and must not borrow the Booking badge's
+ * vocabulary — but they were being hand-written in three places as an amber
+ * `rounded-full`, one of which never changed colour when the Admin decided.
+ */
+export function RequestBadge({ status, label }: { status: string; label?: string }) {
+  const state = status.toLowerCase()
+  const tone: StatusTone = state === 'approved' ? 'success' : state === 'rejected' ? 'danger' : 'pending'
+  const text = label ?? (state === 'approved' ? 'Approved' : state === 'rejected' ? 'Rejected' : 'Pending Admin approval')
+  return (
+    <span className={`badge ${TONE_CLASS[tone]}`} data-request-status={state}>
+      {text}
+    </span>
+  )
+}
+
 /** The matching round icon tile, for a list row that leads with the status. */
 export function StatusIconTile({ status, size = 40 }: { status: BookingStatus | string; size?: number }) {
   const tone = statusTone(status)

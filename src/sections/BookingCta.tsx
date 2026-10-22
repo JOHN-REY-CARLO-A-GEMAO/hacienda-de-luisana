@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from '../lib/icons'
 import { ParallaxImage } from '../components/ParallaxImage'
@@ -14,8 +15,8 @@ import { ParallaxImage } from '../components/ParallaxImage'
  */
 export function BookingCta() {
   return (
-    <section className="relative py-20 lg:py-28 bg-forest-950 text-cream-100 overflow-hidden">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section className="relative section-roomy bg-forest-950 text-cream-100 overflow-hidden">
+      <Container width="wide">
         <div className="reveal relative rounded-[32px] overflow-hidden shadow-depth grain">
           <ParallaxImage
             src="/images/gmaps/img-13.jpg"
@@ -42,19 +43,19 @@ export function BookingCta() {
               </p>
             </div>
             <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3 lg:items-stretch">
-              <Link to="/book" className="btn bg-cream-50 text-forest-900 hover:bg-white shadow-glow text-base px-8 py-4">
+              <Link to="/book" className="btn-on-dark btn-lg shadow-glow">
                 Check Availability <ArrowRight size={18} />
               </Link>
               <Link
                 to="/rates"
-                className="btn bg-transparent text-cream-50 border border-cream-50/40 hover:bg-cream-50/10 px-8 py-4"
+                className="btn-secondary btn-lg"
               >
                 See Rates &amp; Fees
               </Link>
             </div>
           </div>
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

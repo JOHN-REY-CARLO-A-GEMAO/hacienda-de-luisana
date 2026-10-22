@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { Booking } from '../../lib/storage'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
 import { useAuth } from '../../hooks/useAuth'
+import { Alert, Field, Select } from '../ui'
 
 interface LateCheckoutRequestProps {
   booking: Booking
@@ -94,20 +95,19 @@ export const LateCheckoutRequest: React.FC<LateCheckoutRequestProps> = ({ bookin
       ) : (
         <form onSubmit={handleRequest} className="mt-3 space-y-3">
           <div>
-            <label className="block text-forest-700 font-medium mb-1">
-              Select Extra Hours (Standard checkout is 12:00 PM):
-            </label>
-            <select
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value))}
-              className="field text-xs w-full"
-            >
+            <Field label="Extra hours" hint="Standard check-out is 12:00 noon.">
+              <Select
+                value={hours}
+                onChange={(e) => setHours(Number(e.target.value))}
+                className="text-xs"
+              >
               {[1, 2, 3, 4, 5, 6].map((h) => (
                 <option key={h} value={h}>
                   +{h} hour{h > 1 ? 's' : ''} (Until {12 + h}:00 PM) — ₱{(h * 250).toLocaleString()}
                 </option>
               ))}
-            </select>
+              </Select>
+            </Field>
           </div>
 
           <div className="flex items-center justify-between pt-1">
@@ -124,13 +124,9 @@ export const LateCheckoutRequest: React.FC<LateCheckoutRequestProps> = ({ bookin
       )}
 
       {notice && (
-        <div
-          className={`mt-3 p-2.5 rounded-xl border text-xs ${
-            notice.tone === 'good' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-800'
-          }`}
-        >
+        <Alert tone={notice.tone === 'good' ? 'success' : 'danger'} className="mt-3 text-xs">
           {notice.text}
-        </div>
+        </Alert>
       )}
     </div>
   )

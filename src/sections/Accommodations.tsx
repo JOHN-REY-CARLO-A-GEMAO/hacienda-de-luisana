@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { ACCOMMODATIONS, AMENITIES, type Accommodation } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
@@ -49,8 +50,8 @@ export function Accommodations() {
   const published = usePublishedRates()
 
   return (
-    <section id="stay" className="py-24 lg:py-36 bg-gradient-to-b from-cream-50 to-cream-100/50">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="stay" className="section-full bg-gradient-to-b from-cream-50 to-cream-100/50">
+      <Container width="wide">
         <SceneHeader index="03" eyebrow="Accommodations" title="Stay Your Way">
           <p>
             Two ways to unwind at Hacienda de LuisAna — a private main house for the whole barkada,
@@ -163,7 +164,7 @@ export function Accommodations() {
                       <Link
                         to={`/book?accommodation=${a.id}`}
                         data-tour="accommodation-cta"
-                        className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 group/btn"
+                        className="btn-primary group/btn"
                       >
                         Book this room
                         <ArrowRight size={16} className="transition-transform group-hover/btn:translate-x-1" />
@@ -182,7 +183,7 @@ export function Accommodations() {
           <Link to="/rates" className="underline underline-offset-2">Rates &amp; Fees</Link>. No account is
           required to book. A stay is confirmed only after the Hacienda approves your downpayment screenshot.
         </p>
-      </div>
+      </Container>
     </section>
   )
 }

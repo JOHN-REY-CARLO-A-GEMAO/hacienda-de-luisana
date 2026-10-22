@@ -31,10 +31,11 @@ export function Field({
   children: ReactNode
 }) {
   return (
-    <label className={`block ${className}`} data-tour={tour}>
+    <label className={`block ${className}`}>
       <span className="label">
         {label}
         {required && <span className="text-forest-500"> *</span>}
+        {tour && <span data-tour={tour} className="hidden" aria-hidden="true" />}
       </span>
       {children}
       {error ? (
@@ -54,15 +55,15 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   },
 )
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  function Select({ className = '', ...rest }, ref) {
-    return <select ref={ref} className={`field ${className}`} {...rest} />
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement> & { invalid?: boolean }>(
+  function Select({ className = '', invalid, ...rest }, ref) {
+    return <select ref={ref} className={`field ${className}`} aria-invalid={invalid || undefined} {...rest} />
   },
 )
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  function Textarea({ className = '', ...rest }, ref) {
-    return <textarea ref={ref} className={`field ${className}`} {...rest} />
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }>(
+  function Textarea({ className = '', invalid, ...rest }, ref) {
+    return <textarea ref={ref} className={`field ${className}`} aria-invalid={invalid || undefined} {...rest} />
   },
 )
 

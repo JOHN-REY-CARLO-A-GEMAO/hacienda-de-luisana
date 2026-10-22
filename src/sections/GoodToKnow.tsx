@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { SceneHeader } from '../components/Scene'
 import { AIRBNB_RATING, GUEST_NOTES, HOUSE_RULES } from '../config/site'
@@ -13,8 +14,8 @@ import { ArrowRight, Check, Users } from '../lib/icons'
  */
 export function GoodToKnow() {
   return (
-    <section id="house-rules" className="py-24 lg:py-36 bg-cream-100/60">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="house-rules" className="section-full bg-cream-100/60">
+      <Container width="wide">
         <SceneHeader
           index="06"
           eyebrow="House Rules &amp; Good to Know"
@@ -84,7 +85,7 @@ export function GoodToKnow() {
             </a>
           </div>
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

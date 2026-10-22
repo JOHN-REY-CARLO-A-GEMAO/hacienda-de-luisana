@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, MapPin, Star } from '../lib/icons'
@@ -68,7 +69,7 @@ export function Hero() {
             copy instead of squeezing it into 100svh, so the location chip and
             the headline can never slide up under the navbar. */}
         <div className="flex-1 flex items-start lg:items-center pt-[86px] pb-10 lg:py-0">
-          <div className="mx-auto max-w-7xl w-full px-5 lg:px-8">
+          <Container width="wide" className="w-full">
             <div ref={content} className="hero-layer max-w-2xl animate-fade-in" data-hero-layer="content">
               <div className="inline-flex items-center gap-2 rounded-full border border-cream-100/30 bg-forest-950/45 backdrop-blur-md px-3.5 py-1.5 text-xs text-cream-100 font-medium">
                 <MapPin size={13} className="text-brass-300" />
@@ -85,10 +86,10 @@ export function Hero() {
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <a href="#stay" className="btn bg-cream-50 text-forest-950 hover:bg-white shadow-soft font-semibold text-sm px-6 py-3">
+                <a href="#stay" className="btn-on-dark font-semibold">
                   Explore Our Stays
                 </a>
-                <Link to="/book" data-tour="hero-cta" className="btn-secondary text-sm px-6 py-3 font-medium">
+                <Link to="/book" data-tour="hero-cta" className="btn-secondary font-medium">
                   Book a room · Check Availability
                 </Link>
               </div>
@@ -118,11 +119,11 @@ export function Hero() {
                 My Bookings
               </Link>
             </div>
-          </div>
+          </Container>
         </div>
 
         {/* Bottom strip: scene marker, scroll cue, at-a-glance facts (all from config) */}
-        <div className="mx-auto max-w-7xl w-full px-5 lg:px-8 pb-10 lg:pb-9 flex items-end justify-between gap-6">
+        <Container width="wide" className="flex items-end justify-between gap-6 pb-10 lg:pb-9">
           <div className="hidden sm:block text-[11px] uppercase tracking-eyebrow text-cream-100/60">
             <span className="font-serif text-2xl text-cream-50/90 not-italic tracking-normal mr-3">01</span>
             {BUSINESS.tagline}
@@ -148,7 +149,7 @@ export function Hero() {
               <dd className="font-serif text-2xl leading-tight mt-1">{BUSINESS.policies.checkOut}</dd>
             </div>
           </dl>
-        </div>
+        </Container>
       </div>
     </section>
   )

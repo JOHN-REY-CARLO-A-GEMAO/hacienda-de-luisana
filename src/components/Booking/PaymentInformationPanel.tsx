@@ -5,6 +5,7 @@ import {
   type PaymentMethodInformation,
 } from '../../lib/paymentInfoDB'
 import { PaymentQrCode } from './PaymentQrCode'
+import { Alert } from '../ui'
 
 function peso(n: number): string {
   return `₱${n.toLocaleString('en-PH', { maximumFractionDigits: 2 })}`
@@ -31,13 +32,14 @@ export function PaymentInformationPanel({
 }) {
   if (!payment) {
     return (
-      <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-900 leading-relaxed">
-        <strong className="block">Payment account confirmation required</strong>
+      <Alert tone="warning" className="text-xs" title="Payment account confirmation required">
+        <>
         Payment details are not currently published. Before sending money, confirm the official receiving
         account at {BUSINESS.contact.phoneDisplay} or {BUSINESS.contact.email}. Never send passwords, PINs,
         or one-time codes.
         {requiredAmount !== undefined && <span className="block mt-1"><strong>Required amount:</strong> {peso(requiredAmount)}</span>}
-      </div>
+        </>
+      </Alert>
     )
   }
 

@@ -1,5 +1,6 @@
 import type { PageResult } from '../lib/pagination'
 import { PAGE_SIZE_OPTIONS } from '../lib/pagination'
+import { Select } from './ui'
 
 export function Pager<T>({
   page,
@@ -35,8 +36,9 @@ export function Pager<T>({
       {onPageSize && (
         <label className="ml-auto flex items-center gap-2">
           Page size
-          <select
-            className="field py-1 text-xs"
+          <Select
+            className="py-1 text-xs"
+            aria-label="Page size"
             value={page.pageSize}
             onChange={(e) => onPageSize(Number(e.target.value))}
           >
@@ -45,7 +47,7 @@ export function Pager<T>({
                 {n}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       )}
     </div>

@@ -19,24 +19,8 @@ import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
 import { DisputeForm } from '../components/DisputeForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
-import { Calendar, Sparkle, Bell, Clock, CreditCard, Home, MessageCircle, LogOut } from '../lib/icons'
-import {
-  Alert,
-  Card,
-  Container,
-  Drawer,
-  EmptyState,
-  Field,
-  Input,
-  LoadingPanel,
-  Modal,
-  PageHeader,
-  Select,
-  StatCard,
-  StatusBadge,
-  StatusIconTile,
-  Tabs,
-} from '../components/ui'
+import { Calendar, Sparkle, Bell, Clock, CreditCard, Home, LogOut } from '../lib/icons'
+import { Alert, Card, Container, Drawer, EmptyState, Field, Input, Modal, Page, PageHeader, Select, SkeletonLines, StatCard, StatusBadge, StatusIconTile, Tabs } from '../components/ui'
 import { useNotifications } from '../hooks/useNotifications'
 import { notifyAdmin } from '../lib/notifications'
 import {
@@ -323,7 +307,7 @@ export function AccountPage() {
   }, [bookings])
 
   return (
-    <div className="min-h-screen bg-cream-50 pb-24 pt-28">
+    <Page>
       <Container width="content">
         <PageHeader
           eyebrow={`Your stay · ${role ? ROLE_LABELS[role] : 'Guest'}`}
@@ -355,10 +339,6 @@ export function AccountPage() {
                   </span>
                 )}
               </button>
-              <Link to="/messages" className="btn-quiet">
-                <MessageCircle size={16} />
-                Messages
-              </Link>
               <Link to="/book" className="btn-primary">
                 Book a stay
               </Link>
@@ -374,7 +354,7 @@ export function AccountPage() {
         </div>
 
         {nextStay && (
-          <section className="mt-6 overflow-hidden rounded-2xl border border-forest-900/20 bg-forest-900 text-cream-100 shadow-soft">
+          <section className="mt-6 overflow-hidden rounded-[28px] border border-forest-900/20 bg-forest-900 text-cream-100 shadow-soft">
             <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60">Your next stay</div>
@@ -504,7 +484,12 @@ export function AccountPage() {
               </Alert>
             )}
 
-            {loading && <LoadingPanel label="Reading your bookings…" className="mt-6" />}
+            {loading && (
+              <div className="card mt-6 p-6" role="status" aria-live="polite">
+                <span className="sr-only">Reading your bookings…</span>
+                <SkeletonLines rows={4} />
+              </div>
+            )}
 
             {!loading && bookings.length === 0 && (
               <EmptyState
@@ -751,9 +736,9 @@ export function AccountPage() {
                 <button
                   type="button"
                   onClick={() => void handleMarkRead(n.id)}
-                  className={`w-full rounded-2xl border p-4 text-left text-xs transition hover:shadow-md ${
+                  className={`card-tight w-full p-4 text-left text-xs transition hover:shadow-md ${
                     n.read
-                      ? 'border-forest-900/5 bg-cream-50/60 text-forest-800'
+                      ? 'bg-cream-50/60 text-forest-800'
                       : 'border-emerald-200 bg-emerald-50/60 font-medium text-emerald-950'
                   }`}
                 >
@@ -813,7 +798,7 @@ export function AccountPage() {
       <Modal open={viewingInvoice !== null} onClose={() => setViewingInvoice(null)} title="Booking invoice">
         {viewingInvoice && <BookingInvoice booking={viewingInvoice} onClose={() => setViewingInvoice(null)} />}
       </Modal>
-    </div>
+    </Page>
   )
 }
 
