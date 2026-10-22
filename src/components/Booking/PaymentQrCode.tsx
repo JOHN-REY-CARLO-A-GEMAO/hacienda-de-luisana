@@ -54,7 +54,7 @@ export function PaymentQrCode({
           <p className="mt-1 text-[11px] text-forest-700/70 leading-relaxed">
             In GCash, tap Scan QR and point the camera at this code from another phone. If you are
             scanning the screen you are paying from, enlarge the code first — or open the image and
-            scan that.
+            scan that. Transfer fees may apply.
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
             <button
