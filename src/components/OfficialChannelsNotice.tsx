@@ -40,7 +40,7 @@ export function OfficialChannelsNotice({ tone = 'light', compact = false }: { to
           </li>
           <li>
             Facebook:{' '}
-            <a href={BUSINESS.contact.facebook} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+            <a href={BUSINESS.contact.facebook} target="_blank" rel="noreferrer" className="underline underline-offset-2 break-words">
               facebook.com/haciendadeluisiana
             </a>
           </li>

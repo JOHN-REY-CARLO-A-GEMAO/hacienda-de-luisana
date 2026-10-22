@@ -8,7 +8,7 @@ export function MobileStickyCTA() {
   if (location.pathname.startsWith('/book')) return null
 
   return (
-    <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 pb-safe pointer-events-none">
+    <div className="mobile-sticky-cta lg:hidden fixed inset-x-0 bottom-0 z-30 pb-safe pointer-events-none">
       <div className="mx-4 mb-3 pointer-events-auto">
         <div className="rounded-2xl bg-forest-900/95 backdrop-blur border border-cream-100/10 shadow-soft flex items-center gap-2 p-2">
           <a
