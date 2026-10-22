@@ -197,7 +197,7 @@ function FeeRow({ fee }: { fee: Fee }) {
         {fee.amount !== undefined ? (
           <>
             <div className="font-serif text-xl text-forest-900">{peso(fee.amount)}</div>
-            {fee.unit && <div className="text-[11px] text-forest-700/60">{fee.unit}</div>}
+            {fee.unit && <div className="text-[11px] text-forest-700/75">{fee.unit}</div>}
           </>
         ) : (
           <div className="text-xs text-forest-700/70">Ask for the current price</div>

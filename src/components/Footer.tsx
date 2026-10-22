@@ -31,7 +31,7 @@ export function Footer() {
         <div>
           <div className="eyebrow text-cream-100/60 mb-4">Explore</div>
           <ul className="space-y-3 text-sm">
-            <li><Link to="/stay" className="hover:text-white">Stay</Link></li>
+            <li><Link to="/stay" className="hover:text-white">Stay &amp; Rates</Link></li>
             <li><Link to="/rates" className="hover:text-white">Rates &amp; Fees</Link></li>
             <li><Link to="/experience" className="hover:text-white">Experience</Link></li>
             <li><Link to="/gallery" className="hover:text-white">Gallery</Link></li>
