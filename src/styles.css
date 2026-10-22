@@ -117,9 +117,6 @@ body {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* The drawer replaces the fixed booking CTA while a phone menu is open. */
-header[data-mobile-menu-open='true'] ~ .mobile-sticky-cta { display: none; }
-
 /* Safe area padding for iOS bottom bar */
 .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 .pt-safe { padding-top: env(safe-area-inset-top); }

@@ -12,16 +12,16 @@ import { canOpenPage, homeForRole } from '../lib/auth'
  * Every entry is a real route and every one is visible in the desktop bar —
  * there is no "More" menu and no dropdown. Two of the labels stand for a pair
  * of pages that answer the same question, and `also` is how the bar knows to
- * keep them marked as the current section: "Stay & Rates" covers /stay and
- * /rates, "Contact" covers /contact and /faqs. The pages themselves keep their
- * own addresses and are linked from the consolidated page and the footer, so
+ * keep them marked as the current section: "Stay" covers /stay and /rates,
+ * while "Contact" also covers /faqs. The detail pages keep their own addresses
+ * and are linked from their related page and the footer, so
  * no bookmark or shared link stops working.
  */
 export type NavLink = { href: string; label: string; also?: readonly string[] }
 
 export const LINKS: NavLink[] = [
   { href: '/', label: 'Home' },
-  { href: '/stay', label: 'Stay & Rates', also: ['/rates'] },
+  { href: '/stay', label: 'Stay', also: ['/rates'] },
   { href: '/experience', label: 'Experience' },
   { href: '/gallery', label: 'Gallery' },
   { href: '/location', label: 'Location' },
@@ -99,7 +99,6 @@ export function Nav() {
     <header
       className="fixed inset-x-0 top-0 z-40 pointer-events-none"
       data-nav={floating ? 'floating' : 'hero'}
-      data-mobile-menu-open={open ? 'true' : 'false'}
     >
       <div
         className={`pointer-events-auto transition-all duration-500 ease-out-expo ${
@@ -321,9 +320,6 @@ export function Nav() {
           </div>
 
           <div className="mt-4 pt-2 space-y-2">
-            <Link to="/book" onClick={() => setOpen(false)} className="btn-primary w-full text-xs">
-              Book Your Stay
-            </Link>
             {canOpenPage(role, '/account') && (
               <Link to="/account" onClick={() => setOpen(false)} className="btn-ghost w-full text-xs">
                 My Bookings
