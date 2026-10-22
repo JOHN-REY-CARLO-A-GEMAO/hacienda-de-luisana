@@ -94,20 +94,20 @@ export function ContactDetails() {
         </div>
       </div>
 
-      <div className="reveal grid sm:grid-cols-2 gap-4">
+      <div className="reveal grid grid-cols-1 min-w-0 sm:grid-cols-2 gap-4">
         {cards.map((c) => (
           <a
             key={c.label}
             href={c.href}
             target={c.href.startsWith('http') ? '_blank' : undefined}
             rel="noreferrer"
-            className="group bg-white border border-forest-900/5 rounded-2xl p-6 shadow-card hover:shadow-depth transition-all duration-500 ease-out-expo hover:-translate-y-1"
+            className="group min-w-0 bg-white border border-forest-900/5 rounded-2xl p-6 shadow-card hover:shadow-depth transition-all duration-500 ease-out-expo hover:-translate-y-1"
           >
             <div className="w-11 h-11 rounded-xl bg-forest-50 flex items-center justify-center text-forest-700 mb-4">
               <c.icon size={20} />
             </div>
             <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">{c.label}</div>
-            <div className="mt-1 font-serif text-lg text-forest-900 group-hover:underline underline-offset-4">
+            <div className="mt-1 min-w-0 break-words font-serif text-lg text-forest-900 group-hover:underline underline-offset-4">
               {c.value}
             </div>
           </a>

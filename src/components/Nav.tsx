@@ -96,7 +96,11 @@ export function Nav() {
   const drawerRow = `block border-b border-forest-900/5 dark:border-cream-100/10 ${FOCUS_RING}`
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 pointer-events-none" data-nav={floating ? 'floating' : 'hero'}>
+    <header
+      className="fixed inset-x-0 top-0 z-40 pointer-events-none"
+      data-nav={floating ? 'floating' : 'hero'}
+      data-mobile-menu-open={open ? 'true' : 'false'}
+    >
       <div
         className={`pointer-events-auto transition-all duration-500 ease-out-expo ${
           floating
