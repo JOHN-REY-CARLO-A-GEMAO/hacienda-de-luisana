@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useOverlay } from '../ui/overlay'
 import { createPortal } from 'react-dom'
 
 /**
@@ -21,16 +22,11 @@ export function PaymentQrCode({
 }) {
   const [enlarged, setEnlarged] = useState(false)
   const closeButton = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!enlarged) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setEnlarged(false)
-    }
-    document.addEventListener('keydown', onKey)
-    closeButton.current?.focus()
-    return () => document.removeEventListener('keydown', onKey)
-  }, [enlarged])
+  // Escape, the scroll lock and the focus return belong to the shared overlay;
+  // this only says where focus should land (the Close button).
+  useOverlay(enlarged, () => setEnlarged(false), panel, { initialFocus: closeButton })
 
   const alt = `${method} QR code — ${instruction}`
 
@@ -78,7 +74,9 @@ export function PaymentQrCode({
 
       {enlarged && createPortal(
         <div
-          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-forest-950/80 p-3 sm:p-4"
+          ref={panel}
+          tabIndex={-1}
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-forest-950/80 p-3 outline-none sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-label={`${method} QR code, enlarged`}

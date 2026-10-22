@@ -260,7 +260,7 @@ function ReviewComposer({
 
       <button
         type="submit"
-        className="btn-primary text-xs mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
+        className="btn-primary btn-sm mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
         disabled={busy || Boolean(problem)}
       >
         {busy ? 'Saving…' : (submitLabel ?? (review ? 'Save my changes' : 'Submit review'))}

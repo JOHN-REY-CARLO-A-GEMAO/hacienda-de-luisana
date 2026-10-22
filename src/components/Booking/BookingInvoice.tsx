@@ -1,6 +1,7 @@
 import React from 'react'
 import type { Booking } from '../../lib/storage'
 import { ACCOMMODATIONS } from '../../config/site'
+import { RequestBadge } from '../ui'
 
 interface BookingInvoiceProps {
   booking: Booking
@@ -131,9 +132,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
               <tr>
                 <td className="py-2.5 text-forest-800">
                   Pet sanitation fee ({petRequest.count} pet{petRequest.count === 1 ? '' : 's'}) —{' '}
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
-                    {petRequest.status === 'approved' ? 'Approved' : petRequest.status === 'rejected' ? 'Rejected' : 'Pending Admin approval'}
-                  </span>
+                  <RequestBadge status={petRequest.status} />
                 </td>
                 <td className="py-2.5 text-right font-mono text-forest-900">
                   {petRequest.status === 'approved' ? '' : `₱${(petRequest.estimated_fee || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} est.`}
@@ -151,9 +150,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
               <tr>
                 <td className="py-2.5 text-forest-800">
                   Late checkout (+{lateCheckoutRequest.hours} hour{lateCheckoutRequest.hours === 1 ? '' : 's'}) —{' '}
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
-                    {lateCheckoutRequest.status === 'approved' ? 'Approved' : lateCheckoutRequest.status === 'rejected' ? 'Rejected' : 'Pending Admin approval'}
-                  </span>
+                  <RequestBadge status={lateCheckoutRequest.status} />
                 </td>
                 <td className="py-2.5 text-right font-mono text-forest-900">₱{(lateCheckoutRequest.fee || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} est.</td>
               </tr>
@@ -162,7 +159,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
               <tr>
                 <td className="py-2.5 text-forest-800" colSpan={2}>
                   Bonfire wood ({bonfireWoodSets} set{bonfireWoodSets === 1 ? '' : 's'}) —{' '}
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">Pending Admin approval</span>
+                  <RequestBadge status="pending" />
                 </td>
               </tr>
             )}
@@ -202,7 +199,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
           <button
             type="button"
             onClick={onClose}
-            className="btn bg-white border border-forest-900/10 text-forest-800 text-xs hover:bg-cream-100"
+            className="btn-quiet btn-sm"
           >
             Close
           </button>
@@ -212,7 +209,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
         <button
           type="button"
           onClick={printInvoice}
-          className="btn-primary text-xs flex items-center gap-1.5"
+          className="btn-primary btn-sm flex items-center gap-1.5"
         >
           🖨️ Print / Save Invoice
         </button>

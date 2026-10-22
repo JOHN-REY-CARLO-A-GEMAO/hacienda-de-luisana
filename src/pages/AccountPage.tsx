@@ -19,7 +19,8 @@ import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
 import { DisputeForm } from '../components/DisputeForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
-import { ArrowRight, Calendar, Sparkle, Close, Bell, User, CheckCircle, Clock, XCircle, CreditCard, Home, MessageCircle, LogOut, Settings } from '../lib/icons'
+import { Calendar, Sparkle, Bell, Clock, CreditCard, Home, LogOut } from '../lib/icons'
+import { Alert, Card, Container, Drawer, EmptyState, Field, Input, Modal, Page, PageHeader, Select, SkeletonLines, StatCard, StatusBadge, StatusIconTile, Tabs } from '../components/ui'
 import { useNotifications } from '../hooks/useNotifications'
 import { notifyAdmin } from '../lib/notifications'
 import {
@@ -67,20 +68,6 @@ function cancellationTerms(booking: Booking): string {
 
 function accommodationName(id: string) {
   return ACCOMMODATIONS.find((accommodation) => accommodation.id === id)?.name ?? id
-}
-
-function statusChip(status: ReturnType<typeof effectiveStatus>) {
-  if (status === 'Approved' || status === 'Reserved') return 'bg-emerald-100 text-emerald-800'
-  if (status === 'Pending') return 'bg-amber-100 text-amber-800'
-  if (status === 'Rejected' || status === 'Expired' || status === 'Cancelled') return 'bg-red-100 text-red-700'
-  return 'bg-cream-100 text-forest-700'
-}
-
-function statusIcon(status: ReturnType<typeof effectiveStatus>) {
-  if (status === 'Approved' || status === 'Reserved') return <CheckCircle size={16} />
-  if (status === 'Pending') return <Clock size={16} />
-  if (status === 'Rejected' || status === 'Expired' || status === 'Cancelled') return <XCircle size={16} />
-  return <Sparkle size={16} />
 }
 
 function daysUntil(dateStr: string): number {
@@ -320,394 +307,212 @@ export function AccountPage() {
   }, [bookings])
 
   return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-5xl px-5 lg:px-8">
-        {/* Header with Profile Summary */}
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-forest-900 to-forest-700 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-              {profile?.display_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'G'}
-            </div>
-            <div>
-              <div className="eyebrow">Your stay · {role ? ROLE_LABELS[role] : 'Guest'}</div>
-              <h1 className="display text-4xl sm:text-5xl mt-1 text-forest-900">
-                {profile?.display_name || user?.displayName || 'Guest Account'}
-              </h1>
-              <p className="mt-1 text-sm text-forest-700/80 max-w-xl leading-relaxed">
-                {user?.email} · Member since {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }) : 'Today'}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2 flex-wrap items-center">
-            <button
-              type="button"
-              onClick={() => setNotificationSidebarOpen(true)}
-              className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs relative"
-            >
-              <Bell size={16} className="mr-1.5" />
-              Notifications
-              {unreadCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold">
-                  {unreadCount}
-                </span>
+    <Page>
+      <Container width="content">
+        <PageHeader
+          eyebrow={`Your stay · ${role ? ROLE_LABELS[role] : 'Guest'}`}
+          title={profile?.display_name || user?.displayName || 'Guest account'}
+          lead={
+            <p>
+              {user?.email}
+              {profile?.created_at && (
+                <>
+                  {' '}
+                  · Member since{' '}
+                  {new Date(profile.created_at).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}
+                </>
               )}
-            </button>
-            <Link to="/messages" className="btn-ghost text-xs">
-              <MessageCircle size={16} className="mr-1.5" />
-              Messages
-            </Link>
-            <Link to="/book" className="btn-primary text-xs">
-              <Home size={16} className="mr-1.5" />
-              Book a stay
-            </Link>
-            <button
-              onClick={() => void logout()}
-              className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
-            >
-              <LogOut size={16} className="mr-1.5" />
-              Sign out
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Stats Dashboard */}
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-2xl border border-forest-900/5 shadow-sm p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Total Bookings</div>
-                <div className="text-3xl font-bold text-forest-900 mt-1">{stats.total}</div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-cream-100 text-forest-700 flex items-center justify-center">
-                <Calendar size={20} />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-forest-900/5 shadow-sm p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Pending Requests</div>
-                <div className="text-3xl font-bold text-amber-600 mt-1">{stats.pending}</div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
-                <Clock size={20} />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-forest-900/5 shadow-sm p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Upcoming Stays</div>
-                <div className="text-3xl font-bold text-emerald-600 mt-1">{stats.upcoming}</div>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                <Home size={20} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Next Stay Highlight */}
-        {nextStay && (
-          <div className="mt-6 bg-gradient-to-r from-forest-900 to-forest-800 rounded-2xl shadow-lg p-6 text-white">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <Home size={18} />
-                  <span className="text-sm font-semibold text-cream-100">Your Next Stay</span>
-                  {daysUntil(nextStay.check_in) > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 text-[11px] font-medium">
-                      {daysUntil(nextStay.check_in)} day{daysUntil(nextStay.check_in) === 1 ? '' : 's'} away
-                    </span>
-                  )}
-                </div>
-                <h3 className="font-serif text-2xl mt-1">{accommodationName(nextStay.accommodation)}</h3>
-                <div className="mt-2 text-sm text-cream-100/80">
-                  {nextStay.check_in} → {nextStay.check_out} · {formatStayDuration(nextStay.check_in, nextStay.check_out)}
-                </div>
-                <div className="mt-3 flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${statusChip(effectiveStatus(nextStay))}`}>
-                    {effectiveStatus(nextStay)}
+            </p>
+          }
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => setNotificationSidebarOpen(true)}
+                className="btn-quiet"
+              >
+                <Bell size={16} />
+                Notifications
+                {unreadCount > 0 && (
+                  <span className="ml-0.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
-                  {nextStay.amount_claimed && (
-                    <span className="text-sm text-cream-100/80">
-                      Downpayment: ₱{nextStay.amount_claimed.toLocaleString('en-PH')}
+                )}
+              </button>
+              <Link to="/book" className="btn-primary">
+                Book a stay
+              </Link>
+            </>
+          }
+        />
+
+        {/* The three numbers a Guest actually acts on. Everything else is the list. */}
+        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <StatCard label="Total bookings" value={stats.total} icon={Calendar} />
+          <StatCard label="Pending requests" value={stats.pending} icon={Clock} tone="pending" />
+          <StatCard label="Upcoming stays" value={stats.upcoming} icon={Home} tone="success" />
+        </div>
+
+        {nextStay && (
+          <section className="mt-6 overflow-hidden rounded-[28px] border border-forest-900/20 bg-forest-900 text-cream-100 shadow-soft">
+            <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60">Your next stay</div>
+                <h2 className="mt-1 font-serif text-2xl text-cream-50">
+                  {accommodationName(nextStay.accommodation)}
+                </h2>
+                <p className="mt-1 text-sm text-cream-100/80">
+                  {nextStay.check_in} → {nextStay.check_out} · {formatStayDuration(nextStay.check_in, nextStay.check_out)}
+                  {daysUntil(nextStay.check_in) > 0 && (
+                    <span className="ml-2 text-cream-100/60">
+                      ({daysUntil(nextStay.check_in)} day{daysUntil(nextStay.check_in) === 1 ? '' : 's'} away)
+                    </span>
+                  )}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <StatusBadge status={effectiveStatus(nextStay)} />
+                  {typeof nextStay.amount_claimed === 'number' && (
+                    <span className="text-xs text-cream-100/70">
+                      Downpayment ₱{nextStay.amount_claimed.toLocaleString('en-PH')}
                     </span>
                   )}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setViewingInvoice(nextStay)}
-                  className="btn bg-white/10 hover:bg-white/20 text-white text-xs border-white/20"
-                >
-                  View Details
-                </button>
-                <Link to="/messages" className="btn bg-white/10 hover:bg-white/20 text-white text-xs border-white/20">
-                  Contact Admin
-                </Link>
-              </div>
+              <button
+                type="button"
+                onClick={() => setViewingInvoice(nextStay)}
+                className="btn btn-sm shrink-0 border border-cream-100/25 bg-white/10 text-cream-100 hover:bg-white/20"
+              >
+                View invoice
+              </button>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Account Center Tabs */}
-        <div className="mt-8 flex gap-3 border-b border-forest-900/10 pb-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('bookings')}
-            className={`px-4 py-2 text-sm font-semibold rounded-t-xl transition ${
-              activeTab === 'bookings'
-                ? 'bg-forest-900 text-white shadow-sm'
-                : 'text-forest-700 hover:bg-cream-100'
-            }`}
-          >
-            My Bookings ({bookings.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('profile')}
-            className={`px-4 py-2 text-sm font-semibold rounded-t-xl transition ${
-              activeTab === 'profile'
-                ? 'bg-forest-900 text-white shadow-sm'
-                : 'text-forest-700 hover:bg-cream-100'
-            }`}
-          >
-            My Profile
-          </button>
-        </div>
-
-        {/* Notification Sidebar */}
-        {notificationSidebarOpen && (
-          <>
-            <div
-              className="fixed inset-0 bg-forest-950/50 backdrop-blur-sm z-40"
-              onClick={() => setNotificationSidebarOpen(false)}
-            />
-            <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 overflow-y-auto">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="font-serif text-2xl text-forest-900">Notifications</h2>
-                  {unreadCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => void markAllRead()}
-                      className="text-xs underline text-forest-700 hover:text-forest-900"
-                    >
-                      Mark all read
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setNotificationSidebarOpen(false)}
-                    className="text-forest-600 hover:text-forest-900 p-1"
-                    aria-label="Close notifications"
-                  >
-                    <Close size={24} />
-                  </button>
-                </div>
-                {notifications.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Bell size={48} className="mx-auto text-forest-300 mb-4" />
-                    <p className="text-sm text-forest-700/70">No notifications yet.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {notifications.map((n) => (
-                      <div
-                        key={n.id}
-                        className={`p-4 rounded-2xl border text-xs transition cursor-pointer hover:shadow-md ${
-                          n.read ? 'bg-cream-50/50 border-forest-900/5 text-forest-800' : 'bg-emerald-50/60 border-emerald-200 text-emerald-950 font-medium'
-                        }`}
-                        onClick={() => void handleMarkRead(n.id)}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="font-bold text-sm text-forest-900">{n.title}</div>
-                          {!n.read && (
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 mt-1.5" />
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs leading-relaxed">{n.message}</p>
-                        <div className="mt-3 text-[10px] text-forest-600/70">
-                          {new Date(n.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
+        <Tabs
+          className="mt-10"
+          label="Account sections"
+          value={activeTab}
+          onChange={setActiveTab}
+          items={[
+            { key: 'bookings', label: 'My bookings', meta: `(${bookings.length})` },
+            { key: 'profile', label: 'My profile' },
+          ]}
+        />
 
         {activeTab === 'profile' && (
-          <div className="mt-8 bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 max-w-2xl">
-            <div className="flex items-start gap-6 mb-6">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-forest-900 to-forest-700 flex items-center justify-center text-white text-3xl font-bold shadow-lg flex-shrink-0">
-                {profile?.display_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'G'}
-              </div>
-              <div>
-                <h2 className="font-serif text-2xl text-forest-900">{profile?.display_name || user?.displayName || 'Guest'}</h2>
-                <p className="mt-1 text-sm text-forest-700/80">{user?.email}</p>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-cream-100 text-forest-700'}`}>
-                    {role ? ROLE_LABELS[role] : 'Guest'}
-                  </span>
-                  {profile?.created_at && (
-                    <span className="text-[10px] text-forest-600">
-                      Since {new Date(profile.created_at).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <hr className="border-forest-900/10 my-6" />
-
-            <h3 className="font-serif text-xl text-forest-900">Personal Information</h3>
+          <Card padding="lg" className="mt-6 max-w-2xl">
+            <h2 className="h3">Personal information</h2>
             <p className="mt-1 text-sm text-forest-700/80">
-              Keep your contact details up to date so the Admin can easily reach you regarding your stay.
+              Keep your contact details current so the Admin can reach you about your stay.
             </p>
 
             {profileMsg && (
-              <div
-                className={`mt-4 rounded-xl border p-3.5 text-xs font-medium ${
-                  profileMsg.tone === 'good'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    : 'bg-red-50 border-red-200 text-red-800'
-                }`}
-              >
+              <Alert tone={profileMsg.tone === 'good' ? 'success' : 'danger'} className="mt-4">
                 {profileMsg.text}
-              </div>
+              </Alert>
             )}
 
             <form onSubmit={handleSaveProfile} className="mt-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label className="block">
-                  <span className="label">First Name *</span>
-                  <input
-                    className="field"
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="First name" required>
+                  <Input
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     required
-                    placeholder="First Name"
+                    placeholder="First name"
+                    autoComplete="given-name"
                   />
-                </label>
-                <label className="block">
-                  <span className="label">Last Name *</span>
-                  <input
-                    className="field"
+                </Field>
+                <Field label="Last name" required>
+                  <Input
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                     required
-                    placeholder="Last Name"
+                    placeholder="Last name"
+                    autoComplete="family-name"
                   />
-                </label>
+                </Field>
               </div>
 
-              <label className="block">
-                <span className="label">Middle Name (optional)</span>
-                <input
-                  className="field"
+              <Field label="Middle name" hint="Optional — an initial is enough.">
+                <Input
                   value={middleName}
                   onChange={(e) => setMiddleName(e.target.value)}
-                  placeholder="Middle Name"
+                  placeholder="Middle name"
+                  autoComplete="additional-name"
                 />
-              </label>
+              </Field>
 
-              <label className="block">
-                <span className="label">Mobile Phone Number *</span>
-                <input
-                  className="field"
+              <Field label="Mobile phone number" required hint="Philippine mobile format: 09XX XXX XXXX">
+                <Input
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   required
                   placeholder="09171234567"
+                  inputMode="tel"
+                  autoComplete="tel"
                 />
-                <span className="text-[11px] text-forest-600 mt-1 block">
-                  Philippine mobile format: 09XX XXX XXXX
-                </span>
-              </label>
+              </Field>
 
-              <label className="block">
-                <span className="label">Date of Birth (optional)</span>
-                <input
-                  className="field"
-                  type="date"
-                  value={birthdate}
-                  onChange={(e) => setBirthdate(e.target.value)}
-                />
-              </label>
+              <Field label="Date of birth" hint="Optional.">
+                <Input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
+              </Field>
 
-              <label className="block">
-                <span className="label">Email Address</span>
-                <input
-                  className="field bg-cream-50/50 cursor-not-allowed"
-                  value={user?.email ?? ''}
-                  disabled
-                />
-                <span className="text-[11px] text-forest-600 mt-1 block">
-                  Email address cannot be changed directly.
-                </span>
-              </label>
+              <Field label="Email address" hint="The sign-in address cannot be changed here.">
+                <Input value={user?.email ?? ''} disabled />
+              </Field>
 
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={profileSaving}
-                  className="btn-primary text-xs disabled:opacity-60"
-                >
-                  {profileSaving ? 'Saving Changes…' : 'Save Profile Changes'}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <button type="submit" disabled={profileSaving} className="btn-primary">
+                  {profileSaving ? 'Saving…' : 'Save changes'}
+                </button>
+                <button type="button" onClick={() => void logout()} className="btn-ghost">
+                  <LogOut size={16} />
+                  Sign out
                 </button>
               </div>
             </form>
-          </div>
+          </Card>
         )}
 
         {activeTab === 'bookings' && (
-          <>
+          <div className="mt-6">
             {notice && (
-              <div
-                className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
-                  notice.tone === 'good'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    : 'bg-red-50 border-red-200 text-red-800'
-                }`}
-              >
+              <Alert tone={notice.tone === 'good' ? 'success' : 'danger'} className="mb-5">
                 {notice.text}
-              </div>
+              </Alert>
             )}
 
             {loading && (
-              <div className="mt-10 text-center text-sm text-forest-700/70">Reading your bookings…</div>
-            )}
-
-            {!loading && bookings.length === 0 && (
-              <div className="mt-10 rounded-[28px] bg-white border border-forest-900/5 shadow-card p-12 text-center">
-                <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-cream-100 to-cream-200 text-forest-700 flex items-center justify-center mb-6">
-                  <Home size={32} />
-                </div>
-                <h2 className="font-serif text-2xl text-forest-900">No bookings on this account yet</h2>
-                <p className="mt-3 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
-                  A request only shows up here if it was made while you were signed in with this account. Requests made
-                  before you signed up stay with the browser that made them — ask the Admin and they will find it by name.
-                </p>
-                <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-                  <Link to="/book" className="btn-primary text-xs">
-                    <Home size={16} className="mr-1.5" />
-                    Book your first stay
-                  </Link>
-                  <Link to="/book" className="btn-ghost text-xs">
-                    Browse accommodations
-                  </Link>
-                </div>
+              <div className="card mt-6 p-6" role="status" aria-live="polite">
+                <span className="sr-only">Reading your bookings…</span>
+                <SkeletonLines rows={4} />
               </div>
             )}
 
+            {!loading && bookings.length === 0 && (
+              <EmptyState
+                icon={Home}
+                title="No bookings on this account yet"
+                body="A request only shows up here if it was made while you were signed in with this account. Requests made before you signed up stay with the browser that made them — ask the Admin and they will find it by name."
+                actions={
+                  <>
+                    <Link to="/book" className="btn-primary">
+                      Book your first stay
+                    </Link>
+                    <Link to="/stay" className="btn-ghost">
+                      Browse accommodations
+                    </Link>
+                  </>
+                }
+              />
+            )}
+
             {!loading && bookings.length > 0 && (
-              <div className="mt-8 grid sm:grid-cols-3 gap-3" data-tour="account-tools">
-                <input
-                  className="field text-sm"
+              <div className="grid gap-3 sm:grid-cols-3" data-tour="account-tools">
+                <Input
+                  className="text-sm"
                   placeholder="Search bookings"
                   aria-label="Search bookings"
                   value={q}
@@ -717,8 +522,8 @@ export function AccountPage() {
                     setPage(1)
                   }}
                 />
-                <select
-                  className="field text-sm"
+                <Select
+                  className="text-sm"
                   aria-label="Filter by status"
                   value={statusFilter}
                   onChange={(e) => {
@@ -732,99 +537,81 @@ export function AccountPage() {
                       {s}
                     </option>
                   ))}
-                </select>
-                <select
-                  className="field text-sm"
+                </Select>
+                <Select
+                  className="text-sm"
                   aria-label="Sort bookings"
                   value={sortKey}
                   onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
                 >
-                  <option value="created_at">Sort by created</option>
-                  <option value="check_in">Sort by check-in</option>
-                  <option value="accommodation">Sort by stay</option>
-                </select>
+                  <option value="created_at">Newest first</option>
+                  <option value="check_in">By check-in date</option>
+                  <option value="accommodation">By accommodation</option>
+                </Select>
               </div>
             )}
 
-            <div className="mt-8 space-y-5">
+            <div className="mt-6 space-y-5">
               {!loading && bookings.length > 0 && filtered.length === 0 && (
-                <div className="rounded-[28px] bg-white border border-forest-900/5 shadow-card p-8 text-center">
-                  <h2 className="font-serif text-xl text-forest-900">No bookings match those filters</h2>
-                  <p className="mt-2 text-sm text-forest-700/80 max-w-md mx-auto leading-relaxed">
-                    {bookings.length} booking{bookings.length === 1 ? '' : 's'} on this account, none matching
-                    {q.trim() ? ` “${q.trim()}”` : ' the selected status'}. Widen the search or choose All statuses.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQ('')
-                      setStatusFilter('all')
-                      setPage(1)
-                    }}
-                    className="btn-ghost mt-5 inline-flex text-xs"
-                  >
-                    Clear search and filters
-                  </button>
-                </div>
+                <EmptyState
+                  title="No bookings match those filters"
+                  body={`${bookings.length} booking${bookings.length === 1 ? '' : 's'} on this account, none matching${
+                    q.trim() ? ` “${q.trim()}”` : ' the selected status'
+                  }. Widen the search or choose All statuses.`}
+                  actions={
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQ('')
+                        setStatusFilter('all')
+                        setPage(1)
+                      }}
+                      className="btn-ghost"
+                    >
+                      Clear search and filters
+                    </button>
+                  }
+                />
               )}
+
               {paged.items.map((booking) => {
                 const status = effectiveStatus(booking)
                 const days = daysUntil(booking.check_in)
                 return (
-                  <article
-                    key={booking.id}
-                    className="rounded-[28px] bg-white border border-forest-900/5 shadow-card overflow-hidden hover:shadow-lg transition-shadow"
-                    data-tour="booking-card"
-                  >
-                    {/* Card Header */}
-                    <div className="bg-gradient-to-r from-cream-50 to-white px-6 py-4 border-b border-forest-900/5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${statusChip(status)}`}>
-                            {statusIcon(status)}
-                          </div>
-                          <div>
-                            <div className="eyebrow text-forest-600">Request {reference(booking)}</div>
-                            <h2 className="font-serif text-xl text-forest-900 mt-0.5">
-                              {accommodationName(booking.accommodation)}
-                            </h2>
-                          </div>
+                  <article key={booking.id} className="card overflow-hidden" data-tour="booking-card">
+                    <div className="flex items-start justify-between gap-4 border-b border-forest-900/5 px-6 py-4">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <StatusIconTile status={status} />
+                        <div className="min-w-0">
+                          <div className="data-label">Request {reference(booking)}</div>
+                          <h2 className="mt-0.5 truncate font-serif text-xl text-forest-900">
+                            {accommodationName(booking.accommodation)}
+                          </h2>
                         </div>
-                        <span
-                          className={`px-3 py-1.5 rounded-full text-[11px] font-bold flex items-center gap-1.5 ${statusChip(status)}`}
-                        >
-                          {statusIcon(status)}
-                          {status}
-                        </span>
                       </div>
+                      <StatusBadge status={status} size="md" />
                     </div>
 
-                    {/* Card Body */}
                     <div className="p-6">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Check-in</div>
-                          <div className="font-medium text-forest-900 mt-0.5">{booking.check_in}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Check-out</div>
-                          <div className="font-medium text-forest-900 mt-0.5">{booking.check_out}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Duration</div>
-                          <div className="font-medium text-forest-900 mt-0.5">{formatStayDuration(booking.check_in, booking.check_out)}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Guests</div>
-                          <div className="font-medium text-forest-900 mt-0.5">{booking.guests} guest{booking.guests === 1 ? '' : 's'}</div>
-                        </div>
-                      </div>
+                      <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+                        {[
+                          ['Check-in', booking.check_in],
+                          ['Check-out', booking.check_out],
+                          ['Duration', formatStayDuration(booking.check_in, booking.check_out)],
+                          ['Guests', `${booking.guests} guest${booking.guests === 1 ? '' : 's'}`],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <dt className="data-label">{label}</dt>
+                            <dd className="mt-0.5 font-medium text-forest-900">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
 
                       {days > 0 && days <= 30 && (
-                        <div className="mt-4 text-xs text-forest-700 bg-cream-50 rounded-xl px-3 py-2 inline-flex items-center gap-2">
+                        <p className="mt-4 inline-flex items-center gap-2 rounded-xl bg-cream-50 px-3 py-2 text-xs text-forest-700">
                           <Clock size={14} />
                           {days} day{days === 1 ? '' : 's'} until check-in
-                        </div>
+                        </p>
                       )}
 
                       <div className="mt-4">
@@ -832,14 +619,14 @@ export function AccountPage() {
                       </div>
 
                       {booking.rejection_reason && (
-                        <div className="mt-4 text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                          <strong>Admin declined:</strong> "{booking.rejection_reason}". Those dates are free again.
-                        </div>
+                        <Alert tone="danger" className="mt-4 text-xs">
+                          <strong>Admin declined:</strong> &ldquo;{booking.rejection_reason}&rdquo;. Those dates are free
+                          again.
+                        </Alert>
                       )}
                     </div>
 
-                    {/* Card Footer */}
-                    <div className="px-6 py-4 bg-cream-50/50 border-t border-forest-900/5">
+                    <div className="border-t border-forest-900/5 bg-cream-50/60 px-6 py-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap gap-2">
                           {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
@@ -853,9 +640,9 @@ export function AccountPage() {
                           <button
                             type="button"
                             onClick={() => setViewingInvoice(booking)}
-                            className="btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 text-xs"
+                            className="btn-quiet btn-sm"
                           >
-                            <CreditCard size={14} className="mr-1.5" />
+                            <CreditCard size={14} />
                             Invoice
                           </button>
 
@@ -863,7 +650,7 @@ export function AccountPage() {
                             <button
                               onClick={() => setConfirmingCancel(booking)}
                               disabled={busy === booking.id}
-                              className="btn-ghost text-xs disabled:opacity-50 text-red-700 hover:bg-red-50"
+                              className="btn-danger-quiet btn-sm"
                             >
                               {busy === booking.id ? 'Cancelling…' : 'Cancel booking'}
                             </button>
@@ -873,7 +660,7 @@ export function AccountPage() {
                             <button
                               onClick={() => setConfirmingWithdraw(booking)}
                               disabled={busy === booking.id}
-                              className="btn-ghost text-xs disabled:opacity-50 text-red-700 hover:bg-red-50"
+                              className="btn-danger-quiet btn-sm"
                             >
                               {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
                             </button>
@@ -881,21 +668,20 @@ export function AccountPage() {
                         </div>
 
                         {!WITHDRAWABLE.includes(status) && !CANCELLABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
-                          <span className="text-[11px] text-forest-600 flex items-center gap-1">
+                          <span className="flex items-center gap-1 text-[11px] text-forest-600">
                             <Sparkle size={12} /> Contact Admin to modify dates
                           </span>
                         )}
                       </div>
 
-                      {/* Collapsible Details */}
-                      <div className="mt-4 pt-4 border-t border-forest-900/10">
+                      <div className="mt-4 border-t border-forest-900/10 pt-4">
                         <BookingHistory bookingId={booking.id} />
 
                         {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
                           <div data-testid="review-entry" className="mt-4">
                             {isReviewableStatus(status) && (
-                              <p className="text-sm text-forest-800 mb-2">
-                                <strong className="font-medium">Your stay is complete!</strong> How was your stay?
+                              <p className="mb-2 text-sm text-forest-800">
+                                <strong className="font-medium">Your stay is complete.</strong> How was it?
                               </p>
                             )}
                             <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
@@ -924,56 +710,95 @@ export function AccountPage() {
                 }}
               />
             )}
-          </>
-        )}
-
-        <ConfirmDialog
-          open={confirmingWithdraw !== null}
-          danger
-          title="Withdraw this request?"
-          body={
-            confirmingWithdraw
-              ? `Request ${reference(confirmingWithdraw)} for ${accommodationName(
-                  confirmingWithdraw.accommodation,
-                )} (${confirmingWithdraw.check_in} → ${confirmingWithdraw.check_out}) will be cancelled and those dates released for other Guests. The Admin cannot undo this from their own app.\n\nNo money has been verified on a pending request, so nothing is charged and nothing is refunded.`
-              : ''
-          }
-          confirmLabel="Withdraw request"
-          cancelLabel="Keep it"
-          busy={busy === confirmingWithdraw?.id}
-          onCancel={() => setConfirmingWithdraw(null)}
-          onConfirm={() => {
-            if (confirmingWithdraw) void withdraw(confirmingWithdraw)
-          }}
-        />
-
-        <ConfirmDialog
-          open={confirmingCancel !== null}
-          danger
-          title="Cancel this booking?"
-          body={
-            confirmingCancel
-              ? `${reference(confirmingCancel)} · ${accommodationName(confirmingCancel.accommodation)} (${confirmingCancel.check_in} → ${confirmingCancel.check_out}). The dates are released and this cannot be undone.\n\n${cancellationTerms(confirmingCancel)}`
-              : ''
-          }
-          confirmLabel="Cancel booking"
-          cancelLabel="Keep it"
-          busy={busy === confirmingCancel?.id}
-          onCancel={() => setConfirmingCancel(null)}
-          onConfirm={() => {
-            if (confirmingCancel) void withdraw(confirmingCancel, 'cancel')
-          }}
-        />
-
-        {viewingInvoice && (
-          <div className="fixed inset-0 z-50 bg-forest-950/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-            <div className="w-full max-w-2xl my-auto">
-              <BookingInvoice booking={viewingInvoice} onClose={() => setViewingInvoice(null)} />
-            </div>
           </div>
         )}
-      </div>
-    </div>
+      </Container>
+
+      <Drawer
+        open={notificationSidebarOpen}
+        onClose={() => setNotificationSidebarOpen(false)}
+        title="Notifications"
+        description="Booking decisions and messages from the Admin."
+        headerAction={
+          unreadCount > 0 ? (
+            <button type="button" onClick={() => void markAllRead()} className="text-xs text-link text-forest-700">
+              Mark all read
+            </button>
+          ) : undefined
+        }
+      >
+        {notifications.length === 0 ? (
+          <EmptyState compact icon={Bell} title="No notifications yet" body="Decisions about your bookings appear here." />
+        ) : (
+          <ul className="space-y-3">
+            {notifications.map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  onClick={() => void handleMarkRead(n.id)}
+                  className={`card-tight w-full p-4 text-left text-xs transition hover:shadow-md ${
+                    n.read
+                      ? 'bg-cream-50/60 text-forest-800'
+                      : 'border-emerald-200 bg-emerald-50/60 font-medium text-emerald-950'
+                  }`}
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-bold text-forest-900">{n.title}</span>
+                    {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-label="Unread" />}
+                  </span>
+                  <span className="mt-2 block leading-relaxed">{n.message}</span>
+                  <span className="mt-3 block text-[10px] text-forest-600/70">
+                    {new Date(n.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Drawer>
+
+      <ConfirmDialog
+        open={confirmingWithdraw !== null}
+        danger
+        title="Withdraw this request?"
+        body={
+          confirmingWithdraw
+            ? `Request ${reference(confirmingWithdraw)} for ${accommodationName(
+                confirmingWithdraw.accommodation,
+              )} (${confirmingWithdraw.check_in} → ${confirmingWithdraw.check_out}) will be cancelled and those dates released for other Guests. The Admin cannot undo this from their own app.\n\nNo money has been verified on a pending request, so nothing is charged and nothing is refunded.`
+            : ''
+        }
+        confirmLabel="Withdraw request"
+        cancelLabel="Keep it"
+        busy={busy === confirmingWithdraw?.id}
+        onCancel={() => setConfirmingWithdraw(null)}
+        onConfirm={() => {
+          if (confirmingWithdraw) void withdraw(confirmingWithdraw)
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmingCancel !== null}
+        danger
+        title="Cancel this booking?"
+        body={
+          confirmingCancel
+            ? `${reference(confirmingCancel)} · ${accommodationName(confirmingCancel.accommodation)} (${confirmingCancel.check_in} → ${confirmingCancel.check_out}). The dates are released and this cannot be undone.\n\n${cancellationTerms(confirmingCancel)}`
+            : ''
+        }
+        confirmLabel="Cancel booking"
+        cancelLabel="Keep it"
+        busy={busy === confirmingCancel?.id}
+        onCancel={() => setConfirmingCancel(null)}
+        onConfirm={() => {
+          if (confirmingCancel) void withdraw(confirmingCancel, 'cancel')
+        }}
+      />
+
+      <Modal open={viewingInvoice !== null} onClose={() => setViewingInvoice(null)} title="Booking invoice">
+        {viewingInvoice && <BookingInvoice booking={viewingInvoice} onClose={() => setViewingInvoice(null)} />}
+      </Modal>
+    </Page>
   )
 }
 

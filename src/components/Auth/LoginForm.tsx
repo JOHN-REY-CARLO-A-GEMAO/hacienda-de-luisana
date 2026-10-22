@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AuthShell, type AuthIntro, type RegisterIntro } from './AuthShell'
+import { AuthFormPanel, type AuthIntro, type RegisterIntro } from './AuthShell'
 import { LoginFormOnly } from './LoginFormOnly'
 import { RegisterForm } from './RegisterForm'
 import { ResetPasswordForm } from './ResetPasswordForm'
@@ -8,20 +8,18 @@ type Mode = 'login' | 'register' | 'reset'
 
 const DEFAULT_REGISTER_INTRO: RegisterIntro = {
   eyebrow: 'Create account',
-  title: 'Join Hacienda',
-  body: 'Make a Guest account to follow your own Booking, send your ID and keep your dates.',
+  title: 'Make a Guest account',
+  body: 'A Guest account keeps your Bookings, your payment proofs and your dates in one place.',
   submitLabel: 'Create Guest Account',
   successMessage: 'Your Guest account is ready — your Bookings are now tied to it.',
 }
 
 /**
- * The Guest's sign-in form container.
+ * The Guest's sign-in surface: one panel, three modes.
  *
- * This component now serves as a thin wrapper that:
- * - Manages mode switching (login/register/reset)
- * - Manages shared state (email) across mode switches
- * - Delegates to focused form components
- * - Preserves the existing API for backward compatibility
+ * It owns the mode (sign in / create account / reset) and the email shared
+ * across them, so switching modes never re-types an address. The heading comes
+ * from the current mode — a page that wraps this must not add one of its own.
  *
  * Signing up makes a Guest — there is no role to pick, because a role picked in a
  * browser is a role anybody could pick. The Admin is the address the Firestore
@@ -41,20 +39,20 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [suggestLogin, setSuggestLogin] = useState(false)
-  // Preserve email across mode switches for the one-click login switch feature
+  // Preserved across mode switches so "sign in instead" keeps the address typed.
   const [email, setEmail] = useState('')
 
   const copy = {
     login: intro ?? {
       eyebrow: 'Welcome back',
-      title: 'Sign in',
-      body: 'Sign in to follow your own Booking, send your ID and keep your dates.',
+      title: 'Sign in as Guest',
+      body: 'Follow your own Bookings, send your payment proof and keep your dates.',
     },
     register: registerIntro,
     reset: {
       eyebrow: 'Reset password',
-      title: 'Forgot password?',
-      body: 'Enter your email to receive a reset link.',
+      title: 'Forgot your password?',
+      body: 'Enter your email and the Hacienda will send a reset link.',
     },
   }[mode]
 
@@ -67,7 +65,7 @@ export function LoginForm({
   }
 
   return (
-    <AuthShell
+    <AuthFormPanel
       mode={mode}
       intro={copy}
       error={error}
@@ -78,7 +76,6 @@ export function LoginForm({
     >
       {mode === 'login' && (
         <LoginFormOnly
-          intro={copy}
           email={email}
           onEmailChange={setEmail}
           onSuccess={onSuccess}
@@ -110,9 +107,8 @@ export function LoginForm({
           onInfo={setInfo}
         />
       )}
-    </AuthShell>
+    </AuthFormPanel>
   )
 }
 
-// Re-export types for backward compatibility with existing imports
 export type { AuthIntro, RegisterIntro } from './AuthShell'

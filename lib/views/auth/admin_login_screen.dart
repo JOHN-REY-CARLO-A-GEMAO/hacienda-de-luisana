@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/auth_store.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/validators.dart';
@@ -115,8 +116,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                     StaggeredEntrance(
                       index: 1,
                       child: Text('Hacienda Admin',
-                          style: GoogleFonts.cormorantGaramond(
-                              fontSize: 34,
+                          style: AppTheme.serif(
+                              fontSize: 30,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.forest900)),
                     ),
@@ -183,13 +184,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
-                            color: Colors.red.shade50,
+                            color: AppColors.alertDangerSurface,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.red.shade200),
+                            border: Border.all(color: AppColors.alertDangerBorder),
                           ),
                           child: Text(_error!,
                               style: GoogleFonts.inter(
-                                  fontSize: 12, color: Colors.red.shade900)),
+                                  fontSize: 12, color: AppColors.alertDangerText)),
                         ),
                       ),
                     ],

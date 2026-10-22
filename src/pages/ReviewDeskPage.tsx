@@ -7,6 +7,7 @@ import { usePublishedRates } from '../hooks/usePublishedRates'
 import { unitsForAccommodation } from '../lib/booking'
 import { readLocalPaymentProof, type Booking } from '../lib/storage'
 import { ArrowRight } from '../lib/icons'
+import { Alert, Card, Container, EmptyState, Field, MessageScreen, Page, PageHeader, StatusBadge, Textarea } from '../components/ui'
 
 function referenceOf(booking: Booking): string {
   return (booking.ref_id || booking.id.slice(0, 8)).toUpperCase()
@@ -98,48 +99,55 @@ export function ReviewDeskPage() {
 
   if (!allowed) {
     return (
-      <div className="pt-32 pb-24 min-h-screen bg-cream-50">
-        <div className="mx-auto max-w-lg px-5 text-center">
-          <div className="eyebrow">Admin</div>
-          <h1 className="display text-4xl mt-3 text-forest-900">Review is for the Hacienda</h1>
-          <p className="mt-4 text-sm text-forest-800/80 leading-relaxed">
-            Guests can browse and book without an account. Approving or rejecting a downpayment
-            is the Admin’s decision, made in the Hacienda mobile app.
+      <MessageScreen
+        eyebrow="Admin"
+        title="Review is for the Hacienda"
+        body={
+          <p>
+            Guests can browse and book without an account. Approving or rejecting a downpayment is the
+            Admin&rsquo;s decision, made in the Hacienda mobile app.
           </p>
-          <Link to="/" className="btn-primary mt-8 inline-flex text-xs">Back to the Hacienda</Link>
-        </div>
-      </div>
+        }
+        actions={
+          <Link to="/" className="btn-primary">
+            Back to the Hacienda
+          </Link>
+        }
+      />
     )
   }
 
   return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-6xl px-5 lg:px-8">
-        <div className="max-w-2xl">
-          <div className="eyebrow">{demo ? 'Demo review desk' : 'Admin review'}</div>
-          <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">Pending downpayments</h1>
-          <p className="mt-4 text-forest-800/80 leading-relaxed">
-            A booking stays <strong>Pending</strong> until you accept or decline the screenshot.
-            Approve sets it to <strong>Approved</strong>. Reject sets it to <strong>Rejected</strong>.
-            Nothing else confirms the stay.
-          </p>
-        </div>
+    <Page>
+      <Container width="wide">
+        <PageHeader
+          eyebrow={demo ? 'Demo review desk' : 'Admin review'}
+          title="Pending downpayments"
+          lead={
+            <p>
+              A booking stays <strong>Pending</strong> until you accept or decline the screenshot. Approve
+              sets it to <strong>Approved</strong>. Reject sets it to <strong>Rejected</strong>. Nothing
+              else confirms the stay.
+            </p>
+          }
+        />
 
         {notice && (
-          <div
-            className={`mt-6 rounded-xl px-4 py-3 text-sm ${
-              notice.tone === 'good' ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'
-            }`}
-          >
+          <Alert tone={notice.tone === 'good' ? 'success' : 'danger'} className="mt-6">
             {notice.text}
-          </div>
+          </Alert>
         )}
 
         <div className="mt-10 grid lg:grid-cols-5 gap-6">
           <ul className="lg:col-span-2 space-y-3">
             {pending.length === 0 && (
-              <li className="rounded-2xl bg-white border border-forest-900/5 p-5 text-sm text-forest-700">
-                No bookings are waiting. A guest submission with a screenshot appears here as Pending.
+              <li>
+                <EmptyState
+                  compact
+                  title="No bookings are waiting"
+                  body="A guest submission with a screenshot appears here as Pending."
+                  className="card-tight"
+                />
               </li>
             )}
             {pending.map((booking) => {
@@ -149,48 +157,48 @@ export function ReviewDeskPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedId(booking.id)}
-                    className={`w-full text-left rounded-2xl border p-4 ${
-                      active ? 'bg-forest-900 text-cream-50 border-forest-900' : 'bg-white border-forest-900/10'
+                    className={`card-tight w-full p-4 text-left transition-colors ${
+                      active ? 'border-forest-900 bg-forest-900 text-cream-50' : 'hover:border-forest-900/25'
                     }`}
                   >
-                    <div className="text-[10px] uppercase tracking-eyebrow opacity-70">{referenceOf(booking)}</div>
+                    <div className="data-label opacity-70">{referenceOf(booking)}</div>
                     <div className="font-serif text-xl mt-1">{booking.guest_name}</div>
                     <div className={`text-xs mt-1 ${active ? 'text-cream-100/80' : 'text-forest-700'}`}>
                       {ACCOMMODATIONS.find((item) => item.id === booking.accommodation)?.name || booking.accommodation}
                       {' · '}
                       {booking.check_in} → {booking.check_out}
                     </div>
-                    <div className={`mt-2 text-[11px] ${active ? 'text-amber-200' : 'text-amber-800'}`}>Pending</div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <StatusBadge status="Pending" />
+                    </div>
                   </button>
                 </li>
               )
             })}
           </ul>
 
-          <section className="lg:col-span-3 bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8">
+          <Card as="section" padding="lg" className="lg:col-span-3">
             {!selected ? (
-              <p className="text-sm text-forest-700">Select a pending booking to review its screenshot.</p>
+              <EmptyState compact title="Nothing selected" body="Select a pending booking to review its screenshot." />
             ) : (
               <>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="eyebrow">Reviewing</div>
-                    <h2 className="font-serif text-3xl text-forest-900 mt-1">{selected.guest_name}</h2>
+                    <h2 className="h2 mt-1">{selected.guest_name}</h2>
                     <p className="text-sm text-forest-700 mt-1">
                       {selected.email} · {selected.phone}
                     </p>
                   </div>
-                  <span className="rounded-full bg-amber-100 text-amber-900 text-[11px] uppercase tracking-eyebrow px-3 py-1">
-                    Pending
-                  </span>
+                  <StatusBadge status="Pending" />
                 </div>
                 <dl className="mt-5 grid sm:grid-cols-2 gap-3 text-sm">
                   <div>
-                    <dt className="text-[10px] uppercase tracking-eyebrow text-forest-600">Dates</dt>
+                    <dt className="data-label">Dates</dt>
                     <dd>{selected.check_in} → {selected.check_out}</dd>
                   </div>
                   <div>
-                    <dt className="text-[10px] uppercase tracking-eyebrow text-forest-600">Amount claimed</dt>
+                    <dt className="data-label">Amount claimed</dt>
                     <dd>
                       {typeof selected.amount_claimed === 'number'
                         ? `₱${selected.amount_claimed.toLocaleString('en-PH')}`
@@ -199,12 +207,12 @@ export function ReviewDeskPage() {
                     </dd>
                   </div>
                   <div className="sm:col-span-2">
-                    <dt className="text-[10px] uppercase tracking-eyebrow text-forest-600">Reference</dt>
+                    <dt className="data-label">Reference</dt>
                     <dd className="font-mono text-xs">{selected.payment_reference || 'None on the form'}</dd>
                   </div>
                 </dl>
                 <div className="mt-5">
-                  <div className="text-[10px] uppercase tracking-eyebrow text-forest-600">Downpayment screenshot</div>
+                  <div className="data-label">Downpayment screenshot</div>
                   {proofSrc ? (
                     <img src={proofSrc} alt="Downpayment proof" className="mt-2 max-h-80 rounded-2xl border border-forest-900/10 object-contain bg-cream-50" />
                   ) : selected.payment_proof_url ? (
@@ -212,15 +220,23 @@ export function ReviewDeskPage() {
                       Proof stored at <span className="font-mono">{selected.payment_proof_url}</span>. Open it from the Admin app when this is a cloud booking.
                     </p>
                   ) : (
-                    <p className="mt-2 text-sm text-red-800">
+                    <p className="mt-2 text-sm text-red-800" role="alert">
                       No screenshot is attached. Approval will be refused until a proof is on the booking.
                     </p>
                   )}
                 </div>
-                <label className="block mt-6">
-                  <span className="label">If you reject, the guest reads this</span>
-                  <textarea
-                    className="field min-h-[90px]"
+                <Field
+                  className="mt-6"
+                  label="If you reject, the guest reads this"
+                  hint={
+                    <span className="flex items-center justify-between gap-3">
+                      <span>State clearly why the downpayment was rejected</span>
+                      <span className="font-mono tabular-nums">{reason.length} / 500 characters</span>
+                    </span>
+                  }
+                >
+                  <Textarea
+                    className="min-h-[90px]"
                     maxLength={500}
                     value={reason}
                     onChange={(event) => {
@@ -228,15 +244,11 @@ export function ReviewDeskPage() {
                       if (notice?.tone === 'bad') setNotice(null)
                     }}
                   />
-                  <div className="mt-1 flex items-center justify-between text-[11px]">
-                    <span className="text-forest-600/70">State clearly why the downpayment was rejected</span>
-                    <span className="font-mono tabular-nums text-forest-600/70">{reason.length} / 500 characters</span>
-                  </div>
-                </label>
+                </Field>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <button
                     type="button"
-                    className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="btn-primary"
                     disabled={busy}
                     onClick={() => void decide('approve')}
                   >
@@ -244,21 +256,21 @@ export function ReviewDeskPage() {
                   </button>
                   <button
                     type="button"
-                    className="btn bg-red-700 text-white hover:bg-red-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="btn-danger"
                     disabled={busy || !reason.trim()}
                     onClick={() => void decide('reject')}
                   >
                     {busy ? 'Saving…' : 'Reject'}
                   </button>
-                  <Link to={`/booking/status?id=${encodeURIComponent(selected.id)}`} className="btn-ghost text-xs">
+                  <Link to={`/booking/status?id=${encodeURIComponent(selected.id)}`} className="btn-ghost btn-sm">
                     Guest status page <ArrowRight size={14} />
                   </Link>
                 </div>
               </>
             )}
-          </section>
+          </Card>
         </div>
-      </div>
-    </div>
+      </Container>
+    </Page>
   )
 }

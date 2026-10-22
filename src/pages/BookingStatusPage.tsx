@@ -10,47 +10,12 @@ import { ensureGuestUid } from '../lib/guestAuth'
 import type { Booking } from '../lib/storage'
 import { ArrowRight, Sparkle } from '../lib/icons'
 import { EMAIL_MAX, REF_MAX, sanitizeReferenceInput } from '../lib/validation'
+import { Alert, Card, Container, Field, Input, LoadingPanel, Page, PageHeader, StatusBadge, statusHeadline, statusMeaning } from '../components/ui'
 
 type LocationState = { justSubmitted?: boolean; storage?: 'cloud' | 'local' }
 
 function referenceOf(booking: Booking): string {
   return (booking.ref_id || booking.id.slice(0, 8)).toUpperCase()
-}
-
-function statusCopy(status: string): { title: string; body: string; tone: string } {
-  if (status === 'Approved') {
-    return {
-      title: 'Approved',
-      body: 'The Hacienda accepted your downpayment screenshot. This stay is confirmed.',
-      tone: 'bg-emerald-100 text-emerald-900',
-    }
-  }
-  if (status === 'Rejected') {
-    return {
-      title: 'Rejected',
-      body: 'The Hacienda declined the downpayment proof. This stay is not confirmed, and the dates have been released.',
-      tone: 'bg-red-100 text-red-800',
-    }
-  }
-  if (status === 'Expired') {
-    return {
-      title: 'Expired',
-      body: 'The 24-hour review window ran out before a decision. The dates are free again. You can send a new booking.',
-      tone: 'bg-red-100 text-red-800',
-    }
-  }
-  if (status === 'Cancelled') {
-    return {
-      title: 'Cancelled',
-      body: 'This booking was withdrawn. It is not a confirmed stay.',
-      tone: 'bg-red-100 text-red-800',
-    }
-  }
-  return {
-    title: 'Pending',
-    body: 'Your downpayment screenshot is with the Hacienda. The booking stays Pending until an admin approves or rejects it. It is not confirmed yet.',
-    tone: 'bg-amber-100 text-amber-900',
-  }
 }
 
 export function BookingStatusPage() {
@@ -125,102 +90,120 @@ export function BookingStatusPage() {
   }
 
   const status = booking ? cloudBookingsDB.readStatus(booking) : 'Pending'
-  const copy = statusCopy(status)
   const accommodation = ACCOMMODATIONS.find((item) => item.id === booking?.accommodation)
 
   return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-3xl px-5 lg:px-8">
-        <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-8 sm:p-12" data-tour="booking-success">
+    <Page>
+      <Container width="narrow">
+        <Card padding="lg" data-tour="booking-success">
           {loading ? (
-            <p className="text-sm text-forest-700">Looking up the booking…</p>
+            <LoadingPanel label="Looking up your booking…" bare />
           ) : booking ? (
             <>
-              <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center ${copy.tone}`}>
-                <Sparkle size={26} />
-              </div>
-              <div className="eyebrow mt-6 text-center">{justSubmitted ? 'Booking submitted' : 'Booking status'}</div>
-              <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900 text-center">{copy.title}</h1>
-              <p className="mt-4 text-forest-800/80 leading-relaxed text-center max-w-lg mx-auto">{copy.body}</p>
-              <div className="mt-5 flex justify-center">
-                <span className={`rounded-full px-4 py-2 text-xs font-medium ${copy.tone}`}>
-                  Status: {status}
-                </span>
-              </div>
-              <div className="mt-4 text-center text-xs text-forest-700">
-                Reference <span className="font-mono font-bold text-forest-900">{referenceOf(booking)}</span>
-              </div>
-              {justSubmitted && status === 'Pending' && <div className="mt-6"><FlowSteps current={2} /></div>}
+              <PageHeader
+                eyebrow={justSubmitted ? 'Booking submitted' : 'Booking status'}
+                title={statusHeadline(status)}
+                lead={<p>{statusMeaning(status)}</p>}
+                aside={
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusBadge status={status} size="md" />
+                    <span className="text-xs text-forest-700">
+                      Reference <span className="font-mono font-semibold text-forest-900">{referenceOf(booking)}</span>
+                    </span>
+                  </div>
+                }
+              />
+
+              {justSubmitted && status === 'Pending' && (
+                <div className="mt-6">
+                  <FlowSteps current={2} />
+                </div>
+              )}
+
               {status === 'Pending' && (
-                <div className="mt-6 text-left">
+                <div className="mt-6">
                   <HoldCountdown booking={booking} />
                 </div>
               )}
-              <dl className="mt-6 rounded-2xl bg-cream-50 border border-forest-900/5 p-4 grid sm:grid-cols-2 gap-3 text-xs text-left">
-                <div>
-                  <dt className="uppercase tracking-eyebrow text-[10px] text-forest-600">Stay</dt>
-                  <dd className="font-medium text-forest-900">{accommodation?.name || booking.accommodation}</dd>
-                </div>
-                <div>
-                  <dt className="uppercase tracking-eyebrow text-[10px] text-forest-600">Dates</dt>
-                  <dd className="font-medium text-forest-900">{booking.check_in} → {booking.check_out}</dd>
-                </div>
-                <div>
-                  <dt className="uppercase tracking-eyebrow text-[10px] text-forest-600">Guest</dt>
-                  <dd className="font-medium text-forest-900">{booking.guest_name} · {booking.guests} guests</dd>
-                </div>
-                <div>
-                  <dt className="uppercase tracking-eyebrow text-[10px] text-forest-600">Downpayment claimed</dt>
-                  <dd className="font-medium text-forest-900">
-                    {typeof booking.amount_claimed === 'number'
+
+              <dl className="panel-muted mt-6 grid gap-4 p-4 text-xs sm:grid-cols-2">
+                {[
+                  ['Stay', accommodation?.name || booking.accommodation],
+                  ['Dates', `${booking.check_in} → ${booking.check_out}`],
+                  ['Guest', `${booking.guest_name} · ${booking.guests} guests`],
+                  [
+                    'Downpayment claimed',
+                    typeof booking.amount_claimed === 'number'
                       ? `₱${booking.amount_claimed.toLocaleString('en-PH')}`
-                      : '—'}
-                  </dd>
-                </div>
+                      : '—',
+                  ],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="data-label">{label}</dt>
+                    <dd className="mt-0.5 font-medium text-forest-900">{value}</dd>
+                  </div>
+                ))}
               </dl>
+
               {booking.rejection_reason && (
-                <p className="mt-4 text-sm text-red-800 text-left">Reason: {booking.rejection_reason}</p>
+                <Alert tone="danger" className="mt-4 text-xs">
+                  <strong>Reason:</strong> {booking.rejection_reason}
+                </Alert>
               )}
+
               {(storage === 'local' || !isFirebaseConfigured) && (
-                <div className="mt-6 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-left text-xs text-amber-950 leading-relaxed">
+                <Alert
+                  tone="warning"
+                  className="mt-6 text-xs"
+                  actions={
+                    !cloudBookingsDB.isCloud ? (
+                      <Link to="/review" className="btn-primary btn-sm">
+                        Open review desk <ArrowRight size={14} />
+                      </Link>
+                    ) : undefined
+                  }
+                >
                   {storage === 'local' || !cloudBookingsDB.isCloud ? (
                     <>
                       <strong>Demo mode.</strong> This booking is in this browser. Open the review desk to
-                      approve or reject the downpayment screenshot — that is the only way the status leaves Pending.
+                      approve or reject the downpayment screenshot — that is the only way the status leaves
+                      Pending.
                     </>
                   ) : (
                     <>The Hacienda reviews this in the Admin app. This page updates when that decision is saved.</>
                   )}
-                  {!cloudBookingsDB.isCloud && (
-                    <div className="mt-3">
-                      <Link to="/review" className="btn-primary text-[11px]">
-                        Open review desk <ArrowRight size={14} />
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                </Alert>
               )}
-              <div className="mt-8 flex flex-wrap gap-3 justify-center">
-                <Link to="/" className="btn-ghost">Back home</Link>
-                <Link to="/book" className="btn-ghost">Book another stay</Link>
+
+              <div className="mt-8 flex flex-wrap gap-3">
                 <a href={BUSINESS.contact.messenger} target="_blank" rel="noreferrer" className="btn-primary">
                   Message the Hacienda
                 </a>
+                <Link to="/account" className="btn-quiet">
+                  My bookings
+                </Link>
+                <Link to="/book" className="btn-ghost">
+                  Book another stay
+                </Link>
               </div>
             </>
           ) : (
             <>
-              <div className="eyebrow">Check a booking</div>
-              <h1 className="display text-4xl mt-3 text-forest-900">No account needed</h1>
-              <p className="mt-3 text-sm text-forest-800/80 leading-relaxed">
-                Enter the reference from your confirmation and the email on the booking. Status is Pending
-                until an admin approves or rejects the downpayment.
-              </p>
-              <form onSubmit={(event) => void lookup(event)} className="mt-6 grid sm:grid-cols-2 gap-4 text-left">
-                <label className="block">
-                  <span className="label">Reference</span>
-                  <input
-                    className="field"
+              <PageHeader
+                eyebrow="Check a booking"
+                title="Look up your booking"
+                lead={
+                  <p>
+                    No account needed. Enter the reference from your confirmation and the email on the
+                    booking. A booking stays Pending until the Hacienda approves or rejects the
+                    downpayment.
+                  </p>
+                }
+              />
+
+              <form onSubmit={(event) => void lookup(event)} className="mt-6 grid gap-4 sm:grid-cols-2">
+                <Field label="Reference">
+                  <Input
                     value={lookupRef}
                     maxLength={REF_MAX}
                     onChange={(event) => {
@@ -229,11 +212,9 @@ export function BookingStatusPage() {
                     }}
                     placeholder="HDL-1234"
                   />
-                </label>
-                <label className="block">
-                  <span className="label">Email</span>
-                  <input
-                    className="field"
+                </Field>
+                <Field label="Email">
+                  <Input
                     type="email"
                     maxLength={EMAIL_MAX}
                     value={lookupEmail}
@@ -245,25 +226,29 @@ export function BookingStatusPage() {
                     autoComplete="email"
                     spellCheck={false}
                   />
-                </label>
+                </Field>
                 {lookupError && (
-                  <div className="sm:col-span-2 rounded-xl bg-red-50 border border-red-200 p-3 text-xs text-red-700" role="alert">
+                  <Alert tone="danger" className="text-xs sm:col-span-2">
                     {lookupError}
-                  </div>
+                  </Alert>
                 )}
-                <button
-                  type="submit"
-                  disabled={lookupPending || Boolean(lookupError)}
-                  className="btn-primary text-xs sm:col-span-2 w-fit disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {lookupPending ? 'Looking up…' : 'Look up status'}
-                </button>
+                <div className="flex flex-wrap gap-3 sm:col-span-2">
+                  <button
+                    type="submit"
+                    disabled={lookupPending || Boolean(lookupError)}
+                    className="btn-primary"
+                  >
+                    {lookupPending ? 'Looking up…' : 'Look up status'}
+                  </button>
+                  <Link to="/book" className="btn-ghost">
+                    Start a booking
+                  </Link>
+                </div>
               </form>
-              <Link to="/book" className="btn-ghost mt-6 inline-flex text-xs">Start a booking</Link>
             </>
           )}
-        </div>
-      </div>
-    </div>
+        </Card>
+      </Container>
+    </Page>
   )
 }

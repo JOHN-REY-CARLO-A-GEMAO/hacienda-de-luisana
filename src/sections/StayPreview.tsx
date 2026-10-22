@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { ACCOMMODATIONS, type Accommodation } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
@@ -28,8 +29,8 @@ export function StayPreview() {
   )
 
   return (
-    <section id="stay" className="py-20 lg:py-28 bg-gradient-to-b from-cream-50 to-cream-100/50 dark:from-forest-950 dark:to-forest-900/60 transition-colors duration-300">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="stay" className="section-roomy bg-gradient-to-b from-cream-50 to-cream-100/50 dark:from-forest-950 dark:to-forest-900/60 transition-colors duration-300">
+      <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader index="03" eyebrow="Accommodations" title="Stay Your Way" />
           <Link
@@ -51,7 +52,7 @@ export function StayPreview() {
           No account is required to book. A stay is confirmed only after the Hacienda approves your
           downpayment screenshot.
         </p>
-      </div>
+      </Container>
     </section>
   )
 }
@@ -110,7 +111,7 @@ function StayPreviewCard({
           <Link
             to={`/book?accommodation=${a.id}`}
             data-tour="accommodation-cta"
-            className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white w-full group/btn"
+            className="btn-primary w-full group/btn"
           >
             Book this room
             <ArrowRight size={16} className="transition-transform group-hover/btn:translate-x-1" />

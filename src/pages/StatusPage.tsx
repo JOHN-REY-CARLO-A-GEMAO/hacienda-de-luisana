@@ -11,6 +11,7 @@ import {
 import { lastIdentityFailure } from '../lib/guestAuth'
 import { getSupabaseStatus, describeSupabaseSource, supabaseConfigReport } from '../lib/supabase'
 import { runConnectionCheck, currentIdentity, type Check, type CheckStatus } from '../lib/connectionCheck'
+import { Alert, Container, Page, PageHeader } from '../components/ui'
 
 /**
  * Where the owner finds out why a deployment says "Demo mode".
@@ -30,18 +31,20 @@ const STATE_LABEL: Record<FieldState, string> = {
   invalid: 'Refused',
 }
 
+// One table of tones for both maps: the badge palette is the alert palette at
+// badge size, so a value and a connection check agree on what green means.
 const STATE_TONE: Record<FieldState, string> = {
-  env: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  default: 'bg-sky-50 text-sky-700 border-sky-200',
-  missing: 'bg-amber-50 text-amber-800 border-amber-200',
-  invalid: 'bg-red-50 text-red-700 border-red-200',
+  env: 'badge bg-emerald-50 text-emerald-700 border border-emerald-200',
+  default: 'badge bg-sky-50 text-sky-700 border border-sky-200',
+  missing: 'badge bg-amber-50 text-amber-800 border border-amber-200',
+  invalid: 'badge bg-red-50 text-red-700 border border-red-200',
 }
 
-const CHECK_TONE: Record<CheckStatus, string> = {
-  ok: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-  warn: 'bg-amber-50 text-amber-800 border-amber-200',
-  fail: 'bg-red-50 text-red-700 border-red-200',
-  skip: 'bg-cream-100 text-forest-700 border-forest-900/10',
+const CHECK_TONE: Record<CheckStatus, 'success' | 'warning' | 'danger' | 'info'> = {
+  ok: 'success',
+  warn: 'warning',
+  fail: 'danger',
+  skip: 'info',
 }
 
 const CHECK_MARK: Record<CheckStatus, string> = {
@@ -70,130 +73,92 @@ export function StatusPage() {
   }
 
   return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-3xl px-5">
-        <div className="eyebrow">Deployment status</div>
-        <h1 className="display text-4xl sm:text-5xl mt-2 text-forest-900">Is this website connected?</h1>
-        <p className="mt-4 text-forest-800/80 text-sm leading-relaxed">
-          A Guest's Booking request either reaches the Hacienda's Firebase project — where the Admin app
-          reads it — or it stays in the Guest's own browser. This page says which, and what to change if
-          the answer is wrong.
-        </p>
-
-        {/* The verdict */}
-        <div
-          className={`mt-8 rounded-3xl border p-6 ${
-            status.configured ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
-          }`}
-        >
-          <div className="flex flex-wrap items-center gap-3">
-            <span
-              className={`text-[11px] uppercase tracking-eyebrow font-semibold ${
-                status.configured ? 'text-emerald-800' : 'text-amber-800'
-              }`}
-            >
-              {status.configured ? 'Connected' : 'Demo mode'}
-            </span>
-            <span className="text-xs text-forest-700/70">
-              {status.configured
-                ? `Firebase project ${status.projectId}`
-                : 'Firebase not configured in this build'}
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-forest-800/90 leading-relaxed">
-            {status.configured
-              ? 'Booking requests go to Firestore, where the Admin app reads them. Guests can sign in, upload their ID and follow their stay.'
-              : 'Booking requests are stored in this browser and never reach the Admin app.'}
-          </p>
-          <p className="mt-2 text-xs text-forest-800/70 leading-relaxed">
-            {describeSource(firebaseConfigReport.source)}
-          </p>
-          {!status.configured && status.missingRequired.length > 0 && (
-            <p className="mt-2 text-xs text-amber-800">
-              Missing: {status.missingRequired.join(', ')}
+    <Page>
+      <Container width="narrow">
+        <PageHeader
+          eyebrow="Deployment status"
+          title="Is this website connected?"
+          lead={
+            <p>
+              A Guest&rsquo;s Booking request either reaches the Hacienda&rsquo;s Firebase project — where the
+              Admin app reads it — or it stays in the Guest&rsquo;s own browser. This page says which, and
+              what to change if the answer is wrong.
             </p>
-          )}
-          {status.emulators && (
-            <p className="mt-2 text-xs text-amber-800">
-              This build points at the local Emulator Suite — right for practice on a laptop, wrong for a
-              real deployment.
-            </p>
-          )}
-        </div>
+          }
+        />
 
-        {/* The second half of the same question: does a Guest's receipt survive? */}
-        <div
-          className={`mt-4 rounded-3xl border p-6 ${
-            proofStorage.configured
-              ? 'bg-emerald-50 border-emerald-200'
-              : 'bg-red-50 border-red-200'
-          }`}
-        >
-          <div className="flex flex-wrap items-center gap-3">
-            <span
-              className={`text-[11px] uppercase tracking-eyebrow font-semibold ${
-                proofStorage.configured ? 'text-emerald-800' : 'text-red-800'
-              }`}
-            >
-              {proofStorage.configured ? 'Payment proofs reach the Admin' : 'Payment proofs do NOT arrive'}
-            </span>
-            <span className="text-xs text-forest-700/70">
-              {proofStorage.configured
-                ? `Supabase bucket ${proofStorage.bucket}`
-                : 'No Supabase project in this build'}
-            </span>
-          </div>
-          <p
-            className={`mt-2 text-sm leading-relaxed ${
-              proofStorage.configured ? 'text-forest-800/90' : 'text-red-900'
-            }`}
+        {/* The verdict — the same alert shape every other page uses. */}
+        <div className="mt-8 space-y-4">
+          <Alert
+            tone={status.configured ? 'success' : 'warning'}
+            title={status.configured ? `Connected — ${status.projectId}` : 'Demo mode'}
           >
-            {proofStorage.configured
-              ? 'A Guest’s downpayment screenshot is uploaded to the storage bucket the Admin app reads, so every Booking in the review queue has a receipt behind it.'
-              : 'Bookings would still be created, but each Guest’s screenshot would stay in that Guest’s own browser. The Admin would open a Pending booking pointing at a receipt that exists nowhere — and nothing on screen would report an error. This is the failure this page exists to make visible.'}
-          </p>
-          <p className="mt-2 text-xs text-forest-800/70 leading-relaxed">
-            {describeSupabaseSource(supabaseConfigReport.source)}
-          </p>
-          {proofStorage.refusedEnvKeys.length > 0 && (
-            <p className="mt-2 text-xs text-red-800">
-              Set but refused: {proofStorage.refusedEnvKeys.join(', ')}
+            <p>
+              {status.configured
+                ? 'Booking requests go to Firestore, where the Admin app reads them. Guests can sign in, upload their ID and follow their stay.'
+                : 'Firebase not configured in this build. Booking requests are stored in this browser and never reach the Admin app.'}
             </p>
-          )}
+            <p className="mt-2 text-xs opacity-80">{describeSource(firebaseConfigReport.source)}</p>
+            {!status.configured && status.missingRequired.length > 0 && (
+              <p className="mt-2 text-xs">Missing: {status.missingRequired.join(', ')}</p>
+            )}
+            {status.emulators && (
+              <p className="mt-2 text-xs">
+                This build points at the local Emulator Suite — right for practice on a laptop, wrong for a
+                real deployment.
+              </p>
+            )}
+          </Alert>
+
+          {/* The second half of the same question: does a Guest's receipt survive? */}
+          <Alert
+            tone={proofStorage.configured ? 'success' : 'danger'}
+            title={
+              proofStorage.configured
+                ? `Payment proofs reach the Admin — bucket ${proofStorage.bucket}`
+                : 'Payment proofs do NOT arrive'
+            }
+          >
+            <p>
+              {proofStorage.configured
+                ? 'A Guest’s downpayment screenshot is uploaded to the storage bucket the Admin app reads, so every Booking in the review queue has a receipt behind it.'
+                : 'No Supabase project in this build. Bookings would still be created, but each Guest’s screenshot would stay in that Guest’s own browser. The Admin would open a Pending booking pointing at a receipt that exists nowhere — and nothing on screen would report an error. This is the failure this page exists to make visible.'}
+            </p>
+            <p className="mt-2 text-xs opacity-80">{describeSupabaseSource(supabaseConfigReport.source)}</p>
+            {proofStorage.refusedEnvKeys.length > 0 && (
+              <p className="mt-2 text-xs">Set but refused: {proofStorage.refusedEnvKeys.join(', ')}</p>
+            )}
+          </Alert>
         </div>
 
         {/* Which value came from where */}
-        <h2 className="font-serif text-2xl mt-12 text-forest-900">Where each setting came from</h2>
+        <h2 className="h2 mt-12">Where each setting came from</h2>
         <p className="mt-2 text-xs text-forest-800/70 leading-relaxed">
           These are decided when the site is built, not when it is visited — a hosting dashboard change
           needs a redeploy before it appears here.
         </p>
-        <div className="mt-4 overflow-hidden rounded-2xl border border-forest-900/10 bg-white">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-cream-100 text-forest-700">
+        <div className="card-tight mt-4 overflow-hidden">
+          <table className="data-table">
+            <thead>
               <tr>
-                <th className="px-4 py-2 font-semibold">Value</th>
-                <th className="px-4 py-2 font-semibold">Setting</th>
-                <th className="px-4 py-2 font-semibold">Source</th>
+                <th>Value</th>
+                <th>Setting</th>
+                <th>Source</th>
               </tr>
             </thead>
             <tbody>
               {firebaseConfigReport.fields.map((field: FieldReport) => (
-                <tr key={field.field} className="border-t border-forest-900/5">
-                  <td className="px-4 py-2 align-top">
+                <tr key={field.field}>
+                  <td>
                     <span className="font-medium text-forest-900">{field.field}</span>
                     {field.required && <span className="text-forest-600"> · required</span>}
                     <span className="block font-mono text-[11px] text-forest-700/80 break-all">
                       {field.value ? maskValue(field.value) : '—'}
                     </span>
                   </td>
-                  <td className="px-4 py-2 align-top font-mono text-[11px] text-forest-700 break-all">
-                    {field.envKey}
-                  </td>
-                  <td className="px-4 py-2 align-top">
-                    <span
-                      className={`inline-block rounded-full border px-2 py-0.5 ${STATE_TONE[field.state]}`}
-                    >
+                  <td className="font-mono text-[11px] break-all text-forest-700">{field.envKey}</td>
+                  <td>
+                    <span className={STATE_TONE[field.state]}>
                       {STATE_LABEL[field.state]}
                     </span>
                     {field.problem && (
@@ -211,7 +176,7 @@ export function StatusPage() {
           <button
             type="button"
             onClick={() => setShowDemoDialog(true)}
-            className="btn-ghost text-xs"
+            className="btn-ghost btn-sm"
           >
             Preview ConfirmDialog
           </button>
@@ -228,13 +193,13 @@ export function StatusPage() {
         </div>
 
         {/* The live half */}
-        <h2 className="font-serif text-2xl mt-12 text-forest-900">Ask the project</h2>
+        <h2 className="h2 mt-12">Ask the project</h2>
         <p className="mt-2 text-xs text-forest-800/70 leading-relaxed">
           Signs this browser in anonymously — the same sign-in <Link to="/book" className="underline">/book</Link>{' '}
           performs when a request is sent — and reads the published rates. It writes nothing.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={test} disabled={running} className="btn-primary text-xs">
+          <button type="button" onClick={test} disabled={running} className="btn-primary btn-sm">
             {running ? 'Checking…' : 'Test the connection'}
           </button>
           {identity && (
@@ -248,44 +213,34 @@ export function StatusPage() {
         {checks && (
           <ul className="mt-4 space-y-3">
             {checks.map((check) => (
-              <li
-                key={check.id}
-                className={`rounded-2xl border px-4 py-3 text-xs leading-relaxed ${CHECK_TONE[check.status]}`}
-              >
-                <span className="font-semibold">
-                  {CHECK_MARK[check.status]} {check.label}
-                </span>
-                <span className="mt-1 block">{check.detail}</span>
+              <li key={check.id}>
+                <Alert tone={CHECK_TONE[check.status]} className="text-xs">
+                  <span className="font-semibold">
+                    {CHECK_MARK[check.status]} {check.label}
+                  </span>
+                  <span className="mt-1 block">{check.detail}</span>
+                </Alert>
               </li>
             ))}
           </ul>
         )}
 
         {identityFailure && (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-            <span className="font-semibold">Last Guest identity attempt failed</span>
-            <span className="mt-1 block">
-              [{identityFailure.code}] {identityFailure.advice}
-            </span>
-          </div>
+          <Alert tone="warning" className="mt-4 text-xs" title="Last Guest identity attempt failed">
+            [{identityFailure.code}] {identityFailure.advice}
+          </Alert>
         )}
 
         {/* What to do about it */}
-        <h2 className="font-serif text-2xl mt-12 text-forest-900">If it says Demo mode</h2>
+        <h2 className="h2 mt-8">If payment proofs do not arrive</h2>
         <ol className="mt-3 space-y-3 text-sm text-forest-800/90 leading-relaxed list-decimal pl-5">
           <li>
-            On <strong>Vercel → the project → Settings → Environment Variables</strong>, add the{' '}
+            On <strong>Vercel → the project → Settings → Environment Variables</strong>, add{' '}
             <code className="font-mono text-xs">VITE_SUPABASE_URL</code> and{' '}
-            <code className="font-mono text-xs">VITE_SUPABASE_ANON_KEY</code> values (Supabase → Project
-            Settings → API) if you would rather not rely on the committed project. Both are public by design;
-            the <code className="font-mono text-xs">service_role</code> key never belongs in a{' '}
-            <code className="font-mono text-xs">VITE_</code> variable, because everything Vite exposes to the
-            browser is public.
+            <code className="font-mono text-xs">VITE_SUPABASE_ANON_KEY</code> (Supabase → Project Settings →
+            API). Both are public by design; the <code className="font-mono text-xs">service_role</code> key
+            never belongs in a <code className="font-mono text-xs">VITE_</code> variable.
           </li>
-        </ol>
-
-        <h2 className="font-serif text-2xl mt-8 text-forest-900">If payment proofs do not arrive</h2>
-        <ol className="mt-3 space-y-3 text-sm text-forest-800/90 leading-relaxed list-decimal pl-5">
           <li>
             With no <code className="font-mono text-xs">VITE_SUPABASE_*</code> variables set, a production
             build falls back to the project committed in{' '}
@@ -303,7 +258,7 @@ export function StatusPage() {
           </li>
         </ol>
 
-        <h2 className="font-serif text-2xl mt-12 text-forest-900">If it says Demo mode</h2>
+        <h2 className="h2 mt-12">If it says Demo mode</h2>
         <ol className="mt-3 space-y-3 text-sm text-forest-800/90 leading-relaxed list-decimal pl-5">
           <li>
             On <strong>Vercel → the project → Settings → Environment Variables</strong>, add the six{' '}
@@ -322,7 +277,7 @@ export function StatusPage() {
           </li>
         </ol>
 
-        <h2 className="font-serif text-2xl mt-12 text-forest-900">If Guests cannot sign in</h2>
+        <h2 className="h2 mt-12">If Guests cannot sign in</h2>
         <p className="mt-3 text-sm text-forest-800/90 leading-relaxed">
           Three switches in the Firebase console, none of which the website can reach:
         </p>
@@ -356,7 +311,7 @@ export function StatusPage() {
           </a>
           .
         </p>
-      </div>
-    </div>
+      </Container>
+    </Page>
   )
 }

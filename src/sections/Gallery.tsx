@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { Container } from '../components/ui'
+import { useOverlay } from '../components/ui/overlay'
+import { useEffect, useMemo, useRef, useState, useCallback, type RefObject } from 'react'
 import { GALLERY, GalleryImage } from '../config/site'
 import { asset } from '../lib/asset'
 import { SmartImage } from '../components/SmartImage'
@@ -31,24 +33,24 @@ export function Gallery() {
     [filtered.length],
   )
 
+  // Escape, the scroll lock and the focus trap belong to the shared overlay
+  // (`useOverlay`); this handles only the keys that are the lightbox's own.
   useEffect(() => {
     if (openIdx === null) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
-      else if (e.key === 'ArrowRight') next()
+      if (e.key === 'ArrowRight') next()
       else if (e.key === 'ArrowLeft') prev()
     }
     window.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
-    }
-  }, [openIdx, close, next, prev])
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openIdx, next, prev])
+
+  const lightboxRef = useRef<HTMLDivElement>(null)
+  useOverlay(openIdx !== null, close, lightboxRef)
 
   return (
-    <section id="gallery" className="py-24 lg:py-36 bg-cream-50">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="gallery" className="section-full bg-cream-50">
+      <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 reveal">
           <div>
             <div className="flex items-center gap-4">
@@ -103,7 +105,7 @@ export function Gallery() {
             </button>
           ))}
         </div>
-      </div>
+      </Container>
 
       {openIdx !== null && (
         <Lightbox
@@ -113,6 +115,7 @@ export function Gallery() {
           onClose={close}
           onPrev={prev}
           onNext={next}
+          panel={lightboxRef}
         />
       )}
     </section>
@@ -120,7 +123,7 @@ export function Gallery() {
 }
 
 function Lightbox({
-  image, index, total, onClose, onPrev, onNext,
+  image, index, total, onClose, onPrev, onNext, panel,
 }: {
   image: GalleryImage
   index: number
@@ -128,12 +131,16 @@ function Lightbox({
   onClose: () => void
   onPrev: () => void
   onNext: () => void
+  panel: RefObject<HTMLDivElement>
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 bg-forest-950/95 backdrop-blur-sm flex flex-col animate-fade-in"
+      ref={panel}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex flex-col bg-forest-950/95 backdrop-blur-sm outline-none animate-fade-in"
       role="dialog"
       aria-modal="true"
+      aria-label={`${image.category} — photograph ${index + 1} of ${total}`}
     >
       <div className="flex items-center justify-between px-5 lg:px-8 h-16 text-cream-100">
         <div className="text-xs uppercase tracking-eyebrow text-cream-100/70">
@@ -177,8 +184,8 @@ function Lightbox({
       </div>
 
       <div className="md:hidden flex justify-center gap-4 pb-8">
-        <button onClick={onPrev} className="btn bg-cream-100/10 text-cream-100">Prev</button>
-        <button onClick={onNext} className="btn bg-cream-100/10 text-cream-100">Next</button>
+        <button onClick={onPrev} className="btn-secondary btn-sm">Prev</button>
+        <button onClick={onNext} className="btn-secondary btn-sm">Next</button>
       </div>
     </div>
   )

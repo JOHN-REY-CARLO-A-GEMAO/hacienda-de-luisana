@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { ROLE_LABELS, canOpenPage, pageRoles, type Role } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 import { LoginForm } from './LoginForm'
+import { Alert, LoadingPanel, MessageScreen } from '../ui'
 
 /**
  * The gate in front of every page that is not public.
@@ -34,11 +35,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="pt-28 pb-24 min-h-screen bg-cream-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="mx-auto w-10 h-10 border-2 border-forest-200 border-t-forest-700 rounded-full animate-spin" />
-          <p className="mt-4 text-sm text-forest-700/70">Checking authentication…</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-cream-50 px-5 pt-28">
+        <LoadingPanel label="Checking authentication…" className="max-w-sm" />
       </div>
     )
   }
@@ -47,16 +45,16 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="pt-28 pb-24 min-h-screen bg-cream-50 flex flex-col items-center">
-        <div className="w-full max-w-md px-5">
+      <div className="flex min-h-screen flex-col items-center bg-cream-50 px-5 pb-24 pt-28">
+        <div className="w-full max-w-md py-8">
           {sessionEnded && (
-            <div role="alert" className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+            <Alert tone="warning" className="mb-4">
               Your session has ended. Please sign in again to continue — nothing on your bookings was changed.
-            </div>
+            </Alert>
           )}
           <LoginForm />
         </div>
-        <p className="mt-6 text-xs text-forest-700/60 text-center max-w-sm px-5">
+        <p className="mt-4 max-w-sm text-center text-xs text-forest-700/60">
           Sign in to see your own bookings. Signing up here makes you a Guest.
         </p>
       </div>
@@ -70,10 +68,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return (
     <>
       {!isConfigured && (
-        <div className="bg-amber-100/90 border-b border-amber-200 text-amber-900 text-xs px-4 py-2 flex items-center gap-2">
-          <span className="font-semibold uppercase tracking-eyebrow text-[10px]">Local Mode Active:</span>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-amber-200 bg-amber-100/90 px-4 py-2 text-xs text-amber-900">
+          <span className="text-[10px] font-semibold uppercase tracking-eyebrow">Local Mode Active</span>
           <span>Signed in as {role ? ROLE_LABELS[role] : 'Guest'} · bookings are stored in this browser only.</span>
-          <Link to="/status" className="ml-auto underline whitespace-nowrap">Why?</Link>
+          <Link to="/status" className="ml-auto whitespace-nowrap underline underline-offset-2">
+            Why?
+          </Link>
         </div>
       )}
       {children}
@@ -93,14 +93,12 @@ export function TurnedAway({ path, allowed }: { path: string; allowed: Role[] })
   const isAdmin = role === 'admin'
 
   return (
-    <div className="pt-32 pb-24 min-h-screen bg-cream-50 flex items-center">
-      <div className="mx-auto max-w-lg text-center px-5">
-        <div className="eyebrow">{isAdmin ? 'Admin account' : '403'}</div>
-        <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">
-          {isAdmin ? 'This website is for Guests' : "This page isn't yours"}
-        </h1>
-        <p className="mt-4 text-forest-800/80 text-sm leading-relaxed">
-          <code className="font-mono text-xs bg-cream-100 px-1.5 py-0.5 rounded">{path}</code> is for{' '}
+    <MessageScreen
+      eyebrow={isAdmin ? 'Admin account' : '403'}
+      title={isAdmin ? 'This website is for Guests' : "This page isn't yours"}
+      body={
+        <p>
+          <code className="rounded bg-cream-100 px-1.5 py-0.5 font-mono text-xs">{path}</code> is for{' '}
           {labels || 'another role'}. You are signed in as{' '}
           <strong>
             {role ? ROLE_LABELS[role] : 'a Guest'}
@@ -111,15 +109,17 @@ export function TurnedAway({ path, allowed }: { path: string; allowed: Role[] })
             ? ' Bookings, payments, stays, the smart lock and every other management task live in the Hacienda de LuisAna Admin mobile app — open it on your phone.'
             : ' Roles are stored in your Profile, not chosen in this browser.'}
         </p>
-        <div className="mt-8 flex flex-wrap gap-3 justify-center">
-          <Link to="/" className="btn-primary text-xs">
+      }
+      actions={
+        <>
+          <Link to="/" className="btn-primary">
             Back to the Hacienda
           </Link>
-          <button onClick={() => void logout()} className="btn-ghost text-xs">
+          <button onClick={() => void logout()} className="btn-ghost">
             Sign out
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }

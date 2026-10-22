@@ -26,7 +26,7 @@ class _DisputesScreenState extends State<DisputesScreen> {
     body: Column(children: [
       const Padding(padding: EdgeInsets.all(12), child: Text('Cases never execute financial or Booking actions. Use the existing authorized Booking workflow. Urgent safety/access reports are not an emergency-response service.')),
       DropdownButton<String>(value: filter, items: ['all', 'unassigned', 'mine', 'overdue', 'reopening_requested', ...DisputeService.statuses].map((s) => DropdownMenuItem(value: s, child: Text(DisputeModel.label(s)))).toList(), onChanged: (s) => setState(() => filter = s!)),
-      if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!, style: const TextStyle(color: Colors.red))),
+      if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!, style: const TextStyle(color: AppColors.alertDangerText))),
       Expanded(child: StreamBuilder<List<DisputeModel>>(stream: service.streamAllDisputes(), builder: (context, snapshot) {
         if (snapshot.hasError) return Center(child: Text('Cases unavailable: ${snapshot.error}. No local-success fallback.'));
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -72,7 +72,7 @@ Future<void> _createCase(BuildContext context, DisputeService service, {DisputeM
       DropdownButtonFormField<String>(initialValue: category, items: DisputeService.categories.map((c) => DropdownMenuItem(value: c, child: Text(DisputeModel.label(c)))).toList(), onChanged: busy ? null : (v) => category = v!),
       TextField(controller: booking, decoration: const InputDecoration(labelText: 'Booking document ID (optional for internal reports)')),
       TextField(controller: description, maxLines: 5, maxLength: 4000, decoration: const InputDecoration(labelText: 'Description / deliberately shared summary (10+ characters)')),
-      if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+      if (error != null) Text(error!, style: const TextStyle(color: AppColors.alertDangerText)),
     ]))),
     actions: [TextButton(onPressed: busy ? null : () => Navigator.pop(ctx), child: const Text('Back')), FilledButton(onPressed: busy ? null : () async {
       if (description.text.trim().length < 10) { update(() => error = 'Describe the concern in at least 10 characters.'); return; }
@@ -205,7 +205,7 @@ class _CaseDetailState extends State<_CaseDetail> {
       }),
       const Divider(), const Text('PRIVATE Admin notes — never sent to Guest queries'),
       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: widget.service.notes(c.id), builder: (context, snap) => Column(children: (snap.data?.docs ?? []).map((doc) => ListTile(title: Text(doc.data()['text'].toString()), subtitle: Text('${doc.data()['actor_uid']} · ${DisputeModel.date(doc.data()['created_at'])}'))).toList())),
-      if (error != null) Text(error!, style: const TextStyle(color: Colors.red)), if (progress.isNotEmpty) Text(progress),
+      if (error != null) Text(error!, style: const TextStyle(color: AppColors.alertDangerText)), if (progress.isNotEmpty) Text(progress),
       if (!c.inactive) ...[
         TextField(controller: message, maxLines: 4, maxLength: 4000, decoration: const InputDecoration(labelText: 'Guest-visible message (internal for operational reports)')),
         for (final file in selected) ListTile(title: Text(file.name), trailing: IconButton(tooltip: 'Remove unsent attachment', onPressed: busy ? null : () => setState(() => selected.remove(file)), icon: const Icon(Icons.close))),

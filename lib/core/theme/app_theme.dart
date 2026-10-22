@@ -56,6 +56,24 @@ class AppTheme {
     colors: [goldSoft, goldAccent],
   );
 
+  /// The Admin app's display face. Two screens had reached for a serif of their
+  /// own (Cormorant on the login headline, Playfair on the reviews score) while
+  /// every other title used Cinzel, so they now ask for it here.
+  static TextStyle serif({
+    double fontSize = 18,
+    FontWeight fontWeight = FontWeight.w600,
+    Color? color,
+    double letterSpacing = 0.2,
+    double? height,
+  }) =>
+      GoogleFonts.cinzel(
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        color: color,
+        letterSpacing: letterSpacing,
+        height: height,
+      );
+
   static ThemeData get lightTheme {
     final baseInter = GoogleFonts.inter;
     final baseTextTheme = GoogleFonts.interTextTheme();
@@ -80,7 +98,7 @@ class AppTheme {
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.cinzel(
+        titleTextStyle: serif(
           fontSize: 18,
           fontWeight: FontWeight.bold,
           color: Colors.white,

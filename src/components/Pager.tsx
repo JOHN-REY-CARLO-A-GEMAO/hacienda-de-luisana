@@ -1,5 +1,6 @@
 import type { PageResult } from '../lib/pagination'
 import { PAGE_SIZE_OPTIONS } from '../lib/pagination'
+import { Select } from './ui'
 
 export function Pager<T>({
   page,
@@ -15,7 +16,7 @@ export function Pager<T>({
     <div className="flex flex-wrap items-center gap-3 text-xs text-forest-700 mt-4">
       <button
         type="button"
-        className="btn-ghost text-xs disabled:opacity-40"
+        className="btn-ghost btn-sm disabled:opacity-40"
         disabled={!page.hasPrev}
         onClick={() => onPage(page.page - 1)}
       >
@@ -26,7 +27,7 @@ export function Pager<T>({
       </span>
       <button
         type="button"
-        className="btn-ghost text-xs disabled:opacity-40"
+        className="btn-ghost btn-sm disabled:opacity-40"
         disabled={!page.hasNext}
         onClick={() => onPage(page.page + 1)}
       >
@@ -35,8 +36,9 @@ export function Pager<T>({
       {onPageSize && (
         <label className="ml-auto flex items-center gap-2">
           Page size
-          <select
-            className="field py-1 text-xs"
+          <Select
+            className="py-1 text-xs"
+            aria-label="Page size"
             value={page.pageSize}
             onChange={(e) => onPageSize(Number(e.target.value))}
           >
@@ -45,7 +47,7 @@ export function Pager<T>({
                 {n}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       )}
     </div>

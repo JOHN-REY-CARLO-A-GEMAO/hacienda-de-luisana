@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Alert, Field, Input, Textarea } from './ui'
 import {
   EMAIL_MAX,
   NAME_MAX,
@@ -74,46 +75,34 @@ export function ContactInquiryForm() {
 
   if (submitted) {
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 sm:p-8 text-center text-emerald-950">
-        <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 mb-3">
-          <CheckCircle size={28} />
-        </div>
-        <h3 className="font-serif text-2xl text-emerald-900">Inquiry Sent</h3>
-        <p className="mt-2 text-sm text-emerald-800/80 max-w-md mx-auto leading-relaxed">
-          Thank you for reaching out to Hacienda de LuisAna. Our concierge will review your message and reply via email or phone within the day.
+      <Alert tone="success" title="Inquiry sent." className="p-6 sm:p-8">
+        <p className="max-w-md text-sm leading-relaxed">
+          Thank you for reaching out to Hacienda de LuisAna. The Hacienda will review your message and
+          reply by email or phone within the day.
         </p>
-        <button
-          type="button"
-          onClick={() => setSubmitted(false)}
-          className="btn-secondary mt-5 text-xs inline-flex"
-        >
+        <button type="button" onClick={() => setSubmitted(false)} className="btn-quiet btn-sm mt-4">
           Send another inquiry
         </button>
-      </div>
+      </Alert>
     )
   }
 
   return (
-    <div className="rounded-3xl border border-forest-900/10 bg-white p-6 sm:p-8 shadow-card">
-      <div className="flex items-center gap-3 text-forest-900 mb-2">
-        <div className="w-9 h-9 rounded-xl bg-forest-50 text-forest-700 flex items-center justify-center">
+    <div className="card p-6 sm:p-8">
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest-50 text-forest-700" aria-hidden="true">
           <MessageCircle size={18} />
-        </div>
-        <div>
-          <div className="eyebrow text-forest-600">Online Message</div>
-          <h3 className="font-serif text-2xl text-forest-900">Send an Inquiry</h3>
-        </div>
+        </span>
+        <h3 className="h3">Send an inquiry</h3>
       </div>
-      <p className="text-sm text-forest-700/80 mb-6">
-        Have specific questions about event bookings, accommodation details, or special arrangements? Leave a note and we will get back to you promptly.
+      <p className="mt-2 text-sm leading-relaxed text-forest-700/80">
+        A question about an event, an accommodation, or a special arrangement? Leave a note and the
+        Hacienda will get back to you.
       </p>
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        {/* Full Name */}
-        <label className="block">
-          <span className="label">Full Name *</span>
-          <input
-            className="field"
+      <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4">
+        <Field label="Full name" required error={errors.name}>
+          <Input
             placeholder="Juan Dela Cruz"
             value={name}
             maxLength={NAME_MAX}
@@ -123,21 +112,16 @@ export function ContactInquiryForm() {
               if (errors.name) setErrors((prev) => ({ ...prev, name: '' }))
             }}
             onKeyDown={(e) => {
-              if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                e.preventDefault()
-              }
+              if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault()
             }}
             autoComplete="name"
+            invalid={Boolean(errors.name)}
           />
-          {errors.name && <span className="mt-1 block text-xs text-red-600">{errors.name}</span>}
-        </label>
+        </Field>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Email Address */}
-          <label className="block">
-            <span className="label">Email Address *</span>
-            <input
-              className="field"
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Email address" required error={errors.email}>
+            <Input
               type="email"
               placeholder="you@email.com"
               value={email}
@@ -148,15 +132,12 @@ export function ContactInquiryForm() {
               }}
               autoComplete="email"
               spellCheck={false}
+              invalid={Boolean(errors.email)}
             />
-            {errors.email && <span className="mt-1 block text-xs text-red-600">{errors.email}</span>}
-          </label>
+          </Field>
 
-          {/* Mobile Phone */}
-          <label className="block">
-            <span className="label">Mobile Phone (optional)</span>
-            <input
-              className="field"
+          <Field label="Mobile phone" hint="Optional." error={errors.phone}>
+            <Input
               type="tel"
               inputMode="tel"
               placeholder="09171234567"
@@ -168,21 +149,27 @@ export function ContactInquiryForm() {
                 if (errors.phone) setErrors((prev) => ({ ...prev, phone: '' }))
               }}
               onKeyDown={(e) => {
-                if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                  e.preventDefault()
-                }
+                if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault()
               }}
               autoComplete="tel"
             />
-            {errors.phone && <span className="mt-1 block text-xs text-red-600">{errors.phone}</span>}
-          </label>
+          </Field>
         </div>
 
-        {/* Subject */}
-        <label className="block">
-          <span className="label">Subject *</span>
-          <input
-            className="field"
+        <Field
+          label="Subject"
+          required
+          error={errors.subject}
+          hint={
+            <span className="flex items-center justify-between gap-3">
+              <span>At least 3 characters</span>
+              <span className={`font-mono tabular-nums ${subject.length >= SUBJECT_MAX_LENGTH ? 'font-semibold text-amber-700' : ''}`}>
+                {subject.length} / {SUBJECT_MAX_LENGTH} characters
+              </span>
+            </span>
+          }
+        >
+          <Input
             placeholder="e.g. Wedding photoshoot inquiry, Weekend booking"
             value={subject}
             maxLength={SUBJECT_MAX_LENGTH}
@@ -190,25 +177,28 @@ export function ContactInquiryForm() {
               setSubject(e.target.value.slice(0, SUBJECT_MAX_LENGTH))
               if (errors.subject) setErrors((prev) => ({ ...prev, subject: '' }))
             }}
+            invalid={Boolean(errors.subject)}
           />
-          <div className="mt-1 flex items-center justify-between text-[11px]">
-            <span className="text-forest-600/70">At least 3 characters</span>
-            <span
-              className={`font-mono tabular-nums ${
-                subject.length >= SUBJECT_MAX_LENGTH ? 'text-amber-700 font-semibold' : 'text-forest-600/70'
-              }`}
-            >
-              {subject.length} / {SUBJECT_MAX_LENGTH} characters
-            </span>
-          </div>
-          {errors.subject && <span className="mt-1 block text-xs text-red-600">{errors.subject}</span>}
-        </label>
+        </Field>
 
-        {/* Message */}
-        <label className="block">
-          <span className="label">Message *</span>
-          <textarea
-            className="field min-h-[110px] resize-y text-sm"
+        <Field
+          label="Message"
+          required
+          error={errors.message}
+          hint={
+            <span className="flex items-center justify-between gap-3">
+              <span>Minimum 10 characters</span>
+              <span
+                className={`font-mono tabular-nums ${message.length >= MESSAGE_MAX ? 'font-semibold text-amber-700' : ''}`}
+                aria-live="polite"
+              >
+                {message.length} / {MESSAGE_MAX} characters
+              </span>
+            </span>
+          }
+        >
+          <Textarea
+            className="min-h-[110px] resize-y"
             placeholder="Describe your inquiry, planned dates, number of attendees, or special requests…"
             value={message}
             maxLength={MESSAGE_MAX}
@@ -216,37 +206,22 @@ export function ContactInquiryForm() {
               setMessage(e.target.value.slice(0, MESSAGE_MAX))
               if (errors.message) setErrors((prev) => ({ ...prev, message: '' }))
             }}
+            invalid={Boolean(errors.message)}
           />
-          <div className="mt-1 flex items-center justify-between text-[11px]">
-            <span className="text-forest-600/70">Minimum 10 characters</span>
-            <span
-              className={`font-mono tabular-nums transition-colors ${
-                message.length >= MESSAGE_MAX
-                  ? 'text-amber-700 font-semibold'
-                  : message.length >= MESSAGE_MAX * 0.9
-                    ? 'text-amber-600 font-medium'
-                    : 'text-forest-600/70'
-              }`}
-              aria-live="polite"
-            >
-              {message.length} / {MESSAGE_MAX} characters
-            </span>
-          </div>
-          {errors.message && <span className="mt-1 block text-xs text-red-600">{errors.message}</span>}
-        </label>
+        </Field>
 
         {submitError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700" role="alert">
+          <Alert tone="danger" className="text-xs">
             {submitError}
-          </div>
+          </Alert>
         )}
 
         <button
           type="submit"
           disabled={loading || Object.keys(errors).some((k) => Boolean(errors[k]))}
-          className="btn-primary text-xs w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
+          className="btn-primary w-full sm:w-auto"
         >
-          {loading ? 'Sending inquiry…' : 'Send Inquiry'}
+          {loading ? 'Sending inquiry…' : 'Send inquiry'}
           <ArrowRight size={16} />
         </button>
       </form>

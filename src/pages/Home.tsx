@@ -8,6 +8,7 @@ import { GalleryPreview } from '../sections/GalleryPreview'
 import { ReviewsPreview } from '../sections/ReviewsPreview'
 import { LocationPreview } from '../sections/LocationPreview'
 import { BookingCta } from '../sections/BookingCta'
+import { SceneNumberingProvider } from '../components/Scene'
 
 /**
  * The homepage, in the order a first-time visitor needs it: what this is, what
@@ -26,7 +27,7 @@ import { BookingCta } from '../sections/BookingCta'
  */
 export function Home() {
   return (
-    <>
+    <SceneNumberingProvider>
       <Hero />
       <Intro />
       <Stats />
@@ -37,6 +38,6 @@ export function Home() {
       <ReviewsPreview />
       <LocationPreview />
       <BookingCta />
-    </>
+    </SceneNumberingProvider>
   )
 }

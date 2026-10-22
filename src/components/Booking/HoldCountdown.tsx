@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
 import { formatHoldCountdown } from '../../lib/booking'
 import type { Booking } from '../../lib/storage'
+import { Alert } from '../ui'
 
 const TICK_MS = 30 * 1000
 
@@ -28,12 +29,13 @@ export function HoldCountdown({ booking }: { booking: Booking }) {
 
   if (readsAs === 'Expired') {
     return (
-      <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-800 leading-relaxed">
-        <strong className="block">Your Date hold ran out.</strong>
+      <Alert tone="danger" className="text-xs" title="Your Date hold ran out.">
+        <>
         Nobody reviewed the request within 24 hours, so those dates went back into
         the pool. Send a new request for the dates you want — nothing about this
         one can be revived.
-      </div>
+        </>
+      </Alert>
     )
   }
 

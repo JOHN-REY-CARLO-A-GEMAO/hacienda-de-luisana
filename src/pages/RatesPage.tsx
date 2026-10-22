@@ -23,28 +23,22 @@ export function RatesPage() {
       title="What a stay costs"
       lead={
         <p>
-          Accommodation rates, the refundable security deposit, what is included in every stay, and
-          the extras the Hacienda charges for when they apply. Nothing is confirmed until the Hacienda
-          approves your downpayment screenshot.
+            Accommodation rates, the refundable security deposit, what is included in every stay, and the
+            extras the Hacienda charges for when they apply. Nothing is confirmed until the Hacienda
+            approves your downpayment screenshot. Booking lead time and the booking rules are on the{' '}
+            <Link to="/book" className="text-link">
+              booking form
+            </Link>{' '}
+            and in{' '}
+            <Link to="/legal#booking-rules" className="text-link">
+              the terms
+            </Link>
+            .
         </p>
       }
     >
       <Rates />
 
-      <div className="mx-auto max-w-3xl px-5 lg:px-8 py-14">
-        <p className="text-sm text-forest-800/80 leading-relaxed">
-          Bookings have to be made a minimum time ahead — the exact lead time is shown on the booking
-          form itself as you pick your dates.{' '}
-          <Link to="/book" className="underline underline-offset-2">
-            Open the booking form
-          </Link>{' '}
-          to see it, and{' '}
-          <Link to="/legal#booking-rules" className="underline underline-offset-2">
-            read the booking rules
-          </Link>{' '}
-          for how availability, date holds and confirmation work.
-        </p>
-      </div>
     </PageShell>
   )
 }

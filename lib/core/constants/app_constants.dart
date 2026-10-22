@@ -140,4 +140,10 @@ class AppColors {
   static const Color statusWarning = Color(0xFFE76F51);
   static const Color statusAlert = Color(0xFFE63946);
   static const Color statusInfo = Color(0xFF264653);
+
+  // Inline alert surface — one shape for an error or a warning band, so a
+  // screen cannot invent its own red (there were four different ones).
+  static const Color alertDangerSurface = Color(0xFFFFEBEE);
+  static const Color alertDangerBorder = Color(0xFFFFCDD2);
+  static const Color alertDangerText = statusAlert;
 }

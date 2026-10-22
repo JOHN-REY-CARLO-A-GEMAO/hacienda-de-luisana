@@ -276,18 +276,18 @@ export function TourOverlay() {
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
           {index === 0 ? (
-            <button type="button" className="btn-ghost text-xs" onClick={tour.exit}>
+            <button type="button" className="btn-ghost btn-sm" onClick={tour.exit}>
               Explore on my own
             </button>
           ) : (
             !isLast && (
-              <button type="button" className="btn-ghost text-xs" onClick={tour.skip}>
+              <button type="button" className="btn-ghost btn-sm" onClick={tour.skip}>
                 Skip tour
               </button>
             )
           )}
           {index > 0 && (
-            <button type="button" className="btn-ghost text-xs" onClick={tour.back}>
+            <button type="button" className="btn-ghost btn-sm" onClick={tour.back}>
               Back
             </button>
           )}
@@ -299,7 +299,7 @@ export function TourOverlay() {
               Skip this step
             </button>
           ) : (
-            <button type="button" autoFocus className="btn-primary text-xs" onClick={tour.next}>
+            <button type="button" autoFocus className="btn-primary btn-sm" onClick={tour.next}>
               {isLast ? 'Finish' : step.continueLabel ?? 'Next'}
             </button>
           )}

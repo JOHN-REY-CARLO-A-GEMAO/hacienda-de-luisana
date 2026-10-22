@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { BUSINESS, GALLERY } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
@@ -18,8 +19,8 @@ export function LocationPreview() {
   const approach = GALLERY.find((g) => g.id === 'g11')
 
   return (
-    <section id="location" className="relative py-20 lg:py-28 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 overflow-hidden transition-colors duration-300">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="location" className="relative section-roomy bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 overflow-hidden transition-colors duration-300">
+      <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader index="09" eyebrow="Location" title="Find Your Way to the Hacienda">
             <p className="dark:text-cream-200/80">
@@ -47,7 +48,7 @@ export function LocationPreview() {
                 href={BUSINESS.contact.directions}
                 target="_blank"
                 rel="noreferrer"
-                className="btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white group"
+                className="btn-primary group"
               >
                 <MapPin size={16} /> Get Directions
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
@@ -79,7 +80,7 @@ export function LocationPreview() {
             </div>
           )}
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

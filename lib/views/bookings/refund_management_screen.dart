@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart' as legacy;
 
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/status_style.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
@@ -108,7 +109,7 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
               ),
               if (dialogError != null) ...[
                 const SizedBox(height: 8),
-                Text(dialogError!, style: const TextStyle(fontSize: 12, color: Colors.red)),
+                Text(dialogError!, style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
               ],
             ],
           ),
@@ -237,7 +238,7 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
               ),
               StatusPill(
                 label: (booking.refundStatus ?? 'initiated').toUpperCase(),
-                color: AppColors.statusAlert,
+                color: StatusStyle.refund(booking.refundStatus ?? 'initiated'),
               ),
             ],
           ),

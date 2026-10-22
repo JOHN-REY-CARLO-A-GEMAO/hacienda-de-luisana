@@ -22,6 +22,7 @@ import { LegalPage } from './pages/LegalPage'
 import { MessagesPage } from './pages/MessagesPage'
 import { StatusPage } from './pages/StatusPage'
 import { Tutorial } from './components/Tutorial'
+import { MessageScreen } from './components/ui'
 import { GuestAuthPage } from './pages/AuthPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { useReveal } from './lib/reveal'
@@ -69,9 +70,12 @@ function ScrollHandler() {
 function WebsiteLayout() {
   return (
     <div className="min-h-screen flex flex-col">
+      <a href="#main" className="skip-link">
+        Skip to content
+      </a>
       <Nav />
       <ScrollHandler />
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         <Outlet />
       </main>
       <Footer />
@@ -167,39 +171,46 @@ function LoginRedirect() {
 /** The address of the retired web dashboards: a signpost to the Admin app. */
 function AdminMoved() {
   return (
-    <div className="pt-32 pb-24 min-h-screen bg-cream-50 flex items-center">
-      <div className="mx-auto max-w-lg text-center px-5">
-        <div className="eyebrow">Admin</div>
-        <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">The Admin dashboard moved</h1>
-        <p className="mt-4 text-forest-800/80 text-sm leading-relaxed">
-          Bookings, payment verification, stays, the smart lock, chat and analytics are all in
-          the <strong>Hacienda de LuisAna Admin</strong> mobile app. This website is for Guests: browsing, booking,
-          and following their own stay.
+    <MessageScreen
+      eyebrow="Admin"
+      title="The Admin dashboard moved"
+      body={
+        <p>
+          Bookings, payment verification, stays, the smart lock, chat and analytics are all in the{' '}
+          <strong>Hacienda de LuisAna Admin</strong> mobile app. This website is for Guests: browsing,
+          booking, and following their own stay.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3 justify-center">
-          <Link to="/" className="btn-primary text-xs">
+      }
+      actions={
+        <>
+          <Link to="/" className="btn-primary">
             Back to the Hacienda
           </Link>
-          <Link to="/account" className="btn-ghost text-xs">
+          <Link to="/account" className="btn-ghost">
             My Bookings
           </Link>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }
 
 function NotFound() {
   return (
-    <div className="pt-32 pb-24 min-h-screen bg-cream-50 flex items-center">
-      <div className="mx-auto max-w-lg text-center px-5">
-        <div className="eyebrow">404</div>
-        <h1 className="display text-5xl mt-3 text-forest-900">Page not found</h1>
-        <p className="mt-4 text-forest-800/80">
-          The page you're looking for doesn't exist. Let's head back to the Hacienda.
-        </p>
-        <a href="/" className="btn-primary mt-8">Back to Home</a>
-      </div>
-    </div>
+    <MessageScreen
+      eyebrow="404"
+      title="Page not found"
+      body={<p>The page you&rsquo;re looking for doesn&rsquo;t exist. Let&rsquo;s head back to the Hacienda.</p>}
+      actions={
+        <>
+          <Link to="/" className="btn-primary">
+            Back to the Hacienda
+          </Link>
+          <Link to="/book" className="btn-ghost">
+            Check availability
+          </Link>
+        </>
+      }
+    />
   )
 }

@@ -6,6 +6,7 @@
 //    page. The Pager is mounted now, so this pins both halves of that.
 // 2. Withdrawing released the held dates on a single unconfirmed tap.
 // 3. A throw in any component used to white-screen the whole site.
+import { readFileSync } from 'node:fs'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
@@ -315,7 +316,7 @@ describe('ConfirmDialog on its own', () => {
     expect(bodyEl?.textContent).toBe('It cannot come back.')
   })
 
-  it('includes explicit focus-visible classes on action buttons', () => {
+  it('keeps the focus ring on the shared button tokens, not on each call site', () => {
     const page = open(
       <ConfirmDialog
         open
@@ -331,10 +332,16 @@ describe('ConfirmDialog on its own', () => {
     const cancelButton = page.button('Cancel')
     const deleteButton = page.button('Delete')
 
-    expect(cancelButton?.className).toContain('focus-visible:ring-2')
-    expect(cancelButton?.className).toContain('focus-visible:ring-forest-700')
-    expect(deleteButton?.className).toContain('focus-visible:ring-2')
-    expect(deleteButton?.className).toContain('focus-visible:ring-red-700')
+    // The ring lives in the token, once. The dialog used to repeat four
+    // `focus-visible:` classes on each button — which is how the primary action
+    // ended up a different size from Cancel beside it.
+    const css = readFileSync('src/styles.css', 'utf8')
+    const baseRule = css.slice(css.indexOf('.btn {'), css.indexOf('.btn-primary'))
+
+    expect(baseRule).toContain('focus-visible:ring-2')
+    expect(baseRule).toContain('focus-visible:ring-forest-600')
+    expect(cancelButton?.className).toContain('btn-ghost')
+    expect(deleteButton?.className).toContain('btn-danger')
   })
 
   it('traps tab focus within the dialog buttons', () => {

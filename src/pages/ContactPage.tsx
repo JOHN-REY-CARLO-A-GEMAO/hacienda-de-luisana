@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { PageShell } from '../components/PageShell'
 import { ContactDetails } from '../sections/ContactDetails'
@@ -36,12 +37,12 @@ export function ContactPage() {
       }
     >
       <section id="contact-details" className="pt-10 pb-16 lg:pb-20 scroll-mt-24">
-        <div className="mx-auto max-w-6xl px-5 lg:px-8 space-y-12">
+        <Container width="content" className="space-y-12">
           <Link to="/support" className="btn-ghost">
             Report or track an issue
           </Link>
           <ContactDetails />
-        </div>
+        </Container>
       </section>
 
     </PageShell>

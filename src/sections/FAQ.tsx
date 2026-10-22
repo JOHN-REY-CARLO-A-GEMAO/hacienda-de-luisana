@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { useState } from 'react'
 import { SceneHeader } from '../components/Scene'
 import { FAQS } from '../config/site'
@@ -7,8 +8,8 @@ export function FAQ() {
   const [open, setOpen] = useState<number | null>(0)
 
   return (
-    <section id="faqs" className="py-24 lg:py-36 bg-cream-50">
-      <div className="mx-auto max-w-4xl px-5 lg:px-8">
+    <section id="faqs" className="section-full bg-cream-50">
+      <Container width="narrow">
         <SceneHeader index="—" eyebrow="FAQs" title="Common Questions">
           <p>
             A few answers to the most common questions. For anything else, message the Hacienda —
@@ -49,7 +50,7 @@ export function FAQ() {
             )
           })}
         </div>
-      </div>
+      </Container>
     </section>
   )
 }

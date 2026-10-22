@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef } from 'react'
+import { useId, useRef } from 'react'
+import { useOverlay } from './ui/overlay'
 
 export type ConfirmDialogProps = {
   open: boolean
@@ -18,6 +19,12 @@ export type ConfirmDialogProps = {
  * Two buttons, always both present, and Escape / backdrop / Cancel all mean the
  * same thing: nothing happens. `danger` paints the confirm button red and is
  * for the actions that release dates or delete a record.
+ *
+ * Keyboard, focus and scroll behaviour come from the same `useOverlay` the
+ * drawer and the invoice dialog use — this prompt keeps its own because it
+ * opens with the confirm button focused, so Enter does what the person just
+ * chose. It used to re-implement the whole contract, which is how the drawer
+ * ended up without a scroll lock while this had no backdrop click handling.
  */
 export function ConfirmDialog({
   open,
@@ -30,53 +37,13 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const cancelRef = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
-  const previousActiveElement = useRef<HTMLElement | null>(null)
 
   const titleId = useId()
   const bodyId = useId()
 
-  useEffect(() => {
-    if (!open) return
-
-    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-      previousActiveElement.current = document.activeElement
-    }
-
-    confirmRef.current?.focus()
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onCancel()
-      } else if (e.key === 'Tab') {
-        const focusables = [cancelRef.current, confirmRef.current].filter(
-          (el): el is HTMLButtonElement => el !== null && !el.disabled,
-        )
-        if (focusables.length === 0) return
-
-        const first = focusables[0]
-        const last = focusables[focusables.length - 1]
-
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault()
-          last.focus()
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault()
-          first.focus()
-        }
-      }
-    }
-
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
-        previousActiveElement.current.focus()
-      }
-    }
-  }, [open, onCancel])
+  useOverlay(open, onCancel, panel, { initialFocus: confirmRef })
 
   if (!open) return null
 
@@ -90,19 +57,20 @@ export function ConfirmDialog({
     >
       <div className="absolute inset-0 bg-forest-900/45 backdrop-blur-[2px]" aria-hidden="true" />
       <div
+        ref={panel}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
-        className="relative w-full max-w-md rounded-[28px] bg-white border border-forest-900/5 shadow-card p-7"
+        tabIndex={-1}
+        className="card relative w-full max-w-md p-7 outline-none"
       >
-        <h2 id={titleId} className="font-serif text-2xl text-forest-900">{title}</h2>
+        <h2 id={titleId} className="h2">{title}</h2>
         <p id={bodyId} className="mt-3 text-sm text-forest-800/85 leading-relaxed whitespace-pre-line">{body}</p>
         <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button
-            ref={cancelRef}
             type="button"
-            className="btn-ghost text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-700 focus-visible:ring-offset-2"
+            className="btn-ghost"
             onClick={onCancel}
             disabled={busy}
           >
@@ -113,11 +81,7 @@ export function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className={
-              danger
-                ? 'btn inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-all duration-300 bg-red-700 text-white hover:bg-red-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2'
-                : 'btn-primary text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-700 focus-visible:ring-offset-2'
-            }
+            className={danger ? 'btn-danger' : 'btn-primary'}
           >
             {busy ? 'Working…' : confirmLabel}
           </button>

@@ -37,6 +37,7 @@ import {
 import { officialAddonFallbacks } from '../lib/stayRequests'
 import { StayRequestsSection, AddonFeeSummary } from '../components/Booking/StayRequestsSection'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
+import { Alert, CheckboxRow, Container, Field, Input, Page, PageHeader, Select } from '../components/ui'
 
 type FormState = {
   check_in: string
@@ -426,40 +427,41 @@ export function BookingPage() {
   }
 
   return (
-    <div className="relative pt-28 pb-24 bg-cream-50 min-h-screen">
+    <Page className="relative">
       {/* Visual shell only — soft countryside wash behind the form; the form itself is untouched */}
       <div
         className="pointer-events-none absolute -top-32 right-[-10%] h-[560px] w-[560px] rounded-full opacity-70 blur-3xl"
         style={{ background: 'radial-gradient(circle, rgba(198,214,193,0.6), transparent 65%)' }}
         aria-hidden="true"
       />
-      <div className="relative mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="max-w-2xl">
-          <div className="flex items-center gap-4">
-            <span className="scene-index text-forest-400" aria-hidden="true">09</span>
-            <span className="h-px w-8 bg-forest-900/15" aria-hidden="true" />
-            <div className="eyebrow">Book a room · no account needed</div>
-          </div>
-          <h1 className="display text-4xl sm:text-5xl lg:text-6xl mt-5 text-forest-900">
-            Plan Your Stay
-          </h1>
-          <p className="mt-5 text-forest-800/80 leading-relaxed">
-            Browse every room, then book it here — no login and no account. After these details
-            you will upload a screenshot of your downpayment. The booking is not submitted, and
-            not confirmed, until that proof is in and the Hacienda approves it.
-          </p>
+      <Container width="wide" className="relative">
+        <PageHeader
+          eyebrow="Book a room · no account needed"
+          title="Plan Your Stay"
+          lead={
+            <p className="max-w-2xl">
+              Browse every room, then book it here — no login and no account. After these details you will
+              upload a screenshot of your downpayment. The booking is not submitted, and not confirmed,
+              until that proof is in and the Hacienda approves it.
+            </p>
+          }
+        />
+        <div className="mt-6 max-w-2xl">
           <FlowSteps current={0} />
           {!isFirebaseConfigured && (
-            <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
+            <Alert tone="warning" className="mt-4 text-xs">
               <strong>Demo mode:</strong> Firebase is not configured in this build. A submitted booking is
               stored in this browser, and you can approve or reject it from the review desk.{' '}
-              <Link to="/status" className="underline">Deployment status</Link>
-            </div>
+              <Link to="/status" className="text-link">
+                Deployment status
+              </Link>
+            </Alert>
           )}
           {cloudBookingsDB.isCloud && (
-            <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs text-emerald-800">
-              ✓ Secured by Firebase — your request will be saved to the cloud and the Admin will see it in the Hacienda app.
-            </div>
+            <Alert tone="success" className="mt-4 text-xs">
+              Secured by Firebase — your request will be saved to the cloud and the Admin will see it in
+              the Hacienda app.
+            </Alert>
           )}
         </div>
 
@@ -467,21 +469,13 @@ export function BookingPage() {
           <form
             onSubmit={onSubmit}
             noValidate
-            className="lg:col-span-2 bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8 lg:p-10 space-y-8"
+            className="card space-y-8 p-6 sm:p-8 lg:col-span-2 lg:p-10"
           >
-            {sessionNotice && (
-              <div role="alert" className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
-                {sessionNotice}
-              </div>
-            )}
-            {status === 'error' && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-                {errorMsg}
-              </div>
-            )}
+            {sessionNotice && <Alert tone="warning">{sessionNotice}</Alert>}
+            {status === 'error' && <Alert tone="danger">{errorMsg}</Alert>}
 
             <div>
-              <h2 className="font-serif text-2xl text-forest-900">Stay Details</h2>
+              <h2 className="h2">Stay details</h2>
               <p id="booking-lead-time" className="mt-2 text-sm text-forest-700">
                 Book at least {minimumBookingLeadTimeDays} days before check-in.
                 Earliest check-in: {earliestCheckIn} (Philippine time).
@@ -489,8 +483,7 @@ export function BookingPage() {
               <div className="mt-6" data-tour="stay-details">
                 <div className="grid sm:grid-cols-2 gap-5">
                   <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
-                    <select
-                      className="field appearance-none pr-10"
+                    <Select
                       value={form.accommodation}
                       onChange={(e) => {
                         set('accommodation', e.target.value)
@@ -501,14 +494,13 @@ export function BookingPage() {
                       {options.map((o) => (
                         <option key={o.id} value={o.id}>{o.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   </Field>
                   <Field label="Number of guests" error={errors.guests}>
-                    <input
+                    <Input
                       type="number"
                       min={1}
                       inputMode="numeric"
-                      className="field"
                       value={form.guests}
                       onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
                       onBlur={() => handleBlur('guests')}
@@ -517,9 +509,9 @@ export function BookingPage() {
                 </div>
 
                 {calendarNotice && (
-                  <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <Alert tone="warning" className="mt-5">
                     {calendarNotice}
-                  </div>
+                  </Alert>
                 )}
 
                 <AvailabilityCalendar
@@ -539,9 +531,8 @@ export function BookingPage() {
 
                 <div className="mt-5 grid sm:grid-cols-2 gap-5">
                   <Field label="Selected check-in" error={errors.check_in}>
-                    <input
+                    <Input
                       type="date"
-                      className="field"
                       min={earliestCheckIn}
                       aria-describedby="booking-lead-time"
                       value={form.check_in}
@@ -551,9 +542,8 @@ export function BookingPage() {
                     />
                   </Field>
                   <Field label="Selected check-out" error={errors.check_out}>
-                    <input
+                    <Input
                       type="date"
-                      className="field"
                       min={form.check_in >= earliestCheckIn ? form.check_in : earliestCheckIn}
                       value={form.check_out}
                       data-tour-field="check-out"
@@ -569,7 +559,7 @@ export function BookingPage() {
             </div>
 
             <div className="pt-2 border-t border-forest-900/5">
-              <h2 className="font-serif text-2xl text-forest-900 mt-6">Your Details</h2>
+              <h2 className="h2 mt-8">Your details</h2>
               {usedAccount ? (
                 <p className="mt-2 text-xs text-emerald-800">
                   Filled in from your account. You can change any of it for this booking, and update your
@@ -583,8 +573,7 @@ export function BookingPage() {
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
                 <div className="sm:col-span-2" data-tour="guest-details">
                   <Field label="Full name (First Middle Last)" error={errors.name}>
-                    <input
-                      className="field"
+                    <Input
                       placeholder="Juan Dela Cruz"
                       value={form.name}
                       data-tour-field="guest-name"
@@ -595,8 +584,7 @@ export function BookingPage() {
                   </Field>
                 </div>
                 <Field label="Mobile number" error={errors.phone}>
-                  <input
-                    className="field"
+                  <Input
                     placeholder="09XX XXX XXXX"
                     type="tel"
                     inputMode="tel"
@@ -607,8 +595,7 @@ export function BookingPage() {
                   />
                 </Field>
                 <Field label="Email" error={errors.email}>
-                  <input
-                    className="field"
+                  <Input
                     placeholder="you@email.com"
                     type="email"
                     value={form.email}
@@ -647,17 +634,19 @@ export function BookingPage() {
             />
 
             {availability?.status === 'checking' && (
-              <div className="rounded-2xl border border-forest-900/10 bg-cream-50 px-4 py-3 text-xs text-forest-800 leading-relaxed" aria-live="polite">
-                <strong>Confirming the selected stay…</strong> Continue stays disabled until a fresh availability check finishes.
-              </div>
+              <Alert tone="info" className="text-xs">
+                <strong>Confirming the selected stay…</strong> Continue stays disabled until a fresh
+                availability check finishes.
+              </Alert>
             )}
             {availability?.status === 'unknown' && (
-              <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 leading-relaxed">
-                <strong>Availability is unknown.</strong> The Hacienda’s Booking data could not be checked. Refresh the calendar or try again; these dates are not being treated as available.
-              </div>
+              <Alert tone="danger" className="text-xs">
+                <strong>Availability is unknown.</strong> The Hacienda’s Booking data could not be checked.
+                Refresh the calendar or try again; these dates are not being treated as available.
+              </Alert>
             )}
             {availability?.status === 'unavailable' && (
-              <div role="alert" className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-900 leading-relaxed">
+              <Alert tone="warning" className="text-xs">
                 <strong>
                   {availability.blockingState === 'booked' ? 'That overnight date is booked.' : 'Those dates are already held.'}
                 </strong>{' '}
@@ -669,29 +658,22 @@ export function BookingPage() {
                 {availability.blockingState === 'booked'
                   ? 'Choose a green check-in date. A booked date can still be the previous Guest’s checkout boundary.'
                   : 'A Pending Date hold lasts up to 24 hours while the Hacienda reviews it; choose another green date.'}
-              </div>
+              </Alert>
             )}
             {availability?.status === 'available' && form.check_in && form.check_out && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900 leading-relaxed" aria-live="polite">
-                <strong>Selected stay is available.</strong> Availability will be checked again when you continue and atomically when the Pending Booking is created.
-              </div>
+              <Alert tone="success" className="text-xs">
+                <strong>Selected stay is available.</strong> Availability will be checked again when you
+                continue and atomically when the Pending Booking is created.
+              </Alert>
             )}
 
-            <label className="flex items-start gap-2 text-xs text-forest-800" data-tour="terms">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={acceptedTerms}
-                onChange={(e) => setAcceptedTerms(e.target.checked)}
-              />
-              <span>
-                I have read and accept the{' '}
-                <Link to="/legal" className="underline underline-offset-2">
-                  Terms and Conditions, Privacy Policy, booking, cancellation, payment and smart-lock rules
-                </Link>{' '}
-                (version {LEGAL_VERSION}). This is not accepted for me.
-              </span>
-            </label>
+            <CheckboxRow checked={acceptedTerms} onChange={setAcceptedTerms} tour="terms">
+              I have read and accept the{' '}
+              <Link to="/legal" className="text-link">
+                Terms and Conditions, Privacy Policy, booking, cancellation, payment and smart-lock rules
+              </Link>{' '}
+              (version {LEGAL_VERSION}). This is not accepted for me.
+            </CheckboxRow>
             {errors.special_requests && (
               <p className="text-xs text-red-600" role="alert">{errors.special_requests}</p>
             )}
@@ -790,27 +772,8 @@ export function BookingPage() {
             </div>
           </aside>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function Field({
-  label, error, className = '', tour, children,
-}: {
-  label: string
-  error?: string
-  className?: string
-  /** Optional tour anchor (data-tour) for the interactive Guest tutorial. */
-  tour?: string
-  children: React.ReactNode
-}) {
-  return (
-    <label className={`block ${className}`} data-tour={tour}>
-      <span className="label">{label}</span>
-      {children}
-      {error && <span className="mt-1.5 block text-xs text-red-600">{error}</span>}
-    </label>
+      </Container>
+    </Page>
   )
 }
 

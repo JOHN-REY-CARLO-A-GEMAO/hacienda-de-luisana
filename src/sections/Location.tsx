@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import type { ComponentType } from 'react'
 import { BUSINESS, GETTING_HERE } from '../config/site'
 import { MapPin, ArrowRight, Car, Navigation, Compass } from '../lib/icons'
@@ -15,8 +16,8 @@ export function Location() {
   ]
 
   return (
-    <section id="location" className="relative py-24 lg:py-36 bg-cream-50 overflow-hidden">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="location" className="relative section-full bg-cream-50 overflow-hidden">
+      <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
           <SceneHeader
             index="07"
@@ -62,7 +63,7 @@ export function Location() {
                 href={BUSINESS.contact.directions}
                 target="_blank"
                 rel="noreferrer"
-                className="btn bg-cream-50 text-forest-900 hover:bg-white mt-8 group"
+                className="btn-on-dark group mt-8"
               >
                 <MapPin size={16} /> Get Directions
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
@@ -85,7 +86,7 @@ export function Location() {
 
         {/* Getting here — the landmark and the two standard routes, no invented travel times */}
         <div id="getting-here" className="mt-8 grid md:grid-cols-3 gap-6">
-          <div className="reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-8">
+          <div className="reveal card p-7 lg:p-8">
             <div className="w-11 h-11 rounded-xl bg-forest-50 border border-forest-900/5 flex items-center justify-center text-forest-700 mb-4">
               <Compass size={20} />
             </div>
@@ -102,7 +103,7 @@ export function Location() {
           Travel times depend on the day and the traffic, so we don't quote one. If you're unsure about the last
           stretch, message the Hacienda before you set off.
         </p>
-      </div>
+      </Container>
     </section>
   )
 }
@@ -117,7 +118,7 @@ function RouteCard({
   steps: readonly string[]
 }) {
   return (
-    <div className="reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-8">
+    <div className="reveal card p-7 lg:p-8">
       <div className="w-11 h-11 rounded-xl bg-forest-50 border border-forest-900/5 flex items-center justify-center text-forest-700 mb-4">
         <Icon size={20} />
       </div>

@@ -39,7 +39,7 @@ export function ShareLocationBar({ sharing }: { sharing: UseLiveLocation }) {
           Expires in: <span className="font-medium tabular-nums">{sharing.countdown}</span>
           {sharing.lastSentAtMs ? ' · sending' : ''}
         </p>
-        <button type="button" className="btn-primary text-xs mt-3" onClick={() => void sharing.stop()}>
+        <button type="button" className="btn-primary btn-sm mt-3" onClick={() => void sharing.stop()}>
           Stop Sharing
         </button>
       </div>
@@ -60,7 +60,7 @@ export function ShareLocationBar({ sharing }: { sharing: UseLiveLocation }) {
             <button
               key={minutes}
               type="button"
-              className="btn-ghost text-xs"
+              className="btn-ghost btn-sm"
               disabled={sharing.phase === 'starting'}
               onClick={() => {
                 setChoosing(false)
@@ -70,14 +70,14 @@ export function ShareLocationBar({ sharing }: { sharing: UseLiveLocation }) {
               {minutes} minutes
             </button>
           ))}
-          <button type="button" className="btn-ghost text-xs" onClick={() => setChoosing(false)}>
+          <button type="button" className="btn-ghost btn-sm" onClick={() => setChoosing(false)}>
             Cancel
           </button>
         </div>
       ) : (
         <button
           type="button"
-          className="btn-ghost text-xs"
+          className="btn-ghost btn-sm"
           disabled={Boolean(sharing.blocked) || sharing.phase === 'starting'}
           title={sharing.blocked ? 'Live location is not available on this deployment.' : undefined}
           onClick={() => setChoosing(true)}

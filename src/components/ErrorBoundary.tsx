@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { MessageScreen } from './ui/MessageScreen'
 
 type Props = { children: ReactNode }
 type State = { error: Error | null }
@@ -29,27 +30,32 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children
 
     return (
-      <div className="min-h-screen bg-cream-50 flex items-center justify-center px-5">
-        <div className="w-full max-w-lg rounded-[28px] bg-white border border-forest-900/5 shadow-card p-8">
-          <div className="eyebrow">Something went wrong</div>
-          <h1 className="font-serif text-3xl text-forest-900 mt-3">This page could not be shown</h1>
-          <p className="mt-3 text-sm text-forest-800/85 leading-relaxed">
-            The rest of the site is still working — this one screen hit an error while it was drawing. Nothing you
-            submitted was lost. Try again, and if it keeps happening tell the Admin what you were doing.
-          </p>
-          <pre className="mt-4 max-h-32 overflow-auto rounded-xl bg-cream-100 border border-forest-900/10 px-3 py-2 text-[11px] text-forest-800 whitespace-pre-wrap">
-            {error.message}
-          </pre>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button type="button" className="btn-primary text-xs" onClick={this.reset}>
+      <MessageScreen
+        tone="danger"
+        eyebrow="Something went wrong"
+        title="This page could not be shown"
+        body={
+          <>
+            <p>
+              The rest of the site is still working — this one screen hit an error while it was drawing. Nothing you
+              submitted was lost. Try again, and if it keeps happening tell the Admin what you were doing.
+            </p>
+            <pre className="mx-auto mt-4 max-h-32 overflow-auto whitespace-pre-wrap rounded-xl border border-forest-900/10 bg-cream-100 px-3 py-2 text-left text-[11px] text-forest-800 dark:border-cream-100/15 dark:bg-forest-950 dark:text-cream-100">
+              {error.message}
+            </pre>
+          </>
+        }
+        actions={
+          <>
+            <button type="button" className="btn-primary btn-sm" onClick={this.reset}>
               Try again
             </button>
-            <a href="/" className="btn-ghost text-xs">
+            <a href="/" className="btn-ghost btn-sm">
               Back to the home page
             </a>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
     )
   }
 }

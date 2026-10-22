@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/review_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/review_policy.dart';
@@ -209,10 +210,12 @@ class _StatisticsBar extends StatelessWidget {
                 children: [
                   Text(
                     average?.toStringAsFixed(1) ?? '—',
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 40,
+                    style: AppTheme.serif(
+                      fontSize: 38,
+                      fontWeight: FontWeight.w600,
                       color: AppColors.accentGoldLight,
                       height: 1,
+                      letterSpacing: 0,
                     ),
                   ),
                   const Padding(

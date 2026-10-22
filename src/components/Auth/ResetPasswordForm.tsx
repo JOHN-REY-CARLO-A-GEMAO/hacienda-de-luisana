@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { describeAuthError } from '../../lib/auth'
 import { EMAIL_MAX, validateEmail } from '../../lib/validation'
 import { useAuth } from '../../hooks/useAuth'
+import { Field, Input } from '../ui'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import type { AuthIntro } from './AuthShell'
 
@@ -68,10 +69,8 @@ export function ResetPasswordForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <label className="block">
-        <span className="label">Email</span>
-        <input
-          className="field"
+      <Field label="Email" required error={emailError}>
+        <Input
           type="email"
           placeholder="you@email.com"
           value={email}
@@ -83,12 +82,9 @@ export function ResetPasswordForm({
           maxLength={EMAIL_MAX}
           autoComplete="email"
           spellCheck={false}
-          aria-invalid={emailError ? true : undefined}
+          invalid={Boolean(emailError)}
         />
-        {emailError && (
-          <span className="mt-1 block text-xs text-red-600">{emailError}</span>
-        )}
-      </label>
+      </Field>
 
       <button
         type="submit"

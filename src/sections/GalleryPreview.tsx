@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GALLERY, type GalleryImage } from '../config/site'
@@ -32,8 +33,8 @@ export function GalleryPreview() {
   )
 
   return (
-    <section id="gallery" className="py-20 lg:py-28 bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 transition-colors duration-300">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="gallery" className="section-roomy bg-cream-50 dark:bg-forest-950 text-forest-900 dark:text-cream-50 transition-colors duration-300">
+      <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader index="07" eyebrow="Gallery" title="A Glimpse of the Hacienda" />
           <Link to="/gallery" className="reveal btn-ghost shrink-0 group self-start lg:self-auto lg:mb-2">
@@ -63,7 +64,7 @@ export function GalleryPreview() {
             </button>
           ))}
         </div>
-      </div>
+      </Container>
 
       {open && (
         <div

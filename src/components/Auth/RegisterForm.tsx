@@ -12,6 +12,7 @@ import {
 } from '../../lib/validation'
 import { LEGAL_VERSION } from '../../lib/legal'
 import type { RegisterIntro } from './AuthShell'
+import { CheckboxRow, Field, Input } from '../ui'
 
 /** Matches `MAX_PASSWORD_LENGTH` in `src/lib/auth/credentials.ts`. */
 const PASSWORD_MAX = 200
@@ -203,32 +204,23 @@ export function RegisterForm({
         type="button"
         onClick={onClear}
         aria-label={label}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-forest-600 hover:text-forest-900 px-2 py-1 rounded bg-forest-900/5 hover:bg-forest-900/10 transition"
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900"
       >
         Clear
       </button>
     ) : null
 
-  const errorText = (key: FieldKey) =>
-    fieldErrors[key] ? (
-      <span className="mt-1 block text-xs text-red-600" role="alert">
-        {fieldErrors[key]}
-      </span>
-    ) : null
-
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
-      {/* Group 1: Your Name */}
-      <div className="space-y-4">
-        <div className="pb-2 border-b border-forest-900/10">
-          <span className="text-xs font-semibold uppercase tracking-eyebrow text-forest-600">Your Name</span>
-        </div>
+      {/* One group heading per question the form asks, not per field. */}
+      <fieldset className="space-y-4">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600">
+          Your name
+        </legend>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block">
-            <span className="label">First Name</span>
-            <input
-              className="field"
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="First name" required error={fieldErrors.firstName}>
+            <Input
               placeholder="Juan"
               value={firstName}
               onChange={(e) => edit('firstName', () => setFirstName(e.target.value))}
@@ -236,15 +228,12 @@ export function RegisterForm({
               autoComplete="given-name"
               maxLength={80}
               aria-required="true"
-              aria-invalid={fieldErrors.firstName ? true : undefined}
+              invalid={Boolean(fieldErrors.firstName)}
             />
-            {errorText('firstName')}
-          </label>
+          </Field>
 
-          <label className="block">
-            <span className="label">Last Name</span>
-            <input
-              className="field"
+          <Field label="Last name" required error={fieldErrors.lastName}>
+            <Input
               placeholder="Dela Cruz"
               value={lastName}
               onChange={(e) => edit('lastName', () => setLastName(e.target.value))}
@@ -252,28 +241,22 @@ export function RegisterForm({
               autoComplete="family-name"
               maxLength={80}
               aria-required="true"
-              aria-invalid={fieldErrors.lastName ? true : undefined}
+              invalid={Boolean(fieldErrors.lastName)}
             />
-            {errorText('lastName')}
-          </label>
+          </Field>
         </div>
 
-        <label className="block">
-          <span className="label">
-            Middle Name <span className="font-normal text-forest-500">(optional)</span>
-          </span>
-          <input
-            className="field"
+        <Field label="Middle name" hint="Optional — an initial is enough." error={fieldErrors.middleName}>
+          <Input
             placeholder="Santos"
             value={middleName}
             onChange={(e) => edit('middleName', () => setMiddleName(e.target.value))}
             onBlur={() => checkOnBlur('middleName')}
             autoComplete="additional-name"
             maxLength={80}
-            aria-invalid={fieldErrors.middleName ? true : undefined}
+            invalid={Boolean(fieldErrors.middleName)}
           />
-          {errorText('middleName')}
-        </label>
+        </Field>
 
         {composeFullName({ first: firstName, middle: middleName, last: lastName }) && (
           <p className="text-[11px] text-forest-600">
@@ -283,19 +266,17 @@ export function RegisterForm({
             </strong>
           </p>
         )}
-      </div>
+      </fieldset>
 
-      {/* Group 2: Contact Information */}
-      <div className="space-y-4">
-        <div className="pb-2 border-b border-forest-900/10">
-          <span className="text-xs font-semibold uppercase tracking-eyebrow text-forest-600">Contact Information</span>
-        </div>
+      <fieldset className="space-y-4">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600">
+          How the Hacienda reaches you
+        </legend>
 
-        <label className="block relative">
-          <span className="label">Email</span>
+        <Field label="Email" required error={fieldErrors.email}>
           <div className="relative">
-            <input
-              className="field pr-16"
+            <Input
+              className="pr-16"
               type="email"
               placeholder="you@email.com"
               value={email}
@@ -308,7 +289,7 @@ export function RegisterForm({
               autoComplete="email"
               spellCheck={false}
               aria-required="true"
-              aria-invalid={fieldErrors.email ? true : undefined}
+              invalid={Boolean(fieldErrors.email)}
             />
             {clearButton(
               Boolean(email),
@@ -319,13 +300,15 @@ export function RegisterForm({
               'Clear email',
             )}
           </div>
-          {errorText('email')}
-        </label>
+        </Field>
 
-        <label className="block">
-          <span className="label">Mobile Phone</span>
-          <input
-            className="field"
+        <Field
+          label="Mobile phone"
+          required
+          error={fieldErrors.phone}
+          hint="Philippine format: 09XX XXX XXXX. The booking form fills this in for you."
+        >
+          <Input
             type="tel"
             inputMode="tel"
             placeholder="09171234567"
@@ -335,26 +318,33 @@ export function RegisterForm({
             autoComplete="tel"
             maxLength={16}
             aria-required="true"
-            aria-invalid={fieldErrors.phone ? true : undefined}
+            invalid={Boolean(fieldErrors.phone)}
           />
-          <span className="text-[11px] text-forest-600 mt-1 block">
-            Philippine format: 09XX XXX XXXX. The booking form fills this in for you.
-          </span>
-          {errorText('phone')}
-        </label>
-      </div>
+        </Field>
+      </fieldset>
 
-      {/* Group 3: Account Security */}
-      <div className="space-y-4">
-        <div className="pb-2 border-b border-forest-900/10">
-          <span className="text-xs font-semibold uppercase tracking-eyebrow text-forest-600">Account Security</span>
-        </div>
+      <fieldset className="space-y-4">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600">
+          Securing your account
+        </legend>
 
-        <label className="block relative">
-          <span className="label">Password</span>
+        <Field
+          label="Password"
+          required
+          error={fieldErrors.password}
+          hint={
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${
+                password.length >= MIN_PASSWORD_LENGTH ? 'bg-emerald-50 text-emerald-700' : 'bg-forest-100 text-forest-600'
+              }`}
+            >
+              {password.length >= MIN_PASSWORD_LENGTH ? '✓' : '○'} {MIN_PASSWORD_LENGTH}+ characters
+            </span>
+          }
+        >
           <div className="relative">
-            <input
-              className="field pr-32"
+            <Input
+              className="pr-32"
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
               value={password}
@@ -363,15 +353,15 @@ export function RegisterForm({
               maxLength={PASSWORD_MAX}
               autoComplete="new-password"
               aria-required="true"
-              aria-invalid={fieldErrors.password ? true : undefined}
+              invalid={Boolean(fieldErrors.password)}
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
                 aria-pressed={showPassword}
-                className="text-xs font-medium text-forest-600 hover:text-forest-900 px-2 py-1 rounded bg-forest-900/5 hover:bg-forest-900/10 transition"
+                className="rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900"
               >
                 {showPassword ? 'Hide' : 'Show'}
               </button>
@@ -383,64 +373,44 @@ export function RegisterForm({
                     setFieldErrors((current) => ({ ...current, password: undefined }))
                   }}
                   aria-label="Clear password"
-                  className="text-xs font-medium text-forest-600 hover:text-forest-900 px-2 py-1 rounded bg-forest-900/5 hover:bg-forest-900/10 transition"
+                  className="rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900"
                 >
                   Clear
                 </button>
               )}
             </div>
           </div>
-          <div className="mt-2 flex items-center gap-2">
-            <span
-              className={`text-xs px-2 py-1 rounded-full ${
-                password.length >= MIN_PASSWORD_LENGTH ? 'bg-emerald-50 text-emerald-700' : 'bg-forest-100 text-forest-600'
-              }`}
-            >
-              {password.length >= MIN_PASSWORD_LENGTH ? '✓' : '○'} {MIN_PASSWORD_LENGTH}+ characters
-            </span>
-          </div>
-          {errorText('password')}
-        </label>
+        </Field>
 
-        <label className="block">
-          <span className="label">Date of Birth</span>
-          <input
-            className="field"
+        <Field label="Date of birth" required error={fieldErrors.birthdate} hint="You must be at least 10 years old.">
+          <Input
             type="date"
             value={birthdate}
             max={todayIso()}
             onChange={(e) => edit('birthdate', () => setBirthdate(e.target.value))}
             onBlur={() => checkOnBlur('birthdate')}
             aria-required="true"
-            aria-invalid={fieldErrors.birthdate ? true : undefined}
+            invalid={Boolean(fieldErrors.birthdate)}
           />
-          <span className="text-[11px] text-forest-600 mt-1 block">You must be at least 10 years old.</span>
-          {errorText('birthdate')}
-        </label>
-      </div>
+        </Field>
+      </fieldset>
 
-      {/* Group 4: Terms */}
       <div className="space-y-3">
-        <label className="flex items-start gap-3 text-sm text-forest-800 cursor-pointer">
-          <input
-            type="checkbox"
-            className="mt-0.5 w-5 h-5 rounded border-forest-300 text-forest-700 focus:ring-forest-600"
-            checked={acceptTerms}
-            onChange={(e) => edit('acceptTerms', () => setAcceptTerms(e.target.checked))}
-            aria-invalid={fieldErrors.acceptTerms ? true : undefined}
-          />
-          <span className="leading-relaxed">
-            I have read and accept the{' '}
-            <Link to="/legal" className="underline underline-offset-2 hover:text-forest-900">
-              Terms and Conditions
-            </Link>{' '}
-            (version {LEGAL_VERSION}).
+        <CheckboxRow checked={acceptTerms} onChange={(checked) => edit('acceptTerms', () => setAcceptTerms(checked))}>
+          I have read and accept the{' '}
+          <Link to="/legal" className="text-link">
+            Terms and Conditions
+          </Link>{' '}
+          (version {LEGAL_VERSION}).
+        </CheckboxRow>
+        {fieldErrors.acceptTerms && (
+          <span className="field-error" role="alert">
+            {fieldErrors.acceptTerms}
           </span>
-        </label>
-        {errorText('acceptTerms')}
+        )}
       </div>
 
-      <button type="submit" disabled={loading} className="btn-primary w-full justify-center disabled:opacity-60">
+      <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
         {loading ? 'Please wait…' : intro.submitLabel}
       </button>
     </form>

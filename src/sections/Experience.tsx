@@ -1,3 +1,4 @@
+import { Container } from '../components/ui'
 import { EXPERIENCES } from '../config/site'
 import { ParallaxImage } from '../components/ParallaxImage'
 import { SceneHeader } from '../components/Scene'
@@ -8,7 +9,7 @@ import { SceneHeader } from '../components/Scene'
  */
 export function Experience() {
   return (
-    <section id="experience" className="py-24 lg:py-36 bg-forest-950 text-cream-100 relative overflow-hidden">
+    <section id="experience" className="section-full bg-forest-950 text-cream-100 relative overflow-hidden">
       <div
         className="absolute inset-0 opacity-[0.07] pointer-events-none"
         style={{
@@ -30,7 +31,7 @@ export function Experience() {
         />
       </svg>
 
-      <div className="relative mx-auto max-w-7xl px-5 lg:px-8">
+      <Container width="wide" className="relative">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
           <SceneHeader
             index="04"
@@ -72,7 +73,7 @@ export function Experience() {
             </article>
           ))}
         </div>
-      </div>
+      </Container>
     </section>
   )
 }
