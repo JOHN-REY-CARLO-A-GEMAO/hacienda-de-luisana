@@ -46,6 +46,7 @@ import {
   unitsForAccommodation,
   validateMinimumBookingLeadTime,
   validateBookingPayload,
+  validatePublishedRates,
   type BookingDateValidation,
   type BookingRuleFailure,
   DATE_HOLD_MS,
@@ -58,9 +59,13 @@ import {
   type CalendarAvailabilityDay,
   type DateRange,
   type HoldBearingBooking,
+  type PublishedRates,
 } from './booking'
 import {
+  clearAvailabilityCache,
+  isCallableTransportUnavailable,
   requestBookingAvailability,
+  saveAvailabilitySnapshot,
   submitGuestBooking,
   type AvailabilitySnapshot,
 } from './availabilityApi'
@@ -437,6 +442,149 @@ export function lastCloudWriteFailure(): ReturnType<typeof describeFirestoreFail
   return lastWriteFailure
 }
 
+function validCalendarDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = Date.parse(`${value}T00:00:00Z`)
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value
+}
+
+const KNOWN_AVAILABILITY_STATUSES = new Set([
+  'Pending',
+  'Payment Pending',
+  'KYC Submitted',
+  'Approved',
+  'Reserved',
+  'Confirmed',
+  'Checked-In',
+  'Staying',
+  'Checked-Out',
+  'Completed',
+  'Rejected',
+  'Cancelled',
+  'Expired',
+])
+
+function parseAvailabilitySlots(
+  raw: unknown,
+  request: { accommodation: string; from: string; to: string },
+  originalError: unknown,
+): HoldBearingBooking[] {
+  if (!Array.isArray(raw)) throw originalError
+  const out: HoldBearingBooking[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') throw originalError
+    const record = item as Record<string, unknown>
+    if (record.accommodation !== request.accommodation) continue
+    const checkIn = storedDateOnly(record.check_in)
+    const checkOut = storedDateOnly(record.check_out)
+    const overlapsMaybe = !validCalendarDate(checkIn)
+      || !validCalendarDate(checkOut)
+      || checkOut <= checkIn
+      || (checkIn < request.to && checkOut > request.from)
+    if (!overlapsMaybe) continue
+    if (!validCalendarDate(checkIn) || !validCalendarDate(checkOut) || checkOut <= checkIn) {
+      throw originalError
+    }
+    if (typeof record.status !== 'string' || !KNOWN_AVAILABILITY_STATUSES.has(record.status)) {
+      throw originalError
+    }
+    const status = interpretStoredStatus(record.status, {
+      payment_status: typeof record.payment_status === 'string' ? record.payment_status : undefined,
+      payment_proof_url: typeof record.payment_proof_url === 'string' ? record.payment_proof_url : null,
+    })
+    out.push({
+      id: typeof record.id === 'string' && record.id ? record.id : `anon-slot:${out.length}`,
+      accommodation: request.accommodation,
+      check_in: checkIn,
+      check_out: checkOut,
+      status,
+      hold_expires_at: nullableStoredInstant(record.hold_expires_at),
+    })
+  }
+  return out
+}
+
+/**
+ * Spark / undeployed-Functions cloud projection fallback.
+ *
+ * Runs ONLY when the callable transport itself could not be reached AND
+ * `site_config/booking.callable_booking_required` is not enabled. Never falls
+ * back to browser `localStorage`: if Firestore itself cannot answer or has no
+ * valid active `site_config/rates` entry for this Accommodation, the original
+ * `AvailabilityUnavailableError` is rethrown so the calendar fails closed.
+ */
+async function fallbackCloudAvailabilityCalendar(
+  request: { accommodation: string; from: string; to: string },
+  options: { now?: string | number | Date },
+  originalError: unknown,
+): Promise<AvailabilitySnapshot> {
+  if (!db) throw originalError
+
+  let callableRequired = false
+  try {
+    const policy = await bookingPolicyDB.getGuestPolicy()
+    callableRequired = policy.callableBookingRequired
+  } catch {
+    throw originalError
+  }
+  if (callableRequired) throw originalError
+
+  let published: PublishedRates
+  try {
+    const ratesSnap = await getDoc(doc(db, 'site_config', 'rates'))
+    if (!ratesSnap.exists()) throw originalError
+    const rawRates = ratesSnap.data() as unknown
+    if (validatePublishedRates(rawRates).length > 0) throw originalError
+    published = rawRates as PublishedRates
+  } catch {
+    throw originalError
+  }
+
+  const accPolicy = published.accommodations?.[request.accommodation]
+  if (!accPolicy || accPolicy.active === false) {
+    throw originalError
+  }
+  const unitsAvailable = unitsForAccommodation(request.accommodation, ACCOMMODATIONS, published)
+
+  let publicSlots: HoldBearingBooking[] = []
+  try {
+    const availSnap = await getDoc(doc(db, 'site_config', 'availability'))
+    if (availSnap.exists()) {
+      publicSlots = parseAvailabilitySlots(availSnap.data()?.slots, request, originalError)
+    }
+  } catch {
+    throw originalError
+  }
+
+  let ownBookings: Booking[] = []
+  const currentUid = auth?.currentUser?.uid
+  if (currentUid) {
+    try {
+      const ownSnap = await getDocs(query(collection(db, COLLECTION), where('uid', '==', currentUid)))
+      ownBookings = ownSnap.docs.map((d) => mapDocToBooking(d.id, d.data()))
+    } catch {
+      throw originalError
+    }
+  }
+
+  const ownIds = new Set(ownBookings.map((booking) => booking.id))
+  const mergedBookings: HoldBearingBooking[] = [
+    ...publicSlots.filter((slot) => slot.id.startsWith('anon-slot:') || !ownIds.has(slot.id)),
+    ...ownBookings,
+  ]
+
+  const now = options.now ?? Date.now()
+  const days = calendarAvailability(request, mergedBookings, {
+    unitsAvailable,
+    now,
+  })
+  return saveAvailabilitySnapshot({
+    ...request,
+    generated_at: new Date(now).toISOString(),
+    days,
+  })
+}
+
 // ----------------------------------------------------------------------------
 // Public API — mirrors bookingsDB but cloud-aware
 // ----------------------------------------------------------------------------
@@ -650,11 +798,14 @@ export const cloudBookingsDB = {
       }, policy.quotesRequired)
     }
 
-    // Website Bookings use the authoritative server operation. It re-reads the
-    // current Published rates and every overlapping Date hold inside the same
+    // Website Bookings ask the authoritative server operation first. It re-reads
+    // the current Published rates and every overlapping Date hold inside the same
     // transaction that creates the Pending Booking and its first Activity entry.
-    // A failed or unknown availability check is therefore a refusal, never a
-    // local-success fallback and never a direct addDoc race.
+    // When `site_config/booking.callable_booking_required` is off (the default on
+    // Spark before Cloud Functions are deployed), an unreachable callable transport
+    // falls through to the direct `addDoc` path below, mirroring `attestationForStay`
+    // (ADR-0019). Any structured server refusal or any failure under enforcement
+    // fails closed immediately without touching Firestore or `localStorage`.
     if (isCloud && db && rest.source === 'web') {
       const submitted = {
         ...rest,
@@ -662,15 +813,22 @@ export const cloudBookingsDB = {
         payment_status: 'pending' as const,
         payment_plan: rest.payment_plan ?? 'down-payment' as const,
       }
-      const receipt = await submitGuestBooking(submitted as unknown as Record<string, unknown>)
-      lastWriteFailure = null
-      return {
-        id: receipt.id,
-        ...submitted,
-        status: 'Pending',
-        created_at: receipt.created_at,
-        hold_expires_at: receipt.hold_expires_at,
-        storage: 'cloud',
+      try {
+        const receipt = await submitGuestBooking(submitted as unknown as Record<string, unknown>)
+        lastWriteFailure = null
+        return {
+          id: receipt.id,
+          ...submitted,
+          status: 'Pending',
+          created_at: receipt.created_at,
+          hold_expires_at: receipt.hold_expires_at,
+          storage: 'cloud',
+        }
+      } catch (error) {
+        if (policy.callableBookingRequired || !isCallableTransportUnavailable(error)) {
+          throw error
+        }
+        console.warn('[Firestore] submitBooking callable unavailable; falling back to direct Firestore write', error)
       }
     }
 
@@ -708,6 +866,7 @@ export const cloudBookingsDB = {
       // and one console line nobody reads. The Admin's Payments screen is the
       // one that curates the catalogue.
 
+      clearAvailabilityCache()
       lastWriteFailure = null
       // Return optimistic booking
       return {
@@ -830,7 +989,12 @@ export const cloudBookingsDB = {
     options: { now?: string | number | Date; force?: boolean } = {},
   ): Promise<AvailabilitySnapshot> {
     if (this.isCloud) {
-      return requestBookingAvailability(request, { force: options.force })
+      try {
+        return await requestBookingAvailability(request, { force: options.force })
+      } catch (error) {
+        if (!isCallableTransportUnavailable(error)) throw error
+        return fallbackCloudAvailabilityCalendar(request, options, error)
+      }
     }
     const now = options.now ?? Date.now()
     const [bookings, published] = await Promise.all([
@@ -948,6 +1112,7 @@ export const cloudBookingsDB = {
     // one entry per state change, from the thing that made it.
     await writePatch(id, result.patch)
     await activityLogDB.append(result.entries)
+    clearAvailabilityCache()
 
     if (result.ok && booking.uid) {
       try {
@@ -1059,6 +1224,7 @@ export const cloudBookingsDB = {
 
     if (result.ok) {
       await activityLogDB.append(result.entries)
+      clearAvailabilityCache()
     }
     return result
   },
@@ -1075,5 +1241,6 @@ export const cloudBookingsDB = {
     const before = await this.get(id)
     await writePatch(id, patch)
     await logStatusChange(id, before, patch, by)
+    clearAvailabilityCache()
   },
 }

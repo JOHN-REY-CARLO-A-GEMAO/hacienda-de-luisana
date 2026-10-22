@@ -25,29 +25,53 @@ const rules = readFileSync(join(__dirname, '../../firestore.rules'), 'utf8')
 const decide = compileRules(rules)
 const NOW = Date.parse('2026-10-01T04:00:00Z')
 const plus = (days: number) => new Date(Date.UTC(2026, 9, 1 + days)).toISOString().slice(0, 10)
-const proofBooking = (data: DocData = {}) => bookingDoc({
-  payment_status: 'pending', payment_plan: 'down-payment',
-  payment_proof_url: 'payments/guest-uid-1/HDL/proof-1.png', amount_claimed: 2500,
-  check_in: plus(30), check_out: plus(31), nights: 1,
-  rate_amount: 5000, rate_unit: 'standard_stay', rate_classification: 'weekday',
-  stay_total: 5000, amount_due: 2500, security_deposit: 500, balance_due: 2500,
-  policy_version: 'test-v2', policy_effective_date: '2026-09-01',
-  ...data,
-})
+const proofBooking = (data: DocData = {}) => {
+  const checkIn = String(data.check_in ?? plus(30))
+  const parsed = Date.parse(`${checkIn}T00:00:00Z`)
+  const validDate = Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === checkIn
+  const checkOut = validDate
+    ? new Date(parsed + 86_400_000).toISOString().slice(0, 10)
+    : plus(31)
+  return bookingDoc({
+    payment_status: 'pending', payment_plan: 'down-payment',
+    payment_proof_url: 'payments/guest-uid-1/HDL/proof-1.png', amount_claimed: 2500,
+    check_in: checkIn, check_out: checkOut, nights: 1,
+    rate_amount: 5000, rate_unit: 'standard_stay', rate_classification: 'weekday',
+    stay_total: 5000, amount_due: 2500, security_deposit: 500, balance_due: 2500,
+    policy_version: 'test-v2', policy_effective_date: '2026-09-01',
+    ...data,
+  })
+}
 
-const directCreate = (auth: ReturnType<typeof anonymousGuest> | null, data: DocData = {}) => decide(request({
+const directCreate = (
+  auth: ReturnType<typeof anonymousGuest> | null,
+  data: DocData = {},
+  extraStore: DocData = {},
+) => decide(request({
   method: 'create', path: 'bookings/direct-request', auth,
   requestData: proofBooking(data), time: NOW,
-})).allow
+}), { store: extraStore }).allow
 
 it('keeps the rules default synchronized with the shared policy default', () => {
   const fallback = rules.match(/function minimumBookingLeadTimeDays\(\)\s*\{\s*let defaultDays = (\d+);/)
   expect(Number(fallback?.[1])).toBe(MINIMUM_BOOKING_LEAD_TIME_DAYS)
 })
 
-describe('website creates are callable-only', () => {
-  it.each([0, 29, 30, 31, 60])('refuses a direct Guest create at +%i days', (days) => {
+describe('Spark fallback direct creates and callable-only enforcement switch', () => {
+  it.each([0, 1, 7, 29])('refuses a direct Guest create inside the lead window at +%i days', (days) => {
     expect(directCreate(anonymousGuest(), { check_in: plus(days) })).toBe(false)
+  })
+
+  it.each([30, 31, 60])('allows a direct Guest create at +%i days when callable enforcement is off', (days) => {
+    expect(directCreate(anonymousGuest(), { check_in: plus(days) })).toBe(true)
+  })
+
+  it.each([0, 29, 30, 31, 60])('refuses every direct Guest create at +%i days when callable_booking_required is true', (days) => {
+    expect(directCreate(
+      anonymousGuest(),
+      { check_in: plus(days) },
+      { 'site_config/booking': { callable_booking_required: true } },
+    )).toBe(false)
   })
 
   it('refuses the former signed-out public creation path', () => {

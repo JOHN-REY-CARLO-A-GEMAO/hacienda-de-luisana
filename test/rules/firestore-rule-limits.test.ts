@@ -171,47 +171,60 @@ const booking: DocData = bookingDoc({
 // it is also what makes the measurement meaningful, because a missing document is
 // *cheaper* (the comparison chain short-circuits on its first `null`), so a store
 // without quotes would flatter the enforced path by ~370 nodes.
-const storeWith = (quotesRequired: boolean, extra: DocData = {}): Store => ({
+const storeWith = (
+  quotesRequired: boolean,
+  callableBookingRequired = true,
+  extra: DocData = {},
+): Store => ({
   'site_config/rates': card,
-  'site_config/booking': { quotes_required: quotesRequired },
+  'site_config/booking': {
+    quotes_required: quotesRequired,
+    callable_booking_required: callableBookingRequired,
+  },
   'booking_quotes/quote-1': attestation,
   [`profiles/${GUEST_UID}`]: { uid: GUEST_UID, role: 'guest' },
   ...extra,
 })
 
-const guestCreate = (enforce: boolean, data: DocData = booking) => decide(
+const guestCreate = (
+  quotesRequired: boolean,
+  callableBookingRequired = true,
+  data: DocData = booking,
+) => decide(
   request({ method: 'create', path: 'bookings/cost-probe', auth: anonymousGuest(), requestData: data, time: AT }),
-  { store: storeWith(enforce) },
+  { store: storeWith(quotesRequired, callableBookingRequired) },
 )
 
-describe('what the callable-only create boundary costs', () => {
-  const off = guestCreate(false)
-  const on = guestCreate(true)
+describe('what the callable-only and Spark-fallback create boundaries cost', () => {
+  const closedOff = guestCreate(false, true)
+  const closedOn = guestCreate(true, true)
+  const sparkFallback = guestCreate(false, false)
 
-  it('refuses direct Guest creation before reading rate or quote documents', () => {
-    expect(off.allow).toBe(false)
-    expect(on.allow).toBe(false)
-    // `isAdmin` checks the bootstrap allowlist and stored Profile role. Neither
-    // read is a rates, quote, or Booking inventory read.
-    expect(off.reads).toBeLessThanOrEqual(2)
-    expect(on.reads).toBeLessThanOrEqual(2)
+  it('refuses direct Guest creation before reading rate or quote documents when callable_booking_required is true', () => {
+    expect(closedOff.allow).toBe(false)
+    expect(closedOn.allow).toBe(false)
+    expect(closedOff.reads).toBeLessThanOrEqual(4)
+    expect(closedOn.reads).toBeLessThanOrEqual(4)
   })
 
-  it('does not let obsolete quote-enforcement configuration change that decision', () => {
-    expect(on.allow).toBe(off.allow)
-    expect(on.reads).toBe(off.reads)
-    expect(Math.abs(on.expressions - off.expressions)).toBeLessThanOrEqual(10)
+  it('does not let quote-enforcement configuration change the closed callable decision', () => {
+    expect(closedOn.allow).toBe(closedOff.allow)
+    expect(closedOn.reads).toBe(closedOff.reads)
+    expect(Math.abs(closedOn.expressions - closedOff.expressions)).toBeLessThanOrEqual(10)
   })
 
-  it('keeps the closed direct path comfortably below the evaluator canary', () => {
-    expect(on.expressions, `closed Guest create measured ${on.expressions} nodes`).toBeLessThan(500)
+  it('keeps both the closed path (<500 nodes) and Spark fallback path (<1400 nodes, <=20 reads) inside budgets', () => {
+    expect(closedOn.expressions, `closed Guest create measured ${closedOn.expressions} nodes`).toBeLessThan(500)
+    expect(sparkFallback.allow).toBe(true)
+    expect(sparkFallback.reads).toBeLessThanOrEqual(20)
+    expect(sparkFallback.expressions, `Spark Guest create measured ${sparkFallback.expressions} nodes`).toBeLessThan(1400)
   })
 
   it('preserves Admin manual creation without consulting an attestation', () => {
     const admin = decide(request({
       method: 'create', path: 'bookings/cost-probe-admin', auth: allowlistedAdmin(),
       requestData: { ...booking, quote_id: null }, time: AT,
-    }), { store: storeWith(true) })
+    }), { store: storeWith(true, true) })
     expect(admin.allow).toBe(true)
     expect(admin.reads).toBeLessThanOrEqual(1)
     expect(admin.expressions).toBeLessThan(500)

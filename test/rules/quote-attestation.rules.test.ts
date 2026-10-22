@@ -49,15 +49,31 @@ const store: Store = {
   'booking_quotes/quote-1': quote(),
 }
 
-const directCreate = (auth: ReturnType<typeof anonymousGuest> | null, data = booking()) =>
-  decide(request({ method: 'create', path: 'bookings/direct-attempt', auth, requestData: data, time: NOW }), { store }).allow
+const enforcedCallableStore: Store = {
+  ...store,
+  'site_config/booking': {
+    minimumBookingLeadTimeDays: 30,
+    quotes_required: true,
+    callable_booking_required: true,
+  },
+}
 
-describe('server-only website Booking boundary', () => {
-  it('refuses direct creates even with an exact, live, identity-bound quote', () => {
-    expect(directCreate(anonymousGuest())).toBe(false)
+const directCreate = (
+  auth: ReturnType<typeof anonymousGuest> | null,
+  data = booking(),
+  targetStore: Store = store,
+) => decide(
+  request({ method: 'create', path: 'bookings/direct-attempt', auth, requestData: data, time: NOW }),
+  { store: targetStore },
+).allow
+
+describe('server-only and Spark-fallback website Booking boundaries', () => {
+  it('allows an attested direct create before callable enforcement is turned on, and refuses it once callable_booking_required is true', () => {
+    expect(directCreate(anonymousGuest(), booking(), store)).toBe(true)
+    expect(directCreate(anonymousGuest(), booking(), enforcedCallableStore)).toBe(false)
   })
 
-  it('refuses signed-out direct creates and every formerly accepted quote variant', () => {
+  it('refuses signed-out direct creates and every unattested or tampered quote variant', () => {
     expect(directCreate(null)).toBe(false)
     expect(directCreate(anonymousGuest(), booking({ quote_id: null }))).toBe(false)
     expect(directCreate(anonymousGuest(), booking({ quote_id: 'missing' }))).toBe(false)
@@ -100,15 +116,36 @@ describe('server-only website Booking boundary', () => {
   })
 
   describe('configuration and quote documents', () => {
-    it('allows only Admins to change a valid enforcement switch', () => {
-      const publish = (auth: ReturnType<typeof anonymousGuest>, value: unknown) => decide(request({
+    it('allows only Admins to change valid quote and callable enforcement switches, and restricts site_config/availability to non-PII slot lists', () => {
+      const publish = (auth: ReturnType<typeof anonymousGuest>, patch: DocData) => decide(request({
         method: 'update', path: 'site_config/booking', auth,
         resourceData: { minimumBookingLeadTimeDays: 30 },
-        requestData: { minimumBookingLeadTimeDays: 30, quotes_required: value }, time: NOW,
+        requestData: { minimumBookingLeadTimeDays: 30, ...patch }, time: NOW,
       }), { store }).allow
-      expect(publish(allowlistedAdmin(), true)).toBe(true)
-      expect(publish(anonymousGuest(), true)).toBe(false)
-      expect(publish(allowlistedAdmin(), 'true')).toBe(false)
+      expect(publish(allowlistedAdmin(), { quotes_required: true })).toBe(true)
+      expect(publish(allowlistedAdmin(), { callable_booking_required: true })).toBe(true)
+      expect(publish(allowlistedAdmin(), { callable_booking_required: false })).toBe(true)
+      expect(publish(anonymousGuest(), { callable_booking_required: true })).toBe(false)
+      expect(publish(allowlistedAdmin(), { quotes_required: 'true' })).toBe(false)
+      expect(publish(allowlistedAdmin(), { callable_booking_required: 'true' })).toBe(false)
+      expect(publish(allowlistedAdmin(), { callable_booking_required: 1 })).toBe(false)
+
+      expect(decide(request({
+        method: 'get', path: 'site_config/availability', auth: null,
+        resourceData: { slots: [], updated_at: NOW }, time: NOW,
+      })).allow).toBe(true)
+      expect(decide(request({
+        method: 'create', path: 'site_config/availability', auth: allowlistedAdmin(),
+        requestData: { slots: [], updated_at: NOW }, time: NOW,
+      })).allow).toBe(true)
+      expect(decide(request({
+        method: 'create', path: 'site_config/availability', auth: anonymousGuest(),
+        requestData: { slots: [], updated_at: NOW }, time: NOW,
+      })).allow).toBe(false)
+      expect(decide(request({
+        method: 'create', path: 'site_config/availability', auth: allowlistedAdmin(),
+        requestData: { slots: [], updated_at: NOW, guest_name: 'Leaked Name' }, time: NOW,
+      })).allow).toBe(false)
     })
 
     it('closes server quote and inventory-lock documents to every client, including Admins', () => {
