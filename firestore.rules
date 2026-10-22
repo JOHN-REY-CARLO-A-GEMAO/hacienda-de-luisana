@@ -552,12 +552,41 @@ service cloud.firestore {
         && !affected.hasAny(['nights', 'rate_amount', 'rate_unit', 'rate_classification']);
     }
 
+    // A payment channel's QR code: a site path (`/images/payment/gcash-qr.png`)
+    // or an https URL, never a `data:`/`javascript:` string. Empty is the same
+    // as absent. The image itself is a public asset — the rules only cap what a
+    // published document may point at.
+    function validPaymentQr(channel) {
+      let qr = channel.get('qr_image', '');
+      return qr is string && qr.size() <= 500
+        && (qr.size() == 0 || qr.matches('/[^/].*') || qr.matches('https://.+'));
+    }
+
+    // Where the money goes: an account to copy, or a QR code to scan. The owner
+    // replaced the GCash mobile number with their own QR code, so a channel
+    // with only `qr_image` is a complete channel.
+    function paymentChannelIdentified(channel) {
+      let qr = channel.get('qr_image', '');
+      let account = channel.get('account_identifier', '');
+      return (qr is string && qr.size() > 0)
+        || (account is string && account.size() > 0 && account.size() <= 120);
+    }
+
+    function validPaymentQrInstructions(channel) {
+      return !('qr_instructions' in channel)
+        || (channel.qr_instructions is string && channel.qr_instructions.size() <= 240);
+    }
+
     function validPaymentMethod(method) {
       return method is map
-        && method.keys().hasOnly(['method', 'recipient_name', 'account_identifier'])
+        && method.keys().hasOnly(['method', 'recipient_name', 'account_identifier', 'qr_image', 'qr_instructions'])
         && method.method is string && method.method.size() > 0 && method.method.size() <= 80
         && method.recipient_name is string && method.recipient_name.size() > 0 && method.recipient_name.size() <= 120
-        && method.account_identifier is string && method.account_identifier.size() > 0 && method.account_identifier.size() <= 120;
+        && (!('account_identifier' in method)
+            || (method.account_identifier is string && method.account_identifier.size() <= 120))
+        && validPaymentQr(method)
+        && paymentChannelIdentified(method)
+        && validPaymentQrInstructions(method);
     }
 
     function validPaymentConfig() {
@@ -565,6 +594,7 @@ service cloud.firestore {
       let methods = request.resource.data.get('methods', []);
       return request.resource.data.keys().hasOnly([
           'active', 'methods', 'method', 'recipient_name', 'account_identifier',
+          'qr_image', 'qr_instructions',
           'instructions', 'security_deposit_notes', 'notes', 'updated_at'
         ])
         && request.resource.data.active is bool
@@ -579,8 +609,12 @@ service cloud.firestore {
              && request.resource.data.method.size() > 0 && request.resource.data.method.size() <= 80
              && request.resource.data.recipient_name is string
              && request.resource.data.recipient_name.size() > 0 && request.resource.data.recipient_name.size() <= 120
-             && request.resource.data.account_identifier is string
-             && request.resource.data.account_identifier.size() > 0 && request.resource.data.account_identifier.size() <= 120))
+             && (!('account_identifier' in request.resource.data)
+                 || (request.resource.data.account_identifier is string
+                     && request.resource.data.account_identifier.size() <= 120))
+             && validPaymentQr(request.resource.data)
+             && paymentChannelIdentified(request.resource.data)
+             && validPaymentQrInstructions(request.resource.data)))
         && request.resource.data.instructions is string
         && request.resource.data.instructions.size() > 0 && request.resource.data.instructions.size() <= 1000
         && request.resource.data.get('security_deposit_notes', '').size() <= 1000

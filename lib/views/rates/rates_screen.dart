@@ -42,6 +42,10 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
   final _paymentMethod = TextEditingController();
   final _paymentRecipient = TextEditingController();
   final _paymentAccount = TextEditingController();
+  /// The first channel's QR code: a site path or https URL. When it is set the
+  /// website shows the image instead of `_paymentAccount` (see
+  /// `PaymentInformationPanel` in the web app).
+  final _paymentQr = TextEditingController();
   final _paymentMethod2 = TextEditingController();
   final _paymentRecipient2 = TextEditingController();
   final _paymentAccount2 = TextEditingController();
@@ -74,6 +78,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     _paymentMethod.dispose();
     _paymentRecipient.dispose();
     _paymentAccount.dispose();
+    _paymentQr.dispose();
     _paymentMethod2.dispose();
     _paymentRecipient2.dispose();
     _paymentAccount2.dispose();
@@ -325,9 +330,13 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     if (_paymentSeeded) return;
     _paymentSeeded = true;
     if (doc == null) {
+      // No account number for GCash: the owner supplied a QR code and asked for
+      // the number to stop being shown. The asset is the project's own file, so
+      // publishing this path needs no upload.
       _paymentMethod.text = 'GCash';
       _paymentRecipient.text = 'Agueda H.';
-      _paymentAccount.text = '09258507707';
+      _paymentAccount.text = '';
+      _paymentQr.text = AppConstants.gcashQrPublishedPath;
       _paymentMethod2.text = 'BDO';
       _paymentRecipient2.text = 'Agueda Hortillas';
       _paymentAccount2.text = '005438013682';
@@ -342,6 +351,15 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     _paymentMethod.text = '${first['method'] ?? ''}';
     _paymentRecipient.text = '${first['recipient_name'] ?? ''}';
     _paymentAccount.text = '${first['account_identifier'] ?? ''}';
+    // A document published before the owner's QR code existed names GCash with
+    // a mobile number and no image. Starting the field at the official path is
+    // what lets the next publish stop printing that number, without deleting
+    // what is stored until the Admin chooses to.
+    final storedQr = '${first['qr_image'] ?? ''}';
+    final firstMethod = '${first['method'] ?? ''}'.trim().toLowerCase();
+    _paymentQr.text = storedQr.isNotEmpty
+        ? storedQr
+        : (firstMethod == 'gcash' ? AppConstants.gcashQrPublishedPath : '');
     _paymentMethod2.text = '${second?['method'] ?? ''}';
     _paymentRecipient2.text = '${second?['recipient_name'] ?? ''}';
     _paymentAccount2.text = '${second?['account_identifier'] ?? ''}';
@@ -358,7 +376,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
       ref: ref,
       title: 'Publish payment information',
       consequence:
-          'The GCash and bank numbers become visible to every visitor the moment this saves. They are checked against the published rates page.',
+          'The QR code, account numbers and instructions become visible to every visitor the moment this saves. They are checked against the published rates page.',
     );
     if (ticket == null) return;
     setState(() => _paymentBusy = true);
@@ -368,7 +386,14 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
         {
           'method': _paymentMethod.text.trim(),
           'recipient_name': _paymentRecipient.text.trim(),
-          'account_identifier': _paymentAccount.text.trim(),
+          // The account may be left blank when a QR code is published: the
+          // website then shows the QR code and no number to copy.
+          if (_paymentAccount.text.trim().isNotEmpty)
+            'account_identifier': _paymentAccount.text.trim(),
+          if (_paymentQr.text.trim().isNotEmpty)
+            'qr_image': _paymentQr.text.trim(),
+          if (_paymentQr.text.trim().isNotEmpty)
+            'qr_instructions': AppConstants.gcashQrInstruction,
         },
         if (_paymentMethod2.text.trim().isNotEmpty || _paymentAccount2.text.trim().isNotEmpty)
           {
@@ -388,6 +413,77 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
       content: Text(problem ?? 'Payment information published.'),
       backgroundColor: problem == null ? null : AppColors.statusAlert,
     ));
+  }
+
+  /// What the Admin is about to publish, rendered as the Guest sees it.
+  ///
+  /// The owner's own QR code is bundled with this app, so a path that points at
+  /// it previews without a network round trip and without exposing anything
+  /// private. A Storage URL previews over the network; anything else is named
+  /// rather than drawn, because a QR code must never be invented on screen.
+  Widget _qrPreview(String source) {
+    final value = source.trim();
+    if (value.isEmpty) return const SizedBox.shrink();
+
+    const double edge = 160;
+    Widget image;
+    if (value == AppConstants.gcashQrPublishedPath || value == AppConstants.gcashQrAsset) {
+      image = Image.asset(
+        AppConstants.gcashQrAsset,
+        width: edge,
+        height: edge,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.none,
+      );
+    } else if (value.startsWith('https://')) {
+      image = Image.network(
+        value,
+        width: edge,
+        height: edge,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, size: 40),
+      );
+    } else {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'That is not a path this app can preview. Use ${AppConstants.gcashQrPublishedPath} for the bundled QR code, or an https URL.',
+          style: GoogleFonts.inter(fontSize: 12, color: AppColors.statusAlert, height: 1.4),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primaryForest.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                image,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Guests see this QR code instead of the GCash number. '
+                    '${AppConstants.gcashQrInstruction}',
+                    style: GoogleFonts.inter(
+                        fontSize: 12, color: AppColors.textMuted, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -500,7 +596,25 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                   const SizedBox(height: 8),
                   TextField(controller: _paymentRecipient, decoration: const InputDecoration(labelText: 'Recipient / account name')),
                   const SizedBox(height: 8),
-                  TextField(controller: _paymentAccount, decoration: const InputDecoration(labelText: 'Account number or payment ID')),
+                  TextField(
+                    controller: _paymentAccount,
+                    decoration: const InputDecoration(
+                      labelText: 'Account number or payment ID',
+                      helperText: 'Not shown to Guests while a QR code is set below.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _paymentQr,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'QR code image path or URL',
+                      hintText: AppConstants.gcashQrPublishedPath,
+                      helperText:
+                          'Guests scan this instead of copying a number. Leave blank to show the account number.',
+                    ),
+                  ),
+                  _qrPreview(_paymentQr.text),
                   const SizedBox(height: 12),
                   Text('Second channel (optional)', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold)),
                   TextField(controller: _paymentMethod2, decoration: const InputDecoration(labelText: 'Payment method', hintText: 'BDO')),

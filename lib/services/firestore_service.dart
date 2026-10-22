@@ -38,13 +38,50 @@ String? validatePaymentInformationDocument(Map<String, dynamic> doc) {
     return null;
   }
 
+  /// A QR code source the website may put in an `<img src>`: a site path
+  /// (`/images/payment/gcash-qr.png`) or an https URL. Anything else —
+  /// `javascript:`, `data:`, a protocol-relative `//host` — is refused, as it is
+  /// in `firestore.rules` `validPaymentQr` and `src/lib/paymentInfoDB.ts`.
   String? validateChannel(Object? channel, String path) {
     if (channel is! Map) return '$path must be an object.';
     final method = validateText('$path.method', channel['method'], 80);
     if (method != null) return method;
     final recipient = validateText('$path.recipient_name', channel['recipient_name'], 120);
     if (recipient != null) return recipient;
-    return validateText('$path.account_identifier', channel['account_identifier'], 120);
+
+    final qr = channel['qr_image'];
+    if (qr != null) {
+      if (qr is! String) return '$path.qr_image must be text.';
+      final source = qr.trim();
+      if (source.isNotEmpty) {
+        if (source.length > 500) {
+          return '$path.qr_image must be at most 500 characters.';
+        }
+        final local = source.startsWith('/') && !source.startsWith('//');
+        if (!local && !source.startsWith('https://')) {
+          return '$path.qr_image must be a site path starting with / or an https URL.';
+        }
+      }
+    }
+    final hasQr = qr is String && qr.trim().isNotEmpty;
+
+    // The owner replaced the GCash mobile number with a QR code, so a channel
+    // that publishes only `qr_image` is complete. A channel with neither an
+    // account nor a QR code still has nowhere to send money.
+    final account = channel['account_identifier'];
+    if (!hasQr) {
+      return validateText('$path.account_identifier', account, 120);
+    }
+    if (account != null && (account is! String || account.length > 120)) {
+      return '$path.account_identifier must be at most 120 characters.';
+    }
+
+    final qrInstructions = channel['qr_instructions'];
+    if (qrInstructions != null &&
+        (qrInstructions is! String || qrInstructions.length > 240)) {
+      return '$path.qr_instructions must be at most 240 characters.';
+    }
+    return null;
   }
 
   if (doc['active'] is! bool) return 'Active must be true or false.';

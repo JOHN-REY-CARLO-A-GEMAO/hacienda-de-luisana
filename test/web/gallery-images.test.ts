@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { join, relative, sep } from 'path'
 import { ACCOMMODATIONS, EXPERIENCES, GALLERY, NEARBY } from '../../src/config/site'
+import { OFFICIAL_PAYMENT_INFORMATION } from '../../src/config/officialBusiness'
 import { TABS } from '../../src/sections/Gallery'
 
 const ROOT = join(__dirname, '..', '..')
@@ -29,6 +30,12 @@ function referencedImages(): string[] {
   for (const a of ACCOMMODATIONS) urls.push(...a.images)
   for (const e of EXPERIENCES) urls.push(e.image)
   for (const n of NEARBY) urls.push(n.image)
+  // Payment QR codes are site images too, referenced by the payment config
+  // rather than by a gallery section. They count as used, so the owner's code
+  // cannot be mistaken for an orphan and deleted.
+  for (const method of OFFICIAL_PAYMENT_INFORMATION.methods ?? []) {
+    if (method.qr_image) urls.push(method.qr_image)
+  }
   return urls
 }
 
