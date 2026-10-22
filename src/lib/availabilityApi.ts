@@ -16,13 +16,43 @@ export type AvailabilitySnapshot = AvailabilityQuery & {
 export class AvailabilityUnavailableError extends Error {
   readonly code: string
   readonly cause_code: string
+  readonly from_server_details: boolean
 
-  constructor(code: string, message: string, cause = 'AVAILABILITY_UNKNOWN') {
+  constructor(
+    code: string,
+    message: string,
+    cause = 'AVAILABILITY_UNKNOWN',
+    fromServerDetails = false,
+  ) {
     super(message)
     this.name = 'AvailabilityUnavailableError'
     this.code = code
     this.cause_code = cause
+    this.from_server_details = fromServerDetails
   }
+}
+
+const TRANSPORT_FAILURE_CODES = new Set([
+  'internal',
+  'not-found',
+  'unimplemented',
+  'unavailable',
+  'deadline-exceeded',
+  'cancelled',
+  'unknown',
+])
+
+/**
+ * True when the callable transport itself could not be reached (for example on
+ * a Spark deployment where Cloud Functions have not been deployed yet), as
+ * distinct from a running Function returning a structured refusal or malformed
+ * reply. Callers still consult `site_config/booking.callable_booking_required`
+ * before falling back so enforced deployments fail closed on every error.
+ */
+export function isCallableTransportUnavailable(error: unknown): boolean {
+  if (!(error instanceof AvailabilityUnavailableError)) return false
+  if (error.from_server_details) return false
+  return TRANSPORT_FAILURE_CODES.has(error.code)
 }
 
 type CallableFailure = { code?: string; message?: string; details?: unknown }
@@ -77,6 +107,7 @@ function friendlyFailure(error: unknown): AvailabilityUnavailableError {
     ? failure.details as { cause?: unknown; message?: unknown }
     : {}
   const code = functionCode(failure.code)
+  const hasServerCause = typeof details.cause === 'string'
   const serverMessage = typeof details.message === 'string' ? details.message : failure.message
   const message = code === 'resource-exhausted'
     ? (serverMessage || 'Too many availability checks. Wait a moment and try again.')
@@ -86,8 +117,21 @@ function friendlyFailure(error: unknown): AvailabilityUnavailableError {
   return new AvailabilityUnavailableError(
     code,
     message,
-    typeof details.cause === 'string' ? details.cause : 'AVAILABILITY_UNKNOWN',
+    hasServerCause ? (details.cause as string) : 'AVAILABILITY_UNKNOWN',
+    hasServerCause,
   )
+}
+
+export function saveAvailabilitySnapshot(value: AvailabilitySnapshot): AvailabilitySnapshot {
+  const key = keyOf(value)
+  cache.delete(key)
+  cache.set(key, { at: Date.now(), value })
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value as string | undefined
+    if (oldest === undefined) break
+    cache.delete(oldest)
+  }
+  return value
 }
 
 /**
@@ -120,14 +164,7 @@ export async function requestBookingAvailability(
       // Month navigation has no reason to retain an unbounded history. Refresh
       // this key's insertion order and evict the oldest projections once the
       // small cross-render cache reaches its cap.
-      cache.delete(key)
-      cache.set(key, { at: Date.now(), value })
-      while (cache.size > MAX_CACHE_ENTRIES) {
-        const oldest = cache.keys().next().value as string | undefined
-        if (oldest === undefined) break
-        cache.delete(oldest)
-      }
-      return value
+      return saveAvailabilitySnapshot(value)
     } catch (error) {
       throw friendlyFailure(error)
     } finally {
@@ -171,7 +208,8 @@ export async function submitGuestBooking(
       ? failure.details as { cause?: unknown; message?: unknown }
       : {}
     const code = functionCode(failure.code)
-    const cause = typeof details.cause === 'string' ? details.cause : code
+    const hasServerCause = typeof details.cause === 'string'
+    const cause = hasServerCause ? (details.cause as string) : code
     const serverMessage = typeof details.message === 'string' ? details.message : failure.message
     const safeServerCauses = new Set([
       'DATE_UNAVAILABLE', 'RATE_SNAPSHOT_STALE', 'PAYMENT_AMOUNT_TOO_LOW', 'QUOTE_REQUIRED',
@@ -183,7 +221,7 @@ export async function submitGuestBooking(
       : code === 'resource-exhausted' && serverMessage
         ? serverMessage
         : 'The Booking could not be submitted right now. Nothing was saved. Please check your connection and try again.'
-    throw new AvailabilityUnavailableError(code, message, cause)
+    throw new AvailabilityUnavailableError(code, message, cause, hasServerCause)
   }
 }
 

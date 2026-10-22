@@ -124,19 +124,36 @@ service cloud.firestore {
       return days is int && days > 0 ? days : defaultDays;
     }
 
+    function callableBookingRequired() {
+      let policy = /databases/$(database)/documents/site_config/booking;
+      return exists(policy)
+        && get(policy).data.get('callable_booking_required', false) == true;
+    }
+
     function validBookingPolicy() {
       // Preserve other Admin-owned settings/metadata on this document. Only
       // the new field is constrained; an absent field uses the shared default.
       //
-      // `quotes_required` is constrained to a boolean because it is a security
-      // switch (ADR-0019): a truthy string, a 1, or a stray `{"x":1}` would read
-      // as "enforce" to one layer and not to another, and the two must not be able
-      // to disagree about whether price attestation is on.
+      // `quotes_required` and `callable_booking_required` are constrained to
+      // booleans because they are security switches (ADR-0019, ADR-0020): a
+      // truthy string, a 1, or a stray `{"x":1}` would read as "enforce" to one
+      // layer and not to another, and the two must not be able to disagree.
       return (!request.resource.data.keys().hasAny(['minimumBookingLeadTimeDays'])
               || (request.resource.data.minimumBookingLeadTimeDays is int
                   && request.resource.data.minimumBookingLeadTimeDays > 0))
         && (!request.resource.data.keys().hasAny(['quotes_required'])
-            || request.resource.data.quotes_required is bool);
+            || request.resource.data.quotes_required is bool)
+        && (!request.resource.data.keys().hasAny(['callable_booking_required'])
+            || request.resource.data.callable_booking_required is bool);
+    }
+
+    // Non-PII public occupancy projection at `site_config/availability`. Carries
+    // only slot schedule metadata — never Guest names, emails, phones, uids, or
+    // payment proof paths.
+    function validAvailabilityProjection() {
+      return request.resource.data.keys().hasOnly(['slots', 'updated_at', 'updated_by'])
+        && request.resource.data.slots is list
+        && request.resource.data.slots.size() <= 2000;
     }
 
     function meetsMinimumBookingLeadTime(checkIn) {
@@ -186,8 +203,14 @@ service cloud.firestore {
     // short-circuits the whole guest gate — so a manual longer stay is
     // unaffected by the one-night arithmetic below.
     function validGuestCreate(data) {
-      return data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+      return !callableBookingRequired()
+        && isSignedIn()
+        && data.uid == request.auth.uid
+        && data.guests is int
+        && data.guests >= 1
+        && data.check_in.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && data.check_out.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && data.check_out > data.check_in
         && meetsMinimumBookingLeadTime(data.check_in)
         && validBookingMoneyInvariants(data)
         && validGuestQuote(data);
@@ -933,9 +956,13 @@ service cloud.firestore {
     //   The Admin MUST re-check availability at approve time (G2), and the app
     //   re-checks it for them: see lib/services/booking_lifecycle.dart.
     match /bookings/{bookingId} {
-      // Guest creation is a server command now. Only an authenticated Admin may
-      // write a Booking directly through a Firebase client SDK.
-      allow create: if isAdmin()
+      // When `site_config/booking.callable_booking_required` is enabled, Guest
+      // creation is closed at the client Rules boundary so every website create
+      // goes through `submitBooking`. While off (the Spark default before Cloud
+      // Functions are deployed), direct Guest creates are checked by
+      // `validGuestCreate` for caller identity, date order, lead time, money
+      // invariants, and quote attestation.
+      allow create: if true
         && request.resource.data.keys().hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at','payment_proof_url','payment_status','amount_claimed'])
         && request.resource.data.guest_name is string && request.resource.data.guest_name.size() > 0
         && request.resource.data.email is string
@@ -954,11 +981,9 @@ service cloud.firestore {
         && request.resource.data.get('amount_verified', 0) == 0
         && request.resource.data.get('payment_verified_by', '') == ''
         && request.resource.data.get('payment_verified_at', '') == ''
-        // The callable enforces lead time, current Published rates, identity,
-        // Payment proof and availability before its Admin-SDK write. A direct
-        // Admin create remains the existing manual/legacy exemption and does
-        // not pass through Guest-only policy checks.
-        ;
+        // Single role evaluation: Admin manual bookings bypass Guest policy
+        // checks; Guest creates evaluate `validGuestCreate` once.
+        && (isAdmin() || validGuestCreate(request.resource.data));
 
       // Cheapest check first: a Guest reading their own Booking should not pay
       // for a Profile read to find out they are allowed.
@@ -1257,7 +1282,8 @@ service cloud.firestore {
       allow write: if isAdmin()
         && (docId != 'booking' || request.resource == null || validBookingPolicy())
         && (docId != 'payment' || request.resource == null || validPaymentConfig())
-        && (docId != 'rates' || request.resource == null || validRatesDocument());
+        && (docId != 'rates' || request.resource == null || validRatesDocument())
+        && (docId != 'availability' || request.resource == null || validAvailabilityProjection());
     }
 
     // The retired tracking module's collection (ADR-0009). Superseded for

@@ -282,7 +282,10 @@ describe('authentication and roles', () => {
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'verified' })))
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'unpaid' })))
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'rejected' })))
-    // Even a complete Pending shape must go through `submitBooking`.
+    // Complete Pending shape succeeds before callable enforcement is turned on,
+    // and is refused once `callable_booking_required` is enabled.
+    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc()))
+    await setDoc(doc(admin().firestore(), 'site_config', 'booking'), { callable_booking_required: true })
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc()))
   })
 
@@ -997,11 +1000,16 @@ function manilaDatePlus(days: number): string {
   return calendar.toISOString().slice(0, 10)
 }
 
-describe('callable-only Guest creation: canonical emulator boundary', () => {
-  it('refuses an exact Published quote and every direct Guest variant', async () => {
+describe('callable-only and Spark-fallback Guest creation: canonical emulator boundary', () => {
+  it('allows an exact Published quote before callable enforcement is enabled, and refuses every direct Guest variant once callable_booking_required is true', async () => {
     const guest = emailGuest()
     const checkIn = futureDateForDay(5)
     const exact = quotedBooking(checkIn, 2)
+    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'exact-spark'), exact))
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'tampered-spark'), {
+      ...exact, stay_total: Number(exact.stay_total) + 0.01,
+    }))
+    await setDoc(doc(admin().firestore(), 'site_config', 'booking'), { callable_booking_required: true })
     await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'exact-direct'), exact))
     await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'tampered-direct'), {
       ...exact, stay_total: Number(exact.stay_total) + 0.01,
@@ -1071,8 +1079,18 @@ describe('historical payment choices retain their stored quote', () => {
   })
 })
 
-describe('Guest Booking creation is closed at the direct Firestore boundary', () => {
-  it.each([0, 29, 30, 31, 60])('refuses direct Guest creation at today + %i', async (days) => {
+describe('Guest Booking creation lead-time and callable-only enforcement boundaries', () => {
+  it.each([0, 29])('refuses direct Guest creation inside the lead window at today + %i', async (days) => {
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'bookings', `direct-${days}`), bookingDoc({
+      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 1),
+    })))
+  })
+
+  it.each([30, 31, 60])('allows direct Guest creation at today + %i before callable enforcement, and refuses once callable_booking_required is true', async (days) => {
+    await assertSucceeds(setDoc(doc(anonymousGuest().firestore(), 'bookings', `direct-open-${days}`), bookingDoc({
+      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 1),
+    })))
+    await setDoc(doc(admin().firestore(), 'site_config', 'booking'), { callable_booking_required: true })
     await assertFails(setDoc(doc(anonymousGuest().firestore(), 'bookings', `direct-${days}`), bookingDoc({
       check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 1),
     })))

@@ -63,9 +63,12 @@ It stores no date, status, capacity, availability, Booking ID, or Guest data. It
 - An active Pending hold is visibly distinct from committed occupancy.
 - Competing website submissions for the last unit serialize before either hold is accepted.
 - Availability is a point-in-time projection; it can change after display, so submission still revalidates.
-- Availability and Guest submission require deployed Cloud Functions. A frontend-only deployment is insufficient.
+- While `site_config/booking.callable_booking_required` is absent or `false` (matching ADR-0019 `quotes_required`), a frontend-only / Spark deployment where `bookingAvailability` or `submitBooking` fails at the callable transport boundary falls back to live Firestore reads (`site_config/booking`, `site_config/rates`, optional non-PII `site_config/availability`, and the caller's own `bookings` documents) and direct rule-checked `addDoc('bookings', ...)` writes — never falling back to browser `localStorage`, and still failing closed when Firestore itself is unreachable or returns malformed config.
+- Once Cloud Functions are deployed on Blaze and verified, setting `site_config/booking.callable_booking_required` to `true` closes both client fallbacks and direct Guest `bookings` creation at the Firestore Rules boundary.
 - The Functions service account must retain read/write access to Bookings, Published rate/config documents, Activity subcollections, quote documents when enabled, and the coordination-lock collection.
 
 ## Deployment order
 
-Deploy `firestore.indexes.json` first and wait until the bounded-overlap composite index (`accommodation`, `check_out`, `check_in`) is ready. Then deploy the callable Functions, deploy the website that uses them, verify a test projection/submission, and finally close direct Guest creation with the Rules deployment. Prefer one coordinated release; applying Rules before the callable-enabled website creates a temporary submission outage. Verify the Functions region remains `asia-southeast1`. Roll back all surfaces together; reopening Guest direct creates would restore the conflict bypass.
+1. Deploy the website and `firestore.rules` safely at any time while `site_config/booking.callable_booking_required` is absent or `false`.
+2. When enabling Cloud Functions (Blaze), deploy `firestore.indexes.json` first and wait until the bounded-overlap composite index (`accommodation`, `check_out`, `check_in`) is ready.
+3. Deploy the callable Functions (`firebase deploy --only functions:bookingAvailability,functions:submitBooking,functions:attestQuote`), verify a test projection and submission, and then set `site_config/booking.callable_booking_required = true` (and `quotes_required = true` when enforcing ADR-0019).

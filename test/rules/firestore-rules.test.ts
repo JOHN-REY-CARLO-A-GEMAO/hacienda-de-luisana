@@ -160,7 +160,11 @@ describe('official guest-count rates', () => {
     return booking
   }
 
-  it('refuses every direct Guest create; callable pricing owns rate classification and arithmetic', () => {
+  it('allows coherent direct Guest creates before callable enforcement is enabled, and refuses every direct Guest create once callable_booking_required is true', () => {
+    const closedStore = {
+      ...officialStore,
+      'site_config/booking': { callable_booking_required: true },
+    }
     for (const requestData of [
       officialBooking(),
       officialBooking({ check_in: '2026-10-30', check_out: '2026-10-31', rate_amount: 6000,
@@ -168,9 +172,12 @@ describe('official guest-count rates', () => {
       officialBooking({ guests: 25, rate_amount: 12500, stay_total: 12500, amount_due: 6250, balance_due: 6250 }),
       officialBooking({ rate_amount: 6000.5, stay_total: 6000.5, amount_due: 3000.25, balance_due: 3000.25 }),
     ]) {
+      expect(allow({
+        path: 'bookings/direct-guest-spark', method: 'create', auth: anonymousGuest(), requestData,
+      }, officialStore)).toBe(true)
       expect(deny({
         path: 'bookings/direct-guest-attempt', method: 'create', auth: anonymousGuest(), requestData,
-      }, officialStore)).toBe(true)
+      }, closedStore)).toBe(true)
     }
   })
 
@@ -286,7 +293,11 @@ describe('official guest-count rates', () => {
     }, officialStore)).toBe(true)
   })
 
-  it('closes the former coherent-quote gap at the raw Firestore boundary', () => {
+  it('closes the former coherent-quote gap once callable_booking_required or quotes_required is enabled', () => {
+    const enforcedStore = {
+      ...officialStore,
+      'site_config/booking': { callable_booking_required: true },
+    }
     const formerlyCoherent = [
       {},
       { stay_total: 1000, rate_amount: 1000, amount_due: 500, balance_due: 500, security_deposit: 0 },
@@ -299,7 +310,7 @@ describe('official guest-count rates', () => {
       expect(deny({
         path: `bookings/direct-gap-${index}`, method: 'create', auth: anonymousGuest(),
         requestData: officialBooking(overrides),
-      }, officialStore)).toBe(true)
+      }, enforcedStore)).toBe(true)
     }
   })
 
@@ -1354,7 +1365,7 @@ describe('payments: proof and verification', () => {
       }),
     ).toBe(true)
     expect(
-      deny({
+      allow({
         path: 'bookings/new-booking',
         method: 'create',
         auth: anonymousGuest(),
@@ -1364,6 +1375,18 @@ describe('payments: proof and verification', () => {
           amount_claimed: 8500,
         }),
       }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: 'bookings/new-booking',
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: bookingDoc({
+          payment_status: 'pending',
+          payment_proof_url: 'payments/guest-uid-1/proof.jpg',
+          amount_claimed: 8500,
+        }),
+      }, { 'site_config/booking': { callable_booking_required: true } }),
     ).toBe(true)
   })
 
