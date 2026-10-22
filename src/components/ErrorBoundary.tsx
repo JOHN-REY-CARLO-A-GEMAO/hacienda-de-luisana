@@ -41,10 +41,10 @@ export class ErrorBoundary extends Component<Props, State> {
             {error.message}
           </pre>
           <div className="mt-6 flex flex-wrap gap-3">
-            <button type="button" className="btn-primary text-xs" onClick={this.reset}>
+            <button type="button" className="btn-primary btn-sm" onClick={this.reset}>
               Try again
             </button>
-            <a href="/" className="btn-ghost text-xs">
+            <a href="/" className="btn-ghost btn-sm">
               Back to the home page
             </a>
           </div>

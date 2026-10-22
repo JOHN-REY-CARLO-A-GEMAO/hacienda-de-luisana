@@ -32,37 +32,15 @@ export function StayPage() {
         </p>
       }
     >
-      <nav aria-label="On this page" className="mx-auto max-w-7xl px-5 lg:px-8 mt-8">
-        <div className="flex flex-wrap items-center gap-2">
-          <a href="#stay" className="btn-ghost text-xs">
-            Accommodations
-          </a>
-          <Link to="/rates" className="btn-ghost text-xs">
-            Rates &amp; fees
-          </Link>
-        </div>
-      </nav>
+      <div className="mx-auto mt-8 max-w-7xl px-5 lg:px-8">
+        <Link to="/rates" className="btn-ghost btn-sm">
+          Compare rates &amp; fees
+        </Link>
+      </div>
 
       <Accommodations />
       <Amenities />
 
-      <div className="mx-auto max-w-3xl px-5 lg:px-8 py-14">
-        <p className="text-sm text-forest-800/80 dark:text-cream-200/80 leading-relaxed">
-          Ready to compare prices?{' '}
-          <Link to="/rates" className="underline underline-offset-2">
-            Rates &amp; Fees
-          </Link>{' '}
-          lists current rates, inclusions, deposits and extras. The{' '}
-          <Link to="/faqs" className="underline underline-offset-2">
-            FAQs
-          </Link>{' '}
-          answer the questions guests ask most about a stay. The{' '}
-          <Link to="/house-rules" className="underline underline-offset-2">
-            house rules
-          </Link>{' '}
-          cover what the Hacienda asks of every guest.
-        </p>
-      </div>
     </PageShell>
   )
 }

@@ -85,7 +85,7 @@ export function Location() {
 
         {/* Getting here — the landmark and the two standard routes, no invented travel times */}
         <div id="getting-here" className="mt-8 grid md:grid-cols-3 gap-6">
-          <div className="reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-8">
+          <div className="reveal card p-7 lg:p-8">
             <div className="w-11 h-11 rounded-xl bg-forest-50 border border-forest-900/5 flex items-center justify-center text-forest-700 mb-4">
               <Compass size={20} />
             </div>
@@ -117,7 +117,7 @@ function RouteCard({
   steps: readonly string[]
 }) {
   return (
-    <div className="reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-8">
+    <div className="reveal card p-7 lg:p-8">
       <div className="w-11 h-11 rounded-xl bg-forest-50 border border-forest-900/5 flex items-center justify-center text-forest-700 mb-4">
         <Icon size={20} />
       </div>

@@ -34,7 +34,7 @@ export function GoodToKnow() {
 
         <div className="mt-14 grid lg:grid-cols-5 gap-8">
           {/* The Hacienda's rules */}
-          <div className="lg:col-span-3 reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-10">
+          <div className="lg:col-span-3 reveal card p-7 lg:p-10">
             <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">House rules</div>
             <ul className="mt-6 grid sm:grid-cols-2 gap-x-8 gap-y-6">
               {HOUSE_RULES.map((rule) => (

@@ -466,25 +466,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   }
 
   Widget _buildBookingCard(BookingModel booking, {Key? key}) {
-    Color statusColor;
-    switch (booking.status) {
-      case BookingStatus.pending:
-        statusColor = AppColors.statusWarning;
-        break;
-      case BookingStatus.confirmed:
-        statusColor = AppColors.statusSuccess;
-        break;
-      case BookingStatus.checkedIn:
-        statusColor = const Color(0xFF1D3557);
-        break;
-      case BookingStatus.completed:
-        statusColor = AppColors.textMuted;
-        break;
-      case BookingStatus.cancelled:
-        statusColor = AppColors.statusAlert;
-        break;
-    }
-
+    final statusColor = StatusStyle.colorForEnum(booking.status);
     final needsAction = needsAdminAction(booking);
     final quick = _quickAction(booking);
     final hold = holdRemaining(booking.toLifecycleDoc(), DateTime.now());

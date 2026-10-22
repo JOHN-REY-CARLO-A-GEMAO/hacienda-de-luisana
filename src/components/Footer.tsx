@@ -41,6 +41,7 @@ export function Footer() {
             <li><Link to="/house-rules" className="hover:text-white">House Rules</Link></li>
             <li><Link to="/contact" className="hover:text-white">Contact</Link></li>
             <li><Link to="/legal" className="hover:text-white">Terms &amp; policies</Link></li>
+            <li><Link to="/support" className="hover:text-white">Support &amp; disputes</Link></li>
           </ul>
         </div>
 

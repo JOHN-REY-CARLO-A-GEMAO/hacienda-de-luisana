@@ -75,6 +75,14 @@ body {
   translate: 0 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Design system — the single source of truth for shared UI            */
+/*                                                                    */
+/* Everything below is a token: pages compose these classes and never */
+/* re-type a colour, radius, shadow or interactive state. See         */
+/* docs/UI_UX_AUDIT.md for the catalogue and the rules.               */
+/* ------------------------------------------------------------------ */
+
 /* Typographic helpers */
 @layer components {
   .eyebrow {
@@ -88,10 +96,36 @@ body {
   @apply font-serif font-medium leading-[1.05] tracking-tight;
 }
 
-/* Buttons */
-.btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-all duration-300 ease-out-expo focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-forest-600 focus-visible:ring-offset-cream-50 dark:focus-visible:ring-brass-400 dark:focus-visible:ring-offset-forest-950;
+/* Type scale for page structure (one rule per level, no page-level overrides) */
+.h1 { @apply display text-4xl sm:text-5xl text-forest-900 dark:text-cream-50; }
+.h2 { @apply font-serif text-2xl lg:text-3xl text-forest-900 dark:text-cream-50; }
+.h3 { @apply font-serif text-xl text-forest-900 dark:text-cream-50; }
+.prose-lead { @apply mt-4 text-sm lg:text-base text-forest-800/80 dark:text-cream-100/80 leading-relaxed; }
+
+/* Inline link — underlined, offset, inherits colour */
+.text-link {
+  @apply underline underline-offset-4 decoration-forest-700/30 hover:decoration-forest-700 dark:decoration-cream-100/30 dark:hover:decoration-cream-100;
 }
+
+/* Surfaces — 28px is the brand's soft panel radius (the same as the marketing
+   cards), 16px is an inner block, 12px a field. Nothing else. */
+.card {
+  @apply bg-white dark:bg-forest-900/80 rounded-[28px] border border-forest-900/5 dark:border-cream-100/10 shadow-card;
+}
+.card-tight {
+  @apply bg-white dark:bg-forest-900/60 rounded-2xl border border-forest-900/10 dark:border-cream-100/10;
+}
+.panel-muted {
+  @apply rounded-2xl border border-forest-900/5 dark:border-cream-100/10 bg-cream-100/60 dark:bg-forest-900/40;
+}
+
+/* Buttons — one control, five intents, two sizes.
+   `btn-sm` is the compact form used in headers and card footers; the default
+   is the page-level action. Passing `text-xs` on a `.btn` is no longer needed. */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-all duration-300 ease-out-expo focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-forest-600 focus-visible:ring-offset-cream-50 dark:focus-visible:ring-brass-400 dark:focus-visible:ring-offset-forest-950 disabled:opacity-50 disabled:pointer-events-none;
+}
+.btn-sm { @apply px-4 py-2 text-xs; }
 .btn-primary {
   @apply btn bg-forest-700 text-cream-50 hover:bg-forest-800 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white shadow-soft;
 }
@@ -104,14 +138,54 @@ body {
 .btn-solid {
   @apply btn bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-50 dark:text-forest-900 dark:hover:bg-white;
 }
+/* A button that sits on a white surface but only carries secondary weight. */
+.btn-quiet {
+  @apply btn bg-white border border-forest-900/10 text-forest-800 hover:bg-cream-100 dark:bg-transparent dark:text-cream-100 dark:border-cream-100/15 dark:hover:bg-forest-900;
+}
+.btn-danger {
+  @apply btn bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700 dark:bg-red-700 dark:text-white dark:hover:bg-red-600;
+}
+.btn-danger-quiet {
+  @apply btn bg-transparent text-red-700 border border-red-700/25 hover:bg-red-50 dark:text-red-300 dark:border-red-300/30 dark:hover:bg-red-950/40;
+}
+
+/* Icon-only control */
+.icon-btn {
+  @apply inline-flex items-center justify-center w-9 h-9 rounded-full text-forest-700 transition hover:bg-forest-900/5 dark:text-cream-100 dark:hover:bg-cream-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 dark:focus-visible:ring-brass-400 disabled:opacity-50;
+}
 
 /* Inputs */
 .field {
   @apply w-full rounded-xl border border-forest-200 bg-white/80 px-4 py-3 text-forest-900 placeholder:text-forest-500/60 focus:border-forest-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest-600/20 dark:bg-forest-900/60 dark:border-forest-700 dark:text-cream-50 dark:placeholder:text-cream-200/40 dark:focus:border-brass-400 dark:focus:bg-forest-900/90 dark:focus:ring-brass-400/20 transition;
 }
+.field[aria-invalid='true'] { @apply border-red-500 focus:border-red-600 focus:ring-red-500/20; }
+.field:disabled { @apply bg-cream-50/70 text-forest-600 cursor-not-allowed dark:bg-forest-900/40; }
 .label {
   @apply block text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-300 mb-2 font-medium;
 }
+.field-hint { @apply mt-1.5 block text-[11px] text-forest-600 dark:text-cream-200/60; }
+.field-error { @apply mt-1.5 block text-xs text-red-600 dark:text-red-400; }
+
+/* Status badges — colour pairs live in StatusBadge.tsx, never inline */
+.badge {
+  @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap;
+}
+
+/* Alerts — one shape for every inline message */
+.alert {
+  @apply rounded-2xl border px-4 py-3 text-sm leading-relaxed;
+}
+.alert-info { @apply bg-cream-100/70 border-forest-900/10 text-forest-800 dark:bg-forest-900/60 dark:border-cream-100/15 dark:text-cream-100; }
+.alert-success { @apply bg-emerald-50 border-emerald-200 text-emerald-900; }
+.alert-warning { @apply bg-amber-50 border-amber-200 text-amber-900; }
+.alert-danger { @apply bg-red-50 border-red-200 text-red-800; }
+
+/* Small uppercase data label above a value */
+.data-label { @apply text-[10px] uppercase tracking-eyebrow text-forest-600 dark:text-cream-200/60; }
+
+/* Section spacing rhythm */
+.section { @apply py-16 lg:py-24; }
+.section-tight { @apply py-12 lg:py-16; }
 
 /* No scrollbar helper */
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -211,6 +285,21 @@ a:focus-visible, button:focus-visible, summary:focus-visible {
 .dark a:focus-visible, .dark button:focus-visible, .dark summary:focus-visible {
   outline-color: #B89A64;
 }
+
+/* Skip link — the first thing a keyboard user meets on every page */
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  transform: translateY(-200%);
+  transition: transform 200ms ease;
+  @apply rounded-full bg-forest-900 text-cream-50 px-5 py-2.5 text-sm font-medium shadow-float;
+}
+.skip-link:focus { transform: translateY(0); }
+
+/* The page body locks while a drawer or dialog is open */
+body[data-scroll-locked='true'] { overflow: hidden; }
 
 /* Reduced motion: no parallax, tilt, drift, Ken Burns or scroll-reveal travel */
 @media (prefers-reduced-motion: reduce) {

@@ -1309,38 +1309,9 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     }
   }
 
-  static Color _statusColor(String status) {
-    switch (status) {
-      case BookingStatuses.pending:
-        return AppColors.statusWarning;
-      case BookingStatuses.paymentPending:
-        return AppColors.accentGoldDark;
-      case BookingStatuses.paymentVerified:
-      case BookingStatuses.reserved:
-        return AppColors.statusSuccess;
-      case BookingStatuses.checkedIn:
-      case BookingStatuses.staying:
-        return const Color(0xFF1D3557);
-      case BookingStatuses.checkedOut:
-      case BookingStatuses.completed:
-        return AppColors.textMuted;
-      default:
-        return AppColors.statusAlert;
-    }
-  }
+  static Color _statusColor(String status) => StatusStyle.color(status);
 
-  static Color _paymentColor(String s) {
-    switch (s) {
-      case 'verified':
-        return AppColors.statusSuccess;
-      case 'pending':
-        return AppColors.statusWarning;
-      case 'rejected':
-        return AppColors.statusAlert;
-      default:
-        return AppColors.textMuted;
-    }
-  }
+  static Color _paymentColor(String s) => StatusStyle.payment(s);
 }
 
 /// What the Admin chose in the cancel dialog: a reason to cancel, or a

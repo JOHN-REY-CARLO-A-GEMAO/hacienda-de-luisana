@@ -31,6 +31,7 @@ import { displayedRate } from '../sections/Accommodations'
 import { validateAmount, validateProofFile } from '../lib/validation'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
 import { createNotification, notifyAdmin } from '../lib/notifications'
+import { Alert, Container, PageHeader } from '../components/ui'
 
 function peso(n: number): string {
   return `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
@@ -463,28 +464,26 @@ refund_policy_snapshot: published.refund ?? null,
   }
 
   return (
-    <div className="relative pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="relative mx-auto max-w-7xl px-5 lg:px-8">
-        <div className="max-w-2xl">
-          <div className="eyebrow">Step 2 of 3</div>
-          <h1 className="display text-4xl sm:text-5xl mt-3 text-forest-900">Downpayment proof</h1>
-          <p className="mt-4 text-forest-800/80 leading-relaxed">
-            Send the downpayment through the Hacienda’s official channels, then upload a screenshot.
-            The booking is submitted only after that screenshot is attached, and it stays{' '}
-            <strong>Pending</strong> until the Hacienda approves or rejects it. It is not confirmed yet.
-          </p>
-          <FlowSteps current={1} />
-        </div>
+    <div className="relative min-h-screen bg-cream-50 pb-24 pt-28">
+      <Container width="wide" className="relative">
+        <PageHeader
+          eyebrow="Step 2 of 3"
+          title="Downpayment proof"
+          lead={
+            <p className="max-w-2xl">
+              Send the downpayment through the Hacienda’s official channels, then upload a screenshot. The
+              booking is submitted only after that screenshot is attached, and it stays <strong>Pending</strong>{' '}
+              until the Hacienda approves or rejects it. It is not confirmed yet.
+            </p>
+          }
+          aside={<FlowSteps current={1} />}
+        />
 
         <div className="mt-10 grid lg:grid-cols-3 gap-8 lg:gap-10">
           <section className="lg:col-span-2 space-y-6">
-            {error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <Alert tone="danger">{error}</Alert>}
 
-            <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8">
+            <div className="card p-6 sm:p-8">
               <h2 className="font-serif text-2xl text-forest-900">How to pay</h2>
               <p className="mt-3 text-sm text-forest-800/80 leading-relaxed">
                 Pay only through the Admin-published QR code or account below. Never send money to a third
@@ -519,7 +518,7 @@ refund_policy_snapshot: published.refund ?? null,
               </div>
             </div>
 
-            <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8" data-tour="payment-proof">
+            <div className="card p-6 sm:p-8" data-tour="payment-proof">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="font-serif text-2xl text-forest-900">Screenshot</h2>
                 <span className="rounded-full bg-amber-100 text-amber-900 text-[10px] uppercase tracking-eyebrow px-2.5 py-1">
@@ -695,7 +694,7 @@ refund_policy_snapshot: published.refund ?? null,
                   {busy ? 'Submitting…' : 'Submit booking'}
                   {!busy && <ArrowRight size={16} />}
                 </button>
-                <Link to={`/book?accommodation=${draft.accommodation}`} className="btn-ghost text-xs">
+                <Link to={`/book?accommodation=${draft.accommodation}`} className="btn-ghost btn-sm">
                   Back to details
                 </Link>
               </div>
@@ -708,7 +707,7 @@ refund_policy_snapshot: published.refund ?? null,
 
           <StaySummary draft={draft} accommodationName={accommodation?.name} image={accommodation?.images[0]} nights={nights} addonLines={addonLines} />
         </div>
-      </div>
+      </Container>
     </div>
   )
 }

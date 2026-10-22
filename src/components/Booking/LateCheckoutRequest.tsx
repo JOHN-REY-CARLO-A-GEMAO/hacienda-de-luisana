@@ -115,7 +115,7 @@ export const LateCheckoutRequest: React.FC<LateCheckoutRequestProps> = ({ bookin
             <button
               type="submit"
               disabled={busy || !actor || hours < 1 || hours > 6 || isNaN(hours)}
-              className="btn-primary text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy ? 'Submitting…' : 'Submit Extension Request'}
             </button>

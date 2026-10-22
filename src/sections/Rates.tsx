@@ -63,7 +63,7 @@ export function Rates() {
           {active.map((a) => {
             const rate = displayedRate(a, published)
             return (
-              <div key={a.id} className="reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-8" data-testid={`rate-${a.id}`}>
+              <div key={a.id} className="reveal card p-7 lg:p-8" data-testid={`rate-${a.id}`}>
                 <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">{a.shortName}</div>
                 <h3 className="font-serif text-2xl text-forest-900 mt-1">{a.name}</h3>
                 <div className="mt-5 font-serif text-4xl text-forest-900">{rate.label}</div>
@@ -72,7 +72,7 @@ export function Rates() {
                   <GuestSchedule schedule={published.accommodations[a.id]!.guest_pricing!} />
                 )}
                 <div className="mt-4 text-sm text-forest-800">{a.capacityLabel}{a.availableUnits ? ` · ${a.availableUnits} units` : ''}</div>
-                <Link to={`/book?accommodation=${a.id}`} className="btn-ghost mt-6 text-xs group">
+                <Link to={`/book?accommodation=${a.id}`} className="btn-ghost mt-6 btn-sm group">
                   Book this room
                   <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
                 </Link>
@@ -116,7 +116,7 @@ export function Rates() {
           </div>
 
           {/* Included */}
-          <div className="reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-8">
+          <div className="reveal card p-7 lg:p-8">
             <div className="eyebrow">Included</div>
             <h3 className="font-serif text-2xl text-forest-900 mt-2">In every stay</h3>
             <ul className="mt-4 space-y-2.5 text-sm text-forest-800">
@@ -130,7 +130,7 @@ export function Rates() {
           </div>
 
           {/* 3 + 4. Additional fees & optional charges */}
-          <div className="reveal bg-white rounded-[28px] border border-forest-900/5 shadow-card p-7 lg:p-8">
+          <div className="reveal card p-7 lg:p-8">
             <div className="eyebrow">Extras</div>
             <h3 className="font-serif text-2xl text-forest-900 mt-2">Additional fees</h3>
             <ul className="mt-4 divide-y divide-forest-900/5">

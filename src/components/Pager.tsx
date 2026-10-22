@@ -15,7 +15,7 @@ export function Pager<T>({
     <div className="flex flex-wrap items-center gap-3 text-xs text-forest-700 mt-4">
       <button
         type="button"
-        className="btn-ghost text-xs disabled:opacity-40"
+        className="btn-ghost btn-sm disabled:opacity-40"
         disabled={!page.hasPrev}
         onClick={() => onPage(page.page - 1)}
       >
@@ -26,7 +26,7 @@ export function Pager<T>({
       </span>
       <button
         type="button"
-        className="btn-ghost text-xs disabled:opacity-40"
+        className="btn-ghost btn-sm disabled:opacity-40"
         disabled={!page.hasNext}
         onClick={() => onPage(page.page + 1)}
       >

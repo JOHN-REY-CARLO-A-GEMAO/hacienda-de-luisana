@@ -18,6 +18,7 @@ import { retentionDaysLeft, retentionElapsed } from '../lib/chatRetention'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { MESSAGE_MAX } from '../lib/validation'
 import { formatDateTime } from '../lib/formatDate'
+import { Alert, Card, Container, Field, Input, LoadingPanel, PageHeader, Select } from '../components/ui'
 
 /** How many older messages one "Load earlier messages" press fetches. */
 const OLDER_PAGE_SIZE = 30
@@ -159,41 +160,58 @@ export function MessagesPage() {
   const retentionSwept = retentionElapsed(retention)
 
   return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-xl px-5">
-        <div className="eyebrow">Messages</div>
-        <h1 className="display text-4xl mt-2 text-forest-900">Chat with the Admin</h1>
-        <p className="mt-3 text-sm text-forest-800/80">
-          Only your conversation is visible. {isFirebaseConfigured ? 'Messages sync to the Admin app.' : 'Demo mode: messages stay in this browser until Firebase is configured.'}
-        </p>
-        {retention && (
-          <p className="mt-2 text-xs text-forest-700/70">
-            {retentionSwept
-              ? 'This thread is scheduled to be cleared after its retention period.'
-              : `This thread is kept for ${retentionDays} more day${retentionDays === 1 ? '' : 's'} after its booking closed, then cleared automatically.`}
-          </p>
-        )}
-        <label className="block mt-6">
-          <span className="label">Topic</span>
-          <select className="field" value={category} onChange={(e) => setCategory(e.target.value)}>
-            {inquiries.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="mt-4 bg-white rounded-[24px] border border-forest-900/5 p-4 min-h-[240px]">
-          {status === 'loading' && <p className="text-sm text-forest-700/70">Loading conversation…</p>}
-          {status === 'error' && <p className="text-sm text-red-700">Could not open the conversation.</p>}
-          {status === 'ready' && messages.length === 0 ? (
-            <p className="text-sm text-forest-700/70">No messages yet. Send a question below.</p>
-          ) : (
+    <div className="min-h-screen bg-cream-50 pb-24 pt-28">
+      <Container width="form">
+        <PageHeader
+          eyebrow="Messages"
+          title="Chat with the Admin"
+          lead={
+            <p>
+              Only your conversation is visible.{' '}
+              {isFirebaseConfigured
+                ? 'Messages sync to the Admin app.'
+                : 'Demo mode: messages stay in this browser until Firebase is configured.'}
+            </p>
+          }
+          aside={
+            retention && (
+              <p className="text-xs text-forest-700/70">
+                {retentionSwept
+                  ? 'This thread is scheduled to be cleared after its retention period.'
+                  : `This thread is kept for ${retentionDays} more day${retentionDays === 1 ? '' : 's'} after its booking closed, then cleared automatically.`}
+              </p>
+            )
+          }
+        />
+
+        <div className="mt-6">
+          <Field label="Topic">
+            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+              {inquiries.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        <Card padding="sm" className="mt-4 min-h-[240px]">
+          {status === 'loading' && <LoadingPanel label="Loading conversation…" bare />}
+          {status === 'error' && (
+            <Alert tone="danger" className="text-xs">
+              Could not open the conversation.
+            </Alert>
+          )}
+          {status === 'ready' && messages.length === 0 && (
+            <p className="p-4 text-sm text-forest-700/70">No messages yet. Send a question below.</p>
+          )}
+          {status === 'ready' && messages.length > 0 && (
             <>
               {hasMore && (
                 <button
                   type="button"
-                  className="btn-ghost text-xs mb-3"
+                  className="btn-ghost btn-sm mb-3"
                   disabled={loadingOlder}
                   onClick={() => void loadOlder()}
                   data-tour="load-older"
@@ -204,7 +222,7 @@ export function MessagesPage() {
               <ul className="space-y-3">
                 {messages.map((m) => (
                   <li key={m.id} className={`text-sm ${m.mine ? 'text-right' : ''}`}>
-                    <span className="inline-block rounded-2xl px-3 py-2 bg-cream-100 text-forest-900 max-w-[85%] text-left">
+                    <span className="inline-block max-w-[85%] rounded-2xl bg-cream-100 px-3 py-2 text-left text-forest-900">
                       {m.text}
                     </span>
                     <div className="text-[10px] text-forest-600 mt-1">{formatDateTime(m.at, 'Time unavailable')}</div>
@@ -214,10 +232,11 @@ export function MessagesPage() {
               <div ref={bottomRef} />
             </>
           )}
-        </div>
+        </Card>
+
         <div className="mt-4 flex gap-2" data-tour="message-composer">
-          <input
-            className="field flex-1"
+          <Input
+            className="flex-1"
             aria-label="Write a message"
             value={text}
             maxLength={MESSAGE_MAX}
@@ -237,7 +256,7 @@ export function MessagesPage() {
           <button
             type="button"
             disabled={sending || !text.trim() || text.length > MESSAGE_MAX || Boolean(error)}
-            className="btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+            className="btn-primary"
             onClick={() => void send()}
           >
             {sending ? 'Sending…' : 'Send'}
@@ -259,8 +278,12 @@ export function MessagesPage() {
           </span>
         </div>
         <ShareLocationBar sharing={sharing} />
-        {error && <div role="alert" className="mt-2 rounded-xl bg-red-50 border border-red-200 p-2.5 text-xs text-red-700">{error}</div>}
-      </div>
+        {error && (
+          <Alert tone="danger" className="mt-2 text-xs">
+            {error}
+          </Alert>
+        )}
+      </Container>
     </div>
   )
 }

@@ -69,7 +69,7 @@ export function RatesPreview() {
                 <div className="mt-auto pt-6">
                   <Link
                     to={`/book?accommodation=${a.id}`}
-                    className="btn-ghost text-xs group w-full"
+                    className="btn-ghost btn-sm group w-full"
                   >
                     Check availability
                     <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />

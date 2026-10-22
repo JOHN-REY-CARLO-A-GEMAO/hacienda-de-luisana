@@ -202,7 +202,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
           <button
             type="button"
             onClick={onClose}
-            className="btn bg-white border border-forest-900/10 text-forest-800 text-xs hover:bg-cream-100"
+            className="btn bg-white border border-forest-900/10 text-forest-800 btn-sm hover:bg-cream-100"
           >
             Close
           </button>
@@ -212,7 +212,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
         <button
           type="button"
           onClick={printInvoice}
-          className="btn-primary text-xs flex items-center gap-1.5"
+          className="btn-primary btn-sm flex items-center gap-1.5"
         >
           🖨️ Print / Save Invoice
         </button>

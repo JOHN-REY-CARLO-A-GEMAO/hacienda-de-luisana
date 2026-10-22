@@ -94,7 +94,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
-        className="relative w-full max-w-md rounded-[28px] bg-white border border-forest-900/5 shadow-card p-7"
+        className="card relative w-full max-w-md p-7"
       >
         <h2 id={titleId} className="font-serif text-2xl text-forest-900">{title}</h2>
         <p id={bodyId} className="mt-3 text-sm text-forest-800/85 leading-relaxed whitespace-pre-line">{body}</p>
@@ -102,7 +102,7 @@ export function ConfirmDialog({
           <button
             ref={cancelRef}
             type="button"
-            className="btn-ghost text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-700 focus-visible:ring-offset-2"
+            className="btn-ghost btn-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-700 focus-visible:ring-offset-2"
             onClick={onCancel}
             disabled={busy}
           >

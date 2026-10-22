@@ -85,7 +85,7 @@ export function ContactInquiryForm() {
         <button
           type="button"
           onClick={() => setSubmitted(false)}
-          className="btn-secondary mt-5 text-xs inline-flex"
+          className="btn-secondary mt-5 btn-sm inline-flex"
         >
           Send another inquiry
         </button>
@@ -244,7 +244,7 @@ export function ContactInquiryForm() {
         <button
           type="submit"
           disabled={loading || Object.keys(errors).some((k) => Boolean(errors[k]))}
-          className="btn-primary text-xs w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
+          className="btn-primary btn-sm w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {loading ? 'Sending inquiry…' : 'Send Inquiry'}
           <ArrowRight size={16} />

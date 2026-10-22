@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { CATEGORIES, caseCommand, caseDate, caseLabel, subscribeCases, subscribeEvidence, activityPage, uploadCaseEvidence, downloadCaseEvidence, type DisputeRecord, type CaseActivity, type CaseEvidence } from '../lib/disputes'
 import { auth } from '../lib/firebase'
 import { DISPUTE_DESCRIPTION_MAX, DISPUTE_MESSAGE_MAX } from '../lib/validation'
+import { Alert, Field, Select, Textarea } from './ui'
 
 export function DisputeForm({ bookingId, guestId }: { bookingId?: string; guestId: string }) {
   const [cases, setCases] = useState<DisputeRecord[]>([])
@@ -51,58 +52,200 @@ export function DisputeForm({ bookingId, guestId }: { bookingId?: string; guestI
   // Guest — a report submitted here could not be received or tracked. Offering
   // the form would promise a case reference that never arrives.
   const unavailable = Boolean(readError)
-  return <section className="mt-4 rounded-xl border border-forest-900/15 bg-white p-4 text-forest-900" aria-label="Issue and dispute center">
-    <div className="flex flex-wrap justify-between gap-3"><h2 className="font-serif text-xl">Issue &amp; Dispute Center</h2>{!unavailable && <button type="button" className="btn-secondary text-xs" onClick={() => setShow(v => !v)}>Report an Issue</button>}</div>
-    <p className="text-sm my-3">For urgent safety or access concerns, use <Link className="underline" to="/contact">official contact channels</Link>. This is not an emergency or 24/7 response service.</p>
-    {auth?.currentUser?.isAnonymous && <p role="alert">Link this booking identity to a recoverable account at <Link className="underline" to="/support">Support</Link> before reporting. A booking reference alone cannot recover ownership.</p>}
-    {writeError && <p role="alert" className="my-3 text-red-800">{writeError}</p>}
-    {readError && <p role="alert" className="my-3 text-sm text-red-800">{readError}</p>}
-    {unavailable && <p className="my-3 text-sm">Reporting and case tracking are not available at the moment, so a report submitted here could not reach the Hacienda. Please raise this through the <Link className="underline" to="/contact">contact page</Link> instead.</p>}
-    {notice && <p role="status" className="my-3 text-sm">{notice}</p>}
-    {show && !unavailable && <form className="space-y-3 border-y py-4" onSubmit={e => {
-      e.preventDefault()
-      if (description.trim().length < 10) {
-        setWriteError('Please provide at least 10 characters describing the issue.')
-        return
-      }
-      if (writeError) setWriteError('')
-      review ? void submit() : setReview(true)
-    }}>
-      {review ? <div><h3 className="font-semibold">Review before submitting</h3><p>{caseLabel(category)} · {bookingId ? 'Linked to this booking' : 'General support'}</p><p className="whitespace-pre-wrap">{description}</p><p className="text-xs mt-2">Your submitted explanation is retained as history. Add corrections later; do not include passwords, PINs, full card details or government IDs.</p></div> : <>
-        <label className="block">Category<select className="field w-full" value={category} onChange={e => { setCategory(e.target.value); if (writeError) setWriteError('') }}>{CATEGORIES.map(c => <option key={c} value={c}>{caseLabel(c)}</option>)}</select></label>
-        <label className="block">
-          <span className="label">What happened?</span>
-          <textarea
-            required
-            minLength={10}
-            maxLength={DISPUTE_DESCRIPTION_MAX}
-            rows={5}
-            className="field w-full"
-            value={description}
-            onChange={e => { setDescription(e.target.value.slice(0, DISPUTE_DESCRIPTION_MAX)); if (writeError) setWriteError('') }}
-          />
-          <div className="mt-1 flex items-center justify-between text-[11px]">
-            <span className="text-forest-600/70">Minimum 10 characters</span>
-            <span className={`font-mono tabular-nums ${description.length >= DISPUTE_DESCRIPTION_MAX ? 'text-amber-700 font-semibold' : 'text-forest-600/70'}`}>
-              {description.length} / {DISPUTE_DESCRIPTION_MAX} characters
-            </span>
+  return (
+    <section className="card-tight p-5" aria-label="Issue and dispute center">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="h3">Issue &amp; Dispute Center</h2>
+          <p className="mt-1 text-xs leading-relaxed text-forest-700/80">
+            For urgent safety or access concerns, use{' '}
+            <Link className="text-link" to="/contact">
+              official contact channels
+            </Link>
+            . This is not an emergency or 24/7 response service.
+          </p>
+        </div>
+        {!unavailable && (
+          <button type="button" className="btn-quiet btn-sm" onClick={() => setShow((value) => !value)}>
+            {show ? 'Close form' : 'Report an Issue'}
+          </button>
+        )}
+      </div>
+
+      {auth?.currentUser?.isAnonymous && (
+        <Alert tone="warning" className="mt-4 text-xs">
+          Link this booking identity to a recoverable account at{' '}
+          <Link className="text-link" to="/support">
+            Support
+          </Link>{' '}
+          before reporting. A booking reference alone cannot recover ownership.
+        </Alert>
+      )}
+      {writeError && (
+        <Alert tone="danger" className="mt-4 text-xs">
+          {writeError}
+        </Alert>
+      )}
+      {readError && (
+        <Alert tone="danger" className="mt-4 text-xs">
+          {readError}
+        </Alert>
+      )}
+      {unavailable && (
+        <p className="mt-4 text-sm leading-relaxed text-forest-800">
+          Reporting and case tracking are not available at the moment, so a report submitted here could
+          not reach the Hacienda. Please raise this through the{' '}
+          <Link className="text-link" to="/contact">
+            contact page
+          </Link>{' '}
+          instead.
+        </p>
+      )}
+      {notice && <Alert tone="info" className="mt-4 text-xs">{notice}</Alert>}
+
+      {show && !unavailable && (
+        <form
+          className="mt-5 space-y-4 border-t border-forest-900/10 pt-5"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (description.trim().length < 10) {
+              setWriteError('Please provide at least 10 characters describing the issue.')
+              return
+            }
+            if (writeError) setWriteError('')
+            review ? void submit() : setReview(true)
+          }}
+        >
+          {review ? (
+            <div className="rounded-2xl bg-cream-100/60 p-4">
+              <h3 className="font-semibold text-forest-900">Review before submitting</h3>
+              <p className="mt-1 text-xs text-forest-700">
+                {caseLabel(category)} · {bookingId ? 'Linked to this booking' : 'General support'}
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{description}</p>
+              <p className="mt-2 text-xs text-forest-700/80">
+                Your submitted explanation is retained as history. Add corrections later; do not include
+                passwords, PINs, full card details or government IDs.
+              </p>
+            </div>
+          ) : (
+            <>
+              <Field label="Category">
+                <Select
+                  value={category}
+                  onChange={(event) => {
+                    setCategory(event.target.value)
+                    if (writeError) setWriteError('')
+                  }}
+                >
+                  {CATEGORIES.map((option) => (
+                    <option key={option} value={option}>
+                      {caseLabel(option)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field
+                label="What happened?"
+                hint={
+                  <span className="flex items-center justify-between gap-3">
+                    <span>Minimum 10 characters</span>
+                    <span className={`font-mono tabular-nums ${description.length >= DISPUTE_DESCRIPTION_MAX ? 'font-semibold text-amber-700' : ''}`}>
+                      {description.length} / {DISPUTE_DESCRIPTION_MAX} characters
+                    </span>
+                  </span>
+                }
+              >
+                <Textarea
+                  required
+                  minLength={10}
+                  maxLength={DISPUTE_DESCRIPTION_MAX}
+                  rows={5}
+                  value={description}
+                  onChange={(event) => {
+                    setDescription(event.target.value.slice(0, DISPUTE_DESCRIPTION_MAX))
+                    if (writeError) setWriteError('')
+                  }}
+                />
+              </Field>
+              <p className="text-xs text-forest-700/80">
+                Evidence is optional and can be added after submission. Redact unrelated sensitive details.
+              </p>
+            </>
+          )}
+
+          {duplicate && (
+            <Alert tone="warning" className="text-xs">
+              You have an active case in this category. Check it below; you may still report a different
+              incident.
+            </Alert>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-primary btn-sm" disabled={busy || Boolean(writeError)}>
+              {busy ? 'Checking submission…' : review ? 'Confirm and submit' : 'Review report'}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={busy}
+              onClick={() => (review ? setReview(false) : setShow(false))}
+            >
+              {review ? 'Edit' : 'Cancel'}
+            </button>
           </div>
-        </label>
-        <p className="text-xs">Evidence is optional and can be added after submission. Redact unrelated sensitive details.</p>
-      </>}
-      {duplicate && <p className="text-amber-900 text-sm">You have an active case in this category. Check it below; you may still report a different incident.</p>}
-      <div className="flex gap-3"><button className="btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed" disabled={busy || Boolean(writeError)}>{busy ? 'Checking submission…' : review ? 'Confirm and submit' : 'Review report'}</button><button type="button" className="btn-ghost text-xs" disabled={busy} onClick={() => review ? setReview(false) : setShow(false)}>{review ? 'Edit' : 'Cancel'}</button></div>
-    </form>}
-    {loading ? <p role="status">Loading cases…</p> : !cases.length && !readError ? <p className="text-sm">No reports yet.</p> : null}
-    <div className="space-y-3 mt-4">{cases.filter(c => c.guest_id === guestId).map(c => <article key={c.id} className="rounded-xl border p-3">
-      <button type="button" aria-expanded={selected === c.id} className="text-left w-full" onClick={() => setSelected(selected === c.id ? null : c.id)}><strong>{c.reference}</strong> · {caseLabel(c.category)}<span className="block text-sm">{caseLabel(c.status)} · {caseLabel(c.priority)} priority</span><span className="block text-xs">Updated {caseDate(c.updated_at)} (Asia/Manila)</span></button>
-      {selected === c.id && <CaseDetail record={c} uid={guestId} />}
-    </article>)}</div>
-    {unavailable
-      ? <button type="button" className="btn-secondary text-xs mt-3" onClick={() => setRetry(n => n + 1)}>Try again</button>
-      : <button type="button" className="btn-ghost text-xs mt-3" onClick={() => setCount(n => n + 25)}>Look for older reports</button>}
-  </section>
+        </form>
+      )}
+
+      {loading ? (
+        <p role="status" className="mt-4 text-sm text-forest-700">
+          Loading cases…
+        </p>
+      ) : (
+        !cases.length &&
+        !readError && <p className="mt-4 text-sm text-forest-700/80">No reports yet.</p>
+      )}
+
+      <div className="mt-4 space-y-3">
+        {cases
+          .filter((entry) => entry.guest_id === guestId)
+          .map((entry) => (
+            <article key={entry.id} className="card-tight p-4">
+              <button
+                type="button"
+                aria-expanded={selected === entry.id}
+                className="w-full text-left"
+                onClick={() => setSelected(selected === entry.id ? null : entry.id)}
+              >
+                <span className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-forest-900">{entry.reference}</span>
+                  <span className="text-xs text-forest-700">{caseLabel(entry.category)}</span>
+                </span>
+                <span className="mt-1 block text-sm text-forest-800">
+                  {caseLabel(entry.status)} · {caseLabel(entry.priority)} priority
+                </span>
+                <span className="mt-0.5 block text-xs text-forest-600">
+                  Updated {caseDate(entry.updated_at)} (Asia/Manila)
+                </span>
+              </button>
+              {selected === entry.id && <CaseDetail record={entry} uid={guestId} />}
+            </article>
+          ))}
+      </div>
+
+      {unavailable ? (
+        <button type="button" className="btn-ghost btn-sm mt-3" onClick={() => setRetry((value) => value + 1)}>
+          Try again
+        </button>
+      ) : (
+        <button type="button" className="btn-ghost btn-sm mt-3" onClick={() => setCount((value) => value + 25)}>
+          Look for older reports
+        </button>
+      )}
+    </section>
+  )
 }
+
 function CaseDetail({ record: c, uid }: { record: DisputeRecord; uid: string }) {
   const [items, setItems] = useState<CaseActivity[]>([])
   const [page, setPage] = useState<Awaited<ReturnType<typeof activityPage>> | null>(null)
@@ -175,9 +318,9 @@ function CaseDetail({ record: c, uid }: { record: DisputeRecord; uid: string }) 
       {active && <label className="block">Add evidence (up to five files, 10 MB each)<input ref={input} className="block my-2" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple disabled={busy} onChange={e => { const selected = Array.from(e.target.files || []); if (selected.length > 5 || selected.some(f => f.size > 10 * 1024 * 1024)) { setError('Choose at most five files of 10 MB each.'); e.target.value = ''; setUploads([]) } else { setError(''); setUploads(selected) } }} /></label>}
       <p className="text-xs">No passwords, PINs, full card details or government IDs. Redact unrelated information. Temporary uploads expire after 24 hours. Submitted history cannot be edited.</p>
       <div className="flex flex-wrap gap-2">
-        <button className="btn-primary text-xs disabled:opacity-60 disabled:cursor-not-allowed" disabled={busy || (!message.trim() && !uploads.length) || (!active && message.trim().length < 10) || Boolean(error)}>{busy ? 'Checking action…' : active ? 'Send message / evidence' : 'Request reopening'}</button>
-        {c.status === 'resolution_proposed' && <><button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => { if (window.confirm('Accept this proposal? Any unfinished remedy remains outstanding.')) void run('accept') }}>Accept proposal</button>{!c.appeal_used && <button type="button" className="btn-secondary text-xs" disabled={busy || message.trim().length < 10} onClick={() => void run('contest')}>Contest &amp; request independent appeal</button>}</>}
-        {active && <button type="button" className="btn-ghost text-xs" disabled={busy || !message.trim()} onClick={() => void run('withdraw_request')}>Request case withdrawal</button>}
+        <button className="btn-primary btn-sm disabled:opacity-60 disabled:cursor-not-allowed" disabled={busy || (!message.trim() && !uploads.length) || (!active && message.trim().length < 10) || Boolean(error)}>{busy ? 'Checking action…' : active ? 'Send message / evidence' : 'Request reopening'}</button>
+        {c.status === 'resolution_proposed' && <><button type="button" className="btn-secondary btn-sm" disabled={busy} onClick={() => { if (window.confirm('Accept this proposal? Any unfinished remedy remains outstanding.')) void run('accept') }}>Accept proposal</button>{!c.appeal_used && <button type="button" className="btn-secondary btn-sm" disabled={busy || message.trim().length < 10} onClick={() => void run('contest')}>Contest &amp; request independent appeal</button>}</>}
+        {active && <button type="button" className="btn-ghost btn-sm" disabled={busy || !message.trim()} onClick={() => void run('withdraw_request')}>Request case withdrawal</button>}
       </div>
     </form>}
     {c.final_decision && <p className="text-xs">The ordinary internal appeal route is complete. Exceptional reopening requires eligible Admin approval. External complaint and legal rights are unaffected.</p>}

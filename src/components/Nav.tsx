@@ -179,30 +179,28 @@ export function Nav() {
                     )}
                   </Link>
                 )}
-                {signedIn && role !== 'admin' && (
-                  <Link
-                    to="/account?tab=profile"
-                    aria-label="My Profile"
-                    title="My Profile"
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition ${FOCUS_RING} ${
-                      transparent
-                        ? 'bg-cream-50/20 text-cream-50 hover:bg-cream-50/30'
-                        : 'bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white'
-                    }`}
-                  >
-                    {initial}
-                  </Link>
-                )}
+                {/* One account control, not two: the avatar *is* the link to the
+                    Guest's own page. The separate "My Bookings" pill this used to
+                    sit beside said the same thing a few pixels apart. */}
                 <Link
                   to={homeForRole(role)}
-                  className={`inline-flex items-center h-8 text-xs px-3 rounded-full border whitespace-nowrap transition max-w-[120px] xl:max-w-[140px] truncate shrink-0 ${FOCUS_RING} ${
+                  aria-label={role === 'admin' ? 'Admin account' : 'My bookings and profile'}
+                  className={`inline-flex h-8 items-center gap-2 rounded-full border px-2 xl:px-3 text-xs whitespace-nowrap transition shrink-0 ${FOCUS_RING} ${
                     transparent
                       ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
                       : 'border-forest-900/10 dark:border-cream-100/15 text-forest-700 dark:text-cream-200 hover:bg-forest-50 dark:hover:bg-forest-800'
                   }`}
                   title={user.email ?? undefined}
                 >
-                  {role === 'admin' ? 'Admin account' : 'My Bookings'}
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                      transparent ? 'bg-cream-50/20 text-cream-50' : 'bg-forest-800 text-cream-50 dark:bg-cream-100 dark:text-forest-950'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {initial}
+                  </span>
+                  <span className="hidden xl:inline">{role === 'admin' ? 'Admin account' : 'My bookings'}</span>
                 </Link>
                 <button
                   onClick={() => void logout()}
@@ -321,26 +319,21 @@ export function Nav() {
 
           <div className="mt-4 pt-2 space-y-2">
             {canOpenPage(role, '/account') && (
-              <Link to="/account" onClick={() => setOpen(false)} className="btn-ghost w-full text-xs">
-                My Bookings
-              </Link>
-            )}
-            {signedIn && canOpenPage(role, '/account') && (
-              <Link to="/account?tab=profile" onClick={() => setOpen(false)} className="btn-ghost w-full text-xs">
-                My Profile
+              <Link to="/account" onClick={() => setOpen(false)} className="btn-ghost w-full btn-sm">
+                My bookings &amp; profile
               </Link>
             )}
             {signedIn && canOpenPage(role, '/account') && (
               <Link
                 to="/account?tab=notifications"
                 onClick={() => setOpen(false)}
-                className="btn-ghost w-full text-xs"
+                className="btn-ghost w-full btn-sm"
               >
                 Notifications{unreadCount > 0 ? ` (${unreadCount} new)` : ''}
               </Link>
             )}
             {canOpenPage(role, '/messages') && (
-              <Link to="/messages" onClick={() => setOpen(false)} className="btn-ghost w-full text-xs">
+              <Link to="/messages" onClick={() => setOpen(false)} className="btn-ghost w-full btn-sm">
                 Messages
               </Link>
             )}
@@ -360,7 +353,7 @@ export function Nav() {
             <Link
               to="/guest/auth"
               onClick={() => setOpen(false)}
-              className="btn-ghost w-full text-xs mt-3"
+              className="btn-ghost w-full btn-sm mt-3"
             >
               Sign in / Create a Guest account
             </Link>

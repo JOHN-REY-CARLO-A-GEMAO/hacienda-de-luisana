@@ -11,6 +11,7 @@ import {
 import { lastIdentityFailure } from '../lib/guestAuth'
 import { getSupabaseStatus, describeSupabaseSource, supabaseConfigReport } from '../lib/supabase'
 import { runConnectionCheck, currentIdentity, type Check, type CheckStatus } from '../lib/connectionCheck'
+import { Alert, Card, Container, PageHeader } from '../components/ui'
 
 /**
  * Where the owner finds out why a deployment says "Demo mode".
@@ -70,15 +71,19 @@ export function StatusPage() {
   }
 
   return (
-    <div className="pt-28 pb-24 bg-cream-50 min-h-screen">
-      <div className="mx-auto max-w-3xl px-5">
-        <div className="eyebrow">Deployment status</div>
-        <h1 className="display text-4xl sm:text-5xl mt-2 text-forest-900">Is this website connected?</h1>
-        <p className="mt-4 text-forest-800/80 text-sm leading-relaxed">
-          A Guest's Booking request either reaches the Hacienda's Firebase project — where the Admin app
-          reads it — or it stays in the Guest's own browser. This page says which, and what to change if
-          the answer is wrong.
-        </p>
+    <div className="min-h-screen bg-cream-50 pb-24 pt-28">
+      <Container width="narrow">
+        <PageHeader
+          eyebrow="Deployment status"
+          title="Is this website connected?"
+          lead={
+            <p>
+              A Guest&rsquo;s Booking request either reaches the Hacienda&rsquo;s Firebase project — where the
+              Admin app reads it — or it stays in the Guest&rsquo;s own browser. This page says which, and
+              what to change if the answer is wrong.
+            </p>
+          }
+        />
 
         {/* The verdict */}
         <div
@@ -211,7 +216,7 @@ export function StatusPage() {
           <button
             type="button"
             onClick={() => setShowDemoDialog(true)}
-            className="btn-ghost text-xs"
+            className="btn-ghost btn-sm"
           >
             Preview ConfirmDialog
           </button>
@@ -234,7 +239,7 @@ export function StatusPage() {
           performs when a request is sent — and reads the published rates. It writes nothing.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={test} disabled={running} className="btn-primary text-xs">
+          <button type="button" onClick={test} disabled={running} className="btn-primary btn-sm">
             {running ? 'Checking…' : 'Test the connection'}
           </button>
           {identity && (
@@ -356,7 +361,7 @@ export function StatusPage() {
           </a>
           .
         </p>
-      </div>
+      </Container>
     </div>
   )
 }

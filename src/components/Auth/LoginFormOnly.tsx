@@ -3,10 +3,9 @@ import { MIN_PASSWORD_LENGTH, describeAuthError } from '../../lib/auth'
 import { EMAIL_MAX, validateEmail } from '../../lib/validation'
 import { useAuth } from '../../hooks/useAuth'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
-import type { AuthIntro } from './AuthShell'
+import { Field, Input } from '../ui'
 
 interface LoginFormOnlyProps {
-  intro: AuthIntro
   email: string
   onEmailChange: (email: string) => void
   onSuccess?: () => void
@@ -27,7 +26,6 @@ interface LoginFormOnlyProps {
  * - Google sign-in button
  */
 export function LoginFormOnly({
-  intro,
   email,
   onEmailChange,
   onSuccess,
@@ -96,19 +94,17 @@ export function LoginFormOnly({
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <label className="block">
-          <span className="label">Email</span>
-          <input
-            className="field"
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <Field label="Email" error={fieldErrors.email} required>
+          <Input
             type="email"
             placeholder="you@email.com"
             value={email}
-            onChange={(e) => {
-              onEmailChange(e.target.value)
+            onChange={(event) => {
+              onEmailChange(event.target.value)
               if (fieldErrors.email) {
-                setFieldErrors((prev) => {
-                  const next = { ...prev }
+                setFieldErrors((previous) => {
+                  const next = { ...previous }
                   delete next.email
                   return next
                 })
@@ -118,56 +114,46 @@ export function LoginFormOnly({
             maxLength={EMAIL_MAX}
             autoComplete="email"
             spellCheck={false}
-            aria-invalid={fieldErrors.email ? true : undefined}
+            invalid={Boolean(fieldErrors.email)}
           />
-          {fieldErrors.email && (
-            <span className="mt-1 block text-xs text-red-600">{fieldErrors.email}</span>
-          )}
-        </label>
+        </Field>
 
-        <label className="block">
-          <span className="label">Password</span>
-          <input
-            className="field"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value)
-              if (fieldErrors.password) {
-                setFieldErrors((prev) => {
-                  const next = { ...prev }
-                  delete next.password
-                  return next
-                })
-              }
-            }}
-            required
-            minLength={MIN_PASSWORD_LENGTH}
-            maxLength={200}
-            autoComplete="current-password"
-            aria-invalid={fieldErrors.password ? true : undefined}
-          />
-          {fieldErrors.password && (
-            <span className="mt-1 block text-xs text-red-600">{fieldErrors.password}</span>
-          )}
-          <div className="mt-2 text-right">
-            <button
-              type="button"
-              onClick={onSwitchToReset}
-              className="text-xs text-forest-600 hover:text-forest-900 underline underline-offset-2"
-            >
+        <div>
+          <Field label="Password" error={fieldErrors.password} required>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value)
+                if (fieldErrors.password) {
+                  setFieldErrors((previous) => {
+                    const next = { ...previous }
+                    delete next.password
+                    return next
+                  })
+                }
+              }}
+              required
+              minLength={MIN_PASSWORD_LENGTH}
+              maxLength={200}
+              autoComplete="current-password"
+              invalid={Boolean(fieldErrors.password)}
+            />
+          </Field>
+          <div className="mt-1 text-right">
+            <button type="button" onClick={onSwitchToReset} className="text-xs text-link text-forest-600">
               Forgot password?
             </button>
           </div>
-        </label>
+        </div>
 
         <button
           type="submit"
-          disabled={loading || Boolean(fieldErrors.email) || Boolean(fieldErrors.password)}
-          className="btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+          disabled={loading}
+          className="btn-primary w-full justify-center"
         >
-          {loading ? 'Please wait…' : 'Sign In'}
+          {loading ? 'Signing in…' : 'Sign In'}
         </button>
       </form>
 
@@ -180,9 +166,10 @@ export function LoginFormOnly({
           </div>
 
           <button
+            type="button"
             onClick={handleGoogle}
             disabled={loading}
-            className="w-full rounded-xl border border-forest-800/15 bg-white px-5 py-3 text-sm font-medium text-forest-800 hover:bg-forest-50 hover:border-forest-800/25 flex items-center justify-center gap-2 disabled:opacity-60 transition-colors"
+            className="btn-quiet w-full justify-center"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
