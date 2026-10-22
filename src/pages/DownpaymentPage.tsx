@@ -487,8 +487,8 @@ refund_policy_snapshot: published.refund ?? null,
             <div className="bg-white rounded-[28px] border border-forest-900/5 shadow-card p-6 sm:p-8">
               <h2 className="font-serif text-2xl text-forest-900">How to pay</h2>
               <p className="mt-3 text-sm text-forest-800/80 leading-relaxed">
-                Use only the Admin-published account below. Never send money to a third party claiming to be
-                staff, and never share a password, PIN, or one-time code.
+                Pay only through the Admin-published QR code or account below. Never send money to a third
+                party claiming to be staff, and never share a password, PIN, or one-time code.
               </p>
               <div className="mt-5">
                 <PaymentInformationPanel payment={paymentInformation} requiredAmount={dueNow ?? undefined} />

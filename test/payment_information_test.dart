@@ -5,8 +5,14 @@ Map<String, dynamic> channel({
   String method = 'GCash',
   String recipient = 'Agueda H.',
   String account = '09258507707',
+  String? qr,
 }) =>
-    {'method': method, 'recipient_name': recipient, 'account_identifier': account};
+    {
+      'method': method,
+      'recipient_name': recipient,
+      if (account.isNotEmpty) 'account_identifier': account,
+      if (qr != null) 'qr_image': qr,
+    };
 
 Map<String, dynamic> listShape(List<Map<String, dynamic>> methods) => {
       'active': true,
@@ -62,6 +68,36 @@ void main() {
     test('a channel with no account identifier is refused', () {
       final problem = validatePaymentInformationDocument(listShape([channel(account: '')]));
       expect(problem, contains('methods[0].account_identifier'));
+    });
+
+    test('a GCash channel that publishes only the official QR code is accepted', () {
+      // The owner replaced the mobile number with their own QR code, so the
+      // screen sends `qr_image` and no `account_identifier`.
+      expect(
+        validatePaymentInformationDocument(listShape([
+          channel(account: '', qr: '/images/payment/gcash-qr.png'),
+        ])),
+        isNull,
+      );
+    });
+
+    test('a QR code source must be a site path or an https URL', () {
+      for (final bad in ['javascript:alert(1)', 'data:image/png;base64,AA', '//evil.example/qr.png']) {
+        final problem = validatePaymentInformationDocument(
+            listShape([channel(account: '', qr: bad)]));
+        expect(problem, contains('methods[0].qr_image'), reason: bad);
+      }
+      expect(
+        validatePaymentInformationDocument(
+            listShape([channel(account: '', qr: 'https://example.com/owner-qr.png')])),
+        isNull,
+      );
+    });
+
+    test('an over-long QR code path is refused', () {
+      final problem = validatePaymentInformationDocument(
+          listShape([channel(account: '', qr: '/images/${'x' * 500}.png')]));
+      expect(problem, contains('methods[0].qr_image'));
     });
 
     test('more than five channels is refused', () {

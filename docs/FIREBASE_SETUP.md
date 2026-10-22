@@ -342,6 +342,17 @@ Payment channels and instructions remain separately configurable in
 `site_config/payment`; they are not pricing inputs. Publish only guest-visible
 payment details there—never passwords, PINs, OTPs, API keys or credentials.
 
+Each channel may publish `qr_image` — a site path (`/images/payment/gcash-qr.png`)
+or an https URL — plus an optional `qr_instructions` line. When a channel has a
+QR code, the website shows the image and stops printing that channel's
+`account_identifier`; the account may then be left out of the document entirely
+(`firestore.rules` accepts a channel that has only a QR code). The GCash image is
+the owner's own QR code, committed under `public/images/payment/` (website) and
+`assets/images/payment/` (Admin app); it is not generated, and a document
+published before the QR code existed still picks it up from
+`OFFICIAL_PAYMENT_INFORMATION` in `src/config/officialBusiness.ts`. Never draw,
+regenerate or re-encode that code — see `public/images/payment/README.md`.
+
 ## 🔐 Security Notes
 
 - API keys in `.env.local` are safe to expose client-side; security is enforced by Firestore Rules & Auth.

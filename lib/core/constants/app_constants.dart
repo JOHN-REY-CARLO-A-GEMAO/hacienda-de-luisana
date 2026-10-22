@@ -19,6 +19,24 @@ class AppConstants {
   static const String docRates = 'rates';
   /// Public, non-secret payment instructions shown during booking.
   static const String docPayment = 'payment';
+
+  /// The owner's official GCash payment QR code.
+  ///
+  /// The same file the website serves from `public/images/payment/` is bundled
+  /// here (`assets/images/payment/`, byte-identical) so this screen can show the
+  /// Admin exactly what a Guest scans. It is an image of the owner's own QR
+  /// code — never draw or regenerate one, because a generated code points at a
+  /// different account. Provenance: `public/images/payment/README.md`.
+  static const String gcashQrAsset = 'assets/images/payment/gcash-qr.png';
+
+  /// The path the website resolves the same asset at. This is what
+  /// `site_config/payment.methods[].qr_image` publishes.
+  static const String gcashQrPublishedPath = '/images/payment/gcash-qr.png';
+
+  /// The line the website prints under the QR code when the published channel
+  /// names none of its own.
+  static const String gcashQrInstruction =
+      'Scan this QR code using GCash to pay your downpayment.';
   /// The Admin's Security PIN server copy — one doc per uid, own-doc-only
   /// in firestore.rules (ADR-0015). Not a Credential: that word is taken
   /// by the door RFID / Mobile Key (CONTEXT.md § Access).

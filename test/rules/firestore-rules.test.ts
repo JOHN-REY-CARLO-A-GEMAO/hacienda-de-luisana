@@ -2122,6 +2122,39 @@ describe('site_config/payment', () => {
     expect(allow({ path: 'site_config/payment', method: 'get', auth: null, resourceData: payment })).toBe(true)
   })
 
+  it('accepts the GCash QR code in place of the owner’s mobile number', () => {
+    expect(allow({
+      path: 'site_config/payment', method: 'create', auth: allowlistedAdmin(),
+      requestData: {
+        active: true,
+        methods: [
+          {
+            method: 'GCash',
+            recipient_name: 'Agueda H.',
+            qr_image: '/images/payment/gcash-qr.png',
+            qr_instructions: 'Scan this QR code using GCash to pay your downpayment.',
+          },
+          { method: 'BDO', recipient_name: 'Agueda Hortillas', account_identifier: '005438013682' },
+        ],
+        instructions: 'Send the 50% down payment, then upload the proof.',
+      },
+    })).toBe(true)
+  })
+
+  it('refuses a channel with nowhere to send money, and a QR source that is not a path or https URL', () => {
+    const publish = (channel: DocData) => deny({
+      path: 'site_config/payment', method: 'create', auth: allowlistedAdmin(),
+      requestData: { active: true, methods: [channel], instructions: 'Send the 50% down payment.' },
+    })
+    // No account and no QR code: the Guest has nothing to pay to.
+    expect(publish({ method: 'GCash', recipient_name: 'Agueda H.' })).toBe(true)
+    // Not a site path, not https.
+    expect(publish({ method: 'GCash', recipient_name: 'Agueda H.', qr_image: 'javascript:alert(1)' })).toBe(true)
+    expect(publish({ method: 'GCash', recipient_name: 'Agueda H.', qr_image: '//evil.example/qr.png' })).toBe(true)
+    // The official path is accepted on its own.
+    expect(publish({ method: 'GCash', recipient_name: 'Agueda H.', qr_image: '/images/payment/gcash-qr.png' })).toBe(false)
+  })
+
   it('refuses Guests, incomplete configuration, and undeclared sensitive fields', () => {
     expect(deny({ path: 'site_config/payment', method: 'create', auth: anonymousGuest(), requestData: payment })).toBe(true)
     expect(deny({ path: 'site_config/payment', method: 'create', auth: allowlistedAdmin(), requestData: { ...payment, instructions: '' } })).toBe(true)

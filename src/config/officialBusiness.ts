@@ -65,10 +65,29 @@ export const OFFICIAL_STAY_POLICIES: PublishedStayPolicies = {
   },
 }
 
+/**
+ * The owner's official GCash payment QR code.
+ *
+ * One constant, one asset: the Guest website serves it from `public/`, and the
+ * Flutter Admin app bundles the same file from `assets/images/payment/`. The
+ * image is the owner's own QR code, cropped without resampling — never draw or
+ * regenerate one, because a generated code points at a different account. See
+ * `public/images/payment/README.md` for provenance and the payload it decodes to.
+ */
+export const OFFICIAL_GCASH_QR_IMAGE = '/images/payment/gcash-qr.png'
+export const OFFICIAL_GCASH_QR_INSTRUCTION = 'Scan this QR code using GCash to pay your downpayment.'
+
 export const OFFICIAL_PAYMENT_INFORMATION: PaymentInformation = {
   active: true,
   methods: [
-    { method: 'GCash', recipient_name: 'Agueda H.', account_identifier: '09258507707' },
+    // The owner's mobile number is deliberately not published any more: the
+    // Guest scans the QR code instead of copying a number into GCash.
+    {
+      method: 'GCash',
+      recipient_name: 'Agueda H.',
+      qr_image: OFFICIAL_GCASH_QR_IMAGE,
+      qr_instructions: OFFICIAL_GCASH_QR_INSTRUCTION,
+    },
     { method: 'BDO', recipient_name: 'Agueda Hortillas', account_identifier: '005438013682' },
   ],
   instructions: 'Send the 50% down payment calculated from the published stay total through one listed payment channel. The remaining 50% is due at check-in. After sending the down payment, upload a screenshot for Admin review.',
