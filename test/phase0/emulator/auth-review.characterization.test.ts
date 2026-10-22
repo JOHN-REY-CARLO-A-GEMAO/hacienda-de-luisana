@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, signInAnonymously, EmailAuthProvider, linkWithCredential, type Auth } from 'firebase/auth'
 import { connectFirestoreEmulator, getFirestore, doc, setDoc, getDoc, type Firestore } from 'firebase/firestore'
-import { assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
+import { assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { environment, reset, seed, canonicalPaid, canonicalBooking, denied } from './helpers'
 import { scenarios } from '../fixtures'
 let env: RulesTestEnvironment
@@ -24,22 +24,29 @@ beforeEach(async () => {
 afterAll(async () => { await env?.cleanup() })
 // Apps are deleted per test inside finally, including failed assertions.
 
-it('F16-CANONICAL-CONTROL: actual anonymous session creates/reads its own booking', async () => {
+it('F16-CANONICAL-CONTROL: direct anonymous create is closed; a server-created Booking remains owner-readable', async () => {
   try {
     const user = (await signInAnonymously(auth)).user
-    await assertSucceeds(setDoc(doc(db, 'bookings', scenarios.booking.id), canonicalBooking({ uid: user.uid })))
+    await assertFails(setDoc(doc(db, 'bookings', scenarios.booking.id), canonicalBooking({ uid: user.uid })))
+    await seed(env, owner => setDoc(doc(owner.firestore(), 'bookings', scenarios.booking.id), canonicalBooking({ uid: user.uid })))
     await assertSucceeds(getDoc(doc(db, 'bookings', scenarios.booking.id)))
   } finally { await deleteApp(app) }
 })
 it('F16-CANONICAL-CURRENT: actual register adapter replaces anonymous UID and loses old booking read', async () => {
   try {
     const anonymous = (await signInAnonymously(auth)).user
-    await setDoc(doc(db, 'bookings', scenarios.booking.id), canonicalBooking({ uid: anonymous.uid }))
+    await seed(env, owner => setDoc(doc(owner.firestore(), 'bookings', scenarios.booking.id), canonicalBooking({ uid: anonymous.uid })))
     vi.resetModules()
     vi.doMock('../../../src/lib/firebase', () => ({ auth, db, googleProvider: null, isFirebaseConfigured: true }))
     const ports = (await import('../../../src/lib/authFirebase')).createFirebasePorts()
     if (!ports) throw new Error('actual emulator Auth ports unavailable')
-    const user = await ports.auth.register({ email: `registered-${serial}@phase0.example.invalid`, password: 'synthetic-emulator-only-password', displayName: 'Synthetic Guest A' })
+    const user = await ports.auth.register({
+      email: `registered-${serial}@phase0.example.invalid`,
+      password: 'synthetic-emulator-only-password',
+      displayName: 'Synthetic Guest A',
+      termsVersion: 'phase0-synthetic',
+      termsAcceptedAt: new Date().toISOString(),
+    })
     expect(user.uid).not.toBe(anonymous.uid)
     await denied(() => getDoc(doc(db, 'bookings', scenarios.booking.id)))
   } finally { await deleteApp(app) }
@@ -47,7 +54,7 @@ it('F16-CANONICAL-CURRENT: actual register adapter replaces anonymous UID and lo
 it('F16-CANONICAL-POSITIVE-CONTROL: SDK credential linking preserves UID/ownership (not implemented in application)', async () => {
   try {
     const anonymous = (await signInAnonymously(auth)).user
-    await setDoc(doc(db, 'bookings', scenarios.booking.id), canonicalBooking({ uid: anonymous.uid }))
+    await seed(env, owner => setDoc(doc(owner.firestore(), 'bookings', scenarios.booking.id), canonicalBooking({ uid: anonymous.uid })))
     const linked = await linkWithCredential(anonymous, EmailAuthProvider.credential(`linked-${serial}@phase0.example.invalid`, 'synthetic-emulator-only-password'))
     expect(linked.user.uid).toBe(anonymous.uid)
     await assertSucceeds(getDoc(doc(db, 'bookings', scenarios.booking.id)))

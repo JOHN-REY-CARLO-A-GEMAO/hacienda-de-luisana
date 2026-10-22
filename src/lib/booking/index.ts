@@ -29,6 +29,7 @@ export {
 export {
   DATE_HOLD_MS,
   approvalCouplingSet,
+  calendarAvailability,
   datesOverlap,
   effectiveStatus,
   findDateConflicts,
@@ -41,6 +42,9 @@ export {
   suggestAlternativeDates,
   type AlternativeDateOptions,
   type AvailabilityOptions,
+  type CalendarAvailabilityDay,
+  type CalendarAvailabilityRequest,
+  type CalendarAvailabilityState,
   type DateHoldFields,
   type DateRange,
   type HoldBearingBooking,

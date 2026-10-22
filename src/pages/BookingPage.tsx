@@ -4,6 +4,7 @@ import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { saveBookingDraft } from '../lib/bookingDraft'
 import { FlowSteps } from '../components/Booking/FlowSteps'
+import { AvailabilityCalendar } from '../components/Booking/AvailabilityCalendar'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
@@ -85,8 +86,16 @@ export function BookingPage() {
   const [status, setStatus] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string>('')
   // G2: availability is checked by the system before the Guest commits, not
-  // only in the Admin's head at approval time (ticket #12).
-  const [availability, setAvailability] = useState<{ available: boolean; heldBy: number } | null>(null)
+  // only in the Admin's head at approval time (ticket #12). Unknown and loading
+  // are explicit non-available states; neither may quietly look green.
+  const [availability, setAvailability] = useState<{
+    status: 'checking' | 'available' | 'unavailable' | 'unknown'
+    available: boolean
+    heldBy: number
+    blockingState?: 'pending' | 'booked' | 'unknown'
+  } | null>(null)
+  const [calendarState, setCalendarState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [calendarNotice, setCalendarNotice] = useState('')
   const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   // A signed-in Guest does not type their own details again. Filled once the
@@ -180,6 +189,7 @@ export function BookingPage() {
       return
     }
     let alive = true
+    setAvailability({ status: 'checking', available: false, heldBy: 0 })
     cloudBookingsDB
       .checkAvailability({
         accommodation: form.accommodation,
@@ -187,12 +197,17 @@ export function BookingPage() {
         check_out: form.check_out,
       })
       .then((result) => {
-        if (alive) setAvailability({ available: result.available, heldBy: result.conflicts.length })
+        if (alive) setAvailability({
+          status: result.available ? 'available' : 'unavailable',
+          available: result.available,
+          heldBy: result.conflicts.length,
+          ...(result.blockingState ? { blockingState: result.blockingState } : {}),
+        })
       })
       .catch(() => {
-        // An availability read that fails must not strand the Guest: the Admin's
-        // approval re-check is still the last line of defence (ADR-0002).
-        if (alive) setAvailability(null)
+        // Fail closed. The calendar and Continue button say that availability is
+        // unknown; only a successful fresh server response may say "available".
+        if (alive) setAvailability({ status: 'unknown', available: false, heldBy: 0, blockingState: 'unknown' })
       })
     return () => {
       alive = false
@@ -336,17 +351,21 @@ export function BookingPage() {
       }
 
       // Always perform one fresh availability read at the gate. Demo mode can
-      // report the actual holding Booking; cloud mode deliberately returns an
-      // empty conflict set because Guests cannot read another Guest's private
-      // Booking. In cloud mode the Admin approval transaction remains the final
-      // overlap guard, but every client-known rule is now settled before payment.
+      // report the actual holding Booking; cloud mode returns only its aggregate
+      // state because Guests cannot read another Guest's private Booking. The
+      // later `submitBooking` transaction is still the final last-unit boundary.
       const currentAvailability = await cloudBookingsDB.checkAvailability({
         accommodation: form.accommodation,
         check_in: form.check_in,
         check_out: form.check_out,
       })
       if (!currentAvailability.available) {
-        setAvailability({ available: false, heldBy: currentAvailability.conflicts.length })
+        setAvailability({
+          status: 'unavailable',
+          available: false,
+          heldBy: currentAvailability.conflicts.length,
+          ...(currentAvailability.blockingState ? { blockingState: currentAvailability.blockingState } : {}),
+        })
         failRule({
           code: 'DATE_UNAVAILABLE',
           message: currentAvailability.conflicts.length > 0
@@ -467,53 +486,85 @@ export function BookingPage() {
                 Book at least {minimumBookingLeadTimeDays} days before check-in.
                 Earliest check-in: {earliestCheckIn} (Philippine time).
               </p>
-              <div className="mt-6 grid sm:grid-cols-2 gap-5" data-tour="stay-details">
-                <Field label="Check-in" error={errors.check_in}>
-                  <input
-                    type="date"
-                    className="field"
-                    min={earliestCheckIn}
-                    aria-describedby="booking-lead-time"
-                    value={form.check_in}
-                    data-tour-field="check-in"
-                    onChange={(e) => set('check_in', e.target.value)}
-                    onBlur={() => handleBlur('check_in')}
-                  />
-                </Field>
-                <Field label="Check-out" error={errors.check_out}>
-                  <input
-                    type="date"
-                    className="field"
-                    min={form.check_in >= earliestCheckIn ? form.check_in : earliestCheckIn}
-                    value={form.check_out}
-                    data-tour-field="check-out"
-                    onChange={(e) => set('check_out', e.target.value)}
-                    onBlur={() => handleBlur('check_out')}
-                  />
-                </Field>
-                <Field label="Number of guests" error={errors.guests}>
-                  <input
-                    type="number"
-                    min={1}
-                    inputMode="numeric"
-                    className="field"
-                    value={form.guests}
-                    onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
-                    onBlur={() => handleBlur('guests')}
-                  />
-                </Field>
-                <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
-                  <select
-                    className="field appearance-none pr-10"
-                    value={form.accommodation}
-                    onChange={(e) => set('accommodation', e.target.value)}
-                    onBlur={() => handleBlur('accommodation')}
-                  >
-                    {options.map((o) => (
-                      <option key={o.id} value={o.id}>{o.label}</option>
-                    ))}
-                  </select>
-                </Field>
+              <div className="mt-6" data-tour="stay-details">
+                <div className="grid sm:grid-cols-2 gap-5">
+                  <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
+                    <select
+                      className="field appearance-none pr-10"
+                      value={form.accommodation}
+                      onChange={(e) => {
+                        set('accommodation', e.target.value)
+                        setCalendarNotice('')
+                      }}
+                      onBlur={() => handleBlur('accommodation')}
+                    >
+                      {options.map((o) => (
+                        <option key={o.id} value={o.id}>{o.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Number of guests" error={errors.guests}>
+                    <input
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      className="field"
+                      value={form.guests}
+                      onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
+                      onBlur={() => handleBlur('guests')}
+                    />
+                  </Field>
+                </div>
+
+                {calendarNotice && (
+                  <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {calendarNotice}
+                  </div>
+                )}
+
+                <AvailabilityCalendar
+                  accommodation={form.accommodation}
+                  accommodationName={options.find((option) => option.id === form.accommodation)?.label || selectedAcc?.name || 'this Accommodation'}
+                  earliestCheckIn={earliestCheckIn}
+                  checkIn={form.check_in}
+                  checkOut={form.check_out}
+                  onLoadStateChange={setCalendarState}
+                  onInvalidated={setCalendarNotice}
+                  onChange={(checkIn, checkOut) => {
+                    setForm((current) => ({ ...current, check_in: checkIn, check_out: checkOut }))
+                    setErrors((current) => ({ ...current, check_in: undefined, check_out: undefined }))
+                    setAvailability(null)
+                  }}
+                />
+
+                <div className="mt-5 grid sm:grid-cols-2 gap-5">
+                  <Field label="Selected check-in" error={errors.check_in}>
+                    <input
+                      type="date"
+                      className="field"
+                      min={earliestCheckIn}
+                      aria-describedby="booking-lead-time"
+                      value={form.check_in}
+                      data-tour-field="check-in"
+                      onChange={(e) => set('check_in', e.target.value)}
+                      onBlur={() => handleBlur('check_in')}
+                    />
+                  </Field>
+                  <Field label="Selected check-out" error={errors.check_out}>
+                    <input
+                      type="date"
+                      className="field"
+                      min={form.check_in >= earliestCheckIn ? form.check_in : earliestCheckIn}
+                      value={form.check_out}
+                      data-tour-field="check-out"
+                      onChange={(e) => set('check_out', e.target.value)}
+                      onBlur={() => handleBlur('check_out')}
+                    />
+                  </Field>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-forest-700/70">
+                  You may type the dates if needed; the same live availability and one-standard-stay rules are still checked before payment.
+                </p>
               </div>
             </div>
 
@@ -595,14 +646,34 @@ export function BookingPage() {
               fallback={addonFallbacks}
             />
 
-            {availability && !availability.available && (
-              <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-900 leading-relaxed">
-                <strong>Those dates are already held.</strong>{' '}
-                {availability.heldBy === 1
-                  ? 'Another Booking is holding them'
-                  : `${availability.heldBy} Bookings are holding them`}{' '}
-                — a hold lasts 24 hours while the Hacienda reviews, so pick different dates and your request
-                will go straight through.
+            {availability?.status === 'checking' && (
+              <div className="rounded-2xl border border-forest-900/10 bg-cream-50 px-4 py-3 text-xs text-forest-800 leading-relaxed" aria-live="polite">
+                <strong>Confirming the selected stay…</strong> Continue stays disabled until a fresh availability check finishes.
+              </div>
+            )}
+            {availability?.status === 'unknown' && (
+              <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 leading-relaxed">
+                <strong>Availability is unknown.</strong> The Hacienda’s Booking data could not be checked. Refresh the calendar or try again; these dates are not being treated as available.
+              </div>
+            )}
+            {availability?.status === 'unavailable' && (
+              <div role="alert" className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-900 leading-relaxed">
+                <strong>
+                  {availability.blockingState === 'booked' ? 'That overnight date is booked.' : 'Those dates are already held.'}
+                </strong>{' '}
+                {availability.heldBy > 0
+                  ? availability.heldBy === 1
+                    ? 'Another Booking is holding them. '
+                    : `${availability.heldBy} Bookings are holding them. `
+                  : ''}
+                {availability.blockingState === 'booked'
+                  ? 'Choose a green check-in date. A booked date can still be the previous Guest’s checkout boundary.'
+                  : 'A Pending Date hold lasts up to 24 hours while the Hacienda reviews it; choose another green date.'}
+              </div>
+            )}
+            {availability?.status === 'available' && form.check_in && form.check_out && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900 leading-relaxed" aria-live="polite">
+                <strong>Selected stay is available.</strong> Availability will be checked again when you continue and atomically when the Pending Booking is created.
               </div>
             )}
 
@@ -628,7 +699,9 @@ export function BookingPage() {
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={status === 'submitting' || (availability !== null && !availability.available)}
+                disabled={status === 'submitting'
+                  || calendarState !== 'ready'
+                  || (Boolean(form.check_in && form.check_out) && availability?.status !== 'available')}
                 className="btn-primary w-full sm:w-auto disabled:opacity-70 disabled:cursor-not-allowed"
                 data-tour="submit-booking"
               >

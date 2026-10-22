@@ -3,7 +3,9 @@
 | Record | Source of truth | Local |
 | --- | --- | --- |
 | Users / profiles | Cloud Firestore `profiles` | Session cookie / Firebase Auth persistence |
-| Bookings | Cloud `bookings` | localStorage fallback only when Firebase is not configured (demo) |
+| Bookings | Cloud Firestore `bookings`; private Guest records are the sole availability authority. Website creates use the regional `submitBooking` callable; direct client creates are Admin-only. | localStorage fallback only when Firebase is not configured (demo) |
+| Availability projection | Regional `bookingAvailability` callable derives aggregate `available` / `pending` / `booked` / `unknown` days from private Bookings and Published inventory; it stores no projection documents. | ≤60-second validated browser cache; demo mode derives from local demo Bookings with the same pure function |
+| Booking submit coordination | Cloud Firestore `booking_inventory_locks/{accommodation}` contains only `{ revision, updated_at }`, is server-only, and serializes empty-query/last-unit races. It is not inventory or an availability source. | none |
 | Payment proofs | Cloud Storage `payments/{uid}/…` | none |
 | Payment reference catalog | Cloud `payment_references` | Admin app may keep a working copy on device |
 | Access logs | Cloud `access_logs` | none |

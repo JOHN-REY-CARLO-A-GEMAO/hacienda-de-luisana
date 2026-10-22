@@ -12,6 +12,9 @@ import { calendarMonthsAfter, mayPurge, mayDeleteApprovedEvidence } from './priv
 // are discovered by `firebase deploy --only functions`. They are gated on
 // BOOKING_QUOTES_ENABLED and touch no case data — see docs/quotes/IMPLEMENTATION.md.
 export { quoteBooking, verifyBookingMoney } from './quotes';
+// Privacy-safe availability and atomic Guest Booking creation. Both read the
+// existing `bookings` collection; neither maintains a second calendar store.
+export { bookingAvailability, submitBooking } from './availability';
 initializeApp();
 const db = getFirestore();
 const options = { region: 'asia-southeast1', maxInstances: 5, memory: '512MiB' as const, timeoutSeconds: 120 };

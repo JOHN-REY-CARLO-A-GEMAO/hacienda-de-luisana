@@ -33,7 +33,13 @@ it('F16-REGISTER: current registration path uses new-account creation rather tha
   const old = await ensureGuestUid()
   const ports = createFirebasePorts()
   if (!ports) throw new Error('SDK double did not initialize Auth ports')
-  const user = await ports.auth.register({ email: scenarios.identities.authenticatedGuest.email, password: 'synthetic-test-only-password', displayName: 'Synthetic Guest A' })
+  const user = await ports.auth.register({
+    email: scenarios.identities.authenticatedGuest.email,
+    password: 'synthetic-test-only-password',
+    displayName: 'Synthetic Guest A',
+    termsVersion: 'phase0-synthetic',
+    termsAcceptedAt: new Date().toISOString(),
+  })
   expect(calls.create).toHaveBeenCalledTimes(1)
   expect(user.uid).not.toBe(old)
   expect(await ensureGuestUid()).toBe(scenarios.identities.authenticatedGuest.uid)

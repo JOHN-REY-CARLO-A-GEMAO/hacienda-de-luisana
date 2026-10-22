@@ -29,7 +29,12 @@ it('F21 DESIRED: actual first session fix satisfies the enforced RTDB maximum le
 it('F21 LEASE: every sharing window a Guest may choose fits inside the enforced lease', async () => {
   const now = Date.parse(NOW)
   for (const minutes of [1, 5, ...SHARE_DURATIONS, MAX_SHARE_MINUTES]) {
-    const result = await startSharing({ convoId: scenarios.location.conversationId, uid: scenarios.location.guestUid, minutes, nowMs: now })
+    const result = await startSharing({
+      convoId: scenarios.location.conversationId,
+      uid: scenarios.location.guestUid,
+      minutes: minutes as (typeof SHARE_DURATIONS)[number],
+      nowMs: now,
+    })
     if (!result.ok) throw new Error(result.reason)
     expect(await publishFix(result.session, { lat: 14.1, lng: 121.3, accuracy_m: 12, seq: 1 }, now)).toBe('sent')
     expect(transport.set.mock.lastCall![1].expires_at_ms).toBeLessThanOrEqual(now + MAX_SHARE_MINUTES * 60_000)

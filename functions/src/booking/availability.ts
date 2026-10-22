@@ -249,6 +249,86 @@ export function isAvailable<T extends HoldBearingBooking>(
   return findDateConflicts(request, bookings, options).length === 0
 }
 
+// ----------------------------------------------------------------------------
+// Privacy-safe calendar projection
+// ----------------------------------------------------------------------------
+
+/**
+ * What the Guest calendar may say about one overnight date.
+ *
+ * `booked` means the Accommodation's published unit count is already filled by
+ * firm/committed Bookings. `pending` means an unexpired Pending Date hold fills
+ * the last remaining unit. `unknown` is deliberately distinct from available:
+ * missing inventory or unavailable data must never be painted green.
+ */
+export type CalendarAvailabilityState = 'available' | 'pending' | 'booked' | 'unknown'
+
+export type CalendarAvailabilityDay = {
+  /** The overnight date; a stay checking in here owns this night. */
+  date: string
+  state: CalendarAvailabilityState
+}
+
+export type CalendarAvailabilityRequest = {
+  accommodation: string
+  /** First overnight date to project, inclusive. */
+  from: string
+  /** End of the projection, exclusive. */
+  to: string
+}
+
+/**
+ * Project private Bookings into day-level availability without exposing a
+ * Booking id, Guest, exact status, or party details.
+ *
+ * Check-out remains a boundary, not an occupied night. A Booking from the 24th
+ * to the 25th contributes to the 24th only; another Guest may check in on the
+ * 25th. For a multi-unit Accommodation, a date stays available until the last
+ * published unit is claimed.
+ */
+export function calendarAvailability<T extends HoldBearingBooking>(
+  request: CalendarAvailabilityRequest,
+  bookings: readonly T[],
+  options: Pick<AvailabilityOptions, 'now' | 'unitsAvailable'> = {},
+): CalendarAvailabilityDay[] {
+  const from = parseDate(request.from)
+  const to = parseDate(request.to)
+  if (from === null || to === null || to <= from) return []
+
+  const units = options.unitsAvailable
+  const now = options.now ?? Date.now()
+  const days: CalendarAvailabilityDay[] = []
+
+  for (let cursor = from; cursor < to; cursor += DAY_MS) {
+    const date = isoDate(cursor)
+    if (!units || units < 1) {
+      days.push({ date, state: 'unknown' })
+      continue
+    }
+
+    const next = isoDate(cursor + DAY_MS)
+    const holders = bookings.filter((booking) => {
+      if (booking.accommodation !== request.accommodation) return false
+      const status = effectiveStatus(booking, now)
+      if (!holdsDates(status)) return false
+      return datesOverlap(date, next, booking.check_in, booking.check_out)
+    })
+    const committed = holders.filter((booking) =>
+      COMMITTED_STATUSES.includes(effectiveStatus(booking, now)),
+    ).length
+
+    days.push({
+      date,
+      state: committed >= units
+        ? 'booked'
+        : holders.length >= units
+          ? 'pending'
+          : 'available',
+    })
+  }
+  return days
+}
+
 /**
  * The Bookings an approval of this one must re-read through the transaction
  * (ADR-0006): same Accommodation, overlapping nights, still holding their

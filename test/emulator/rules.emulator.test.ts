@@ -258,9 +258,9 @@ async function seedBaseline(work: (rulesDisabled: RulesTestContext) => Promise<v
 }
 
 describe('authentication and roles', () => {
-  it('lets a signed-out visitor create an inquiry Booking and refuses one with no uid', async () => {
+  it('refuses every signed-out direct Booking create', async () => {
     const anon = env.unauthenticatedContext()
-    await assertSucceeds(addDoc(collection(anon.firestore(), 'bookings'), bookingDoc({
+    await assertFails(addDoc(collection(anon.firestore(), 'bookings'), bookingDoc({
       payment_status: 'pending',
       payment_proof_url: 'payments/guest-uid-1/proof.jpg',
       amount_claimed: 5000,
@@ -282,8 +282,8 @@ describe('authentication and roles', () => {
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'verified' })))
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'unpaid' })))
     await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ payment_status: 'rejected' })))
-    // .and the shape that is accepted: Pending, screenshot attached, amount claimed.
-    await assertSucceeds(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc()))
+    // Even a complete Pending shape must go through `submitBooking`.
+    await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc()))
   })
 
   it('resolves the Admin from the allowlisted address in the token', async () => {
@@ -997,203 +997,25 @@ function manilaDatePlus(days: number): string {
   return calendar.toISOString().slice(0, 10)
 }
 
-describe('published guest-count prices: independent Firestore verification', () => {
-  it('allows an authenticated Guest to submit the protected production Main House quote', async () => {
-    // This mirrors the refused production create: a Friday standard stay for
-    // two Guests at ₱6,000, 50% due now, and the exact published policy stamp
-    // and refund snapshot. Keep this as an email-backed Guest rather than an
-    // anonymous fixture: the outage was reported for an authenticated Guest.
-    const refund = {
-      deposit_refund_percent: 100,
-      tiers: [
-        { min_days_before_check_in: 30, refund_percent: 100 },
-        { min_days_before_check_in: 14, refund_percent: 50 },
-        { min_days_before_check_in: 7, refund_percent: 25 },
-      ],
-    }
-    await assertSucceeds(updateDoc(doc(admin().firestore(), 'site_config', 'rates'), {
-      version: 'v1-guest-v3',
-      effective_date: '2026-10-05',
-      refund,
-      'accommodations.main-house.security_deposit': 2000,
-    }))
-
-    const productionFields = {
-      security_deposit: 2000,
-      amount_claimed: 3000,
-      policy_version: 'v1-guest-v3',
-      policy_effective_date: '2026-10-05',
-      refund_policy_snapshot: refund,
-    }
-    // A normal email sign-up owns this stored Guest role, so the create also
-    // traverses `storedRole()` / `profiles/{uid}` before it reaches the guest
-    // gate. That is the production access pattern, not the anonymous shortcut.
-    await seed(async (db) => setDoc(doc(db.firestore(), 'profiles', GUEST_UID), {
-      uid: GUEST_UID, role: 'guest',
-    }))
+describe('callable-only Guest creation: canonical emulator boundary', () => {
+  it('refuses an exact Published quote and every direct Guest variant', async () => {
     const guest = emailGuest()
     const checkIn = futureDateForDay(5)
-    const booking = quotedBooking(checkIn, 2, { overrides: productionFields })
-    expect(booking).toMatchObject({
-      check_out: nextCalendarDate(checkIn), guests: 2, accommodation: 'main-house',
-      rate_amount: 6000, rate_unit: 'standard_stay', rate_classification: 'weekend_holiday',
-      stay_total: 6000, amount_due: 3000, security_deposit: 2000, balance_due: 3000,
-      payment_plan: 'down-payment', payment_status: 'pending', amount_claimed: 3000,
-      policy_version: 'v1-guest-v3', policy_effective_date: '2026-10-05',
-      refund_policy_snapshot: refund,
-    })
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'production-valid'), booking))
-
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'production-money-tampered'), {
-      ...booking, stay_total: 6000.01,
+    const exact = quotedBooking(checkIn, 2)
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'exact-direct'), exact))
+    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'tampered-direct'), {
+      ...exact, stay_total: Number(exact.stay_total) + 0.01,
     }))
-
-    const tooSoon = quotedBooking(manilaDatePlus(29), 2, { overrides: productionFields })
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'production-too-soon'), tooSoon))
-
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'production-multi-stay'), {
-      ...booking, check_out: nextCalendarDate(nextCalendarDate(checkIn)), nights: 2,
-    }))
-
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'production-refund-tampered'), {
-      ...booking,
-      refund_policy_snapshot: { ...refund, deposit_refund_percent: 0 },
-    }))
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'bookings', 'a-house-direct'),
+      quotedBooking(futureDateForDay(3), 3, { accommodation: 'house-a-camping' })))
   })
 
-  it('recomputes weekday, Friday/Saturday, Sunday, holiday, and excess totals with 50% due now', async () => {
-    const cases = [
-      ['weekday-monday', futureDateForDay(1), 10, 'weekday', 5000, 2500],
-      ['weekend-friday', futureDateForDay(5), 11, 'weekend_holiday', 6500, 3250],
-      ['weekend-saturday', futureDateForDay(6), 14, 'weekend_holiday', 8000, 4000],
-      ['weekday-sunday', futureDateForDay(0), 10, 'weekday', 5000, 2500],
-    ] as const
-    const guest = anonymousGuest()
-    for (const [id, date, guests, classification, total, due] of cases) {
-      const payload = quotedBooking(date, guests)
-      expect(payload).toMatchObject({ rate_classification: classification, stay_total: total, amount_due: due, balance_due: total - due })
-      await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', id), payload))
-      await assertFails(setDoc(doc(guest.firestore(), 'bookings', `${id}-tampered`), {
-        ...payload, stay_total: total + 1,
-      }))
-    }
-
-    const holiday = futureDateForDay(2)
-    await assertSucceeds(updateDoc(doc(admin().firestore(), 'site_config', 'rates'), { holiday_dates: [holiday] }))
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'configured-holiday'), quotedBooking(holiday, 10, { holiday: true })))
-  })
-
-  it('prices one A-House up to three guests and refuses a fourth', async () => {
-    const guest = anonymousGuest()
-    const date = futureDateForDay(3)
-    // Three is both the included count and the cap, so the stay is the flat
-    // per-unit rate whatever the headcount inside it.
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'a-house-three'), quotedBooking(date, 3, { accommodation: 'house-a-camping' })))
-    // A fourth is past what the unit can hold. There is no excess rule to price
-    // it, so the Booking is refused whatever the guest claims to have paid.
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'a-house-four'), quotedBooking(date, 4, { accommodation: 'house-a-camping' })))
-    // And so is a fifth.
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'a-house-five'), quotedBooking(date, 5, { accommodation: 'house-a-camping' })))
-  })
-
-  it('stores only the exact Admin-published refund-policy snapshot', async () => {
-    const refund = {
-      refund_percent: 50,
-      deposit_refund_percent: 100,
-      tiers: [{ min_days_before_check_in: 7, refund_percent: 75 }],
-    }
-    await assertSucceeds(updateDoc(doc(admin().firestore(), 'site_config', 'rates'), { refund }))
-    const guest = anonymousGuest()
-    const date = futureDateForDay(2)
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'refund-snapshot'), {
-      ...quotedBooking(date, 10),
-      refund_policy_snapshot: refund,
+  it('preserves Admin rate publication and manual Pending creation', async () => {
+    await assertSucceeds(updateDoc(doc(admin().firestore(), 'site_config', 'rates'), {
+      version: 'emulator-callable-boundary-v1',
     }))
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'refund-tampered'), {
-      ...quotedBooking(date, 10),
-      refund_policy_snapshot: { ...refund, refund_percent: 100 },
-    }))
-    await assertFails(updateDoc(doc(admin().firestore(), 'bookings', 'refund-snapshot'), {
-      refund_policy_snapshot: { ...refund, refund_percent: 100 },
-    }))
-  })
-
-  // The Rates screen accepts any positive peso figure, so the rules have to
-  // verify money the way the client computes it: roundMoney and
-  // downPaymentAmount keep centavos (an odd peso total halves to a .50 down
-  // payment; a centavo rate carries centavos through every figure). The rules
-  // used to divide two ints (`int(x) / 100`), and the CEL-based runtime
-  // evaluates that as truncated integer division — so the rules' total and
-  // due came out whole-peso while the client's were centavo-exact, and every
-  // such Booking was refused by `data.stay_total == total` /
-  // `data.amount_due == due` as a bare permission-denied. The offline engine
-  // could not catch it: its `/` is floating-point, so it reported ALLOW. This
-  // case is the one that reproduces that production refusal under the real
-  // runtime, and it stays green only while the division stays float
-  // (`/ 100.0`).
-  it('agrees with the client’s centavo-exact math on odd and centavo published rates', async () => {
-    const publishMainHouseRate = (weekday: number, weekend: number) =>
-      setDoc(doc(admin().firestore(), 'site_config', 'rates'), {
-        version: 'emulator-v2',
-        effective_date: '2026-10-01',
-        holiday_dates: [],
-        accommodations: {
-          'main-house': {
-            property_name: 'The Main House', rate_unit: 'standard_stay', active: true,
-            security_deposit: 500, down_payment_percent: 50, available_units: 1,
-            guest_pricing: {
-              units_per_booking: 1,
-              weekday: { min_guests: 1, base_max_guests: 10, base_rate: weekday, excess_per_guest: 500 },
-              weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: weekend, excess_per_guest: 500 },
-            },
-          },
-          annex: {
-            property_name: 'HDL Annex', rate_unit: 'standard_stay', active: true,
-            security_deposit: 500, down_payment_percent: 50, available_units: 1,
-            guest_pricing: {
-              units_per_booking: 1,
-              weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
-              weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 },
-            },
-          },
-          'house-a-camping': {
-            property_name: 'A-House', rate_unit: 'standard_stay', active: true,
-            security_deposit: 0, down_payment_percent: 50, available_units: 2,
-            guest_pricing: {
-              units_per_booking: 1,
-              weekday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
-              weekend_holiday: { min_guests: 1, base_max_guests: 3, max_guests: 3, base_rate: 1000 },
-            },
-          },
-        },
-      })
-
-    const guest = anonymousGuest()
-    const date = futureDateForDay(3)
-    // The client's figures, exactly as /book/pay computes them:
-    // stayTotal = roundMoney(rate); dueNow = floor-at-centavos of 50%.
-    const cases = [
-      ['odd-peso', 6001, 3000.5],
-      ['centavo', 6000.5, 3000.25],
-    ] as const
-    for (const [id, total, due] of cases) {
-      await assertSucceeds(publishMainHouseRate(total, total))
-      const payload = quotedBooking(date, 10, {
-        overrides: {
-          rate_amount: total,
-          stay_total: total,
-          amount_due: due,
-          balance_due: total - due,
-          amount_claimed: due,
-        },
-      })
-      await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', id), payload))
-      // One centavo off is still a tampered total: the money check stays exact.
-      await assertFails(setDoc(doc(guest.firestore(), 'bookings', `${id}-tampered`), {
-        ...payload,
-        stay_total: Math.round((total + 0.01) * 100) / 100,
-      }))
-    }
+    await assertSucceeds(setDoc(doc(admin().firestore(), 'bookings', 'manual-priced'),
+      quotedBooking(futureDateForDay(3), 10)))
   })
 })
 
@@ -1249,88 +1071,52 @@ describe('historical payment choices retain their stored quote', () => {
   })
 })
 
-describe('guest minimum advance booking: direct Firestore requests', () => {
-  it.each([0, 1, 7, 29])('refuses today + %i with no booking/payment/activity records', async (days) => {
-    const guest = anonymousGuest()
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'direct-invalid'), bookingDoc({
+describe('Guest Booking creation is closed at the direct Firestore boundary', () => {
+  it.each([0, 29, 30, 31, 60])('refuses direct Guest creation at today + %i', async (days) => {
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'bookings', `direct-${days}`), bookingDoc({
       check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 1),
     })))
-    await seed(async (owner) => {
-      expect((await getDocs(collection(owner.firestore(), 'bookings'))).size).toBe(0)
-      expect((await getDocs(collection(owner.firestore(), 'payment_references'))).size).toBe(0)
-      expect((await getDocs(collection(owner.firestore(), 'bookings', 'direct-invalid', 'activity'))).size).toBe(0)
-    })
   })
 
-  it.each([30, 31, 60])('allows today + %i through the existing Pending/proof workflow', async (days) => {
-    const guest = anonymousGuest()
-    const target = doc(guest.firestore(), 'bookings', 'direct-valid')
-    await assertSucceeds(setDoc(target, bookingDoc({
-      check_in: manilaDatePlus(days), check_out: manilaDatePlus(days + 1),
-    })))
-    const stored = await assertSucceeds(getDoc(target))
-    expect(stored.data()).toMatchObject({ status: 'Pending', payment_status: 'pending', amount_claimed: 5000 })
-    expect(stored.data()?.payment_proof_url).toBeTruthy()
+  it('refuses the old signed-out public create path', async () => {
+    await assertFails(setDoc(doc(env.unauthenticatedContext().firestore(), 'bookings', 'public-direct'),
+      bookingDoc({ check_in: manilaDatePlus(30), check_out: manilaDatePlus(31) })))
   })
 
-  it('does not trust created_at, a forged policy, source or an Admin actor/uid claim', async () => {
-    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'bookings', 'spoofed'), bookingDoc({
-      check_in: manilaDatePlus(7), created_at: Timestamp.fromDate(new Date('2020-01-01T00:00:00Z')),
-      source: 'admin', actor: 'admin', uid: 'admin-uid-1', minimumBookingLeadTimeDays: 0,
-    })))
-    await seed(async (owner) => expect((await getDocs(collection(owner.firestore(), 'bookings'))).size).toBe(0))
-  })
-
-  it('applies the same lead time to the existing signed-out public create path', async () => {
-    const publicDB = env.unauthenticatedContext().firestore()
-    await assertFails(setDoc(doc(publicDB, 'bookings', 'public-invalid'), bookingDoc({ check_in: manilaDatePlus(7) })))
-    await assertSucceeds(setDoc(doc(publicDB, 'bookings', 'public-valid'), bookingDoc({ check_in: manilaDatePlus(30) })))
-  })
-
-  it.each(['2026-11-31', '2027-02-29', '2099-13-01', '2099-01-01T00:00:00Z', '2099-1-01', 'garbage'])(
-    'rejects malformed calendar date %s', async (check_in) => {
-      await assertFails(setDoc(doc(anonymousGuest().firestore(), 'bookings', 'bad-date'), bookingDoc({ check_in })))
-    },
-  )
-
-  it('reads a configurable 45-day policy and refuses Guest changes to it', async () => {
+  it('keeps Booking policy public-readable and Admin-owned', async () => {
     const policy = doc(admin().firestore(), 'site_config', 'booking')
     await assertSucceeds(setDoc(policy, { minimumBookingLeadTimeDays: 45 }))
-    const guest = anonymousGuest()
-    await assertSucceeds(getDoc(doc(guest.firestore(), 'site_config', 'booking')))
-    await assertFails(updateDoc(doc(guest.firestore(), 'site_config', 'booking'), { minimumBookingLeadTimeDays: 0 }))
-    await assertFails(setDoc(doc(guest.firestore(), 'bookings', 'policy-invalid'), bookingDoc({ check_in: manilaDatePlus(44) })))
-    await assertSucceeds(setDoc(doc(guest.firestore(), 'bookings', 'policy-valid'), bookingDoc({ check_in: manilaDatePlus(45) })))
+    await assertSucceeds(getDoc(doc(anonymousGuest().firestore(), 'site_config', 'booking')))
+    await assertFails(updateDoc(doc(anonymousGuest().firestore(), 'site_config', 'booking'), {
+      minimumBookingLeadTimeDays: 30,
+    }))
   })
 
   it.each([0, -1, 1.5, '45', null])('refuses invalid Admin policy value %s', async (minimumBookingLeadTimeDays) => {
     await assertFails(setDoc(doc(admin().firestore(), 'site_config', 'booking'), { minimumBookingLeadTimeDays }))
   })
 
-  it('preserves manual creates for both allowlisted and Profile-promoted Admins', async () => {
+  it('preserves manual creates for allowlisted and Profile-promoted Admins', async () => {
     await assertSucceeds(setDoc(doc(admin().firestore(), 'bookings', 'manual'), bookingDoc({ check_in: manilaDatePlus(1) })))
     await seed(async (owner) => setDoc(doc(owner.firestore(), 'profiles', 'promoted-admin-1'), { uid: 'promoted-admin-1', role: 'admin' }))
     const promoted = env.authenticatedContext('promoted-admin-1', {})
     await assertSucceeds(setDoc(doc(promoted.firestore(), 'bookings', 'manual-promoted'), bookingDoc({ check_in: manilaDatePlus(1) })))
   })
 
-  it('does not revalidate lead time on existing Guest withdrawals or Admin approval', async () => {
+  it('does not change existing owner withdrawals, Admin approval, or date immutability', async () => {
     await seed(async (owner) => {
       await setDoc(doc(owner.firestore(), 'bookings', 'legacy-cancel'), bookingDoc({ check_in: manilaDatePlus(7) }))
       await setDoc(doc(owner.firestore(), 'bookings', 'legacy-approve'), bookingDoc({ check_in: manilaDatePlus(7) }))
+      await setDoc(doc(owner.firestore(), 'bookings', 'immutable-dates'), bookingDoc())
     })
     await assertSucceeds(updateDoc(doc(anonymousGuest().firestore(), 'bookings', 'legacy-cancel'), { status: 'Cancelled' }))
     await assertSucceeds(updateDoc(doc(admin().firestore(), 'bookings', 'legacy-approve'), {
       status: 'Approved', payment_status: 'verified', amount_verified: 5000,
       payment_verified_at: new Date().toISOString(), payment_verified_by: 'admin-uid-1',
     }))
-  })
-
-  it('still refuses a Guest changing the dates of an existing booking', async () => {
-    const guest = anonymousGuest()
-    const target = doc(guest.firestore(), 'bookings', 'immutable-dates')
-    await assertSucceeds(setDoc(target, bookingDoc()))
-    await assertFails(updateDoc(target, { check_in: manilaDatePlus(7) }))
+    await assertFails(updateDoc(doc(anonymousGuest().firestore(), 'bookings', 'immutable-dates'), {
+      check_in: manilaDatePlus(7),
+    }))
   })
 })
 

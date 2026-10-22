@@ -888,16 +888,20 @@ service cloud.firestore {
     // ------------------------------------------------------------------
     // Bookings (shared by web /book, /account and the Flutter app — P2/P3)
     // ------------------------------------------------------------------
-    // - CREATE stays public pending-only so a web inquiry works unauthenticated.
-    //   Extra app keys (ref_id, uid, source, eta_share_url, paymentProofUrl,
-    //   extractedRefNumber) are additive.
+    // - CREATE is Admin-only at the client Rules boundary. Guest website creates
+    //   go through the `submitBooking` callable, whose Admin-SDK transaction
+    //   checks the last available unit and writes the Pending Booking + first
+    //   Activity entry atomically. Leaving direct Guest create open would let a
+    //   console bypass that conflict check.
     // - READ: own (the identity attached at creation), and the Admin.
     // - UPDATE: the Admin anything within the guard-rails below; a Guest their
     //   own self-serve keys. DELETE: the Admin.
     //   The Admin MUST re-check availability at approve time (G2), and the app
     //   re-checks it for them: see lib/services/booking_lifecycle.dart.
     match /bookings/{bookingId} {
-      allow create: if true
+      // Guest creation is a server command now. Only an authenticated Admin may
+      // write a Booking directly through a Firebase client SDK.
+      allow create: if isAdmin()
         && request.resource.data.keys().hasAll(['guest_name','phone','email','check_in','check_out','guests','accommodation','status','created_at','payment_proof_url','payment_status','amount_claimed'])
         && request.resource.data.guest_name is string && request.resource.data.guest_name.size() > 0
         && request.resource.data.email is string
@@ -916,20 +920,11 @@ service cloud.firestore {
         && request.resource.data.get('amount_verified', 0) == 0
         && request.resource.data.get('payment_verified_by', '') == ''
         && request.resource.data.get('payment_verified_at', '') == ''
-        // Admin-created manual/legacy records remain possible. Every Guest
-        // create must exactly match the currently published property rate.
-        //
-        // This is the one gate, and it is last, and it resolves the role once.
-        // Guest/public creates obey the lead time; only a backend-resolved
-        // Admin may create a manual booking sooner, so the Admin bypasses both
-        // the date rules and the money rules together. No existing update or
-        // action is gated, including review of a previously submitted Booking.
-        //
-        // It used to be two gates, each opening with its own `isAdmin()`, which
-        // cost a Guest four reads of `profiles/{uid}` before any policy was
-        // checked. See validGuestCreate for why that stopped a whole ruleset
-        // being evaluated at all.
-        && (isAdmin() || validGuestCreate(request.resource.data));
+        // The callable enforces lead time, current Published rates, identity,
+        // Payment proof and availability before its Admin-SDK write. A direct
+        // Admin create remains the existing manual/legacy exemption and does
+        // not pass through Guest-only policy checks.
+        ;
 
       // Cheapest check first: a Guest reading their own Booking should not pay
       // for a Profile read to find out they are allowed.

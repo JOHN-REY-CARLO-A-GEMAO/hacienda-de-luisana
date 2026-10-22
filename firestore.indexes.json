@@ -57,6 +57,24 @@
       ]
     },
     {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "accommodation",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "check_out",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "check_in",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "notifications",
       "queryScope": "COLLECTION",
       "fields": [

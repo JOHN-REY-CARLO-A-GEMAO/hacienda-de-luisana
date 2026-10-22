@@ -1,22 +1,18 @@
 /** Guest case client. No local-success fallback; all writes are trusted commands. */
-import { getFunctions, connectFunctionsEmulator, httpsCallable, type Functions } from 'firebase/functions'
+import { httpsCallable } from 'firebase/functions'
 import { collection, query, where, orderBy, limit, onSnapshot, getDocs, startAfter, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore'
-import { app, auth, db, isUsingEmulators } from './firebase'
+import { app, auth, db } from './firebase'
+import { functionsClient } from './functionsClient'
 import type { CaseRecord, Command } from '../../functions/src/domain'
 export { CATEGORIES, STATUSES } from '../../functions/src/domain'
 export type DisputeRecord = CaseRecord & { id: string }
 export type CaseActivity = { id: string; action: string; text: string | null; created_at: number; actor_role: string; attachment_ids: string[]; status: string }
 export type CaseEvidence = { id: string; name: string; type: string; owner: string; restricted: boolean; deleted?: boolean }
 export type CaseNotification = { id: string; user_id: string; case_id: string; reference: string; type: string; title: string; message: string; created_at: number; read: boolean }
-let functions: Functions | null = null
 function backend() {
   if (!app || !auth?.currentUser) throw new Error('Sign in to a connected Firebase account. Cases cannot be submitted in demo mode.')
   if (auth.currentUser.isAnonymous) throw new Error('Link your anonymous booking identity to a recoverable account before reporting.')
-  if (!functions) {
-    functions = getFunctions(app, 'asia-southeast1')
-    if (isUsingEmulators) connectFunctionsEmulator(functions, window.location.hostname, 5001)
-  }
-  return functions
+  return functionsClient()
 }
 async function call<T>(name: string, data: unknown): Promise<T> {
   return (await httpsCallable<unknown, T>(backend(), name)(data)).data

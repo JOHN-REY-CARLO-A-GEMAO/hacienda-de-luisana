@@ -68,7 +68,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 ### Features
 
 - Responsive landing (Hero, Accommodations, Experience, Gallery, Location, Reviews, FAQ)
-- `/book` — Guests book at least **30 days before check-in** (calendar dates in **Asia/Manila**, configurable via `site_config/booking`); native date-picker minimum plus authoritative Firestore create validation. Availability checks, 24-hour Date holds, downpayment proof and Pending → Admin review remain intact. See [BOOKING_POLICY.md](./BOOKING_POLICY.md) for configuration, enforcement, verification and deployment.
+- `/book` — Guests book at least **30 days before check-in** (calendar dates in **Asia/Manila**, configurable via `site_config/booking`). The inline color-coded calendar reads a privacy-safe server projection; the regional `submitBooking` callable transaction is the authoritative lead-time, price and availability boundary. The 24-hour Date hold, downpayment proof and Pending → Admin review remain intact. See [BOOKING_POLICY.md](./BOOKING_POLICY.md) for configuration, enforcement, verification and deployment.
 - `/account` — the Guest's own Bookings: status timeline, Date hold countdown, Payment plan choice from the published rates, Payment proof upload, withdraw, Activity log
 - `/login`, `/guest/auth` — Guest sign-in / sign-up, email + password and Google, password reset, session kept across reloads
 - `/admin/*`, `/app/*` — a notice: the Admin dashboard moved to the Admin mobile app
@@ -79,7 +79,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 | Route | Page | Who |
 | --- | --- | --- |
 | `/` | Landing | everyone |
-| `/book` | Booking form + availability | everyone (an anonymous Guest identity is attached at submit — ADR-0004) |
+| `/book` | Booking form + aggregate availability calendar | everyone (an authenticated Guest identity is bound by `submitBooking` — [ADR-0004](./adr/0004-a-web-guests-booking-belongs-to-the-anonymous-identity-attached-at-creation.md), [ADR-0020](./adr/0020-private-availability-projection-and-transactional-guest-submit.md)) |
 | `/login`, `/guest/auth` | Sign in / sign up | Guests |
 | `/account` | My Bookings | signed-in Guest (`booking:read:own`) |
 | `/status` | Deployment status — is this build wired to Firebase, and why not | everyone (read-only; the key is masked) |
