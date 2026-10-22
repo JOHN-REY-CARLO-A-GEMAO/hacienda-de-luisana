@@ -184,58 +184,36 @@ const guestCreate = (enforce: boolean, data: DocData = booking) => decide(
   { store: storeWith(enforce) },
 )
 
-describe('what the clauses cost, measured rather than estimated', () => {
+describe('what the callable-only create boundary costs', () => {
   const off = guestCreate(false)
   const on = guestCreate(true)
 
-  it('stays inside Firestore’s documented read limit for a single document', () => {
-    // 20 `get()`/`exists()` calls is the documented ceiling for a single-document
-    // request, and unlike the expression count this is measured in the same unit the
-    // service uses. The attestation costs one document, read twice at worst.
-    expect(on.allow).toBe(true)
-    expect(on.reads, `the enforced Guest create reads ${on.reads} documents`).toBeLessThanOrEqual(20)
-    expect(on.reads - off.reads, 'attestation should cost at most two reads (exists + get)')
-      .toBeLessThanOrEqual(2)
+  it('refuses direct Guest creation before reading rate or quote documents', () => {
+    expect(off.allow).toBe(false)
+    expect(on.allow).toBe(false)
+    // `isAdmin` checks the bootstrap allowlist and stored Profile role. Neither
+    // read is a rates, quote, or Booking inventory read.
+    expect(off.reads).toBeLessThanOrEqual(2)
+    expect(on.reads).toBeLessThanOrEqual(2)
   })
 
-  it('is paid for whether or not enforcement is on, because `let` bindings are eager', () => {
-    // The single most decision-relevant number in this file, and the reason it is
-    // not estimated. `validGuestQuote` binds `found` and `attested` with `let`, and
-    // Firestore evaluates a `let` when it is declared — so turning enforcement off
-    // skips the *decision*, not the *work*. An incident rollback that flips
-    // `site_config/booking.quotes_required` to false therefore does **not** return
-    // the rules to their pre-feature cost.
-    //
-    // Two consequences, both asserted here rather than argued: the estate pays for
-    // the attestation on every Guest create forever (so the ceiling below is the
-    // steady-state number, not the worst case), and `exists()` is still worth having
-    // in front of `get()` because a *missing* document short-circuits the whole
-    // comparison chain, which is what keeps the un-configured path cheap.
-    expect(off.allow).toBe(true)
-    expect(
-      Math.abs(on.expressions - off.expressions),
-      `enforcement on = ${on.expressions}, off = ${off.expressions} — a large gap would mean the switch also saves budget, and the rollback note below would be wrong`,
-    ).toBeLessThanOrEqual(40)
+  it('does not let obsolete quote-enforcement configuration change that decision', () => {
+    expect(on.allow).toBe(off.allow)
+    expect(on.reads).toBe(off.reads)
+    expect(Math.abs(on.expressions - off.expressions)).toBeLessThanOrEqual(10)
   })
 
-  it('keeps the whole Guest create under a canary ceiling', () => {
-    // ~1,190 nodes on a file that deploys today: this proxy is not Firestore's
-    // counter and the ceiling is not a pass — it exists so that re-entering the rate
-    // document from the booking clause, the descent ADR-0018 deleted, trips something
-    // other than a production `permission-denied`.
-    const baseline = 1400
-    expect(on.expressions, `Guest create measured ${on.expressions} evaluated nodes against a canary ceiling of ${baseline}`).toBeLessThan(baseline)
+  it('keeps the closed direct path comfortably below the evaluator canary', () => {
+    expect(on.expressions, `closed Guest create measured ${on.expressions} nodes`).toBeLessThan(500)
   })
 
-  it('costs an Admin manual Booking nothing, and reads no attestation for it', () => {
+  it('preserves Admin manual creation without consulting an attestation', () => {
     const admin = decide(request({
       method: 'create', path: 'bookings/cost-probe-admin', auth: allowlistedAdmin(),
-      // An Admin write with an unusable quote id: the exemption must be a boolean,
-      // not an error, and it must not go looking for the document.
-      requestData: { ...booking, stay_total: 1000, amount_due: 500, balance_due: 500, amount_claimed: 500, security_deposit: 0, quote_id: null },
-      time: AT,
+      requestData: { ...booking, quote_id: null }, time: AT,
     }), { store: storeWith(true) })
     expect(admin.allow).toBe(true)
-    expect(admin.reads, `the Admin create issued ${admin.reads} rule-layer reads; it should need only its own role check`).toBeLessThanOrEqual(1)
-    expect(admin.expressions).toBeLessThan(on.expressions)
-  })})
+    expect(admin.reads).toBeLessThanOrEqual(1)
+    expect(admin.expressions).toBeLessThan(500)
+  })
+})

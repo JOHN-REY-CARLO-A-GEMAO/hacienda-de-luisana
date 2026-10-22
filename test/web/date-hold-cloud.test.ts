@@ -1,19 +1,10 @@
 /**
- * A Guest must never be refused their own dates.
+ * Cloud availability must preserve Booking privacy without guessing.
  *
- * `checkAvailability` read `list()`, and in cloud mode that query is *always*
- * refused for a Guest - `firestore.rules` allows a read only when `isOwnDoc()`
- * (their own Booking) or `isAdmin()`, and `isOwnDoc()` is per-document, so an
- * unscoped collection query cannot be authorised for a Guest. `list()` therefore
- * always took its fallback branch and answered with whatever that one browser
- * happened to be holding. A Guest was then told their dates were held by a
- * Booking no other Guest can see, including fixtures the test suite wrote into
- * localStorage before `vitest.config.ts` was made hermetic.
- *
- * The real gate is the Admin re-check, run inside the approval transaction
- * (G2, ADR-0006). The demo-mode half of the decision is covered behaviourally
- * in `date-hold.test.ts` ("makes the dates unavailable to another Guest the
- * moment they are held"), which is why nothing is repeated here.
+ * A Guest cannot query everybody's private `bookings` documents through the
+ * browser SDK. The regional callable now performs that read and returns only
+ * day states. Local Browser data must never be substituted for a failed cloud
+ * read, and a failed callable must never become `available: true`.
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -22,10 +13,6 @@ import { describe, expect, it } from 'vitest'
 const source = readFileSync(join(__dirname, '../../src/lib/firestoreBookings.ts'), 'utf8')
 
 describe('list() in cloud mode', () => {
-  // Asserted against the source, because `isCloud` is fixed at module load
-  // (`isFirebaseConfigured && Boolean(db)`) so the cloud branch cannot be reached
-  // from a test. What is worth pinning is that the fallback is gone: it is the
-  // thing that made a Guest's own booking look like somebody else's claim.
   it('never answers with the local store when Firestore refuses', () => {
     const list = source.slice(
       source.indexOf('async list(): Promise<Booking[]>'),
@@ -38,13 +25,16 @@ describe('list() in cloud mode', () => {
 })
 
 describe('checkAvailability', () => {
-  it('short-circuits in cloud mode rather than inventing a conflict', () => {
+  it('uses the privacy-safe server projection and does not invent cloud availability', () => {
     const body = source.slice(
       source.indexOf('async checkAvailability('),
       source.indexOf('async materialiseExpiry('),
     )
-    expect(body).toMatch(/if \(this\.isCloud\) return \{ available: true, conflicts: \[\] \}/)
-    // And it must reach the real check *after* that guard, not instead of it.
+    expect(body).toContain('await this.getAvailabilityCalendar(')
+    expect(body).toContain('{ force: true }')
+    expect(body).not.toContain('return { available: true, conflicts: [] }')
+    // Demo mode still applies the canonical pure conflict function after the
+    // cloud branch; it is not used as a cloud failure fallback.
     expect(body.indexOf('if (this.isCloud)')).toBeLessThan(body.indexOf('findDateConflicts('))
   })
 })

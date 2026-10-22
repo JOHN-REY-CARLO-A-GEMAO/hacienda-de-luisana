@@ -26,11 +26,15 @@
 
 export const DAY_MS = 24 * 60 * 60 * 1000
 
-/** Parse an ISO `YYYY-MM-DD` date to a UTC timestamp, or null if it is not one. */
+/** Parse a real ISO `YYYY-MM-DD` date to a UTC timestamp, or null otherwise. */
 export function parseDate(iso: string | undefined | null): number | null {
-  if (!iso) return null
-  const time = new Date(`${iso.slice(0, 10)}T00:00:00Z`).getTime()
-  return Number.isNaN(time) ? null : time
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null
+  const time = Date.parse(`${iso}T00:00:00Z`)
+  // JavaScript normalises impossible dates (2026-02-30 → 2 March). A date used
+  // for inventory must round-trip exactly or corrupt data could paint the wrong
+  // night as free/occupied.
+  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== iso) return null
+  return time
 }
 
 /**

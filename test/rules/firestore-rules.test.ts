@@ -160,73 +160,17 @@ describe('official guest-count rates', () => {
     return booking
   }
 
-  it('classifies Monday–Thursday as weekday, Friday/Saturday as weekend, and Sunday check-in as weekday', () => {
-    expect(allow({ path: 'bookings/official-weekday', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-friday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
-      check_in: '2026-10-30', check_out: '2026-10-31', guests: 10, rate_amount: 6000,
-      rate_classification: 'weekend_holiday', stay_total: 6000, amount_due: 3000, balance_due: 3000,
-    }) }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-saturday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
-      check_in: '2026-10-31', check_out: '2026-11-01', guests: 10, rate_amount: 6000,
-      rate_classification: 'weekend_holiday', stay_total: 6000, amount_due: 3000, balance_due: 3000,
-    }) }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-sunday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
-      check_in: '2026-11-01', check_out: '2026-11-02', guests: 10, rate_amount: 5000,
-      rate_classification: 'weekday', stay_total: 5000, amount_due: 2500, balance_due: 2500,
-    }) }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-holiday', method: 'create', auth: anonymousGuest(), requestData: officialBooking({
-      check_in: '2026-10-27', check_out: '2026-10-28', rate_amount: 6000,
-      rate_classification: 'weekend_holiday', stay_total: 6000, amount_due: 3000, balance_due: 3000,
-    }) }, officialStore)).toBe(true)
-  })
-
-  it('computes included occupancy and linear excess without a Main House cap', () => {
-    expect(allow({ path: 'bookings/official-included', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 5 }) }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-excess-one', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 11, rate_amount: 5500, stay_total: 5500, amount_due: 2750, balance_due: 2750 }) }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-excess-four', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 14, rate_amount: 7000, stay_total: 7000, amount_due: 3500, balance_due: 3500 }) }, officialStore)).toBe(true)
-    expect(allow({ path: 'bookings/official-no-base-cap', method: 'create', auth: anonymousGuest(), requestData: officialBooking({ guests: 25, rate_amount: 12500, stay_total: 12500, amount_due: 6250, balance_due: 6250 }) }, officialStore)).toBe(true)
-  })
-
-  // The client's money is centavo-exact (roundMoney / downPaymentAmount), and
-  // the Rates screen can publish any positive figure — including odd peso
-  // totals, whose 50% down payment lands on .50, and centavo rates. The rules'
-  // own arithmetic must stay float division (`/ 100.0`): the real runtime is
-  // CEL-based and evaluates int/int as truncated integer division, which made
-  // the rules' total and due whole-peso figures that never matched the
-  // client's centavo snapshot — every such Booking refused as
-  // permission-denied while this offline engine (floating-point `/`) reported
-  // ALLOW. These cases pin the client's exact figures; the emulator companion
-  // is the one that reproduces the refusal under the real runtime.
-  it('agrees with the client’s centavo-exact math on odd and centavo published rates', () => {
-    // [published base_rate, the client's 50% down payment for it]:
-    // an odd peso total halves to .50; a centavo rate keeps its centavos.
-    const cases = [
-      [6001, 3000.5],
-      [6000.5, 3000.25],
-    ] as const
-    for (const [rate, due] of cases) {
-      const store = structuredClone(officialStore)
-      const mainHouse = (store['site_config/rates'].accommodations as DocData)['main-house'] as DocData
-      const pricing = mainHouse.guest_pricing as DocData
-      ;(pricing.weekday as DocData).base_rate = rate
-      ;(pricing.weekend_holiday as DocData).base_rate = rate
-      expect(allow({
-        path: 'bookings/official-centavo-exact', method: 'create', auth: anonymousGuest(),
-        requestData: officialBooking({
-          rate_amount: rate, stay_total: rate,
-          amount_due: due, balance_due: Math.round((rate - due) * 100) / 100,
-          amount_claimed: due,
-        }),
-      }, store)).toBe(true)
-      // One centavo off is still a tampered total.
+  it('refuses every direct Guest create; callable pricing owns rate classification and arithmetic', () => {
+    for (const requestData of [
+      officialBooking(),
+      officialBooking({ check_in: '2026-10-30', check_out: '2026-10-31', rate_amount: 6000,
+        rate_classification: 'weekend_holiday', stay_total: 6000, amount_due: 3000, balance_due: 3000 }),
+      officialBooking({ guests: 25, rate_amount: 12500, stay_total: 12500, amount_due: 6250, balance_due: 6250 }),
+      officialBooking({ rate_amount: 6000.5, stay_total: 6000.5, amount_due: 3000.25, balance_due: 3000.25 }),
+    ]) {
       expect(deny({
-        path: 'bookings/official-centavo-tampered', method: 'create', auth: anonymousGuest(),
-        requestData: officialBooking({
-          rate_amount: rate, stay_total: Math.round((rate + 0.01) * 100) / 100,
-          amount_due: due, balance_due: Math.round((rate - due) * 100) / 100,
-          amount_claimed: due,
-        }),
-      }, store)).toBe(true)
+        path: 'bookings/direct-guest-attempt', method: 'create', auth: anonymousGuest(), requestData,
+      }, officialStore)).toBe(true)
     }
   })
 
@@ -342,92 +286,22 @@ describe('official guest-count rates', () => {
     }, officialStore)).toBe(true)
   })
 
-  it('holds a Guest’s own figures to one coherent quote', () => {
-    // The baseline: the published weekday rate for ten guests, one 22-hour
-    // stay, half of it claimed as paid.
-    expect(allow({ path: 'bookings/official-coherent', method: 'create', auth: anonymousGuest(), requestData: officialBooking() }, officialStore)).toBe(true)
-
-    const refuse = (overrides: DocData, note: string) =>
-      expect(deny({ path: `bookings/official-${note}`, method: 'create', auth: anonymousGuest(), requestData: officialBooking(overrides) }, officialStore), note).toBe(true)
-
-    // Below the hard floor: nothing real is priced at a peso.
-    refuse({ stay_total: 1, amount_due: 0.5, balance_due: 0.5, amount_claimed: 0.5 }, 'floor')
-    // A stay longer than one 22-hour standard stay is not a Guest's to book.
-    refuse({ check_out: '2026-10-28', nights: 2 }, 'nights')
-    // A classification the rate card does not have.
-    refuse({ rate_classification: 'peak_season' }, 'classification')
-    // A retired rate unit.
-    refuse({ rate_unit: 'nightly' }, 'rate-unit')
-    // A plan that is not the published 50%.
-    refuse({ payment_plan: 'pay-at-check-in' }, 'plan')
-    // The split must close: half now plus the rest is the stay, exactly.
-    refuse({ amount_due: 2400 }, 'split-open')
-    refuse({ balance_due: 2600 }, 'balance-open')
-    // …and the claim cannot be under the down payment.
-    refuse({ amount_claimed: 2400 }, 'under-claimed')
-    // Zero, negative and fractional people are not a guest count. What the
-    // Accommodation actually holds is the published schedule's business, and
-    // reading it here is the descent that broke the budget — see the recorded
-    // gap below for what that costs.
-    refuse({ guests: 0 }, 'no-guests')
-    refuse({ guests: -1 }, 'negative-guests')
-    refuse({ guests: 1.5 }, 'fractional-guests')
-    // A charge that subtracts money is not a charge.
-    refuse({ pet_count: -1 }, 'negative-pets')
-    refuse({ late_checkout_hours: -2 }, 'negative-hours')
-    // The screenshot is what a Pending Booking is born with (ADR-0012).
-    refuse({ payment_proof_url: '' }, 'no-proof')
-    // And a Booking cannot arrive already verified, or already Approved.
-    refuse({ payment_status: 'verified' }, 'pre-verified')
+  it('closes the former coherent-quote gap at the raw Firestore boundary', () => {
+    const formerlyCoherent = [
+      {},
+      { stay_total: 1000, rate_amount: 1000, amount_due: 500, balance_due: 500, security_deposit: 0 },
+      { pet_count: 3 },
+      { accommodation: 'house-a-camping', guests: 4, rate_amount: 1000, stay_total: 1000,
+        amount_due: 500, security_deposit: 0, balance_due: 500 },
+      { refund_policy_snapshot: { refund_percent: 100, deposit_refund_percent: 100 } },
+    ]
+    for (const [index, overrides] of formerlyCoherent.entries()) {
+      expect(deny({
+        path: `bookings/direct-gap-${index}`, method: 'create', auth: anonymousGuest(),
+        requestData: officialBooking(overrides),
+      }, officialStore)).toBe(true)
+    }
   })
-
-  /**
-   * GAP (recorded 2026-10-14, closed-by-construction 2026-10-21).
-   *
-   * These five still pass, and that is the point of the case: this suite runs with
-   * `site_config/booking` absent, which is the estate's default, which means the
-   * price attestation of ADR-0019 is switched off. What each forgery now needs to
-   * get through is the switch staying off — with `quotes_required: true`, all five
-   * are refused, and `test/rules/quote-attestation.rules.test.ts` proves it case
-   * for case. Read the two files as one contract: this one pins what the rule
-   * layer alone still cannot see, that one pins what the attestation closes.
-   */
-  it('GAP (recorded, 2026-10-14): a coherent figure the published rate would not produce passes the rule layer', () => {
-    // Not an assertion that this is good. An assertion that this is the line,
-    // written where somebody has to move it. Every case below is internally
-    // coherent — so the rules, which no longer read `site_config/rates` on a
-    // Guest create, accept it — and each one used to be refused by the
-    // derivation that crossed the expression budget.
-    //
-    // What closes them is ADR-0019: a Cloud Function prices the stay from the
-    // published card, writes the answer to `booking_quotes/{id}` — which no client
-    // can write — and this file compares a Guest's figures against it field for
-    // field. That comparison is switched on by `site_config/booking.quotes_required`,
-    // so the state asserted below is the estate's default, not the end state: the
-    // five forgeries are refused the moment the Admin turns it on, which
-    // `test/rules/quote-attestation.rules.test.ts` asserts one case at a time.
-    // Until the function is deployed *and* the switch is set, ADR-0018's
-    // "accepted, interim" is the accurate description, and this case stays here so
-    // nobody has to discover that by trying.
-    const passes = (overrides: DocData, note: string) =>
-      expect(allow({ path: `bookings/official-gap-${note}`, method: 'create', auth: anonymousGuest(), requestData: officialBooking(overrides) }, officialStore), note).toBe(true)
-
-    // A ₱1,000 quote for a stay the card prices at ₱5,000, and a deposit
-    // zeroed, both sit inside the arithmetic the rules still check.
-    passes({ stay_total: 1000, rate_amount: 1000, amount_due: 500, balance_due: 500, security_deposit: 0 }, 'under-quote')
-    // Three pets the estate has not priced, on a stay that ignores them.
-    passes({ pet_count: 3 }, 'unpriced-pets')
-    // Four guests in a unit documented to hold three.
-    passes({ accommodation: 'house-a-camping', guests: 4, rate_amount: 1000, stay_total: 1000, amount_due: 500, security_deposit: 0, balance_due: 500 }, 'over-capacity')
-    // A refund policy the Guest wrote, rather than the one published: the
-    // snapshot is stored verbatim and nothing compares it here.
-    passes({ refund_policy_snapshot: { refund_percent: 100, deposit_refund_percent: 100 } }, 'refund-copy')
-    // A weekend classification on a Monday check-in, which is what a Guest
-    // choosing the schedule by hand — rather than the card classifying it —
-    // would file.
-    passes({ check_in: '2026-10-26', check_out: '2026-10-27', rate_classification: 'weekend_holiday', rate_amount: 6000, stay_total: 6000, amount_due: 3000, balance_due: 3000 }, 'own-classification')
-  })
-
 
   it('keeps an existing booking rate, classification, policy and money snapshot immutable', () => {
     const original = officialBooking({
@@ -448,7 +322,7 @@ describe('official guest-count rates', () => {
 describe('auth: who is asking', () => {
   const booking = bookingDoc()
 
-  it('lets a signed-out visitor create a Pending Booking once the screenshot is attached', () => {
+  it('refuses signed-out direct creation even when a screenshot is attached', () => {
     expect(allow({
       path: 'bookings/new-booking',
       method: 'create',
@@ -458,7 +332,7 @@ describe('auth: who is asking', () => {
         payment_proof_url: 'payments/guest-uid-1/proof.jpg',
         amount_claimed: 8500,
       }),
-    })).toBe(true)
+    })).toBe(false)
   })
 
   // `security_deposit` was removed from this list on 2026-10-14. It was the one
@@ -1480,7 +1354,7 @@ describe('payments: proof and verification', () => {
       }),
     ).toBe(true)
     expect(
-      allow({
+      deny({
         path: 'bookings/new-booking',
         method: 'create',
         auth: anonymousGuest(),

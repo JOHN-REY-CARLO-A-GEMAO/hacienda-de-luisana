@@ -31,7 +31,15 @@ class Query {
   limit(n: number) { this.maximum = n; return this; }
   async get() {
     const docs = [...store.keys()].filter(path => path.startsWith(this.path + '/') && path.split('/').length === this.path.split('/').length + 1)
-      .filter(path => this.conditions.every(([k, op, v]) => op === '==' ? store.get(path)[k] === v : op === 'in' ? v.includes(store.get(path)[k]) : typeof store.get(path)[k] === 'number' && store.get(path)[k] <= v))
+      .filter(path => this.conditions.every(([k, op, v]) => {
+        const found = store.get(path)[k];
+        if (op === '==') return found === v;
+        if (op === 'in') return v.includes(found);
+        if (op === '>') return found > v;
+        if (op === '<') return found < v;
+        if (op === '<=') return found <= v;
+        return false;
+      }))
       .slice(0, this.maximum).map(path => snapshot(new Reference(path)));
     return { docs, empty: !docs.length, size: docs.length };
   }
@@ -63,7 +71,7 @@ const accounts: Record<string, any> = {
 class FakeHttpsError extends Error { constructor(readonly code: string, message: string) { super(message); } }
 Module._load = function(name: string, ...rest: any[]) {
   if (name === 'firebase-admin/app') return { initializeApp: () => {} };
-  if (name === 'firebase-admin/firestore') return { getFirestore: () => database, FieldValue: { arrayUnion: (value: string) => [value] } };
+  if (name === 'firebase-admin/firestore') return { getFirestore: () => database, FieldValue: { arrayUnion: (value: string) => [value], serverTimestamp: () => 'server-timestamp' } };
   if (name === 'firebase-admin/auth') return { getAuth: () => ({ getUser: async (uid: string) => { if (!accounts[uid]) throw new Error('no account'); return accounts[uid]; }, getUserByEmail: async () => { throw new Error('not provisioned'); } }) };
   if (name === 'firebase-admin/storage') return { getStorage: () => {
     assert.equal(storageEnabled, true, 'Storage must not be called by case commands');
@@ -252,4 +260,167 @@ test('failed temporary cleanup retries without a second slot release or lost loc
   assert.equal(store.get(`cases/${c.caseId}`).attachment_count, 0);
   assert.equal(store.get(`casePrivate/${c.caseId}`).retention_lock, false);
   assert.equal(store.get('caseUploads/pending-one').state, 'expired'); assert.equal(deletedPrefixes.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Availability / Booking submit callables
+// ---------------------------------------------------------------------------
+
+function isoAfter(days: number) {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+}
+function bookingRates() {
+  const schedule = (base: number, cap?: number) => ({
+    min_guests: 1, base_max_guests: cap ?? 10, base_rate: base,
+    ...(cap ? { max_guests: cap } : { excess_per_guest: 500 }),
+  });
+  return {
+    version: 'availability-v1', effective_date: '2026-01-01', holiday_dates: [],
+    accommodations: {
+      'main-house': {
+        property_name: 'The Main House', rate_unit: 'standard_stay', active: true,
+        available_units: 1, security_deposit: 500, down_payment_percent: 50,
+        guest_pricing: { units_per_booking: 1, weekday: schedule(6000), weekend_holiday: schedule(6000) },
+      },
+      annex: {
+        property_name: 'HDL Annex', rate_unit: 'standard_stay', active: true,
+        available_units: 1, security_deposit: 500, down_payment_percent: 50,
+        guest_pricing: { units_per_booking: 1, weekday: schedule(4000), weekend_holiday: schedule(4000) },
+      },
+      'house-a-camping': {
+        property_name: 'A-House', rate_unit: 'standard_stay', active: true,
+        available_units: 2, security_deposit: 0, down_payment_percent: 50,
+        guest_pricing: { units_per_booking: 1, weekday: schedule(1000, 3), weekend_holiday: schedule(1000, 3) },
+      },
+    },
+  };
+}
+function guestBooking(uid: string, checkIn = isoAfter(45)) {
+  const checkOut = new Date(Date.parse(`${checkIn}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  const day = new Date(`${checkIn}T00:00:00Z`).getUTCDay();
+  return {
+    guest_name: 'Ana Reyes', phone: '09171234567', email: 'ana@example.test',
+    check_in: checkIn, check_out: checkOut, guests: 2, accommodation: 'main-house',
+    special_requests: '', pet_count: 0, late_checkout_hours: 0,
+    uid, source: 'web', payment_proof_url: `payments/${uid}/proof.png`,
+    paymentProofUrl: `payments/${uid}/proof.png`, payment_status: 'pending',
+    amount_claimed: 3000, payment_plan: 'down-payment', nights: 1,
+    rate_amount: 6000, rate_unit: 'standard_stay',
+    rate_classification: day === 5 || day === 6 ? 'weekend_holiday' : 'weekday',
+    stay_total: 6000, amount_due: 3000, balance_due: 3000, security_deposit: 500,
+    policy_version: 'availability-v1', policy_effective_date: '2026-01-01',
+    refund_policy_snapshot: null,
+  };
+}
+function aHouseBooking(uid: string, checkIn = isoAfter(45)) {
+  return {
+    ...guestBooking(uid, checkIn),
+    accommodation: 'house-a-camping', guests: 2,
+    rate_amount: 1000, stay_total: 1000, amount_due: 500, balance_due: 500,
+    amount_claimed: 500, security_deposit: 0,
+  };
+}
+function prepareBookingConfig() {
+  store.set('site_config/rates', bookingRates());
+  store.set('site_config/booking', { minimumBookingLeadTimeDays: 30, quotes_required: false });
+}
+
+test('Guest submit creates the Pending Booking and first Activity entry atomically', async () => {
+  prepareBookingConfig();
+  const payload = guestBooking('guest-one');
+  const result = await run('guest-one', { booking: payload }, 'submitBooking');
+  assert.equal(result.status, 'Pending');
+  assert.equal(store.get(`bookings/${result.id}`).status, 'Pending');
+  assert.equal(store.get(`bookings/${result.id}`).hold_expires_at, result.hold_expires_at);
+  assert.equal(store.get(`bookings/${result.id}/activity/0`).action, 'Submit');
+  assert.equal(store.get(`bookings/${result.id}/activity/0`).actor_id, 'guest-one');
+  assert.deepEqual(store.get('booking_inventory_locks/main-house'), {
+    revision: 1,
+    updated_at: 'server-timestamp',
+  });
+});
+
+test('two concurrent Guest submits cannot both claim the last unit', async () => {
+  prepareBookingConfig();
+  const checkIn = isoAfter(46);
+  const attempts = await Promise.allSettled([
+    run('guest-one', { booking: guestBooking('guest-one', checkIn) }, 'submitBooking'),
+    run('guest-two', { booking: guestBooking('guest-two', checkIn) }, 'submitBooking'),
+  ]);
+  assert.equal(attempts.filter(item => item.status === 'fulfilled').length, 1);
+  const refused = attempts.find(item => item.status === 'rejected') as PromiseRejectedResult;
+  assert.equal(refused.reason.code, 'already-exists');
+  assert.equal([...store.keys()].filter(path => /^bookings\/[^/]+$/.test(path)).length, 1);
+});
+
+test('transactional submit honours the A-House two-unit Published inventory', async () => {
+  prepareBookingConfig();
+  const checkIn = isoAfter(46);
+  await run('guest-one', { booking: aHouseBooking('guest-one', checkIn) }, 'submitBooking');
+  await run('guest-two', { booking: aHouseBooking('guest-two', checkIn) }, 'submitBooking');
+  await assert.rejects(
+    run('guest-three', { booking: aHouseBooking('guest-three', checkIn) }, 'submitBooking'),
+    (error: any) => error.code === 'already-exists',
+  );
+  assert.equal(store.get('booking_inventory_locks/house-a-camping').revision, 2);
+});
+
+test('calendar reply exposes only day states and honours checkout boundaries', async () => {
+  prepareBookingConfig();
+  const payload = guestBooking('guest-one', isoAfter(47));
+  const created = await run('guest-one', { booking: payload }, 'submitBooking');
+  const result = await run(null, {
+    accommodation: 'main-house', from: payload.check_in, to: payload.check_out,
+  }, 'bookingAvailability');
+  assert.deepEqual(result.days, [{ date: payload.check_in, state: 'pending' }]);
+  assert.equal(JSON.stringify(result).includes('guest_name'), false);
+  assert.equal(JSON.stringify(result).includes(created.id), false);
+
+  const next = await run(null, {
+    accommodation: 'main-house', from: payload.check_out,
+    to: new Date(Date.parse(`${payload.check_out}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10),
+  }, 'bookingAvailability');
+  assert.deepEqual(next.days, [{ date: payload.check_out, state: 'available' }]);
+});
+
+test('calendar fails closed for missing inventory or corrupt overlapping records', async () => {
+  prepareBookingConfig();
+  delete store.get('site_config/rates').accommodations['main-house'].available_units;
+  await assert.rejects(
+    run(null, { accommodation: 'main-house', from: isoAfter(45), to: isoAfter(46) }, 'bookingAvailability'),
+    (error: any) => error.code === 'unavailable',
+  );
+
+  prepareBookingConfig();
+  store.set('bookings/corrupt', {
+    accommodation: 'main-house', check_in: isoAfter(45), check_out: 'not-a-date', status: 'Approved',
+  });
+  await assert.rejects(
+    run(null, { accommodation: 'main-house', from: isoAfter(45), to: isoAfter(46) }, 'bookingAvailability'),
+    (error: any) => error.code === 'unavailable',
+  );
+});
+
+test('Guest submit enforces the published lead time before writing a lock or Booking', async () => {
+  prepareBookingConfig();
+  await assert.rejects(
+    run('guest-one', { booking: guestBooking('guest-one', isoAfter(1)) }, 'submitBooking'),
+    (error: any) => error.code === 'invalid-argument' && error.message.includes('too soon'),
+  );
+  assert.equal([...store.keys()].some(path => path.startsWith('bookings/')), false);
+  assert.equal([...store.keys()].some(path => path.startsWith('booking_inventory_locks/')), false);
+});
+
+test('Guest submit refuses a foreign identity and stale/invented money before writes', async () => {
+  prepareBookingConfig();
+  const before = clone([...store.entries()]);
+  await assert.rejects(
+    run('guest-one', { booking: guestBooking('guest-two') }, 'submitBooking'),
+    (error: any) => error.code === 'permission-denied',
+  );
+  await assert.rejects(
+    run('guest-one', { booking: { ...guestBooking('guest-one'), stay_total: 1000, amount_due: 500, balance_due: 500 } }, 'submitBooking'),
+    (error: any) => error.code === 'failed-precondition',
+  );
+  assert.deepEqual([...store.entries()], before);
 });

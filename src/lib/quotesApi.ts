@@ -20,9 +20,10 @@
  * old path; with it on, no quote means no Booking, and the Guest is told why.
  */
 import { doc, getDocFromServer } from 'firebase/firestore'
-import { connectFunctionsEmulator, getFunctions, httpsCallable, type Functions } from 'firebase/functions'
+import { httpsCallable, type Functions } from 'firebase/functions'
 import type { AuthoritativeMoney, QuoteRequest } from '../../functions/src/pricing'
-import { app, auth, db, isFirebaseConfigured, isUsingEmulators } from './firebase'
+import { app, auth, db, isFirebaseConfigured } from './firebase'
+import { functionsClient } from './functionsClient'
 
 /** What the page may show and the write may carry: the id, the figures, and how long they hold. */
 export type AttestedQuote = {
@@ -52,8 +53,6 @@ export class QuoteRefusedError extends Error {
   }
 }
 
-const functionsClient: { current: Functions | null } = { current: null }
-
 function backend(): Functions {
   if (!app) throw new QuoteRefusedError('BACKEND_UNAVAILABLE', 'Prices cannot be confirmed in demo mode. Use a connected Firebase project to book.', { retryable: false })
   // The attestation is bound to an identity, and `firestore.rules` now refuses one
@@ -63,16 +62,7 @@ function backend(): Functions {
   if (!auth?.currentUser) {
     throw new QuoteRefusedError('AUTH_REQUIRED', 'We need to reconnect you before we can confirm a price. Please try again in a moment.', { retryable: true })
   }
-  if (!functionsClient.current) {
-    functionsClient.current = getFunctions(app, 'asia-southeast1')
-    // Same host and port the disputes client connects to: one emulator, one region,
-    // and — importantly — only when the app is actually configured for emulators.
-    // Connecting unconditionally would point production at localhost:5001.
-    if (isUsingEmulators) {
-      connectFunctionsEmulator(functionsClient.current, window.location.hostname, 5001)
-    }
-  }
-  return functionsClient.current
+  return functionsClient()
 }
 
 type CallableError = { code?: string; message?: string; details?: unknown }

@@ -34,6 +34,7 @@ import { dateToISOString } from './formatDate'
 import {
   applyAction,
   approvalCouplingSet,
+  calendarAvailability,
   effectiveStatus,
   findDateConflicts,
   formatHoldCountdown,
@@ -54,9 +55,15 @@ import {
   type Actor,
   type BookingAction,
   type BookingStatus,
+  type CalendarAvailabilityDay,
   type DateRange,
   type HoldBearingBooking,
 } from './booking'
+import {
+  requestBookingAvailability,
+  submitGuestBooking,
+  type AvailabilitySnapshot,
+} from './availabilityApi'
 
 const COLLECTION = 'bookings'
 /** Per-Booking Activity log: `bookings/{id}/activity`, append-only. */
@@ -643,6 +650,30 @@ export const cloudBookingsDB = {
       }, policy.quotesRequired)
     }
 
+    // Website Bookings use the authoritative server operation. It re-reads the
+    // current Published rates and every overlapping Date hold inside the same
+    // transaction that creates the Pending Booking and its first Activity entry.
+    // A failed or unknown availability check is therefore a refusal, never a
+    // local-success fallback and never a direct addDoc race.
+    if (isCloud && db && rest.source === 'web') {
+      const submitted = {
+        ...rest,
+        ...(attested ? { quote_id: attested.quoteId } : {}),
+        payment_status: 'pending' as const,
+        payment_plan: rest.payment_plan ?? 'down-payment' as const,
+      }
+      const receipt = await submitGuestBooking(submitted as unknown as Record<string, unknown>)
+      lastWriteFailure = null
+      return {
+        id: receipt.id,
+        ...submitted,
+        status: 'Pending',
+        created_at: receipt.created_at,
+        hold_expires_at: receipt.hold_expires_at,
+        storage: 'cloud',
+      }
+    }
+
     const submitter: Actor = actor ?? { actor: 'guest', actor_id: rest.uid ?? 'guest' }
     const at = instantOf(submitter)
     const holdExpiresAt = initialHoldExpiry(at)
@@ -788,43 +819,81 @@ export const cloudBookingsDB = {
   },
 
   /**
+   * A privacy-safe overnight calendar for one Accommodation.
+   *
+   * Cloud mode calls the regional Function: it may read private Bookings but
+   * returns only available/pending/booked day states. Demo mode applies the same
+   * pure projection to the browser's local Booking store.
+   */
+  async getAvailabilityCalendar(
+    request: { accommodation: string; from: string; to: string },
+    options: { now?: string | number | Date; force?: boolean } = {},
+  ): Promise<AvailabilitySnapshot> {
+    if (this.isCloud) {
+      return requestBookingAvailability(request, { force: options.force })
+    }
+    const now = options.now ?? Date.now()
+    const [bookings, published] = await Promise.all([
+      this.list(),
+      ratesDB.get().catch(() => null),
+    ])
+    const days: CalendarAvailabilityDay[] = calendarAvailability(request, bookings, {
+      unitsAvailable: unitsForAccommodation(request.accommodation, ACCOMMODATIONS, published),
+      now,
+    })
+    return {
+      ...request,
+      generated_at: new Date(now).toISOString(),
+      days,
+    }
+  },
+
+  /**
    * Are these dates free for a Guest to ask for?
    *
-   * The same rule the Admin's approval re-check applies (G2), with the unit count
-   * taken from the published Accommodations, so a Guest is never offered dates
-   * that are already held and the Admin is never asked to refuse them by hand.
+   * A cloud check is a fresh server read, not a query the Guest SDK is forbidden
+   * to perform and not an optimistic "available" fallback. The create operation
+   * repeats this inside the same transaction as the Pending Booking write.
    */
   async checkAvailability(
     request: DateRange,
     options: { now?: string | number | Date } = {},
-  ): Promise<{ available: boolean; conflicts: HoldBearingBooking[] }> {
+  ): Promise<{
+    available: boolean
+    conflicts: HoldBearingBooking[]
+    blockingState?: Exclude<CalendarAvailabilityDay['state'], 'available'>
+  }> {
     const now = options.now ?? Date.now()
-
-    // In cloud mode a Guest cannot be told whether other Guests hold the dates,
-    // because the rules let them read only their own Booking and an availability
-    // check needs to see everyone else's. There is no client-side query that
-    // answers it, so this returns "no conflict" rather than inventing one - and
-    // the check is not the real gate either way. The authoritative re-check is the
-    // Admin's, run inside the approval transaction (G2, ADR-0006), which reads
-    // Firestore under a rule that can see every Booking and cannot be raced.
-    //
-    // Previously this read `list()`, which for a Guest always failed and always
-    // fell back to this browser's own store - so a Guest was refused their own
-    // dates by a Booking no other Guest can see. That is the bug the demo-mode
-    // branch below still usefully avoids.
-    if (this.isCloud) return { available: true, conflicts: [] }
+    if (this.isCloud) {
+      const snapshot = await this.getAvailabilityCalendar(
+        { accommodation: request.accommodation, from: request.check_in, to: request.check_out },
+        { force: true },
+      )
+      const blocked = snapshot.days.find((day) => day.state !== 'available')
+      return {
+        available: !blocked,
+        conflicts: [],
+        ...(blocked ? { blockingState: blocked.state as Exclude<CalendarAvailabilityDay['state'], 'available'> } : {}),
+      }
+    }
 
     const bookings = await this.list()
-    // The unit count comes from the published rates document, which is where the
-    // Admin states an Accommodation's physical inventory. Without one published
-    // there is no booking to accept either, so the catalogue fallback below only
-    // ever runs in demo mode.
     const published = await ratesDB.get().catch(() => null)
+    const unitsAvailable = unitsForAccommodation(request.accommodation, ACCOMMODATIONS, published)
     const conflicts = findDateConflicts(request, bookings, {
-      unitsAvailable: unitsForAccommodation(request.accommodation, ACCOMMODATIONS, published),
+      unitsAvailable,
       now,
     })
-    return { available: conflicts.length === 0, conflicts }
+    const blocked = calendarAvailability(
+      { accommodation: request.accommodation, from: request.check_in, to: request.check_out },
+      bookings,
+      { unitsAvailable, now },
+    ).find((day) => day.state !== 'available')
+    return {
+      available: !blocked,
+      conflicts,
+      ...(blocked ? { blockingState: blocked.state as Exclude<CalendarAvailabilityDay['state'], 'available'> } : {}),
+    }
   },
 
   /**

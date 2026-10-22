@@ -15,23 +15,23 @@ const id = scenarios.booking.id
 const path = scenarios.evidence.valid.path
 const bytes = new Uint8Array([1, 2, 3, 4])
 
-it('F01-CANONICAL-CURRENT: signed-out arbitrary nonempty owner can create', async () => {
-  await assertSucceeds(setDoc(doc(env.unauthenticatedContext().firestore(), 'bookings', id), canonicalBooking({ uid: scenarios.identities.forgedUid.uid })))
+it('F01-CANONICAL-FIXED: signed-out clients cannot create a Booking for an arbitrary owner', async () => {
+  await denied(() => setDoc(doc(env.unauthenticatedContext().firestore(), 'bookings', id), canonicalBooking({ uid: scenarios.identities.forgedUid.uid })))
 })
-it('F01-CANONICAL-CURRENT: authenticated second Guest can create a booking naming the first Guest', async () => {
-  await assertSucceeds(setDoc(doc(context(env, 'secondGuest').firestore(), 'bookings', id), canonicalBooking()))
+it('F01-CANONICAL-FIXED: an authenticated Guest cannot bypass submitBooking with a direct create', async () => {
+  await denied(() => setDoc(doc(context(env, 'secondGuest').firestore(), 'bookings', id), canonicalBooking()))
 })
 it.each([
   ['guests-string', { guests: 'synthetic-not-a-number' }], ['guests-zero', { guests: 0 }],
   ['reversed-checkout', { check_out: '2099-11-01' }], ['invalid-checkout', { check_out: 'synthetic-not-a-date' }],
   ['unknown-accommodation', { accommodation: 'phase0-nonexistent-unit' }], ['uid-null', { uid: null }],
   ['unassociated-proof', { payment_proof_url: scenarios.evidence.foreignUid.path }],
-] as const)('F01-CANONICAL-CURRENT malformed %s is accepted', async (_name, patch) => {
-  await assertSucceeds(setDoc(doc(context(env, 'anonymousGuest').firestore(), 'bookings', id), canonicalBooking(patch)))
+] as const)('F01-CANONICAL-FIXED: malformed direct create %s is refused at the server-only boundary', async (_name, patch) => {
+  await denied(() => setDoc(doc(context(env, 'anonymousGuest').firestore(), 'bookings', id), canonicalBooking(patch)))
 })
-it('F01-CANONICAL-CONTROLS: own anonymous create/read works; second Guest and signed-out reads are refused', async () => {
+it('F01-CANONICAL-CONTROLS: owner read works after a server write; foreign and signed-out reads are refused', async () => {
   const own = context(env, 'anonymousGuest').firestore()
-  await assertSucceeds(setDoc(doc(own, 'bookings', id), canonicalBooking()))
+  await seed(env, owner => setDoc(doc(owner.firestore(), 'bookings', id), canonicalBooking()))
   await assertSucceeds(getDoc(doc(own, 'bookings', id)))
   await denied(() => getDoc(doc(context(env, 'secondGuest').firestore(), 'bookings', id)))
   await denied(() => getDoc(doc(env.unauthenticatedContext().firestore(), 'bookings', id)))

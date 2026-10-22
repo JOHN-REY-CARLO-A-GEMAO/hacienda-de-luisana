@@ -29,7 +29,7 @@ _Avoid_: Scope, entitlement, access level
 ### Applications
 
 **Website**:
-The Guest's application (`src/`): availability, the Booking form, Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app.
+The Guest's application (`src/`): a privacy-safe aggregate availability calendar, the Booking form, Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app. Private Booking reads and authoritative website creation cross regional callable boundaries (`bookingAvailability` and `submitBooking`; ADR-0020).
 _Avoid_: Portal, dashboard, admin site
 
 **Admin app**:
@@ -51,7 +51,7 @@ A Guest's request for one Accommodation over a date range, tracked from submissi
 _Avoid_: Reservation (a Booking that has been paid and reserved), inquiry, order
 
 **Minimum booking lead time**:
-The calendar days a Guest must leave between creating a Booking and check-in. Hacienda de LuisAna requires Guests to create Bookings at least **30 calendar days** before the intended check-in date, using **Asia/Manila** for today. Exactly today + 30 days is allowed; today + 29 is not. The Admin-owned `site_config/booking.minimumBookingLeadTimeDays` may change the requirement; an absent setting defaults to 30. The website disables earlier dates and pre-checks before proof upload, but `firestore.rules` is the authoritative create-time enforcement using server time. Existing Bookings and Admin lifecycle/manual operations are not retroactively restricted.
+The calendar days a Guest must leave between creating a Booking and check-in. Hacienda de LuisAna requires Guests to create Bookings at least **30 calendar days** before the intended check-in date, using **Asia/Manila** for today. Exactly today + 30 days is allowed; today + 29 is not. The Admin-owned `site_config/booking.minimumBookingLeadTimeDays` may change the requirement; an absent setting defaults to 30. The website disables earlier dates and pre-checks before proof upload, but the regional `submitBooking` callable is the authoritative Guest create-time enforcement using server time. Firestore Rules close direct Guest creates; existing Bookings and Admin lifecycle/manual operations are not retroactively restricted.
 
 **Stay**:
 The period a Guest occupies an Accommodation, from check-in to check-out.
@@ -63,6 +63,10 @@ _Avoid_: Confirmed (retired; a paid historical stay is Reserved), KYC Submitted 
 **Date hold**:
 The claim a Booking places on its dates. It counts down 24 hours while the Booking waits for review, and becomes firm when the Admin approves; from there only a terminal status releases the dates.
 _Avoid_: TTL, lock, block, reservation
+
+**Availability projection**:
+The privacy-safe day states returned by `bookingAvailability` from private Bookings and Published `available_units`: Available, Pending hold, Booked, or Unknown. It is not a stored calendar and never returns another Guest's Booking. A Stay occupies `[check_in, check_out)`, so checkout is reusable. A short browser cache may explain the calendar, but `submitBooking` rechecks and serializes the actual claim (ADR-0020).
+_Avoid_: availability database, blackout table, room calendar
 
 **Expired**:
 The terminal Booking status reached when a date hold runs out. Releasing the dates is part of expiring.
@@ -129,7 +133,7 @@ Identity verification of the Guest by government ID. Removed from the system: th
 _Avoid_: Verification, ID check, eKYC (the feature no longer exists — do not reintroduce it under these names)
 
 **Guest identity**:
-The anonymous sign-in a Guest's own Booking and uploaded documents are keyed to, attached when the Booking is created. A Booking created without one cannot be claimed later — in the cloud the rules now refuse such a creation outright, so the failure is loud (ADR-0004, as amended).
+The Firebase sign-in a Guest's own Booking and uploaded documents are keyed to. `submitBooking` binds the Booking to the authenticated caller and refuses a missing or foreign UID; direct Guest creates are closed by Firestore Rules. A Booking created without that identity cannot be claimed later (ADR-0004, ADR-0020).
 _Avoid_: User account, login, session
 
 **Activity log**:
