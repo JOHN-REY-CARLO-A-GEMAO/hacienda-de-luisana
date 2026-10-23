@@ -19,7 +19,7 @@
  * the number a Guest sees in a counter, the number that refuses a submit and
  * the number the Cloud Function checks must be one number.
  */
-import { bookingBusinessDate } from './booking'
+import { bookingBusinessDate, MAX_STAY_NIGHTS, maximumCheckoutDate } from './booking'
 
 export const MIN_GUEST_AGE = 10
 export const PH_MOBILE_MAX_DIGITS = 11
@@ -91,7 +91,12 @@ export const REF_MAX = 40
 export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5MB
 export const ALLOWED_PROOF_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 export const MIN_BOOKING_NIGHTS = 1
-export const MAX_BOOKING_NIGHTS = 30
+/**
+ * The same ceiling the calendar picker and the `submitBooking` callable enforce.
+ * Read from the booking module rather than restated here: a Guest must not be
+ * told 20 by one surface and 30 by another.
+ */
+export const MAX_BOOKING_NIGHTS = MAX_STAY_NIGHTS
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ' .\-]+$/
@@ -271,7 +276,13 @@ export function validateStayDates(checkIn: string, checkOut: string, now = new D
     return { ok: false, field: 'check_out', message: 'Check-out must be after check-in' }
   }
   if (nights > MAX_BOOKING_NIGHTS) {
-    return { ok: false, field: 'check_out', message: `Stays may be at most ${MAX_BOOKING_NIGHTS} nights` }
+    const lastCheckout = maximumCheckoutDate(checkIn)
+    return {
+      ok: false,
+      field: 'check_out',
+      message: `A stay may be at most ${MAX_BOOKING_NIGHTS} nights; this one is ${nights}.`
+        + (lastCheckout ? ` Choose a checkout date on or before ${lastCheckout}.` : ''),
+    }
   }
   return { ok: true }
 }

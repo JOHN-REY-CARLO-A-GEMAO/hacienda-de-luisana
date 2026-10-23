@@ -28,6 +28,7 @@ export {
 
 export {
   DATE_HOLD_MS,
+  MAX_STAY_NIGHTS,
   approvalCouplingSet,
   calendarAvailability,
   datesOverlap,
@@ -38,7 +39,9 @@ export {
   isAvailable,
   isHoldExpirable,
   isHoldExpired,
+  maximumCheckoutDate,
   nightsBetween,
+  stayLengthProblem,
   suggestAlternativeDates,
   type AlternativeDateOptions,
   type AvailabilityOptions,
@@ -48,6 +51,7 @@ export {
   type DateHoldFields,
   type DateRange,
   type HoldBearingBooking,
+  type StayLengthProblem,
 } from './availability'
 
 export {

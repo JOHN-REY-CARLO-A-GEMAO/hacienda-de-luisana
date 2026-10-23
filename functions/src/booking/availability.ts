@@ -65,6 +65,49 @@ export function nightsBetween(checkIn: string, checkOut: string): number {
 /** How long a submitted Booking holds its dates while it waits for review. */
 export const DATE_HOLD_MS = DAY_MS
 
+// ----------------------------------------------------------------------------
+// Stay length
+// ----------------------------------------------------------------------------
+
+/**
+ * The longest stay a Guest may book online, in nights.
+ *
+ * A maximum, not a target. The published rate model is still one 22-hour
+ * standard stay (`quoteAccommodation`), so this bounds the range a Guest may
+ * even select without inventing a longer-stay price. One number, read by the
+ * calendar picker, the client preflight and the `submitBooking` callable, so
+ * the three cannot disagree about where the limit is.
+ */
+export const MAX_STAY_NIGHTS = 20
+
+export type StayLengthProblem = 'CHECK_OUT_NOT_AFTER_CHECK_IN' | 'STAY_TOO_LONG'
+
+/**
+ * What is wrong with this stay's length, if anything.
+ *
+ * A half-open range of one night is the shortest stay; more than
+ * `MAX_STAY_NIGHTS` nights is too long. Unparseable dates are not this rule's
+ * business — they belong to the date validators, and reporting a length for
+ * them would only invent a second, conflicting reason.
+ */
+export function stayLengthProblem(checkIn: string, checkOut: string): StayLengthProblem | null {
+  const start = parseDate(checkIn)
+  const end = parseDate(checkOut)
+  if (start === null || end === null) return null
+  if (end <= start) return 'CHECK_OUT_NOT_AFTER_CHECK_IN'
+  return (end - start) / DAY_MS > MAX_STAY_NIGHTS ? 'STAY_TOO_LONG' : null
+}
+
+/**
+ * The last checkout date a stay starting on `checkIn` may use, or null when the
+ * check-in is not a real calendar date. Used to bound a date input and to name
+ * the limit in a message.
+ */
+export function maximumCheckoutDate(checkIn: string): string | null {
+  const start = parseDate(checkIn)
+  return start === null ? null : isoDate(start + MAX_STAY_NIGHTS * DAY_MS)
+}
+
 /**
  * The statuses whose Booking still claims its dates.
  *

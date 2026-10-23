@@ -28,6 +28,7 @@ import {
   type RateClassification,
 } from './booking/rates'
 import { paymentOptionsForTotal } from './booking/money'
+import { MAX_STAY_NIGHTS } from './booking/availability'
 import { configuredBookingLeadTimeDays, validateMinimumBookingLeadTime } from './booking/leadTime'
 
 /** What a quote is for. No money here: money is what this module produces. */
@@ -75,6 +76,7 @@ export interface DerivedQuote {
  */
 export type QuoteCause =
   | 'REQUEST_SHAPE'
+  | 'STAY_TOO_LONG'
   | 'NOT_A_STANDARD_STAY'
   | 'LEAD_TIME'
   | 'PUBLISHED_RATES_MISSING'
@@ -115,7 +117,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 const GUEST_MESSAGES: Record<QuoteCause, string> = {
   REQUEST_SHAPE: 'We could not read the dates or the party size you sent. Please check the form and try again.',
-  NOT_A_STANDARD_STAY: 'That stay is not one we can quote online. Please contact the Hacienda.',
+  STAY_TOO_LONG: `A stay may be at most ${MAX_STAY_NIGHTS} nights. Please choose an earlier checkout date.`,
+  NOT_A_STANDARD_STAY: 'Online booking currently prices one 22-hour standard stay (one night). Your selected range is longer, so it cannot be quoted yet — choose a checkout one night after check-in, or contact the Hacienda.',
   LEAD_TIME: 'Those dates are too soon to book.',
   PUBLISHED_RATES_MISSING: 'Prices are being updated right now, so we cannot take a booking this minute. Please try again shortly.',
   PUBLISHED_RATES_MALFORMED: 'Prices are being updated right now, so we cannot take a booking this minute. Please try again shortly.',
@@ -227,6 +230,23 @@ export function deriveQuote(
     return refuse('LEAD_TIME', `check_in ${request.check_in}: ${leadTime.reason}`, 'invalid-argument')
   }
   const nights = Math.round((Date.parse(`${request.check_out}T00:00:00Z`) - Date.parse(`${request.check_in}T00:00:00Z`)) / DAY_MS)
+  // Checkout must be later than check-in, and the stay may not exceed the shared
+  // maximum. Both are checked before the standard-stay rule so a Guest is told
+  // the rule they actually broke.
+  if (nights <= 0) {
+    return refuse(
+      'REQUEST_SHAPE',
+      `check_out ${request.check_out} is not after check_in ${request.check_in}`,
+      'invalid-argument',
+    )
+  }
+  if (nights > MAX_STAY_NIGHTS) {
+    return refuse(
+      'STAY_TOO_LONG',
+      `a stay may be at most ${MAX_STAY_NIGHTS} nights; the range asked for is ${nights} night(s)`,
+      'invalid-argument',
+    )
+  }
   if (nights !== 1) {
     return refuse('NOT_A_STANDARD_STAY', `a quote is one 22-hour standard stay; the range asked for is ${nights} night(s)`, 'invalid-argument')
   }

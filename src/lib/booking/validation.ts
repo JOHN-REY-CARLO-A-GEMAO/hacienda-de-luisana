@@ -15,6 +15,7 @@
 // ----------------------------------------------------------------------------
 
 import { assertSubmittable, type SubmissionProof } from './submit'
+import { MAX_STAY_NIGHTS, maximumCheckoutDate } from './availability'
 import {
   BOOKING_TIME_ZONE,
   minimumBookingLeadTimeMessage,
@@ -193,6 +194,17 @@ export function validateBookingSelection(
   }
 
   const nights = Math.round((checkOut.time - checkIn.time) / 86_400_000)
+  // The maximum is checked first so a 21-night attempt is told the actual rule
+  // it broke, rather than the shorter-stay message that would not explain it.
+  if (nights > MAX_STAY_NIGHTS) {
+    const lastCheckout = maximumCheckoutDate(selection.check_in)
+    return failure(
+      'STAY_LENGTH_NOT_SUPPORTED',
+      `A stay for ${property} may be at most ${MAX_STAY_NIGHTS} nights; this selection is ${nights}.`
+        + (lastCheckout ? ` Choose a checkout date on or before ${lastCheckout}.` : ''),
+      'check_out',
+    )
+  }
   if (nights !== 1) {
     return failure(
       'STAY_LENGTH_NOT_SUPPORTED',

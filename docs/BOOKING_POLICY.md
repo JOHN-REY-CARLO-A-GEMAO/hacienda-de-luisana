@@ -8,6 +8,7 @@ Hacienda de LuisAna requires a Guest Booking at least **30 Manila calendar days 
 | Minimum lead time | `site_config/booking.minimumBookingLeadTimeDays`; default 30 |
 | Stay occupancy | Half-open `[check_in, check_out)` |
 | Standard website stay | One night under the existing Published rate model |
+| Maximum stay | 20 nights (`MAX_STAY_NIGHTS`), enforced in the picker, the preflight and `submitBooking` |
 | Pending hold | 24 hours from server submission |
 | Inventory | `site_config/rates.accommodations[id].available_units` |
 | Canonical IDs | `main-house`, `annex`, `house-a-camping` |
@@ -17,16 +18,40 @@ For example, while Manila's date is 1 October 2026, 30 October is too early and 
 
 ## Inline availability calendar
 
-The Stay Details step contains a responsive six-week calendar connected to the selected Accommodation. Its visible legend and date labels expose state without relying on color alone:
+The Stay Details step contains a responsive dual-month date-range picker connected to the selected Accommodation. Two consecutive months are shown side by side on desktop and one month at a time on mobile, with previous/next navigation, **Clear dates**, and **Close** controls. Separate **Check-in** and **Checkout** fields sit above the calendars; both also accept typed dates. Its visible legend and date labels expose state without relying on color alone:
 
 - **Available (green):** at least one unit remains.
-- **Booked (red):** committed occupancy has filled inventory.
-- **Pending hold (yellow):** active Pending holders have filled the remaining inventory.
-- **Past / lead-time-invalid / unknown (neutral):** the Guest cannot select the date.
+- **Booked (red, struck through):** committed occupancy has filled inventory.
+- **Pending hold (yellow, struck through):** active Pending holders have filled the remaining inventory.
+- **Past / lead-time-invalid / unknown (neutral, struck through):** the Guest cannot select the date.
+- **Selected (dark):** the check-in and checkout endpoints; the nights between them are tinted.
 
 Missing inventory, malformed responses, permission failures, network failures, and loading transitions are never represented as Available. The calendar offers Refresh/retry and keeps Continue disabled until the selected range is freshly confirmed.
 
-Selecting an available check-in chooses the existing one-night standard stay and highlights `[check_in, check_out)`. Checkout is a boundary, not an occupied night: a Booking ending on 20 November does not block another check-in on 20 November.
+Selection is two-step: the Guest picks an available check-in, then a checkout. The picker highlights `[check_in, check_out)` and disables any checkout the current booking policy does not support, any range containing an unavailable night, and any invalid or past range. The checkout date is a boundary, not an occupied night: a Booking ending on 20 November does not block another check-in on 20 November, so a booked date may still be chosen as a checkout as long as every night before it is available.
+
+### Date-range selection is separate from pricing eligibility
+
+Any checkout date after check-in, up to 20 nights later, is selectable — not only the next day. The calendar's range validator checks **dates and stay length only** (valid calendar dates, booking lead time, 1–20 nights). It deliberately does not call the pricing preflight: `validateBookingSelection` refuses anything that is not one 22-hour standard stay, and letting that rule decide which dates could be picked is what previously forced `checkout = check-in + 1`.
+
+Pricing eligibility remains enforced where it belongs, unchanged:
+
+- `validateBookingSelection` runs before `/book` advances to payment.
+- `deriveQuote` in the `quoteBooking` and `submitBooking` callables refuses a multi-night range with `NOT_A_STANDARD_STAY`.
+
+A multi-night range is therefore visible, selectable and reviewable, and it highlights fully, but it cannot be quoted or submitted while the published rate model prices one night. The UI says so in plain language instead of pretending the range is bookable.
+
+### Maximum stay length
+
+A stay may be at most **20 nights**, counted as checkout minus check-in. `MAX_STAY_NIGHTS` in `src/lib/booking/availability.ts` is the only definition; the mirrored Functions copy is hash-checked by `functions/test/booking-sync.test.ts`.
+
+- The picker stops offering checkout dates at check-in + 20 nights, and the checkout field carries a matching `max`. The bound applies even if a published policy would allow a longer stay.
+- Changing the check-in date recalculates the valid checkout range and clears a checkout that is no longer after the check-in or has become longer than 20 nights.
+- Typed dates are refused with a message naming the limit and the last valid checkout date.
+- `submitBooking` and the quote callable enforce the same limit server-side through `deriveQuote` (`STAY_TOO_LONG`), so a forged request cannot skip it.
+- Checkout must always be later than check-in (`CHECK_OUT_NOT_AFTER_CHECK_IN`).
+
+The cap is additive: because the Published rate model currently prices exactly one 22-hour standard stay, a 2–20 night selection can be selected and inspected, and is then refused at quotation/submission as `NOT_A_STANDARD_STAY`/`STAY_LENGTH_NOT_SUPPORTED`. ADR-0021 records that gap and sketches what a priced 1–20 night model would require; it is not approved by this policy.
 
 ### State calculation
 

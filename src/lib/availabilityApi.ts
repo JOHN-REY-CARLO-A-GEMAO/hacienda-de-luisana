@@ -214,7 +214,7 @@ export async function submitGuestBooking(
     const safeServerCauses = new Set([
       'DATE_UNAVAILABLE', 'RATE_SNAPSHOT_STALE', 'PAYMENT_AMOUNT_TOO_LOW', 'QUOTE_REQUIRED',
       'QUOTE_STALE', 'LEAD_TIME', 'ACCOMMODATION_INACTIVE', 'GUEST_COUNT_UNPRICED',
-      'NOT_A_STANDARD_STAY', 'REQUEST_SHAPE',
+      'STAY_TOO_LONG', 'NOT_A_STANDARD_STAY', 'REQUEST_SHAPE',
     ])
     const message = safeServerCauses.has(cause) && serverMessage
       ? serverMessage

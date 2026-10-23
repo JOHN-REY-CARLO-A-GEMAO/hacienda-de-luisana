@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
@@ -19,6 +19,7 @@ import {
 } from '../lib/validation'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { LEGAL_VERSION } from '../lib/legal'
+import { MAX_STAY_NIGHTS } from '../lib/booking'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { useBookingPolicy } from '../hooks/useBookingPolicy'
@@ -171,6 +172,25 @@ export function BookingPage() {
       form.pet_count, form.late_checkout_hours])
   const estimatedTotal = authoritativeQuote?.stayTotal ?? null
 
+  /**
+   * Whether the calendar may offer this range as a stay: dates, the booking lead
+   * time, and the shared 1–20 night length rule. Nothing else.
+   *
+   * Deliberately NOT `validateBookingSelection`. That is the pricing/eligibility
+   * preflight, and it refuses anything that is not one 22-hour standard stay
+   * because the published rate model only prices one night. Letting a *pricing*
+   * rule decide which dates can be picked made the calendar force
+   * checkout = check-in + 1, which is a date-range question, not a price
+   * question. Pricing stays enforced where it belongs: before payment and again
+   * inside `submitBooking`.
+   */
+  const validateStayRange = useCallback((checkIn: string, checkOut: string) => {
+    const leadTime = validateMinimumBookingLeadTime(checkIn, new Date(), minimumBookingLeadTimeDays)
+    if (!leadTime.ok) return { ok: false, reason: leadTime.reason }
+    const stay = validateStayDates(checkIn, checkOut)
+    return stay.ok ? { ok: true } : { ok: false, reason: stay.message }
+  }, [minimumBookingLeadTimeDays])
+
   // The live fee breakdown: documented peso figures (officialBusiness.ts) under
   // whatever the Admin has published, recomputed the moment a control changes.
   const addonFallbacks = useMemo(() => officialAddonFallbacks(published), [published])
@@ -281,9 +301,15 @@ export function BookingPage() {
       e.accommodation = 'This property does not have a published guest-count rate.'
     }
     if (configuredRate && !authoritativeQuote) {
-      e.accommodation = nights !== 1
-        ? 'Published guest-count rates support one 22-hour standard stay. Contact the Hacienda for a longer stay.'
-        : 'The selected guest count is outside this property’s published rate rules.'
+      // A multi-night selection is a legitimate date range (the calendar offers
+      // it), but the published rate model prices exactly one 22-hour standard
+      // stay. Say that plainly on the checkout field instead of blaming the
+      // property or the guest count, and change no money to make it fit.
+      if (nights !== 1 && nights > 0) {
+        e.check_out = `A ${nights}-night stay can be selected, but online booking currently prices one 22-hour standard stay only. Choose a checkout one night after check-in, or contact the Hacienda for a longer stay.`
+      } else {
+        e.accommodation = 'The selected guest count is outside this property’s published rate rules.'
+      }
     }
     const name = validateName(form.name)
     if (!name.ok) e.name = name.message
@@ -520,6 +546,11 @@ export function BookingPage() {
                   earliestCheckIn={earliestCheckIn}
                   checkIn={form.check_in}
                   checkOut={form.check_out}
+                  checkInError={errors.check_in}
+                  checkOutError={errors.check_out}
+                  validateRange={validateStayRange}
+                  onCheckInBlur={() => handleBlur('check_in')}
+                  onCheckOutBlur={() => handleBlur('check_out')}
                   onLoadStateChange={setCalendarState}
                   onInvalidated={setCalendarNotice}
                   onChange={(checkIn, checkOut) => {
@@ -528,33 +559,17 @@ export function BookingPage() {
                     setAvailability(null)
                   }}
                 />
-
-                <div className="mt-5 grid sm:grid-cols-2 gap-5">
-                  <Field label="Selected check-in" error={errors.check_in}>
-                    <Input
-                      type="date"
-                      min={earliestCheckIn}
-                      aria-describedby="booking-lead-time"
-                      value={form.check_in}
-                      data-tour-field="check-in"
-                      onChange={(e) => set('check_in', e.target.value)}
-                      onBlur={() => handleBlur('check_in')}
-                    />
-                  </Field>
-                  <Field label="Selected check-out" error={errors.check_out}>
-                    <Input
-                      type="date"
-                      min={form.check_in >= earliestCheckIn ? form.check_in : earliestCheckIn}
-                      value={form.check_out}
-                      data-tour-field="check-out"
-                      onChange={(e) => set('check_out', e.target.value)}
-                      onBlur={() => handleBlur('check_out')}
-                    />
-                  </Field>
-                </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-forest-700/70">
-                  You may type the dates if needed; the same live availability and one-standard-stay rules are still checked before payment.
+                  You may type the dates in either field; the same live availability and current stay-length rules are still checked before payment.
                 </p>
+                {nights > 1 && (
+                  <Alert tone="info" className="mt-4 text-xs" title={`${nights}-night range selected.`}>
+                    You can select and review any stay of 1 to {MAX_STAY_NIGHTS} nights. Online booking still
+                    quotes one 22-hour standard stay, so a multi-night range cannot be submitted until
+                    multi-night pricing is approved. Nothing about availability, pricing or payment rules is
+                    changed by selecting it.
+                  </Alert>
+                )}
               </div>
             </div>
 

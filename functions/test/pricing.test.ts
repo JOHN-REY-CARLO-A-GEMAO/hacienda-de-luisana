@@ -175,6 +175,65 @@ describe('the price comes from the published card', () => {
   })
 })
 
+describe('the stay-length boundary is enforced on the server', () => {
+  const derive = (checkIn: string, checkOut: string, accommodation = 'main-house') => {
+    const parsed = parseQuoteRequest(request({ check_in: checkIn, check_out: checkOut, accommodation }))
+    assert.ok(parsed.ok, `the request itself was refused: ${(parsed as { detail: string }).detail}`)
+    return deriveQuote(published, parsed.value, { now: NOW })
+  }
+
+  it('accepts a one-night stay', () => {
+    assert.ok(derive(CHECK_IN, CHECK_OUT).ok)
+  })
+
+  for (const [nights, checkOut] of [[2, '2026-11-02'], [5, '2026-11-05'], [20, '2026-11-20']] as const) {
+    it(`refuses a ${nights}-night range with an accurate one-night-pricing message`, () => {
+      const outcome = derive(CHECK_IN, checkOut)
+      assert.equal(outcome.ok, false)
+      const refusal = outcome as { cause: string; guestMessage: string; detail: string }
+      // The date range itself is fine; it is the published price model that only
+      // covers one night. The server must not price it and must say why.
+      assert.equal(refusal.cause, 'NOT_A_STANDARD_STAY')
+      assert.match(refusal.guestMessage, /one 22-hour standard stay/)
+      assert.match(refusal.detail, new RegExp(`${nights} night`))
+      assert.doesNotMatch(refusal.guestMessage, /at most 20 nights/)
+    })
+  }
+
+  it('accepts exactly 20 nights at the stay-length stage', () => {
+    // 2026-10-31 + 20 nights. It still has to clear the published-stay rule,
+    // which is the estate's pricing decision and not this cap's business; what
+    // matters here is that the cap itself does not refuse 20.
+    const outcome = derive(CHECK_IN, '2026-11-20')
+    assert.equal(outcome.ok, false)
+    assert.equal((outcome as { cause: string }).cause, 'NOT_A_STANDARD_STAY')
+  })
+
+  it('refuses 21 nights with the stay-length cause and a Guest-readable message', () => {
+    const outcome = derive(CHECK_IN, '2026-11-21')
+    assert.equal(outcome.ok, false)
+    assert.equal((outcome as { cause: string }).cause, 'STAY_TOO_LONG')
+    assert.match((outcome as { guestMessage: string }).guestMessage, /at most 20 nights/)
+    assert.equal((outcome as { status: string }).status, 'invalid-argument')
+  })
+
+  it('refuses a checkout that is not after the check-in', () => {
+    for (const checkOut of [CHECK_IN, '2026-10-01']) {
+      const outcome = derive(CHECK_IN, checkOut)
+      assert.equal(outcome.ok, false, `accepted a checkout of ${checkOut}`)
+      assert.equal((outcome as { cause: string }).cause, 'REQUEST_SHAPE')
+    }
+  })
+
+  it('applies to every published Accommodation, not one of them', () => {
+    for (const accommodation of ['main-house', 'house-a-camping']) {
+      const outcome = derive(CHECK_IN, '2026-11-21', accommodation)
+      assert.equal(outcome.ok, false, `${accommodation} accepted 21 nights`)
+      assert.equal((outcome as { cause: string }).cause, 'STAY_TOO_LONG', accommodation)
+    }
+  })
+})
+
 describe('a Guest’s own numbers cannot steer the price', () => {
   it('ignores money in the request entirely', () => {
     // The request type has no money in it, and a caller who adds some is not
