@@ -1,6 +1,8 @@
 // Read the guest booking policy through the existing site_config architecture.
-// Only Admins may write this document (firestore.rules). No second settings
-// store: demo mode uses the same default as a missing cloud document.
+// Only Admins may write this document (firestore.rules). Demo mode has no
+// Firestore, so it reads the *same document shape* from one localStorage key;
+// when that key is absent the result is the same default as a missing cloud
+// document. There is no second production settings store.
 import { doc, getDocFromServer, onSnapshot } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
 import {
@@ -13,6 +15,12 @@ import {
 const COLLECTION = 'site_config'
 const DOC_ID = 'booking'
 const isCloud = isFirebaseConfigured && Boolean(db)
+
+/**
+ * Demo-mode equivalent of `site_config/booking`, for showing a closed season
+ * without a Firebase project. Nothing in production reads it.
+ */
+export const DEMO_BOOKING_POLICY_KEY = 'hdl:booking-policy'
 
 /** The Guest-facing policy decisions stored in `site_config/booking`. */
 export type GuestBookingPolicy = {
@@ -40,6 +48,16 @@ function policyFrom(data: Record<string, unknown> | undefined): GuestBookingPoli
   }
 }
 
+function demoPolicy(): GuestBookingPolicy {
+  if (typeof localStorage === 'undefined') return { ...OPEN_POLICY }
+  try {
+    const raw = localStorage.getItem(DEMO_BOOKING_POLICY_KEY)
+    return raw ? policyFrom(JSON.parse(raw) as Record<string, unknown>) : { ...OPEN_POLICY }
+  } catch {
+    return { ...OPEN_POLICY }
+  }
+}
+
 export const bookingPolicyDB = {
   /**
    * The Guest-facing policy decisions that live in this document, from **one**
@@ -56,7 +74,7 @@ export const bookingPolicyDB = {
    * are deployed.
    */
   async getGuestPolicy(): Promise<GuestBookingPolicy> {
-    if (!isCloud || !db) return { ...OPEN_POLICY }
+    if (!isCloud || !db) return demoPolicy()
     try {
       const snap = await getDocFromServer(doc(db, COLLECTION, DOC_ID))
       return policyFrom(snap.exists() ? snap.data() : undefined)
@@ -73,7 +91,7 @@ export const bookingPolicyDB = {
    */
   subscribePolicy(callback: (policy: GuestBookingPolicy) => void): () => void {
     if (!isCloud || !db) {
-      callback({ ...OPEN_POLICY })
+      callback(demoPolicy())
       return () => {}
     }
     return onSnapshot(

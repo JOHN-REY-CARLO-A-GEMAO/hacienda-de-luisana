@@ -3,7 +3,7 @@
 // future change cannot enforce the window only where a page happens to render.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
-import { bookingPolicyDB } from '../../src/lib/bookingPolicyDB'
+import { bookingPolicyDB, DEMO_BOOKING_POLICY_KEY } from '../../src/lib/bookingPolicyDB'
 
 const NOW = new Date('2026-10-01T12:00:00Z')
 const datePlus = (days: number) => new Date(Date.UTC(2026, 9, 1 + days)).toISOString().slice(0, 10)
@@ -62,5 +62,34 @@ describe('the booking window in the guest store', () => {
       code: 'BOOKING_WINDOW_CLOSED',
     })
     expect(localStorage.length).toBe(0)
+  })
+})
+
+describe('the demo-mode policy document', () => {
+  it('reads the same document shape from localStorage when Firebase is absent', async () => {
+    localStorage.setItem(DEMO_BOOKING_POLICY_KEY, JSON.stringify({
+      minimumBookingLeadTimeDays: 3,
+      bookingsOpenUntil: '2026-11-20',
+    }))
+    await expect(bookingPolicyDB.getGuestPolicy()).resolves.toMatchObject({
+      minimumLeadTimeDays: 3,
+      bookingsOpenUntil: '2026-11-20',
+    })
+    const seen: string[] = []
+    const stop = bookingPolicyDB.subscribePolicy((policy) => seen.push(policy.bookingsOpenUntil))
+    stop()
+    expect(seen).toEqual(['2026-11-20'])
+  })
+
+  it('falls back to the open shared default when the key is absent or malformed', async () => {
+    await expect(bookingPolicyDB.getGuestPolicy()).resolves.toMatchObject({
+      minimumLeadTimeDays: 30,
+      bookingsOpenUntil: '',
+    })
+    localStorage.setItem(DEMO_BOOKING_POLICY_KEY, '{not json')
+    await expect(bookingPolicyDB.getGuestPolicy()).resolves.toMatchObject({
+      minimumLeadTimeDays: 30,
+      bookingsOpenUntil: '',
+    })
   })
 })

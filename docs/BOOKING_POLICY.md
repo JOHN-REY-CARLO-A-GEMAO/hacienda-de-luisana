@@ -41,6 +41,18 @@ site_config/booking
 
 `firestore.rules` refuses a malformed `bookingsOpenUntil` — anything but a real `YYYY-MM-DD` calendar date or the empty string — so neither app has to guess what `"2026-1-1"`, `"2026-02-30"` or a timestamp means. A hand-edited malformed value reads as "open" in the app, matching the lead-time field's fallback.
 
+### Demo mode
+
+With no Firebase project the website runs against local persistence, so `bookingPolicyDB` reads the same document shape from `localStorage['hdl:booking-policy']`; an absent or malformed value means the shared default (30 days, no cutoff). This exists only so a local demo can show a closed season; a deployed build never reads it.
+
+```js
+localStorage.setItem('hdl:booking-policy', JSON.stringify({
+  minimumBookingLeadTimeDays: 3,
+  bookingsOpenUntil: '2026-11-20',
+}))
+location.reload()
+```
+
 ## Inline availability calendar
 
 The Stay Details step contains a responsive six-week calendar connected to the selected Accommodation. Its visible legend and date labels expose state without relying on color alone:
