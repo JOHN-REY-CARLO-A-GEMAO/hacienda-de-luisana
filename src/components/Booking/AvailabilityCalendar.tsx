@@ -1,6 +1,6 @@
 import { Alert } from '../ui'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CalendarAvailabilityState } from '../../lib/booking'
+import { MAX_STAY_NIGHTS, maximumCheckoutDate, type CalendarAvailabilityState } from '../../lib/booking'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
 import { validateStayDates } from '../../lib/validation'
 
@@ -287,7 +287,11 @@ export function AvailabilityCalendar({
   const checkoutAllowed = useMemo(() => {
     const allowed = new Set<string>()
     if (!checkIn || loadState !== 'ready' || checkIn < earliestCheckIn) return allowed
-    for (let date = addDays(checkIn, 1); date < to; date = addDays(date, 1)) {
+    // The stay-length maximum is a hard bound on the range that can be offered,
+    // whatever the published policy says: never walk past check-in + 20 nights.
+    const lastNight = maximumCheckoutDate(checkIn) ?? to
+    const limit = addDays(lastNight, 1) < to ? addDays(lastNight, 1) : to
+    for (let date = addDays(checkIn, 1); date < limit; date = addDays(date, 1)) {
       if (!validator(checkIn, date).ok) continue
       let nightsAvailable = true
       for (let night = checkIn; night < date; night = addDays(night, 1)) {
@@ -471,13 +475,21 @@ export function AvailabilityCalendar({
             error={checkInError}
             tourField="check-in"
             describedBy="booking-lead-time"
-            onChange={(value) => onChange(value, checkOut && (value === '' || checkOut <= value) ? '' : checkOut)}
+            onChange={(value) => {
+              const lastCheckout = value ? maximumCheckoutDate(value) : null
+              const stillValid = Boolean(checkOut)
+                && value !== ''
+                && checkOut > value
+                && (lastCheckout === null || checkOut <= lastCheckout)
+              onChange(value, stillValid ? checkOut : '')
+            }}
             onBlur={() => onCheckInBlur?.()}
           />
           <DateField
             label="Checkout"
             value={checkOut}
             min={checkIn >= earliestCheckIn ? checkIn : earliestCheckIn}
+            max={maximumCheckoutDate(checkIn) ?? undefined}
             error={checkOutError}
             tourField="check-out"
             onChange={(value) => onChange(checkIn, value)}
@@ -485,6 +497,10 @@ export function AvailabilityCalendar({
             bordered
           />
         </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-forest-700/75">
+          Stays are 1 to {MAX_STAY_NIGHTS} nights
+          {checkIn ? ` — for a ${shortDate(checkIn)} check-in the latest checkout is ${shortDate(maximumCheckoutDate(checkIn) ?? checkIn)}` : ''}.
+        </p>
 
         <div className="min-h-6 pt-2 text-xs" aria-live="polite">
           {checkIn && !checkOut && loadState === 'ready' && (
@@ -625,6 +641,7 @@ function DateField({
   label,
   value,
   min,
+  max,
   error,
   tourField,
   describedBy,
@@ -635,6 +652,7 @@ function DateField({
   label: string
   value: string
   min: string
+  max?: string
   error?: string
   tourField: 'check-in' | 'check-out'
   describedBy?: string
@@ -662,6 +680,7 @@ function DateField({
         id={id}
         type="date"
         min={min}
+        max={max}
         value={value}
         data-tour-field={tourField}
         aria-label={label}

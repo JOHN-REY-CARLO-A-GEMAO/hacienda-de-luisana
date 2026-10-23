@@ -8,6 +8,7 @@ Hacienda de LuisAna requires a Guest Booking at least **30 Manila calendar days 
 | Minimum lead time | `site_config/booking.minimumBookingLeadTimeDays`; default 30 |
 | Stay occupancy | Half-open `[check_in, check_out)` |
 | Standard website stay | One night under the existing Published rate model |
+| Maximum stay | 20 nights (`MAX_STAY_NIGHTS`), enforced in the picker, the preflight and `submitBooking` |
 | Pending hold | 24 hours from server submission |
 | Inventory | `site_config/rates.accommodations[id].available_units` |
 | Canonical IDs | `main-house`, `annex`, `house-a-camping` |
@@ -30,6 +31,18 @@ Missing inventory, malformed responses, permission failures, network failures, a
 Selection is two-step: the Guest picks an available check-in, then a checkout. The picker highlights `[check_in, check_out)` and disables any checkout the current booking policy does not support, any range containing an unavailable night, and any invalid or past range. The checkout date is a boundary, not an occupied night: a Booking ending on 20 November does not block another check-in on 20 November, so a booked date may still be chosen as a checkout as long as every night before it is available.
 
 The standard website stay is still one night under the existing Published rate model, so the picker currently offers only the next day as a checkout. It derives that limit from the same policy validation used before payment rather than hard-coding it.
+
+### Maximum stay length
+
+A stay may be at most **20 nights**, counted as checkout minus check-in. `MAX_STAY_NIGHTS` in `src/lib/booking/availability.ts` is the only definition; the mirrored Functions copy is hash-checked by `functions/test/booking-sync.test.ts`.
+
+- The picker stops offering checkout dates at check-in + 20 nights, and the checkout field carries a matching `max`. The bound applies even if a published policy would allow a longer stay.
+- Changing the check-in date recalculates the valid checkout range and clears a checkout that is no longer after the check-in or has become longer than 20 nights.
+- Typed dates are refused with a message naming the limit and the last valid checkout date.
+- `submitBooking` and the quote callable enforce the same limit server-side through `deriveQuote` (`STAY_TOO_LONG`), so a forged request cannot skip it.
+- Checkout must always be later than check-in (`CHECK_OUT_NOT_AFTER_CHECK_IN`).
+
+The cap is additive: because the Published rate model currently prices exactly one 22-hour standard stay, a 2–20 night selection passes the cap and is then refused as `NOT_A_STANDARD_STAY`/`STAY_LENGTH_NOT_SUPPORTED`. ADR-0021 records that gap and sketches what a priced 1–20 night model would require; it is not approved by this policy.
 
 ### State calculation
 

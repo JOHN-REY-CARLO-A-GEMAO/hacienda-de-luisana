@@ -173,6 +173,72 @@ describe('interactive availability calendar', () => {
     expect(onChange).toHaveBeenLastCalledWith('2026-11-26', '')
   })
 
+  it('offers the twentieth night but never the twenty-first, even if the policy would allow it', async () => {
+    const onChange = vi.fn()
+    const upToTwentyNights = (checkIn: string, checkOut: string) => {
+      const nights = Math.round((Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000)
+      return nights > 0 && nights <= 20 ? { ok: true } : { ok: false, reason: 'A stay may be at most 20 nights.' }
+    }
+    // 26 October → 15 November is 20 nights, and this fixture keeps every night
+    // free so only the stay-length maximum can refuse the 21st.
+    api.get.mockResolvedValue({
+      accommodation: 'main-house',
+      from: '2026-10-01',
+      to: '2027-01-01',
+      generated_at: '2026-10-22T04:00:00.000Z',
+      days: Array.from({ length: 92 }, (_, index) => ({
+        date: new Date(Date.parse('2026-10-01T00:00:00Z') + index * 86_400_000).toISOString().slice(0, 10),
+        state: 'available' as const,
+      })),
+    })
+    render({
+      earliestCheckIn: '2026-10-01',
+      checkIn: '2026-10-26',
+      onChange,
+      validateRange: upToTwentyNights,
+    })
+    await settle()
+
+    const twentieth = container.querySelector<HTMLButtonElement>('[data-date="2026-11-15"]')!
+    expect(twentieth.disabled).toBe(false)
+    expect(twentieth.getAttribute('data-checkout-candidate')).toBe('true')
+
+    // The 21st night is free in the fixture, so only the stay-length maximum can
+    // be what keeps it from being offered as a checkout.
+    expect(container.querySelector('[data-date="2026-11-16"]')?.getAttribute('data-availability')).toBe('available')
+    expect(container.querySelector('[data-date="2026-11-16"]')?.getAttribute('data-checkout-candidate')).toBeNull()
+
+    act(() => twentieth.click())
+    expect(onChange).toHaveBeenLastCalledWith('2026-10-26', '2026-11-15')
+  })
+
+  it('clears a checkout that the new check-in date makes invalid', async () => {
+    const onChange = vi.fn()
+    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-15', checkOut: '2026-11-30', onChange })
+    await settle()
+
+    // Moving the check-in earlier stretches the stay past 20 nights, so the
+    // already-chosen checkout can no longer stand.
+    const checkInField = container.querySelector<HTMLInputElement>('[data-tour-field="check-in"]')!
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(checkInField, '2026-11-05')
+    act(() => checkInField.dispatchEvent(new Event('input', { bubbles: true })))
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-05', '')
+
+    // Moving it later than the checkout clears it too: a checkout before
+    // check-in is never a stay.
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(checkInField, '2026-12-02')
+    act(() => checkInField.dispatchEvent(new Event('input', { bubbles: true })))
+    expect(onChange).toHaveBeenLastCalledWith('2026-12-02', '')
+  })
+
+  it('states the maximum stay and the last valid checkout for the chosen check-in', async () => {
+    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-10' })
+    await settle()
+    expect(container.textContent).toContain('Stays are 1 to 20 nights')
+    expect(container.textContent).toContain('the latest checkout is Nov 30, 2026')
+    expect(container.querySelector<HTMLInputElement>('[data-tour-field="check-out"]')!.max).toBe('2026-11-30')
+  })
+
   it('clears both dates, and Close hides the calendars without losing the fields', async () => {
     const onChange = vi.fn()
     render({ checkIn: '2026-11-21', checkOut: '2026-11-22', onChange })

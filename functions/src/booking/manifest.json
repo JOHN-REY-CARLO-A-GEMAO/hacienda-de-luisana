@@ -9,9 +9,9 @@
   ],
   "files": {
     "availability.ts": {
-      "source_sha256": "9634160969e7859331c801c5e20703f15cae338f7425c8402e1353c4a33c64eb",
-      "copy_sha256": "935e0ea62aa9cd1e3ac693473ae8b73be701729b01caffd62c2a9610b20f4254",
-      "bytes": 16255
+      "source_sha256": "72b51daa444529efa44d53f93daa774e397497427cbd955597ea1b84aa5c311a",
+      "copy_sha256": "a15d147b0bf37becb6038413db625c9cbcd46f60246a7284bc93b89d8c973f44",
+      "bytes": 18055
     },
     "internal.ts": {
       "source_sha256": "28511edd2bbd1cd767d7ca5c07c4e4a2b98c9a462ce435177c24da666ed9abde",
