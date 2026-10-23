@@ -7,7 +7,7 @@ vi.mock('../../src/lib/firestoreBookings', () => ({
   cloudBookingsDB: { getAvailabilityCalendar: api.get },
 }))
 
-import { AvailabilityCalendar, calendarGridRange } from '../../src/components/Booking/AvailabilityCalendar'
+import { AvailabilityCalendar, calendarGridRange, dualMonthRange } from '../../src/components/Booking/AvailabilityCalendar'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 let root: Root
@@ -59,6 +59,19 @@ afterEach(() => {
   container.remove()
 })
 
+describe('dual-month availability range', () => {
+  it('never asks the callable for more than its 62-night bound', () => {
+    for (let offset = 0; offset < 24; offset += 1) {
+      const month = new Date(Date.UTC(2026, offset, 1)).toISOString().slice(0, 7)
+      const range = dualMonthRange(month)
+      const nights = Math.round((Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000)
+      expect(nights).toBeGreaterThanOrEqual(59)
+      expect(nights).toBeLessThanOrEqual(62)
+      expect(range.months[0]).toBe(month)
+    }
+  })
+})
+
 describe('interactive availability calendar', () => {
   it('renders accessible available/booked/pending/invalid states and a visible key', async () => {
     render()
@@ -75,13 +88,108 @@ describe('interactive availability calendar', () => {
     expect(container.textContent).toContain('Past / invalid / unknown')
   })
 
-  it('selects one standard-stay night and treats a booked next date as checkout only', async () => {
+  it('selects a check-in first, then a checkout date', async () => {
     const onChange = vi.fn()
     render({ onChange })
     await settle()
-    const night = container.querySelector<HTMLButtonElement>('[data-date="2026-11-21"]')!
-    act(() => night.click())
-    expect(onChange).toHaveBeenCalledWith('2026-11-21', '2026-11-22')
+
+    act(() => container.querySelector<HTMLButtonElement>('[data-date="2026-11-21"]')!.click())
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-21', '')
+
+    render({ onChange, checkIn: '2026-11-21' })
+    await settle()
+    expect(container.textContent).toContain('Now choose a checkout date')
+
+    act(() => container.querySelector<HTMLButtonElement>('[data-date="2026-11-22"]')!.click())
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-21', '2026-11-22')
+  })
+
+  it('shows two consecutive months and pages them together', async () => {
+    render()
+    await settle()
+
+    const monthLabels = [...container.querySelectorAll('[data-month-label]')].map((node) => node.getAttribute('data-month-label'))
+    expect(monthLabels).toEqual(['November 2026', 'December 2026'])
+
+    const previous = container.querySelector<HTMLButtonElement>('[aria-label="Previous month"]')!
+    expect(previous.disabled).toBe(true)
+
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Next month"]')!.click())
+    await settle()
+    expect([...container.querySelectorAll('[data-month-label]')].map((node) => node.getAttribute('data-month-label')))
+      .toEqual(['December 2026', 'January 2027'])
+  })
+
+  it('highlights both endpoints and the whole stay range between them', async () => {
+    render({ checkIn: '2026-11-25', checkOut: '2026-11-28' })
+    await settle()
+
+    expect(container.querySelector('[data-date="2026-11-25"]')?.getAttribute('data-selected')).toBe('start')
+    expect(container.querySelector('[data-date="2026-11-28"]')?.getAttribute('data-selected')).toBe('end')
+    expect(container.querySelector('[data-date="2026-11-26"]')?.closest('[data-in-range]')?.getAttribute('data-in-range')).toBe('true')
+    expect(container.querySelector('[data-date="2026-11-27"]')?.closest('[data-in-range]')?.getAttribute('data-in-range')).toBe('true')
+    expect(container.querySelector('[data-date="2026-11-25"]')?.closest('[data-in-range]')).toBeNull()
+    expect(container.querySelector('[data-date="2026-11-28"]')?.closest('[data-in-range]')).toBeNull()
+  })
+
+  it('lets a booked date be the checkout boundary but not part of the stay', async () => {
+    const onChange = vi.fn()
+    render({ checkIn: '2026-11-21', onChange })
+    await settle()
+
+    const bookedBoundary = container.querySelector<HTMLButtonElement>('[data-date="2026-11-22"]')!
+    expect(bookedBoundary.disabled).toBe(false)
+    expect(bookedBoundary.getAttribute('data-checkout-candidate')).toBe('true')
+    act(() => bookedBoundary.click())
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-21', '2026-11-22')
+
+    // 24 would stay across the booked 22nd, so it is not a checkout and starts
+    // a fresh selection instead of producing a conflicting stay.
+    const laterNight = container.querySelector<HTMLButtonElement>('[data-date="2026-11-24"]')!
+    act(() => laterNight.click())
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-24', '')
+  })
+
+  it('offers only checkout dates the current booking policy supports', async () => {
+    const onChange = vi.fn()
+    render({
+      checkIn: '2026-11-24',
+      onChange,
+      validateRange: (checkIn, checkOut) => (
+        checkOut > checkIn && (Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000 === 1
+          ? { ok: true }
+          : { ok: false, reason: 'Online booking currently supports one standard stay.' }
+      ),
+    })
+    await settle()
+
+    expect(container.querySelector<HTMLButtonElement>('[data-date="2026-11-25"]')!.disabled).toBe(false)
+    expect(container.querySelector('[data-date="2026-11-25"]')!.getAttribute('data-checkout-candidate')).toBe('true')
+    const twoNights = container.querySelector<HTMLButtonElement>('[data-date="2026-11-26"]')!
+    expect(twoNights.disabled).toBe(false)
+    expect(twoNights.getAttribute('data-checkout-candidate')).toBeNull()
+
+    act(() => twoNights.click())
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-26', '')
+  })
+
+  it('clears both dates, and Close hides the calendars without losing the fields', async () => {
+    const onChange = vi.fn()
+    render({ checkIn: '2026-11-21', checkOut: '2026-11-22', onChange })
+    await settle()
+
+    const clear = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === 'Clear dates')!
+    act(() => clear.click())
+    expect(onChange).toHaveBeenLastCalledWith('', '')
+
+    const close = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === 'Close')!
+    act(() => close.click())
+    expect(container.querySelector('[data-calendar-body]')).toBeNull()
+    expect(container.querySelector('[data-tour-field="check-in"]')).toBeTruthy()
+    expect(container.querySelector('[data-tour-field="check-out"]')).toBeTruthy()
+    expect(container.textContent).toContain('Edit dates')
   })
 
   it('highlights both selected boundaries and permits a booked checkout boundary', async () => {
@@ -115,7 +223,10 @@ describe('interactive availability calendar', () => {
   it('requests only the selected Accommodation and switches cleanly', async () => {
     const props = render()
     await settle()
-    expect(api.get).toHaveBeenLastCalledWith(expect.objectContaining({ accommodation: 'main-house' }), expect.anything())
+    expect(api.get).toHaveBeenLastCalledWith(
+      { accommodation: 'main-house', from: '2026-11-01', to: '2027-01-01' },
+      expect.anything(),
+    )
 
     api.get.mockResolvedValue(response('annex'))
     render({ ...props, accommodation: 'annex', accommodationName: 'HDL Annex' })

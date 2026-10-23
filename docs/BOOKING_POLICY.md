@@ -17,16 +17,19 @@ For example, while Manila's date is 1 October 2026, 30 October is too early and 
 
 ## Inline availability calendar
 
-The Stay Details step contains a responsive six-week calendar connected to the selected Accommodation. Its visible legend and date labels expose state without relying on color alone:
+The Stay Details step contains a responsive dual-month date-range picker connected to the selected Accommodation. Two consecutive months are shown side by side on desktop and one month at a time on mobile, with previous/next navigation, **Clear dates**, and **Close** controls. Separate **Check-in** and **Checkout** fields sit above the calendars; both also accept typed dates. Its visible legend and date labels expose state without relying on color alone:
 
 - **Available (green):** at least one unit remains.
-- **Booked (red):** committed occupancy has filled inventory.
-- **Pending hold (yellow):** active Pending holders have filled the remaining inventory.
-- **Past / lead-time-invalid / unknown (neutral):** the Guest cannot select the date.
+- **Booked (red, struck through):** committed occupancy has filled inventory.
+- **Pending hold (yellow, struck through):** active Pending holders have filled the remaining inventory.
+- **Past / lead-time-invalid / unknown (neutral, struck through):** the Guest cannot select the date.
+- **Selected (dark):** the check-in and checkout endpoints; the nights between them are tinted.
 
 Missing inventory, malformed responses, permission failures, network failures, and loading transitions are never represented as Available. The calendar offers Refresh/retry and keeps Continue disabled until the selected range is freshly confirmed.
 
-Selecting an available check-in chooses the existing one-night standard stay and highlights `[check_in, check_out)`. Checkout is a boundary, not an occupied night: a Booking ending on 20 November does not block another check-in on 20 November.
+Selection is two-step: the Guest picks an available check-in, then a checkout. The picker highlights `[check_in, check_out)` and disables any checkout the current booking policy does not support, any range containing an unavailable night, and any invalid or past range. The checkout date is a boundary, not an occupied night: a Booking ending on 20 November does not block another check-in on 20 November, so a booked date may still be chosen as a checkout as long as every night before it is available.
+
+The standard website stay is still one night under the existing Published rate model, so the picker currently offers only the next day as a checkout. It derives that limit from the same policy validation used before payment rather than hard-coding it.
 
 ### State calculation
 

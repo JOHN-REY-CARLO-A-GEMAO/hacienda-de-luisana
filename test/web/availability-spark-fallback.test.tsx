@@ -203,6 +203,10 @@ describe('Spark / undeployed Cloud Functions availability and Guest submission f
     clearAvailabilityCache()
     window.localStorage.clear()
     seedPublishedRatesWithoutExplicitUnits()
+    // The 24-hour Date hold is read-time, so pin "now" to the instant these
+    // fixtures were written; otherwise the suite starts failing one day later.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(SCREENSHOT_NOW))
   })
 
   afterEach(() => {
@@ -212,6 +216,7 @@ describe('Spark / undeployed Cloud Functions availability and Guest submission f
     }
     host?.remove()
     host = null
+    vi.useRealTimers()
   })
 
   it('renders selectable November 2026 Main House dates instead of Availability unknown when Cloud Functions are undeployed on Spark', async () => {
@@ -248,7 +253,26 @@ describe('Spark / undeployed Cloud Functions availability and Guest submission f
     await act(async () => {
       nov21!.click()
     })
-    expect(onChange).toHaveBeenCalledWith('2026-11-21', '2026-11-22')
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-21', '')
+
+    await act(async () => {
+      root!.render(
+        <AvailabilityCalendar
+          accommodation="main-house"
+          accommodationName="The Main House"
+          earliestCheckIn="2026-11-21"
+          checkIn="2026-11-21"
+          checkOut=""
+          onChange={onChange}
+        />,
+      )
+    })
+    await flush()
+    const nov22 = host.querySelector('[data-date="2026-11-22"]') as HTMLButtonElement
+    await act(async () => {
+      nov22.click()
+    })
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-21', '2026-11-22')
   })
 
   it('submits a signed-in Guest web booking via direct Firestore write on Spark and immediately reflects the 24-hour hold', async () => {

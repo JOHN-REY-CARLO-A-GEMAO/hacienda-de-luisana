@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
@@ -170,6 +170,43 @@ export function BookingPage() {
   }, [published, form.accommodation, form.check_in, form.check_out, form.guests,
       form.pet_count, form.late_checkout_hours])
   const estimatedTotal = authoritativeQuote?.stayTotal ?? null
+
+  /**
+   * The calendar offers only checkout dates the existing policy accepts. This
+   * calls the same pure selection rules used before payment, so a stay length
+   * the Hacienda does not publish (today: more than one 22-hour standard stay)
+   * is never selectable in the first place. Failures about rates, guests or
+   * add-ons are not date restrictions and stay where they are.
+   */
+  const validateStayRange = useCallback((checkIn: string, checkOut: string) => {
+    const stay = validateStayDates(checkIn, checkOut)
+    if (!stay.ok) return { ok: false, reason: stay.message }
+    const selection = validateBookingSelection(
+      {
+        accommodation: form.accommodation,
+        check_in: checkIn,
+        check_out: checkOut,
+        guests: Number(form.guests),
+        pet_count: form.pet_count,
+        bonfire_wood_sets: form.bonfire_wood_sets,
+        late_checkout_hours: form.late_checkout_hours,
+      },
+      { published, minimumBookingLeadTimeDays },
+    )
+    if (!selection.ok) {
+      const dateRules = new Set([
+        'STAY_LENGTH_NOT_SUPPORTED',
+        'CHECK_OUT_BEFORE_CHECK_IN',
+        'INVALID_CHECK_OUT_DATE',
+        'INVALID_CHECK_IN_DATE',
+        'MINIMUM_BOOKING_LEAD_TIME',
+      ])
+      if (dateRules.has(selection.failure.code)) {
+        return { ok: false, reason: selection.failure.message }
+      }
+    }
+    return { ok: true }
+  }, [published, form.accommodation, form.guests, form.pet_count, form.bonfire_wood_sets, form.late_checkout_hours, minimumBookingLeadTimeDays])
 
   // The live fee breakdown: documented peso figures (officialBusiness.ts) under
   // whatever the Admin has published, recomputed the moment a control changes.
@@ -520,6 +557,11 @@ export function BookingPage() {
                   earliestCheckIn={earliestCheckIn}
                   checkIn={form.check_in}
                   checkOut={form.check_out}
+                  checkInError={errors.check_in}
+                  checkOutError={errors.check_out}
+                  validateRange={validateStayRange}
+                  onCheckInBlur={() => handleBlur('check_in')}
+                  onCheckOutBlur={() => handleBlur('check_out')}
                   onLoadStateChange={setCalendarState}
                   onInvalidated={setCalendarNotice}
                   onChange={(checkIn, checkOut) => {
@@ -528,32 +570,8 @@ export function BookingPage() {
                     setAvailability(null)
                   }}
                 />
-
-                <div className="mt-5 grid sm:grid-cols-2 gap-5">
-                  <Field label="Selected check-in" error={errors.check_in}>
-                    <Input
-                      type="date"
-                      min={earliestCheckIn}
-                      aria-describedby="booking-lead-time"
-                      value={form.check_in}
-                      data-tour-field="check-in"
-                      onChange={(e) => set('check_in', e.target.value)}
-                      onBlur={() => handleBlur('check_in')}
-                    />
-                  </Field>
-                  <Field label="Selected check-out" error={errors.check_out}>
-                    <Input
-                      type="date"
-                      min={form.check_in >= earliestCheckIn ? form.check_in : earliestCheckIn}
-                      value={form.check_out}
-                      data-tour-field="check-out"
-                      onChange={(e) => set('check_out', e.target.value)}
-                      onBlur={() => handleBlur('check_out')}
-                    />
-                  </Field>
-                </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-forest-700/70">
-                  You may type the dates if needed; the same live availability and one-standard-stay rules are still checked before payment.
+                  You may type the dates in either field; the same live availability and current stay-length rules are still checked before payment.
                 </p>
               </div>
             </div>

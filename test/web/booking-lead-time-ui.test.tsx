@@ -171,6 +171,25 @@ describe('the existing booking date picker', () => {
     expect(input('[data-tour-field="check-in"]').min).toBe('2026-11-01')
   })
 
+  it('lets the dual-month picker choose a check-in then only a policy-supported checkout', async () => {
+    open()
+    await until(() => Boolean(container.querySelector('[data-date="2026-10-31"]:not([disabled])')))
+
+    click(container.querySelector('[data-date="2026-10-31"]') as HTMLButtonElement)
+    await until(() => input('[data-tour-field="check-in"]').value === '2026-10-31')
+    expect(input('[data-tour-field="check-out"]').value).toBe('')
+    await until(() => container.textContent!.includes('Now choose a checkout date'))
+
+    // The seeded rates describe one 22-hour standard stay, so a two-night
+    // checkout is not offered even though the date itself is free.
+    const twoNights = container.querySelector('[data-date="2026-11-02"]')
+    expect(twoNights?.getAttribute('data-checkout-candidate')).toBeNull()
+
+    click(container.querySelector('[data-date="2026-11-01"]') as HTMLButtonElement)
+    await until(() => input('[data-tour-field="check-out"]').value === '2026-11-01')
+    expect(container.querySelector('[data-date="2026-11-01"]')?.getAttribute('data-selected')).toBe('end')
+  })
+
   it('shows the clear validation message if a disabled date is manually injected', async () => {
     open()
     fillDetails('2026-10-30')
