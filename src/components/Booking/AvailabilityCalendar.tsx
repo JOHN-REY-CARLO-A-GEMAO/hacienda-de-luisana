@@ -1,6 +1,6 @@
 import { Alert } from '../ui'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CalendarAvailabilityState } from '../../lib/booking'
+import { isBeyondBookingWindow, type CalendarAvailabilityState } from '../../lib/booking'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
 
 const DAY_MS = 86_400_000
@@ -12,6 +12,12 @@ type Props = {
   accommodation: string
   accommodationName: string
   earliestCheckIn: string
+  /**
+   * The Admin's last bookable check-in (see `site_config/booking`). An empty
+   * string means the Hacienda has not closed its season; every date the
+   * lead time allows stays clickable.
+   */
+  bookingsOpenUntil?: string
   checkIn: string
   checkOut: string
   onChange: (checkIn: string, checkOut: string) => void
@@ -79,6 +85,7 @@ function unavailableReason(state: CalendarAvailabilityState): string {
 function cellClass(input: {
   state: CalendarAvailabilityState
   invalid: boolean
+  closed: boolean
   selectedStart: boolean
   selectedEnd: boolean
   inRange: boolean
@@ -87,6 +94,9 @@ function cellClass(input: {
   const base = 'relative flex min-h-10 w-full items-center justify-center rounded-xl border text-sm font-medium transition focus-visible:z-10 disabled:cursor-not-allowed'
   if (input.selectedStart || input.selectedEnd) {
     return `${base} border-forest-900 bg-forest-800 text-white shadow-sm ring-2 ring-forest-800/20`
+  }
+  if (input.closed) {
+    return `${base} border-slate-200 bg-slate-50 text-slate-400 line-through decoration-slate-400/80 ${input.outsideMonth ? 'opacity-40' : ''}`
   }
   if (input.invalid || input.state === 'unknown') {
     return `${base} border-slate-200 bg-slate-100 text-slate-400 ${input.outsideMonth ? 'opacity-45' : ''}`
@@ -104,6 +114,7 @@ export function AvailabilityCalendar({
   accommodation,
   accommodationName,
   earliestCheckIn,
+  bookingsOpenUntil = '',
   checkIn,
   checkOut,
   onChange,
@@ -128,6 +139,33 @@ export function AvailabilityCalendar({
     const earliestMonth = earliestCheckIn.slice(0, 7)
     if (!checkIn && month < earliestMonth) setMonth(earliestMonth)
   }, [checkIn, earliestCheckIn, month])
+
+  const minimumMonth = startOfMonth(earliestCheckIn).slice(0, 7)
+  const cutoffMonth = bookingsOpenUntil ? bookingsOpenUntil.slice(0, 7) : ''
+  // A cutoff before the first month the lead time allows leaves no bookable
+  // date. Showing that (likely past) month would be less useful than showing
+  // the first month the Guest could otherwise book, with every date crossed
+  // out and the page's "bookings are closed" explanation beside it.
+  const maximumMonth = cutoffMonth === ''
+    ? ''
+    : cutoffMonth >= minimumMonth ? cutoffMonth : minimumMonth
+
+  // A cutoff can arrive while the calendar is open — the Admin closes a season,
+  // or the Guest's tab was suspended across midnight. The page must not keep a
+  // selection that the same policy would refuse at Continue.
+  useEffect(() => {
+    if (!maximumMonth || month <= maximumMonth) return
+    setMonth(maximumMonth)
+  }, [maximumMonth, month])
+
+  useEffect(() => {
+    if (!bookingsOpenUntil || !checkIn || !isBeyondBookingWindow(checkIn, bookingsOpenUntil)) return
+    currentRef.current.onChange('', '')
+    currentRef.current.onInvalidated?.(
+      `${fullDate(checkIn)} is outside the booking window for ${accommodationName}. ` +
+      `Check-in is open through ${fullDate(bookingsOpenUntil)}.`,
+    )
+  }, [bookingsOpenUntil, checkIn, accommodationName])
 
   const load = useCallback(async (force = false) => {
     const thisRequest = ++requestNumber.current
@@ -188,7 +226,7 @@ export function AvailabilityCalendar({
   }, [load])
 
   const choose = (date: string, state: CalendarAvailabilityState) => {
-    if (loadState !== 'ready' || date < earliestCheckIn || state !== 'available') return
+    if (loadState !== 'ready' || date < earliestCheckIn || isBeyondBookingWindow(date, bookingsOpenUntil) || state !== 'available') return
     // Published online rates support one 22-hour standard stay. The selected
     // checkout is the next date boundary; its own overnight state does not
     // matter, so another Guest may check in on this Guest's checkout date.
@@ -198,8 +236,6 @@ export function AvailabilityCalendar({
 
   const selectedStart = checkIn ? parseDate(checkIn) : Number.NaN
   const selectedEnd = checkOut ? parseDate(checkOut) : Number.NaN
-  const minimumMonth = startOfMonth(earliestCheckIn).slice(0, 7)
-
   return (
     <section
       className="mt-6 rounded-2xl border border-forest-900/10 bg-cream-50/70 p-4 sm:p-5"
@@ -214,6 +250,11 @@ export function AvailabilityCalendar({
           <p className="mt-1 text-xs leading-relaxed text-forest-700">
             Live availability for <strong>{accommodationName}</strong>. Selecting a night sets checkout to noon the next day.
           </p>
+          {bookingsOpenUntil && (
+            <p className="mt-1 text-xs leading-relaxed text-forest-700">
+              Check-in is open through <strong>{fullDate(bookingsOpenUntil)}</strong>. Later dates are closed for new Bookings.
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -243,7 +284,7 @@ export function AvailabilityCalendar({
         <button
           type="button"
           aria-label="Next month"
-          disabled={loadState === 'loading'}
+          disabled={loadState === 'loading' || (maximumMonth !== '' && month >= maximumMonth)}
           onClick={() => setMonth((current) => moveMonth(current, 1))}
           className="flex h-10 w-10 items-center justify-center rounded-full border border-forest-900/15 bg-white text-lg text-forest-800 hover:border-forest-600 disabled:cursor-not-allowed disabled:opacity-35"
         >
@@ -260,29 +301,34 @@ export function AvailabilityCalendar({
         {grid.dates.map((date) => {
           const serverState = days.get(date) ?? 'unknown'
           const invalid = date < earliestCheckIn
+          const closed = isBeyondBookingWindow(date, bookingsOpenUntil)
           const isStart = date === checkIn
           const isEnd = date === checkOut
           const time = parseDate(date)
           const inRange = Number.isFinite(selectedStart) && Number.isFinite(selectedEnd)
             && time > selectedStart && time < selectedEnd
           const outsideMonth = date.slice(0, 7) !== month
-          const label = invalid
-            ? `${fullDate(date)} — Past or does not meet the booking lead time`
-            : `${fullDate(date)} — ${stateLabel(serverState)}${isEnd && serverState !== 'available' ? '; allowed as this stay’s checkout boundary' : ''}`
-          const disabled = loadState !== 'ready' || invalid || serverState !== 'available'
+          const label = closed
+            ? `${fullDate(date)} — Closed for new check-ins; the booking window ends ${fullDate(bookingsOpenUntil)}`
+            : invalid
+              ? `${fullDate(date)} — Past or does not meet the booking lead time`
+              : `${fullDate(date)} — ${stateLabel(serverState)}${isEnd && serverState !== 'available' ? '; allowed as this stay’s checkout boundary' : ''}`
+          const disabled = loadState !== 'ready' || invalid || closed || serverState !== 'available'
           return (
             <div key={date} role="gridcell">
               <button
                 type="button"
                 data-date={date}
-                data-availability={invalid ? 'invalid' : serverState}
+                data-availability={closed ? 'closed' : invalid ? 'invalid' : serverState}
                 disabled={disabled}
                 aria-label={label}
                 aria-pressed={isStart || isEnd}
                 title={label}
                 onClick={() => choose(date, serverState)}
-                className={cellClass({ state: serverState, invalid, selectedStart: isStart, selectedEnd: isEnd, inRange, outsideMonth })}
-                style={serverState === 'booked' && !isStart && !isEnd ? {
+                className={cellClass({ state: serverState, invalid, closed, selectedStart: isStart, selectedEnd: isEnd, inRange, outsideMonth })}
+                style={closed ? {
+                  backgroundImage: 'repeating-linear-gradient(135deg, rgba(15,23,42,.06) 0, rgba(15,23,42,.06) 2px, transparent 2px, transparent 7px)',
+                } : serverState === 'booked' && !isStart && !isEnd ? {
                   backgroundImage: 'repeating-linear-gradient(135deg, rgba(220,38,38,.07) 0, rgba(220,38,38,.07) 3px, transparent 3px, transparent 7px)',
                 } : undefined}
               >
@@ -331,10 +377,19 @@ export function AvailabilityCalendar({
           <Legend swatch="border-red-300 bg-red-50" symbol="×" label="Booked" />
           <Legend swatch="border-amber-300 bg-amber-50" symbol="•" label="Pending hold" />
           <Legend swatch="border-slate-200 bg-slate-100" symbol="—" label="Past / invalid / unknown" />
+          {bookingsOpenUntil && (
+            <Legend swatch="border-slate-200 bg-slate-50 line-through" symbol="⊘" label="Outside booking window" />
+          )}
         </ul>
         <p className="mt-3 text-[11px] leading-relaxed text-forest-700/75">
           Colors mark overnight stays, not checkout occupancy. Pending dates are held for up to 24 hours under the current Booking policy.
         </p>
+        {bookingsOpenUntil && (
+          <p className="mt-2 text-[11px] leading-relaxed text-forest-700/75">
+            The Admin has closed the season after {fullDate(bookingsOpenUntil)}. A Booking may check in on that
+            last night and check out the next day; no new check-in is accepted afterwards.
+          </p>
+        )}
       </div>
     </section>
   )

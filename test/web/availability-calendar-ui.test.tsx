@@ -122,4 +122,70 @@ describe('interactive availability calendar', () => {
     await settle()
     expect(api.get).toHaveBeenLastCalledWith(expect.objectContaining({ accommodation: 'annex' }), expect.anything())
   })
+
+  it('blocks every date after the Admin cut-off and explains the closed season', async () => {
+    render({ bookingsOpenUntil: '2026-11-21' })
+    await settle()
+
+    const lastOpen = container.querySelector<HTMLButtonElement>('[data-date="2026-11-21"]')!
+    expect(lastOpen.getAttribute('data-availability')).toBe('available')
+    expect(lastOpen.disabled).toBe(false)
+
+    const firstClosed = container.querySelector<HTMLButtonElement>('[data-date="2026-11-22"]')!
+    expect(firstClosed.getAttribute('data-availability')).toBe('closed')
+    expect(firstClosed.disabled).toBe(true)
+    expect(firstClosed.className).toContain('line-through')
+    expect(firstClosed.getAttribute('aria-label')).toContain('booking window ends November 21, 2026')
+
+    const nextMonth = container.querySelector<HTMLButtonElement>('[data-date="2026-12-01"]')!
+    expect(nextMonth.getAttribute('data-availability')).toBe('closed')
+    expect(container.textContent).toContain('Check-in is open through')
+    expect(container.textContent).toContain('Outside booking window')
+    expect(container.textContent).toContain('the season after November 21, 2026')
+  })
+
+  it('stops month navigation at the month of the cut-off', async () => {
+    render({ bookingsOpenUntil: '2026-11-21' })
+    await settle()
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Next month"]')!.disabled).toBe(true)
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Previous month"]')!.disabled).toBe(true)
+  })
+
+  it('shows the earliest bookable month, not a past cutoff month, when the season is already closed', async () => {
+    render({ bookingsOpenUntil: '2026-10-20' })
+    await settle()
+    expect(container.textContent).toContain('November 2026')
+    expect(container.querySelector('[data-date="2026-11-21"]')?.getAttribute('data-availability')).toBe('closed')
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Next month"]')!.disabled).toBe(true)
+  })
+
+  it('clears a selected check-in that the Admin has since closed', async () => {
+    const onChange = vi.fn()
+    const onInvalidated = vi.fn()
+    render({
+      bookingsOpenUntil: '2026-11-22',
+      checkIn: '2026-11-23',
+      checkOut: '2026-11-24',
+      onChange,
+      onInvalidated,
+    })
+    await settle()
+    expect(onChange).toHaveBeenCalledWith('', '')
+    expect(onInvalidated).toHaveBeenCalledWith(expect.stringContaining('outside the booking window'))
+    expect(onInvalidated).toHaveBeenCalledWith(expect.stringContaining('November 22, 2026'))
+  })
+
+  it('closes a date that was open when the calendar first rendered', async () => {
+    const onChange = vi.fn()
+    const onInvalidated = vi.fn()
+    api.get.mockResolvedValue(response())
+    const props = render({ checkIn: '2026-11-21', checkOut: '2026-11-22', onChange, onInvalidated })
+    await settle()
+    expect(onChange).not.toHaveBeenCalled()
+
+    render({ ...props, bookingsOpenUntil: '2026-11-20' })
+    await settle()
+    expect(onChange).toHaveBeenCalledWith('', '')
+    expect(onInvalidated).toHaveBeenCalledWith(expect.stringContaining('outside the booking window'))
+  })
 })

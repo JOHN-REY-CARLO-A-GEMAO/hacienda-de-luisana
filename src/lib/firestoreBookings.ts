@@ -44,7 +44,8 @@ import {
   interpretStoredStatus,
   normalizeStatus,
   unitsForAccommodation,
-  validateMinimumBookingLeadTime,
+  lastBookableCheckOut,
+  validateBookableCheckIn,
   validateBookingPayload,
   validatePublishedRates,
   type BookingDateValidation,
@@ -407,10 +408,15 @@ async function explainGuestCreateRefusal(
 
   const published = await ratesDB.get().catch(() => null)
   if (!published) return null
-  const minimumBookingLeadTimeDays = await bookingPolicyDB.getMinimumLeadTimeDays().catch(() => undefined)
+  // One policy read for both boundaries: the reason shown to a Guest must be
+  // the reason the same document version would refuse them under.
+  const policy = await bookingPolicyDB.getGuestPolicy().catch(() => null)
   const result = validateBookingPayload(input, {
     published,
-    ...(minimumBookingLeadTimeDays !== undefined ? { minimumBookingLeadTimeDays } : {}),
+    ...(policy ? {
+      minimumBookingLeadTimeDays: policy.minimumLeadTimeDays,
+      bookingsOpenUntil: policy.bookingsOpenUntil,
+    } : {}),
   })
   return result.ok ? null : result.failure
 }
@@ -709,10 +715,19 @@ export const cloudBookingsDB = {
     return unsub
   },
 
-  /** Courtesy/pre-upload guard. Only Firestore's request.time is authoritative. */
+  /**
+   * Courtesy/pre-upload guard. Only Firestore's request.time and `submitBooking`
+   * are authoritative. The Admin's cut-off is read from the same policy document
+   * as the lead time, so a closed season cannot leak through a stale 30-day value.
+   */
   async validateGuestCheckIn(checkIn: string): Promise<BookingDateValidation> {
-    const days = await bookingPolicyDB.getMinimumLeadTimeDays()
-    return validateMinimumBookingLeadTime(checkIn, new Date(), days)
+    const policy = await bookingPolicyDB.getGuestPolicy()
+    return validateBookableCheckIn(
+      checkIn,
+      new Date(),
+      policy.minimumLeadTimeDays,
+      policy.bookingsOpenUntil,
+    )
   },
 
   /**
@@ -733,8 +748,23 @@ export const cloudBookingsDB = {
     // so the date the Guest is allowed to book and the attestation the write will be
     // judged against come from the same document version.
     const policy = await bookingPolicyDB.getGuestPolicy()
-    const dates = validateMinimumBookingLeadTime(input.check_in, new Date(), policy.minimumLeadTimeDays)
+    const dates = validateBookableCheckIn(
+      input.check_in,
+      new Date(),
+      policy.minimumLeadTimeDays,
+      policy.bookingsOpenUntil,
+    )
     if (!dates.ok) throw Object.assign(new Error(dates.reason), { code: dates.code })
+    // The cutoff is the last *night*: a Booking may check in on it and check out
+    // the next day, never later. The one-night guest path already implies this,
+    // but the adapter is also called with longer drafts, so state the bound.
+    const lastCheckout = lastBookableCheckOut(policy.bookingsOpenUntil)
+    if (lastCheckout && input.check_out > lastCheckout) {
+      throw Object.assign(
+        new Error(`The last bookable night is ${policy.bookingsOpenUntil}, so checkout must be on or before ${lastCheckout}.`),
+        { code: 'BOOKING_WINDOW_CLOSED' },
+      )
+    }
     // The submission entry is signed by the identity the Booking is being
     // attached to. The Activity rule refuses an entry whose `actor_id` is not the
     // writer's uid, and the Booking carries the uid the Guest was given when the
@@ -887,8 +917,13 @@ export const cloudBookingsDB = {
         // The rules refused the create. There are a dozen conditions on
         // `bookings` create and only one of them is the lead time, so the cause
         // is re-derived here rather than guessed at.
-        const days = await bookingPolicyDB.getMinimumLeadTimeDays()
-        const currentDates = validateMinimumBookingLeadTime(input.check_in, new Date(), days)
+        const policy = await bookingPolicyDB.getGuestPolicy()
+        const currentDates = validateBookableCheckIn(
+          input.check_in,
+          new Date(),
+          policy.minimumLeadTimeDays,
+          policy.bookingsOpenUntil,
+        )
         if (!currentDates.ok) throw Object.assign(new Error(currentDates.reason), { code: currentDates.code })
         // The dates are legal as of this browser's fresh clock, so the lead time
         // is NOT what the server refused. Saying otherwise sends the Guest to
@@ -901,7 +936,9 @@ export const cloudBookingsDB = {
         // to the Guest. `advice` is the owner's sentence — which switch to turn
         // back on — and Firebase's own words ride along with it.
         console.warn(
-          `[Firestore] add() was refused by firestore.rules (not the lead time: ${input.check_in} clears ${days} days). ` +
+          `[Firestore] add() was refused by firestore.rules (not the lead time or booking window: ` +
+            `${input.check_in} clears ${policy.minimumLeadTimeDays} days` +
+            `${policy.bookingsOpenUntil ? ` and is inside the window ending ${policy.bookingsOpenUntil}` : ''}). ` +
             `${failureLine(lastWriteFailure)}` +
             (lastWriteFailure.message ? ` Firebase said: ${lastWriteFailure.message}` : ''),
           e,
@@ -923,7 +960,8 @@ export const cloudBookingsDB = {
                   anonymous: auth?.currentUser?.isAnonymous ?? null,
                   payload: withHold,
                   published,
-                  minimumLeadTimeDays: days,
+                  minimumLeadTimeDays: policy.minimumLeadTimeDays,
+                  bookingsOpenUntil: policy.bookingsOpenUntil,
                   firebase: lastWriteFailure,
                 },
                 null,

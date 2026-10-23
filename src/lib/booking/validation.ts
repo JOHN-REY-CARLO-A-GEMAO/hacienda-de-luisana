@@ -17,9 +17,12 @@
 import { assertSubmittable, type SubmissionProof } from './submit'
 import {
   BOOKING_TIME_ZONE,
+  bookingsOpenUntilMessage,
+  isBeyondBookingWindow,
+  lastBookableCheckOut,
   minimumBookingLeadTimeMessage,
   minimumCheckInDate,
-  validateMinimumBookingLeadTime,
+  validateBookableCheckIn,
   type BookingDateValidation,
 } from './leadTime'
 import {
@@ -41,6 +44,7 @@ export type BookingRuleFailureCode =
   | 'INVALID_CHECK_OUT_DATE'
   | 'CHECK_OUT_BEFORE_CHECK_IN'
   | 'MINIMUM_BOOKING_LEAD_TIME'
+  | 'BOOKING_WINDOW_CLOSED'
   | 'STAY_LENGTH_NOT_SUPPORTED'
   | 'PROPERTY_NOT_BOOKABLE'
   | 'RATE_NOT_PUBLISHED'
@@ -85,6 +89,8 @@ export type BookingSelectionOptions = {
   published: PublishedRates | null | undefined
   /** The Admin setting, already read by the caller when it has a fresh value. */
   minimumBookingLeadTimeDays?: number
+  /** Last bookable check-in, already read from the same policy document. */
+  bookingsOpenUntil?: string
   /** Pin the business instant in tests; defaults to now. */
   now?: Date
   /** Set false after the caller has completed a fresh server policy check. */
@@ -141,6 +147,9 @@ function dateValidationFailure(result: BookingDateValidation): { ok: false; fail
   if (result.code === 'MINIMUM_BOOKING_LEAD_TIME') {
     return failure('MINIMUM_BOOKING_LEAD_TIME', result.reason, 'check_in')
   }
+  if (result.code === 'BOOKING_WINDOW_CLOSED') {
+    return failure('BOOKING_WINDOW_CLOSED', result.reason, 'check_in')
+  }
   return failure('INVALID_CHECK_IN_DATE', result.reason, 'check_in')
 }
 
@@ -183,13 +192,28 @@ export function validateBookingSelection(
   }
 
   if (options.checkLeadTime !== false) {
-    const lead = validateMinimumBookingLeadTime(
+    const lead = validateBookableCheckIn(
       selection.check_in,
       options.now ?? new Date(),
       options.minimumBookingLeadTimeDays,
+      options.bookingsOpenUntil,
     )
     const leadFailure = dateValidationFailure(lead)
     if (leadFailure) return leadFailure
+  } else if (isBeyondBookingWindow(selection.check_in, options.bookingsOpenUntil)) {
+    // A fresh server check supplied the policy boundary, but the cut-off is
+    // still a rule this preflight must state: `checkLeadTime: false` skips the
+    // stale-clock comparison, not the season the Admin has closed.
+    return failure('BOOKING_WINDOW_CLOSED', bookingsOpenUntilMessage(options.bookingsOpenUntil ?? ''), 'check_in')
+  }
+
+  const lastCheckout = lastBookableCheckOut(options.bookingsOpenUntil ?? '')
+  if (lastCheckout && selection.check_out > lastCheckout) {
+    return failure(
+      'BOOKING_WINDOW_CLOSED',
+      `The last bookable night is ${options.bookingsOpenUntil}. A stay may check out on ${lastCheckout} at the latest. Please shorten the stay or choose an earlier check-in.`,
+      'check_out',
+    )
   }
 
   const nights = Math.round((checkOut.time - checkIn.time) / 86_400_000)

@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react'
-import { MINIMUM_BOOKING_LEAD_TIME_DAYS, minimumCheckInDate } from '../lib/booking'
+import { MINIMUM_BOOKING_LEAD_TIME_DAYS, NO_BOOKINGS_CUTOFF, minimumCheckInDate } from '../lib/booking'
 import { bookingPolicyDB } from '../lib/bookingPolicyDB'
 
 /** Live policy plus a calendar minimum that refreshes on focus and at midnight. */
 export function useBookingPolicy() {
   const [days, setDays] = useState(MINIMUM_BOOKING_LEAD_TIME_DAYS)
+  const [bookingsOpenUntil, setBookingsOpenUntil] = useState(NO_BOOKINGS_CUTOFF)
   const [now, setNow] = useState(() => new Date())
-  useEffect(() => bookingPolicyDB.subscribe(setDays), [])
+  useEffect(
+    () => bookingPolicyDB.subscribePolicy((policy) => {
+      setDays(policy.minimumLeadTimeDays)
+      setBookingsOpenUntil(policy.bookingsOpenUntil)
+    }),
+    [],
+  )
   useEffect(() => {
     const refresh = () => setNow(new Date())
     // Asia/Manila is UTC+08:00 without daylight saving. Schedule the next
@@ -28,5 +35,16 @@ export function useBookingPolicy() {
       document.removeEventListener('visibilitychange', refresh)
     }
   }, [])
-  return { minimumBookingLeadTimeDays: days, earliestCheckIn: minimumCheckInDate(now, days) }
+  const earliestCheckIn = minimumCheckInDate(now, days)
+  return {
+    minimumBookingLeadTimeDays: days,
+    earliestCheckIn,
+    bookingsOpenUntil,
+    /**
+     * True when the Admin's cut-off falls before the first date the lead time
+     * allows. No date can satisfy both, so the page must say the season is
+     * closed instead of rendering an all-grey calendar with no explanation.
+     */
+    bookingWindowClosed: bookingsOpenUntil !== NO_BOOKINGS_CUTOFF && bookingsOpenUntil < earliestCheckIn,
+  }
 }

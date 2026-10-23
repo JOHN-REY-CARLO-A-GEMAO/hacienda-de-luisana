@@ -3,30 +3,50 @@
 // store: demo mode uses the same default as a missing cloud document.
 import { doc, getDocFromServer, onSnapshot } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
-import { configuredBookingLeadTimeDays, MINIMUM_BOOKING_LEAD_TIME_DAYS } from './booking'
+import {
+  configuredBookingLeadTimeDays,
+  configuredBookingsOpenUntil,
+  MINIMUM_BOOKING_LEAD_TIME_DAYS,
+  NO_BOOKINGS_CUTOFF,
+} from './booking'
 
 const COLLECTION = 'site_config'
 const DOC_ID = 'booking'
 const isCloud = isFirebaseConfigured && Boolean(db)
 
-export const bookingPolicyDB = {
-  async getMinimumLeadTimeDays(): Promise<number> {
-    if (!isCloud || !db) return MINIMUM_BOOKING_LEAD_TIME_DAYS
-    try {
-      // Pre-upload/pre-write checks must not use an out-of-date offline cache
-      // after the Admin changes the policy. Firestore rules still decide.
-      const snap = await getDocFromServer(doc(db, COLLECTION, DOC_ID))
-      return configuredBookingLeadTimeDays(snap.exists() ? snap.data() : null)
-    } catch {
-      throw new Error('Booking dates could not be checked right now. Please try again.')
-    }
-  },
+/** The Guest-facing policy decisions stored in `site_config/booking`. */
+export type GuestBookingPolicy = {
+  minimumLeadTimeDays: number
+  /** Last bookable check-in date, or '' when the Hacienda has no cut-off. */
+  bookingsOpenUntil: string
+  quotesRequired: boolean
+  callableBookingRequired: boolean
+}
 
+const OPEN_POLICY: GuestBookingPolicy = {
+  minimumLeadTimeDays: MINIMUM_BOOKING_LEAD_TIME_DAYS,
+  bookingsOpenUntil: NO_BOOKINGS_CUTOFF,
+  quotesRequired: false,
+  callableBookingRequired: false,
+}
+
+/** One mapping for the server read, the subscription and the demo default. */
+function policyFrom(data: Record<string, unknown> | undefined): GuestBookingPolicy {
+  return {
+    minimumLeadTimeDays: configuredBookingLeadTimeDays(data ?? null),
+    bookingsOpenUntil: configuredBookingsOpenUntil(data ?? null),
+    quotesRequired: data?.quotes_required === true,
+    callableBookingRequired: data?.callable_booking_required === true,
+  }
+}
+
+export const bookingPolicyDB = {
   /**
    * The Guest-facing policy decisions that live in this document, from **one**
-   * read: the minimum lead time, whether a price must be attested before a
-   * Booking may be written (ADR-0019), and whether callable-only availability
-   * and booking submission enforcement has been switched on (ADR-0020).
+   * read: the minimum lead time, the last bookable check-in, whether a price
+   * must be attested before a Booking may be written (ADR-0019), and whether
+   * callable-only availability and booking submission enforcement has been
+   * switched on (ADR-0020).
    *
    * A single read is not a micro-optimisation. All answers have to describe the
    * same moment: a Guest whose dates were judged against the 30-day default while
@@ -35,40 +55,31 @@ export const bookingPolicyDB = {
    * builds and `firestore.rules` deploy safely on Spark before Cloud Functions
    * are deployed.
    */
-  async getGuestPolicy(): Promise<{
-    minimumLeadTimeDays: number
-    quotesRequired: boolean
-    callableBookingRequired: boolean
-  }> {
-    if (!isCloud || !db) {
-      return {
-        minimumLeadTimeDays: MINIMUM_BOOKING_LEAD_TIME_DAYS,
-        quotesRequired: false,
-        callableBookingRequired: false,
-      }
-    }
+  async getGuestPolicy(): Promise<GuestBookingPolicy> {
+    if (!isCloud || !db) return { ...OPEN_POLICY }
     try {
       const snap = await getDocFromServer(doc(db, COLLECTION, DOC_ID))
-      const data = snap.exists() ? snap.data() : undefined
-      return {
-        minimumLeadTimeDays: configuredBookingLeadTimeDays(data ?? null),
-        quotesRequired: data?.quotes_required === true,
-        callableBookingRequired: data?.callable_booking_required === true,
-      }
+      return policyFrom(snap.exists() ? snap.data() : undefined)
     } catch {
       throw new Error('Booking dates could not be checked right now. Please try again.')
     }
   },
 
-  subscribe(callback: (days: number) => void): () => void {
+  /**
+   * Live policy for the calendar. The cut-off is part of the same callback as
+   * the lead time: a Guest who sees one change must see the other from the same
+   * document version, or the calendar can paint a date open that the validator
+   * behind Continue already refuses.
+   */
+  subscribePolicy(callback: (policy: GuestBookingPolicy) => void): () => void {
     if (!isCloud || !db) {
-      callback(MINIMUM_BOOKING_LEAD_TIME_DAYS)
+      callback({ ...OPEN_POLICY })
       return () => {}
     }
     return onSnapshot(
       doc(db, COLLECTION, DOC_ID),
-      (snap) => callback(configuredBookingLeadTimeDays(snap.exists() ? snap.data() : null)),
-      () => callback(MINIMUM_BOOKING_LEAD_TIME_DAYS),
+      (snap) => callback(policyFrom(snap.exists() ? snap.data() : undefined)),
+      () => callback({ ...OPEN_POLICY }),
     )
   },
 }

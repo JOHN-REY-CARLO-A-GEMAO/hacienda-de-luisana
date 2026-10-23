@@ -121,6 +121,64 @@ describe('the Admin-owned Booking policy', () => {
   })
 })
 
+describe('the Admin-owned booking window', () => {
+  const cutoff = { 'site_config/booking': { bookingsOpenUntil: '2026-11-20' } }
+
+  it('accepts only an ISO calendar date, or an explicit empty value, from Admin', () => {
+    for (const value of ['2026-11-20', '', '2028-02-29']) {
+      expect(decide(request({
+        method: 'create', path: 'site_config/booking', auth: allowlistedAdmin(),
+        requestData: { bookingsOpenUntil: value },
+      })).allow).toBe(true)
+    }
+    for (const value of ['2026-1-1', '2026-11-20T00:00:00Z', 20261120, null,
+      '2026-02-30', '2027-02-29', '2026-13-01', '2026-00-10', '2026-11-00']) {
+      expect(decide(request({
+        method: 'create', path: 'site_config/booking', auth: allowlistedAdmin(),
+        requestData: { bookingsOpenUntil: value },
+      })).allow).toBe(false)
+    }
+  })
+
+  it('allows the last night, with its next-day checkout, and refuses the day after', () => {
+    expect(directCreate(
+      anonymousGuest(),
+      { check_in: plus(50), check_out: plus(51) },
+      cutoff,
+    )).toBe(true)
+    expect(directCreate(
+      anonymousGuest(),
+      { check_in: plus(51), check_out: plus(52) },
+      cutoff,
+    )).toBe(false)
+  })
+
+  it('is a cutoff, not an exemption from the 30-day lead time', () => {
+    expect(directCreate(anonymousGuest(), { check_in: plus(29), check_out: plus(30) }, cutoff)).toBe(false)
+    expect(directCreate(anonymousGuest(), { check_in: plus(30), check_out: plus(31) }, cutoff)).toBe(true)
+  })
+
+  it('treats an absent or empty cutoff as open', () => {
+    expect(directCreate(anonymousGuest(), { check_in: plus(50) }, { 'site_config/booking': { bookingsOpenUntil: '' } })).toBe(true)
+    expect(directCreate(anonymousGuest(), { check_in: '2027-12-01', check_out: '2027-12-02' }, cutoff)).toBe(false)
+  })
+
+  it('closes every date when the cutoff falls before the lead time', () => {
+    expect(directCreate(
+      anonymousGuest(),
+      { check_in: plus(50), check_out: plus(51) },
+      { 'site_config/booking': { bookingsOpenUntil: plus(19) } },
+    )).toBe(false)
+  })
+
+  it('never applies the cutoff to an Admin manual create', () => {
+    expect(decide(request({
+      method: 'create', path: 'bookings/manual-window', auth: allowlistedAdmin(), time: NOW,
+      requestData: proofBooking({ check_in: plus(60), check_out: plus(61) }),
+    }), { store: cutoff }).allow).toBe(true)
+  })
+})
+
 describe('Admin and existing-Booking regression boundaries', () => {
   it('preserves manual Admin creates for bootstrap and stored Admin roles', () => {
     const profiles = storeWith({ 'promoted-admin-1': { role: 'admin' } })

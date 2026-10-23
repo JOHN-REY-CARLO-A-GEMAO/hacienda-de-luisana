@@ -6,6 +6,7 @@ Hacienda de LuisAna requires a Guest Booking at least **30 Manila calendar days 
 | --- | --- |
 | Business timezone | `Asia/Manila` |
 | Minimum lead time | `site_config/booking.minimumBookingLeadTimeDays`; default 30 |
+| Booking window | `site_config/booking.bookingsOpenUntil`; last bookable check-in, absent/empty = open |
 | Stay occupancy | Half-open `[check_in, check_out)` |
 | Standard website stay | One night under the existing Published rate model |
 | Pending hold | 24 hours from server submission |
@@ -15,6 +16,31 @@ Hacienda de LuisAna requires a Guest Booking at least **30 Manila calendar days 
 
 For example, while Manila's date is 1 October 2026, 30 October is too early and **31 October is allowed**. This is calendar arithmetic, not exactly 720 elapsed hours in the browser's timezone.
 
+## Booking window (season cutoff)
+
+The Admin can close the season without deleting rates or blocking dates one by one. `site_config/booking.bookingsOpenUntil` holds the **last calendar date on which a Guest may check in**, in `Asia/Manila` terms. It is a date, not a duration: a rolling "24 months from today" would move under a Guest whose tab stays open, and a Guest who reloads could be told a date they were just shown is closed. The Admin moves the date when the season moves.
+
+- Absent or `""` means **no cutoff**: the 30-day lead time is the only date boundary.
+- The cutoff date itself is bookable. A Booking that checks in on the last night checks out the next day; no stay may run past that checkout.
+- The inline calendar paints later dates as **Outside booking window** (crossed out, `data-availability="closed"`, disabled) and stops month navigation at the cutoff month.
+- The native date inputs receive `max` bounds, the preflight refuses a typed date with `BOOKING_WINDOW_CLOSED`, `submitBooking` re-checks the same document through `deriveQuote`, and `firestore.rules` refuses a direct Guest create after the cutoff.
+- The cutoff never shortens the lead time. A date has to satisfy **both** boundaries. If `bookingsOpenUntil` falls before `today + minimumBookingLeadTimeDays`, no date is bookable; the page says **Bookings are currently closed** instead of drawing an all-grey calendar, and the Admin must move the cutoff or the lead time.
+- Like the lead time, this is a **creation-time** constraint. Existing Bookings and Admin manual operations are not retroactively restricted, and an Admin manual create is not subject to the cutoff.
+
+Example — the conflict to avoid: on 23 October 2026 (Manila) with the default 30-day lead time, the earliest possible check-in is 22 November. Setting `bookingsOpenUntil: "2026-11-20"` therefore closes the season *before* it opens; a cutoff of `"2026-12-31"` (or a shorter lead time) is needed for a bookable window.
+
+### Configuration
+
+```text
+site_config/booking
+  minimumBookingLeadTimeDays: positive integer (optional; default 30)
+  bookingsOpenUntil: "YYYY-MM-DD" | "" (optional; empty/absent = no cutoff)
+  quotes_required: boolean (optional)
+  callable_booking_required: boolean (optional)
+```
+
+`firestore.rules` refuses a malformed `bookingsOpenUntil` — anything but a real `YYYY-MM-DD` calendar date or the empty string — so neither app has to guess what `"2026-1-1"`, `"2026-02-30"` or a timestamp means. A hand-edited malformed value reads as "open" in the app, matching the lead-time field's fallback.
+
 ## Inline availability calendar
 
 The Stay Details step contains a responsive six-week calendar connected to the selected Accommodation. Its visible legend and date labels expose state without relying on color alone:
@@ -23,6 +49,7 @@ The Stay Details step contains a responsive six-week calendar connected to the s
 - **Booked (red):** committed occupancy has filled inventory.
 - **Pending hold (yellow):** active Pending holders have filled the remaining inventory.
 - **Past / lead-time-invalid / unknown (neutral):** the Guest cannot select the date.
+- **Outside booking window (crossed out):** the Admin has closed the season after `bookingsOpenUntil`; no check-in is accepted on or after the following day.
 
 Missing inventory, malformed responses, permission failures, network failures, and loading transitions are never represented as Available. The calendar offers Refresh/retry and keeps Continue disabled until the selected range is freshly confirmed.
 
@@ -77,7 +104,7 @@ site_config/booking
   quotes_required: boolean (optional)
 ```
 
-Deleting/omitting the lead-time field restores the shared 30-day default. Guests may read this public policy but cannot change it. Published price/inventory remains in `site_config/rates`; no blackout calendar or parallel inventory document was introduced.
+Deleting/omitting the lead-time field restores the shared 30-day default; deleting/omitting `bookingsOpenUntil` opens every future date. Guests may read this public policy but cannot change it. Published price/inventory remains in `site_config/rates`; no blackout calendar or parallel inventory document was introduced.
 
 ## Payment-proof storage boundary
 

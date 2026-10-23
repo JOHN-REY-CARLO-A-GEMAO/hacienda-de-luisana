@@ -156,7 +156,10 @@ describe('the existing booking date picker', () => {
   })
 
   it('uses the same configurable policy as creation', () => {
-    vi.spyOn(bookingPolicyDB, 'subscribe').mockImplementation((callback) => { callback(45); return () => {} })
+    vi.spyOn(bookingPolicyDB, 'subscribePolicy').mockImplementation((callback) => {
+      callback({ minimumLeadTimeDays: 45, bookingsOpenUntil: '', quotesRequired: false, callableBookingRequired: false })
+      return () => {}
+    })
     open()
     expect(input('[data-tour-field="check-in"]').min).toBe('2026-11-15')
     expect(container.textContent).toContain('Book at least 45 days')
@@ -286,5 +289,46 @@ describe('new date policy preserves the existing validation gates', () => {
     expect(input('[data-tour-field="check-in"]').min).toBe('2026-10-31')
     act(() => vi.advanceTimersByTime(1000))
     expect(input('[data-tour-field="check-in"]').min).toBe('2026-11-01')
+  })
+})
+
+describe('the Admin booking window on the booking page', () => {
+  const policy = (bookingsOpenUntil: string) => ({
+    minimumLeadTimeDays: 30,
+    bookingsOpenUntil,
+    quotesRequired: false,
+    callableBookingRequired: false,
+  })
+  const useCutoff = (bookingsOpenUntil: string) => {
+    vi.spyOn(bookingPolicyDB, 'subscribePolicy').mockImplementation((callback) => {
+      callback(policy(bookingsOpenUntil))
+      return () => {}
+    })
+  }
+
+  it('bounds both native inputs and says when the season closes', () => {
+    useCutoff('2026-11-20')
+    open()
+    expect(input('[data-tour-field="check-in"]').max).toBe('2026-11-20')
+    expect(input('[data-tour-field="check-out"]').max).toBe('2026-11-21')
+    expect(container.textContent).toContain('Check-in is open through 2026-11-20; later dates are closed.')
+  })
+
+  it('says the season is closed instead of rendering an empty calendar, and disables Continue', () => {
+    useCutoff('2026-10-20')
+    open()
+    expect(container.textContent).toContain('Bookings are currently closed.')
+    expect(container.textContent).toContain('2026-10-20')
+    const submit = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Continue to downpayment'))
+    expect(submit?.disabled).toBe(true)
+  })
+
+  it('clears a typed check-in that falls outside the season before anything is drafted', async () => {
+    useCutoff('2026-10-31')
+    open()
+    fillDetails('2026-11-05')
+    await until(() => Boolean(container.textContent?.includes('outside the booking window')))
+    expect(loadBookingDraft()).toBeNull()
   })
 })

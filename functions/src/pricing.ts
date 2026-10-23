@@ -28,7 +28,12 @@ import {
   type RateClassification,
 } from './booking/rates'
 import { paymentOptionsForTotal } from './booking/money'
-import { configuredBookingLeadTimeDays, validateMinimumBookingLeadTime } from './booking/leadTime'
+import {
+  configuredBookingLeadTimeDays,
+  configuredBookingsOpenUntil,
+  lastBookableCheckOut,
+  validateBookableCheckIn,
+} from './booking/leadTime'
 
 /** What a quote is for. No money here: money is what this module produces. */
 export interface QuoteRequest {
@@ -77,6 +82,7 @@ export type QuoteCause =
   | 'REQUEST_SHAPE'
   | 'NOT_A_STANDARD_STAY'
   | 'LEAD_TIME'
+  | 'BOOKING_WINDOW_CLOSED'
   | 'PUBLISHED_RATES_MISSING'
   | 'PUBLISHED_RATES_MALFORMED'
   | 'ACCOMMODATION_UNKNOWN'
@@ -117,6 +123,7 @@ const GUEST_MESSAGES: Record<QuoteCause, string> = {
   REQUEST_SHAPE: 'We could not read the dates or the party size you sent. Please check the form and try again.',
   NOT_A_STANDARD_STAY: 'That stay is not one we can quote online. Please contact the Hacienda.',
   LEAD_TIME: 'Those dates are too soon to book.',
+  BOOKING_WINDOW_CLOSED: 'The Hacienda is not accepting check-ins for those dates. Please choose a date inside the open booking window.',
   PUBLISHED_RATES_MISSING: 'Prices are being updated right now, so we cannot take a booking this minute. Please try again shortly.',
   PUBLISHED_RATES_MALFORMED: 'Prices are being updated right now, so we cannot take a booking this minute. Please try again shortly.',
   ACCOMMODATION_UNKNOWN: 'That unit is not one we can book online. Please choose from the page and try again.',
@@ -210,6 +217,7 @@ export function deriveQuote(
   options: { now: number; bookingConfig?: unknown } = { now: Date.now() },
 ): QuoteResult {
   const minimumLeadTimeDays = configuredBookingLeadTimeDays(options.bookingConfig)
+  const bookingsOpenUntil = configuredBookingsOpenUntil(options.bookingConfig)
   if (ratesDocument === null || ratesDocument === undefined) {
     return refuse('PUBLISHED_RATES_MISSING', 'site_config/rates does not exist')
   }
@@ -222,9 +230,26 @@ export function deriveQuote(
 
   // The same validator the submit path runs and the same rule the write enforces,
   // so a quote can never be issued for a date the Booking write would refuse.
-  const leadTime = validateMinimumBookingLeadTime(request.check_in, new Date(options.now), minimumLeadTimeDays)
+  const leadTime = validateBookableCheckIn(
+    request.check_in,
+    new Date(options.now),
+    minimumLeadTimeDays,
+    bookingsOpenUntil,
+  )
   if (!leadTime.ok) {
-    return refuse('LEAD_TIME', `check_in ${request.check_in}: ${leadTime.reason}`, 'invalid-argument')
+    return refuse(
+      leadTime.code === 'BOOKING_WINDOW_CLOSED' ? 'BOOKING_WINDOW_CLOSED' : 'LEAD_TIME',
+      `check_in ${request.check_in}: ${leadTime.reason}`,
+      'invalid-argument',
+    )
+  }
+  const lastCheckout = lastBookableCheckOut(bookingsOpenUntil)
+  if (lastCheckout && request.check_out > lastCheckout) {
+    return refuse(
+      'BOOKING_WINDOW_CLOSED',
+      `check_out ${request.check_out}: the last bookable night is ${bookingsOpenUntil} (checkout ${lastCheckout})`,
+      'invalid-argument',
+    )
   }
   const nights = Math.round((Date.parse(`${request.check_out}T00:00:00Z`) - Date.parse(`${request.check_in}T00:00:00Z`)) / DAY_MS)
   if (nights !== 1) {

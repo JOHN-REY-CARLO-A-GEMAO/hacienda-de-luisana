@@ -53,6 +53,10 @@ _Avoid_: Reservation (a Booking that has been paid and reserved), inquiry, order
 **Minimum booking lead time**:
 The calendar days a Guest must leave between creating a Booking and check-in. Hacienda de LuisAna requires Guests to create Bookings at least **30 calendar days** before the intended check-in date, using **Asia/Manila** for today. Exactly today + 30 days is allowed; today + 29 is not. The Admin-owned `site_config/booking.minimumBookingLeadTimeDays` may change the requirement; an absent setting defaults to 30. The website disables earlier dates and pre-checks before proof upload, but the regional `submitBooking` callable is the authoritative Guest create-time enforcement using server time. Firestore Rules close direct Guest creates; existing Bookings and Admin lifecycle/manual operations are not retroactively restricted.
 
+**Booking window**:
+The last date on which a Guest may start a stay. The Admin owns it at `site_config/booking.bookingsOpenUntil`; absent or empty means no cutoff. The date itself is bookable and its checkout is the next day, but no new check-in is accepted afterwards. It is a calendar date rather than a rolling duration because a season is a decision the Admin makes, not a clock the page reads. A date must satisfy the Booking window **and** the minimum booking lead time; when the two cannot both be met, the website says bookings are closed instead of offering an empty calendar. Enforced in the calendar, the native date inputs, the pre-upload preflight, `submitBooking`, and `firestore.rules`; existing Bookings and Admin manual creates are not restricted.
+_Avoid_: Blackout calendar, blocked dates, rolling 24-month limit, vacation setting
+
 **Stay**:
 The period a Guest occupies an Accommodation, from check-in to check-out.
 

@@ -29,8 +29,9 @@ import {
   formatRefundPolicySummary,
   pricedStayExtras,
   quoteAccommodation,
+  lastBookableCheckOut,
+  validateBookableCheckIn,
   validateBookingSelection,
-  validateMinimumBookingLeadTime,
   type BookingRuleFailure,
   type EventPurpose,
 } from '../lib/booking'
@@ -63,7 +64,12 @@ export function BookingPage() {
   const { user, profile, loading: authLoading } = useAuth()
   const location = useLocation()
   const sessionNotice = (location.state as { notice?: string } | null)?.notice ?? ''
-  const { minimumBookingLeadTimeDays, earliestCheckIn } = useBookingPolicy()
+  const {
+    minimumBookingLeadTimeDays,
+    earliestCheckIn,
+    bookingsOpenUntil,
+    bookingWindowClosed,
+  } = useBookingPolicy()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const initialAccommodation = params.get('accommodation') || ACCOMMODATIONS[0].id
@@ -181,7 +187,12 @@ export function BookingPage() {
 
   useEffect(() => {
     if (!form.check_in || !form.check_out || !form.accommodation
-        || !validateMinimumBookingLeadTime(form.check_in, new Date(), minimumBookingLeadTimeDays).ok) {
+        || !validateBookableCheckIn(
+          form.check_in,
+          new Date(),
+          minimumBookingLeadTimeDays,
+          bookingsOpenUntil,
+        ).ok) {
       setAvailability(null)
       return
     }
@@ -213,21 +224,36 @@ export function BookingPage() {
     return () => {
       alive = false
     }
-  }, [form.check_in, form.check_out, form.accommodation, nights, minimumBookingLeadTimeDays, earliestCheckIn])
+  }, [form.check_in, form.check_out, form.accommodation, nights, minimumBookingLeadTimeDays, earliestCheckIn, bookingsOpenUntil])
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }))
     setErrors((e) => ({ ...e, [k]: undefined }))
   }
 
+  const checkOutWindowError = (): string | undefined => {
+    const lastCheckout = lastBookableCheckOut(bookingsOpenUntil)
+    if (lastCheckout && form.check_out && form.check_out > lastCheckout) {
+      return `The last bookable night is ${bookingsOpenUntil}, so checkout must be on or before ${lastCheckout}.`
+    }
+    return undefined
+  }
+
   const validateSingleField = (key: keyof FormState): string | undefined => {
     if (key === 'check_in') {
-      const leadTime = validateMinimumBookingLeadTime(form.check_in, new Date(), minimumBookingLeadTimeDays)
-      if (!leadTime.ok) return leadTime.reason
+      const window = validateBookableCheckIn(
+        form.check_in,
+        new Date(),
+        minimumBookingLeadTimeDays,
+        bookingsOpenUntil,
+      )
+      if (!window.ok) return window.reason
       const stay = validateStayDates(form.check_in, form.check_out)
       if (!stay.ok && stay.field === 'check_in') return stay.message
     }
     if (key === 'check_out') {
+      const windowError = checkOutWindowError()
+      if (windowError) return windowError
       const stay = validateStayDates(form.check_in, form.check_out)
       if (!stay.ok && stay.field === 'check_out') return stay.message
     }
@@ -263,8 +289,15 @@ export function BookingPage() {
 
   const validate = (): boolean => {
     const e: Errors = {}
-    const leadTime = validateMinimumBookingLeadTime(form.check_in, new Date(), minimumBookingLeadTimeDays)
-    if (!leadTime.ok) e.check_in = leadTime.reason
+    const window = validateBookableCheckIn(
+      form.check_in,
+      new Date(),
+      minimumBookingLeadTimeDays,
+      bookingsOpenUntil,
+    )
+    if (!window.ok) e.check_in = window.reason
+    const checkOutWindow = checkOutWindowError()
+    if (checkOutWindow) e.check_out = checkOutWindow
     const stay = validateStayDates(form.check_in, form.check_out)
     if (!stay.ok && !e[stay.field]) e[stay.field] = stay.message
     const guests = guestCountValid(Number(form.guests), selectedAcc?.capacity, selectedAcc?.name)
@@ -341,8 +374,10 @@ export function BookingPage() {
         {
           published,
           minimumBookingLeadTimeDays,
+          bookingsOpenUntil,
           // The fresh check above supplies the current policy boundary. The pure
-          // validator still checks dates, stay length, property and rates here.
+          // validator still checks the season cutoff, dates, stay length,
+          // property and rates here.
           checkLeadTime: false,
         },
       )
@@ -479,7 +514,17 @@ export function BookingPage() {
               <p id="booking-lead-time" className="mt-2 text-sm text-forest-700">
                 Book at least {minimumBookingLeadTimeDays} days before check-in.
                 Earliest check-in: {earliestCheckIn} (Philippine time).
+                {bookingsOpenUntil && (
+                  <> Check-in is open through <strong>{bookingsOpenUntil}</strong>; later dates are closed.</>
+                )}
               </p>
+              {bookingWindowClosed && (
+                <Alert tone="warning" className="mt-4 text-xs">
+                  <strong>Bookings are currently closed.</strong> The Hacienda is not accepting check-ins after{' '}
+                  {bookingsOpenUntil}, and the {minimumBookingLeadTimeDays}-day lead time makes the earliest
+                  possible date {earliestCheckIn}. No date satisfies both. Please contact the Hacienda directly.
+                </Alert>
+              )}
               <div className="mt-6" data-tour="stay-details">
                 <div className="grid sm:grid-cols-2 gap-5">
                   <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
@@ -518,6 +563,7 @@ export function BookingPage() {
                   accommodation={form.accommodation}
                   accommodationName={options.find((option) => option.id === form.accommodation)?.label || selectedAcc?.name || 'this Accommodation'}
                   earliestCheckIn={earliestCheckIn}
+                  bookingsOpenUntil={bookingsOpenUntil}
                   checkIn={form.check_in}
                   checkOut={form.check_out}
                   onLoadStateChange={setCalendarState}
@@ -534,6 +580,7 @@ export function BookingPage() {
                     <Input
                       type="date"
                       min={earliestCheckIn}
+                      max={bookingsOpenUntil || undefined}
                       aria-describedby="booking-lead-time"
                       value={form.check_in}
                       data-tour-field="check-in"
@@ -545,6 +592,7 @@ export function BookingPage() {
                     <Input
                       type="date"
                       min={form.check_in >= earliestCheckIn ? form.check_in : earliestCheckIn}
+                      max={lastBookableCheckOut(bookingsOpenUntil) || undefined}
                       value={form.check_out}
                       data-tour-field="check-out"
                       onChange={(e) => set('check_out', e.target.value)}
@@ -683,6 +731,7 @@ export function BookingPage() {
                 type="submit"
                 disabled={status === 'submitting'
                   || calendarState !== 'ready'
+                  || bookingWindowClosed
                   || (Boolean(form.check_in && form.check_out) && availability?.status !== 'available')}
                 className="btn-primary w-full sm:w-auto disabled:opacity-70 disabled:cursor-not-allowed"
                 data-tour="submit-booking"

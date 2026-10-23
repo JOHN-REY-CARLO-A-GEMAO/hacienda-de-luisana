@@ -124,6 +124,45 @@ service cloud.firestore {
       return days is int && days > 0 ? days : defaultDays;
     }
 
+    // The Admin's last bookable check-in, or '' when no season cutoff is set.
+    // `validBookingPolicy` refuses anything but an ISO-shaped string; a legacy
+    // or hand-edited document that still carries something else reads as "open",
+    // which is the same fallback `configuredBookingsOpenUntil` uses in the app.
+    function bookingsOpenUntil() {
+      let policy = /databases/$(database)/documents/site_config/booking;
+      let until = exists(policy) ? get(policy).data.get('bookingsOpenUntil', '') : '';
+      return until is string ? until : '';
+    }
+
+    // A real calendar date, not merely ten digits: 2026-02-30 is not a season
+    // end, and storing it would leave the app (which refuses to parse it) and
+    // the rules (which compare it as text) describing two different seasons.
+    function daysInMonth(year, month) {
+      return month == 2
+        ? (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) ? 29 : 28)
+        : (month in [4, 6, 9, 11] ? 30 : 31);
+    }
+
+    function validCalendarDateString(value) {
+      // Guard the split: a number or null in a hand-edited document must be a
+      // refusal, not a rule-evaluation error.
+      let parts = value is string ? value.split('-') : [];
+      return value is string
+        && value.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && int(parts[0]) >= 1 && int(parts[0]) <= 9999
+        && int(parts[1]) >= 1 && int(parts[1]) <= 12
+        && int(parts[2]) >= 1
+        && int(parts[2]) <= daysInMonth(int(parts[0]), int(parts[1]));
+    }
+
+    function withinBookingWindow(checkIn) {
+      // ISO dates compare chronologically as strings, so no timestamp is built
+      // for the (Admin-only) cutoff. A Booking may check in on the last night;
+      // its checkout is the following day.
+      let until = bookingsOpenUntil();
+      return until == '' || checkIn <= until;
+    }
+
     function callableBookingRequired() {
       let policy = /databases/$(database)/documents/site_config/booking;
       return exists(policy)
@@ -144,7 +183,13 @@ service cloud.firestore {
         && (!request.resource.data.keys().hasAny(['quotes_required'])
             || request.resource.data.quotes_required is bool)
         && (!request.resource.data.keys().hasAny(['callable_booking_required'])
-            || request.resource.data.callable_booking_required is bool);
+            || request.resource.data.callable_booking_required is bool)
+        // The season cutoff is a date or explicitly empty. A malformed value is
+        // refused at the Admin write, so neither app has to guess what
+        // "2026-1-1" or a timestamp would mean.
+        && (!request.resource.data.keys().hasAny(['bookingsOpenUntil'])
+            || request.resource.data.bookingsOpenUntil == ''
+            || validCalendarDateString(request.resource.data.bookingsOpenUntil));
     }
 
     // Non-PII public occupancy projection at `site_config/availability`. Carries
@@ -212,6 +257,7 @@ service cloud.firestore {
         && data.check_out.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && data.check_out > data.check_in
         && meetsMinimumBookingLeadTime(data.check_in)
+        && withinBookingWindow(data.check_in)
         && validBookingMoneyInvariants(data)
         && validGuestQuote(data);
     }
