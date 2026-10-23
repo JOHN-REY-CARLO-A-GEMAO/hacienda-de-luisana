@@ -19,6 +19,7 @@ import {
 } from '../lib/validation'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { LEGAL_VERSION } from '../lib/legal'
+import { MAX_STAY_NIGHTS } from '../lib/booking'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { useBookingPolicy } from '../hooks/useBookingPolicy'
@@ -172,41 +173,23 @@ export function BookingPage() {
   const estimatedTotal = authoritativeQuote?.stayTotal ?? null
 
   /**
-   * The calendar offers only checkout dates the existing policy accepts. This
-   * calls the same pure selection rules used before payment, so a stay length
-   * the Hacienda does not publish (today: more than one 22-hour standard stay)
-   * is never selectable in the first place. Failures about rates, guests or
-   * add-ons are not date restrictions and stay where they are.
+   * Whether the calendar may offer this range as a stay: dates, the booking lead
+   * time, and the shared 1–20 night length rule. Nothing else.
+   *
+   * Deliberately NOT `validateBookingSelection`. That is the pricing/eligibility
+   * preflight, and it refuses anything that is not one 22-hour standard stay
+   * because the published rate model only prices one night. Letting a *pricing*
+   * rule decide which dates can be picked made the calendar force
+   * checkout = check-in + 1, which is a date-range question, not a price
+   * question. Pricing stays enforced where it belongs: before payment and again
+   * inside `submitBooking`.
    */
   const validateStayRange = useCallback((checkIn: string, checkOut: string) => {
+    const leadTime = validateMinimumBookingLeadTime(checkIn, new Date(), minimumBookingLeadTimeDays)
+    if (!leadTime.ok) return { ok: false, reason: leadTime.reason }
     const stay = validateStayDates(checkIn, checkOut)
-    if (!stay.ok) return { ok: false, reason: stay.message }
-    const selection = validateBookingSelection(
-      {
-        accommodation: form.accommodation,
-        check_in: checkIn,
-        check_out: checkOut,
-        guests: Number(form.guests),
-        pet_count: form.pet_count,
-        bonfire_wood_sets: form.bonfire_wood_sets,
-        late_checkout_hours: form.late_checkout_hours,
-      },
-      { published, minimumBookingLeadTimeDays },
-    )
-    if (!selection.ok) {
-      const dateRules = new Set([
-        'STAY_LENGTH_NOT_SUPPORTED',
-        'CHECK_OUT_BEFORE_CHECK_IN',
-        'INVALID_CHECK_OUT_DATE',
-        'INVALID_CHECK_IN_DATE',
-        'MINIMUM_BOOKING_LEAD_TIME',
-      ])
-      if (dateRules.has(selection.failure.code)) {
-        return { ok: false, reason: selection.failure.message }
-      }
-    }
-    return { ok: true }
-  }, [published, form.accommodation, form.guests, form.pet_count, form.bonfire_wood_sets, form.late_checkout_hours, minimumBookingLeadTimeDays])
+    return stay.ok ? { ok: true } : { ok: false, reason: stay.message }
+  }, [minimumBookingLeadTimeDays])
 
   // The live fee breakdown: documented peso figures (officialBusiness.ts) under
   // whatever the Admin has published, recomputed the moment a control changes.
@@ -318,9 +301,15 @@ export function BookingPage() {
       e.accommodation = 'This property does not have a published guest-count rate.'
     }
     if (configuredRate && !authoritativeQuote) {
-      e.accommodation = nights !== 1
-        ? 'Published guest-count rates support one 22-hour standard stay. Contact the Hacienda for a longer stay.'
-        : 'The selected guest count is outside this property’s published rate rules.'
+      // A multi-night selection is a legitimate date range (the calendar offers
+      // it), but the published rate model prices exactly one 22-hour standard
+      // stay. Say that plainly on the checkout field instead of blaming the
+      // property or the guest count, and change no money to make it fit.
+      if (nights !== 1 && nights > 0) {
+        e.check_out = `A ${nights}-night stay can be selected, but online booking currently prices one 22-hour standard stay only. Choose a checkout one night after check-in, or contact the Hacienda for a longer stay.`
+      } else {
+        e.accommodation = 'The selected guest count is outside this property’s published rate rules.'
+      }
     }
     const name = validateName(form.name)
     if (!name.ok) e.name = name.message
@@ -573,6 +562,14 @@ export function BookingPage() {
                 <p className="mt-2 text-[11px] leading-relaxed text-forest-700/70">
                   You may type the dates in either field; the same live availability and current stay-length rules are still checked before payment.
                 </p>
+                {nights > 1 && (
+                  <Alert tone="info" className="mt-4 text-xs" title={`${nights}-night range selected.`}>
+                    You can select and review any stay of 1 to {MAX_STAY_NIGHTS} nights. Online booking still
+                    quotes one 22-hour standard stay, so a multi-night range cannot be submitted until
+                    multi-night pricing is approved. Nothing about availability, pricing or payment rules is
+                    changed by selecting it.
+                  </Alert>
+                )}
               </div>
             </div>
 

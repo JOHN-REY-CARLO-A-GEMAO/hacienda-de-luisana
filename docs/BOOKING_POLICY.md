@@ -30,7 +30,16 @@ Missing inventory, malformed responses, permission failures, network failures, a
 
 Selection is two-step: the Guest picks an available check-in, then a checkout. The picker highlights `[check_in, check_out)` and disables any checkout the current booking policy does not support, any range containing an unavailable night, and any invalid or past range. The checkout date is a boundary, not an occupied night: a Booking ending on 20 November does not block another check-in on 20 November, so a booked date may still be chosen as a checkout as long as every night before it is available.
 
-The standard website stay is still one night under the existing Published rate model, so the picker currently offers only the next day as a checkout. It derives that limit from the same policy validation used before payment rather than hard-coding it.
+### Date-range selection is separate from pricing eligibility
+
+Any checkout date after check-in, up to 20 nights later, is selectable — not only the next day. The calendar's range validator checks **dates and stay length only** (valid calendar dates, booking lead time, 1–20 nights). It deliberately does not call the pricing preflight: `validateBookingSelection` refuses anything that is not one 22-hour standard stay, and letting that rule decide which dates could be picked is what previously forced `checkout = check-in + 1`.
+
+Pricing eligibility remains enforced where it belongs, unchanged:
+
+- `validateBookingSelection` runs before `/book` advances to payment.
+- `deriveQuote` in the `quoteBooking` and `submitBooking` callables refuses a multi-night range with `NOT_A_STANDARD_STAY`.
+
+A multi-night range is therefore visible, selectable and reviewable, and it highlights fully, but it cannot be quoted or submitted while the published rate model prices one night. The UI says so in plain language instead of pretending the range is bookable.
 
 ### Maximum stay length
 
@@ -42,7 +51,7 @@ A stay may be at most **20 nights**, counted as checkout minus check-in. `MAX_ST
 - `submitBooking` and the quote callable enforce the same limit server-side through `deriveQuote` (`STAY_TOO_LONG`), so a forged request cannot skip it.
 - Checkout must always be later than check-in (`CHECK_OUT_NOT_AFTER_CHECK_IN`).
 
-The cap is additive: because the Published rate model currently prices exactly one 22-hour standard stay, a 2–20 night selection passes the cap and is then refused as `NOT_A_STANDARD_STAY`/`STAY_LENGTH_NOT_SUPPORTED`. ADR-0021 records that gap and sketches what a priced 1–20 night model would require; it is not approved by this policy.
+The cap is additive: because the Published rate model currently prices exactly one 22-hour standard stay, a 2–20 night selection can be selected and inspected, and is then refused at quotation/submission as `NOT_A_STANDARD_STAY`/`STAY_LENGTH_NOT_SUPPORTED`. ADR-0021 records that gap and sketches what a priced 1–20 night model would require; it is not approved by this policy.
 
 ### State calculation
 

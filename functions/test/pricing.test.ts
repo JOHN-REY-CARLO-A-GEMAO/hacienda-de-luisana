@@ -186,6 +186,20 @@ describe('the stay-length boundary is enforced on the server', () => {
     assert.ok(derive(CHECK_IN, CHECK_OUT).ok)
   })
 
+  for (const [nights, checkOut] of [[2, '2026-11-02'], [5, '2026-11-05'], [20, '2026-11-20']] as const) {
+    it(`refuses a ${nights}-night range with an accurate one-night-pricing message`, () => {
+      const outcome = derive(CHECK_IN, checkOut)
+      assert.equal(outcome.ok, false)
+      const refusal = outcome as { cause: string; guestMessage: string; detail: string }
+      // The date range itself is fine; it is the published price model that only
+      // covers one night. The server must not price it and must say why.
+      assert.equal(refusal.cause, 'NOT_A_STANDARD_STAY')
+      assert.match(refusal.guestMessage, /one 22-hour standard stay/)
+      assert.match(refusal.detail, new RegExp(`${nights} night`))
+      assert.doesNotMatch(refusal.guestMessage, /at most 20 nights/)
+    })
+  }
+
   it('accepts exactly 20 nights at the stay-length stage', () => {
     // 2026-10-31 + 20 nights. It still has to clear the published-stay rule,
     // which is the estate's pricing decision and not this cap's business; what

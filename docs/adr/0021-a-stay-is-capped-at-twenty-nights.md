@@ -29,7 +29,12 @@ A 20-night maximum is *looser* than that rule. Making a 20-night Booking valid e
    - **Trusted server path** — `deriveQuote` in `functions/src/pricing.ts`, which `submitBooking` and the quote callable both run, refuses 21 nights with the `STAY_TOO_LONG` cause, and refuses a checkout that is not after the check-in. The cause is surfaced to the Guest by `src/lib/availabilityApi.ts`.
 4. Keep the existing rules untouched: minimum lead time, availability and the 24-hour Pending hold, published pricing, guest capacity, payment split, and Admin approval. The cap is **additive** — it can only refuse more, never permit more.
 
-Because the cap is a maximum and the existing rule is "exactly 1", the picker still offers only the following day as a checkout. The twenty-night limit is a real, tested boundary (21 nights is refused everywhere), but a 20-night Booking is not yet bookable: it passes the cap and is then refused by the one-night price model. That is deliberate, and this ADR records it rather than hiding it behind a rule that reads as if 20 nights were purchasable.
+The cap is a maximum and the existing price rule is "exactly 1". Those are different questions, and they are answered in different places:
+
+- **Which dates may be picked?** 1–20 nights, any checkout after check-in, each night available. The picker's range validator uses only date and stay-length rules — it no longer calls `validateBookingSelection`.
+- **What may be quoted and submitted?** One 22-hour standard stay, unchanged. A multi-night range is refused by `deriveQuote` (`NOT_A_STANDARD_STAY`) and by the pre-payment preflight.
+
+So a Guest can select and visually inspect any 1–20 night range, and a 20-night Booking is still not purchasable. That is deliberate: it makes the date-range behaviour honest without changing rates, money arithmetic, attestation, rules, or payment policy, and it records the gap rather than hiding it behind a calendar that silently forces the next day.
 
 ## Consequence of the cap alone
 

@@ -171,7 +171,7 @@ describe('the existing booking date picker', () => {
     expect(input('[data-tour-field="check-in"]').min).toBe('2026-11-01')
   })
 
-  it('lets the dual-month picker choose a check-in then only a policy-supported checkout', async () => {
+  it('lets the dual-month picker choose any checkout up to 20 nights, not just the next day', async () => {
     open()
     await until(() => Boolean(container.querySelector('[data-date="2026-10-31"]:not([disabled])')))
 
@@ -180,14 +180,17 @@ describe('the existing booking date picker', () => {
     expect(input('[data-tour-field="check-out"]').value).toBe('')
     await until(() => container.textContent!.includes('Now choose a checkout date'))
 
-    // The seeded rates describe one 22-hour standard stay, so a two-night
-    // checkout is not offered even though the date itself is free.
-    const twoNights = container.querySelector('[data-date="2026-11-02"]')
-    expect(twoNights?.getAttribute('data-checkout-candidate')).toBeNull()
+    // Date-range selection is no longer gated by the one-night pricing rule: a
+    // five-night checkout is a normal selectable date.
+    expect(container.querySelector('[data-date="2026-11-05"]')?.getAttribute('data-checkout-candidate')).toBe('true')
+    // The 20-night boundary is the 20th of November; a 21st night is not offered.
+    expect(container.querySelector('[data-date="2026-11-20"]')?.getAttribute('data-checkout-candidate')).toBe('true')
+    expect(container.querySelector('[data-date="2026-11-21"]')?.getAttribute('data-checkout-candidate')).toBeNull()
 
-    click(container.querySelector('[data-date="2026-11-01"]') as HTMLButtonElement)
-    await until(() => input('[data-tour-field="check-out"]').value === '2026-11-01')
-    expect(container.querySelector('[data-date="2026-11-01"]')?.getAttribute('data-selected')).toBe('end')
+    click(container.querySelector('[data-date="2026-11-05"]') as HTMLButtonElement)
+    await until(() => input('[data-tour-field="check-out"]').value === '2026-11-05')
+    expect(container.querySelector('[data-date="2026-11-01"]')?.closest('[data-in-range]')).not.toBeNull()
+    expect(container.textContent).toContain('5-night range selected.')
   })
 
   it('shows the clear validation message if a disabled date is manually injected', async () => {
