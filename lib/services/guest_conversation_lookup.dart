@@ -1,1 +1,151 @@
-// ----------------------------------------------------------------------------\n// Finding the conversation a Guest and the Admin already have.\n// ----------------------------------------------------------------------------\n// One continuous conversation per guest booking — no topic-based threads.\n// The Admin app answers one question from a Booking: \"has this Guest written\n// to us, and if so where?\". The message button on a Booking opens that thread\n// directly rather than making the Admin remember which inbox row it is.\n//\n// The lookup can derive the conversation id from the booking id because the\n// website and the Admin app use the same formula (`booking-${bookingId}`).\n// The Admin may also list every thread for a guest with a `where` query,\n// which only the Admin is allowed to do — the Guest cannot.\n// ----------------------------------------------------------------------------\n\nimport 'package:cloud_firestore/cloud_firestore.dart';\n\nimport '../core/constants/app_constants.dart';\n\n/// A conversation the Admin can open, and who it is with.\nclass GuestConversation {\n  const GuestConversation({\n    required this.id,\n    required this.guestUid,\n    required this.guestName,\n    required this.bookingReference,\n    required this.propertyName,\n    this.updatedAt,\n  });\n\n  final String id;\n  final String guestUid;\n  final String guestName;\n  final String bookingReference;\n  final String propertyName;\n  final DateTime? updatedAt;\n}\n\n/// Every open thread this Guest has, newest first.\n///\n/// Returns empty rather than throwing when there is nothing to find: \"this Guest\n/// has never written to us\" is an answer, not a failure.\nFuture<List<GuestConversation>> conversationsWith(\n  String guestUid, {\n  FirebaseFirestore? firestore,\n  int limit = 20,\n}) async {\n  final db = firestore ?? FirebaseFirestore.instance;\n  final snapshot = await db\n      .collection(AppConstants.colConversations)\n      .where('guest_uid', isEqualTo: guestUid)\n      .limit(limit)\n      .get();\n\n  final threads = snapshot.docs.map((doc) {\n    final data = doc.data();\n    final updated = data['updated_at'];\n    return GuestConversation(\n      id: doc.id,\n      guestUid: (data['guest_uid'] ?? '').toString(),\n      guestName: (data['guest_name'] ?? 'Guest').toString(),\n      bookingReference: (data['booking_reference'] ?? '').toString(),\n      propertyName: (data['property_name'] ?? '').toString(),\n      updatedAt: updated is Timestamp ? updated.toDate() : null,\n    );\n  }).toList();\n\n  threads.sort((a, b) {\n    final at = a.updatedAt;\n    final bt = b.updatedAt;\n    if (at == null && bt == null) return 0;\n    if (at == null) return 1;\n    if (bt == null) return -1;\n    return bt.compareTo(at);\n  });\n  return threads;\n}\n\n/// The thread for a Booking: derives the conversation id as `booking-${bookingId}`\n/// and returns it if it exists, otherwise null.\n///\n/// Prefers deriving the id directly because we know the booking id — no\n/// `where` query needed, and no guessing about which topic a Guest picked.\nFuture<GuestConversation?> threadForBooking(\n  String guestUid, {\n  String? bookingId,\n  FirebaseFirestore? firestore,\n}) async {\n  final db = firestore ?? FirebaseFirestore.instance;\n  if (bookingId == null || bookingId.isEmpty) return null;\n\n  final doc = await db\n      .collection(AppConstants.colConversations)\n      .doc(AppConstants.conversationId(bookingId))\n      .get();\n\n  if (!doc.exists) return null;\n  final data = doc.data()!;\n  final updated = data['updated_at'];\n  return GuestConversation(\n    id: doc.id,\n    guestUid: (data['guest_uid'] ?? guestUid).toString(),\n    guestName: (data['guest_name'] ?? 'Guest').toString(),\n    bookingReference: (data['booking_reference'] ?? '').toString(),\n    propertyName: (data['property_name'] ?? '').toString(),\n    updatedAt: updated is Timestamp ? updated.toDate() : null,\n  );\n}\n
+// ----------------------------------------------------------------------------
+// Finding the conversation a Guest and the Admin already have.
+// ----------------------------------------------------------------------------
+// One continuous conversation per booking (`booking-<bookingId>`), with full
+// non-destructive backward compatibility for earlier `inquiry-<uid>-<category>`
+// threads so historical messages remain reachable.
+//
+// The Admin app answers one question from a Booking: "has this Guest written
+// to us, and if so where?". The message button on a Booking opens that thread
+// directly rather than making the Admin search the inbox manually.
+// ----------------------------------------------------------------------------
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../core/constants/app_constants.dart';
+
+/// A conversation the Admin can open, and the resolved Guest/Booking metadata
+/// attached to it (without exposing raw internal IDs in UI labels).
+class GuestConversation {
+  const GuestConversation({
+    required this.id,
+    required this.guestUid,
+    required this.guestName,
+    this.bookingId,
+    this.bookingReference,
+    this.propertyName,
+    this.category = AppConstants.categoryBooking,
+    this.updatedAt,
+    this.isLegacy = false,
+  });
+
+  final String id;
+  final String guestUid;
+  final String guestName;
+  final String? bookingId;
+  final String? bookingReference;
+  final String? propertyName;
+  final String category;
+  final DateTime? updatedAt;
+  final bool isLegacy;
+
+  bool get isBookingTopic => category == AppConstants.categoryBooking;
+
+  factory GuestConversation.fromDoc(
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    String fallbackUid = '',
+    String fallbackGuestName = 'Guest',
+  }) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    final updated = data['updated_at'];
+    final rawName = data['guest_name']?.toString().trim() ?? '';
+    final rawRef = data['booking_reference']?.toString().trim() ?? '';
+    final rawProp = data['property_name']?.toString().trim() ?? '';
+    final rawBookingId = data['booking_id']?.toString().trim() ?? '';
+    final derivedBookingId = doc.id.startsWith('booking-')
+        ? doc.id.substring('booking-'.length)
+        : null;
+
+    return GuestConversation(
+      id: doc.id,
+      guestUid: (data['guest_uid'] ?? fallbackUid).toString(),
+      guestName: rawName.isNotEmpty ? rawName : fallbackGuestName,
+      bookingId: rawBookingId.isNotEmpty ? rawBookingId : derivedBookingId,
+      bookingReference: rawRef.isNotEmpty ? rawRef : null,
+      propertyName: rawProp.isNotEmpty ? rawProp : null,
+      category: (data['category'] ?? AppConstants.categoryBooking).toString(),
+      updatedAt: updated is Timestamp ? updated.toDate() : null,
+      isLegacy: doc.id.startsWith('inquiry-'),
+    );
+  }
+}
+
+/// Every open thread this Guest has, newest first.
+///
+/// Returns empty rather than throwing when there is nothing to find: "this Guest
+/// has never written to us" is an answer, not a failure.
+Future<List<GuestConversation>> conversationsWith(
+  String guestUid, {
+  FirebaseFirestore? firestore,
+  int limit = 20,
+}) async {
+  final db = firestore ?? FirebaseFirestore.instance;
+  final snapshot = await db
+      .collection(AppConstants.colConversations)
+      .where('guest_uid', isEqualTo: guestUid)
+      .limit(limit)
+      .get();
+
+  final threads = snapshot.docs
+      .map((doc) => GuestConversation.fromDoc(doc, fallbackUid: guestUid))
+      .toList();
+
+  threads.sort((a, b) {
+    final at = a.updatedAt;
+    final bt = b.updatedAt;
+    if (at == null && bt == null) return 0;
+    if (at == null) return 1;
+    if (bt == null) return -1;
+    return bt.compareTo(at);
+  });
+  return threads;
+}
+
+/// Resolves the conversation for a Booking:
+/// 1. Checks the unified booking-scoped document (`booking-<bookingId>`) directly.
+/// 2. Falls back to any existing conversation for [guestUid] (preferring a
+///    booking-scoped or booking-category thread, then most recent activity) so
+///    legacy `inquiry-<uid>-<category>` threads open cleanly without migration.
+Future<GuestConversation?> threadForBooking(
+  String guestUid, {
+  String? bookingId,
+  String? fallbackGuestName,
+  FirebaseFirestore? firestore,
+}) async {
+  final db = firestore ?? FirebaseFirestore.instance;
+  final defaultName = (fallbackGuestName != null && fallbackGuestName.trim().isNotEmpty)
+      ? fallbackGuestName.trim()
+      : 'Guest';
+
+  if (bookingId != null && bookingId.isNotEmpty) {
+    final doc = await db
+        .collection(AppConstants.colConversations)
+        .doc(AppConstants.conversationId(bookingId))
+        .get();
+    if (doc.exists) {
+      return GuestConversation.fromDoc(
+        doc,
+        fallbackUid: guestUid,
+        fallbackGuestName: defaultName,
+      );
+    }
+  }
+
+  if (guestUid.isEmpty) return null;
+
+  final threads = await conversationsWith(guestUid, firestore: db);
+  if (threads.isEmpty) return null;
+
+  if (bookingId != null && bookingId.isNotEmpty) {
+    for (final thread in threads) {
+      if (thread.bookingId == bookingId) return thread;
+    }
+  }
+  for (final thread in threads) {
+    if (!thread.isLegacy) return thread;
+  }
+  for (final thread in threads) {
+    if (thread.isBookingTopic) return thread;
+  }
+  return threads.first;
+}

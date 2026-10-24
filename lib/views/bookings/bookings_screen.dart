@@ -381,7 +381,11 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     GuestConversation? thread;
     Object? failure;
     try {
-      thread = await threadForBooking(uid);
+      thread = await threadForBooking(
+        uid,
+        bookingId: booking.id,
+        fallbackGuestName: name,
+      );
     } catch (error) {
       failure = error;
     }
@@ -389,7 +393,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     if (!mounted) return;
     messenger.hideCurrentSnackBar();
     if (failure != null) {
-      _say('Could not reach the inbox: $failure');
+      _say('Could not reach the inbox. Please check your connection and try again.');
       return;
     }
     if (thread == null) {
@@ -398,11 +402,20 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     }
 
     final openThread = thread;
+    final accommodations = ref.read(accommodationsProvider);
+    final propertyLabel = BookingModel.accommodationLabel(
+      booking.accommodation,
+      accommodations,
+    );
     TourBus.event('open-thread');
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ThreadScreen(
         convoId: openThread.id,
         guestUid: openThread.guestUid,
+        guestName: openThread.guestName.isNotEmpty ? openThread.guestName : name,
+        bookingId: booking.id,
+        bookingReference: booking.refId ?? openThread.bookingReference,
+        propertyName: openThread.propertyName ?? propertyLabel,
       ),
     ));
   }

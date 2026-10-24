@@ -5,6 +5,12 @@ class AppConstants {
   static const String appName = 'Hacienda de LuisAna';
   static const String appTagline = 'Admin — Resort Operations';
   static const String resortAddress = 'Luisiana, Laguna, Philippines';
+  static const String resortFullAddress =
+      'Luisiana–Lucban Road, Brgy. San Isidro, Luisiana, Laguna, Philippines';
+  static const double resortLatitude = 14.1754304;
+  static const double resortLongitude = 121.519389;
+  static const String resortDirectionsUrl =
+      'https://www.google.com/maps/dir/?api=1&destination=14.1754304,121.519389';
   
   // Firestore Collection Names
   static const String colBookings = 'bookings';
@@ -72,6 +78,11 @@ class AppConstants {
   /// query the id is unbound, so Firestore cannot prove the query is safe and
   /// refuses it.
   static String conversationId(String bookingId) => 'booking-$bookingId';
+
+  /// Legacy deterministic topic conversation id (`inquiry-<uid>-<category>`),
+  /// preserved for non-destructive backward compatibility with earlier stays.
+  static String legacyConversationId(String uid, String category) =>
+      'inquiry-$uid-$category';
 
   /// A Guest's words about a finished stay, filed at the Booking's own id —
   /// which is what makes "one Review per stay" something `firestore.rules`

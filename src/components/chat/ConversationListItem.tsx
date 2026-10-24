@@ -1,96 +1,142 @@
-import { User } from '../../lib/icons'
 import type { ConversationSummary } from '../../lib/chatCloud'
+import { shortDate } from '../Account/stayFacts'
+import { GuestAvatar } from './GuestAvatar'
 
-/**
- * One inbox row: guest avatar, name, property + booking reference, latest
- * message preview, timestamp, and unread indicator. No raw identifiers
- * appear anywhere in the card.
- */
+export type ConversationListItemProps = {
+  summary: ConversationSummary
+  selected: boolean
+  /** When 'guest' (website default), rows highlight the stay property & reference; when 'admin', rows lead with the Guest name. */
+  perspective?: 'guest' | 'admin'
+  onSelect: (summary: ConversationSummary) => void
+}
+
+export function formatConversationTimestamp(atMs: number | null): string {
+  if (!atMs || Number.isNaN(atMs)) return ''
+  const date = new Date(atMs)
+  const now = new Date()
+  const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (diffSec >= 0 && diffSec < 45) return 'Just now'
+  if (diffSec >= 45 && diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
+
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  if (sameDay) {
+    return date.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
+  }
+
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const isYesterday =
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate()
+  if (isYesterday) return 'Yesterday'
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+  }
+  return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export function ConversationListItem({
   summary,
-  active,
+  selected,
+  perspective = 'guest',
   onSelect,
-}: {
-  summary: ConversationSummary
-  active: boolean
-  onSelect: (summary: ConversationSummary) => void
-}) {
-  const hasUnread = (summary.unreadCount ?? 0) > 0
-  const latestTime = summary.latestMessageAt
-    ? new Date(summary.latestMessageAt).toLocaleTimeString('en-PH', {
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    : null
+}: ConversationListItemProps) {
+  const propertyTitle = summary.propertyName || (summary.isLegacy ? 'Earlier inquiry' : 'Stay inquiry')
+  const referenceBadge = summary.bookingReference
+    ? summary.bookingReference
+    : summary.isLegacy
+      ? summary.legacyLabel || 'Earlier inquiry'
+      : 'Pending reference'
+
+  const stayDates =
+    summary.booking?.check_in && summary.booking?.check_out
+      ? `${shortDate(summary.booking.check_in)} – ${shortDate(summary.booking.check_out)}`
+      : null
+
+  const primaryTitle = perspective === 'admin' ? summary.guestName : propertyTitle
+  const secondaryLine =
+    perspective === 'admin'
+      ? `${propertyTitle} · ${referenceBadge}`
+      : [referenceBadge, stayDates].filter(Boolean).join(' · ')
+
+  const preview = summary.latestMessageText?.trim() || 'Start your conversation with Hacienda de LuisAna'
+  const timeText = formatConversationTimestamp(summary.latestMessageAt)
+  const unread = summary.unreadCount > 0
+
+  const accessibleLabel = [
+    primaryTitle,
+    secondaryLine,
+    unread ? `${summary.unreadCount} unread` : null,
+    `Latest message: ${preview}`,
+  ]
+    .filter(Boolean)
+    .join(', ')
 
   return (
     <button
       type="button"
-      className={`
-        group relative flex w-full items-center gap-4 p-4 rounded-xl
-        transition-colors
-        border border-transparent
-        ${active
-          ? 'bg-forest-900/10 border-forest-900/20 shadow-sm'
-          : 'bg-white border-card-surface hover:bg-forest-50/50'}
-      `}
       onClick={() => onSelect(summary)}
-      aria-current={active ? 'true' : undefined}
-      aria-label={
-        summary.guestName +
-        (summary.bookingReference ? `, booking ${summary.bookingReference}` : '') +
-        (hasUnread ? `, ${summary.unreadCount} unread` : '')
-      }
+      data-active={selected ? 'true' : 'false'}
+      aria-current={selected ? 'true' : undefined}
+      aria-label={accessibleLabel}
+      className={`messages-topic group w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass-400 ${
+        selected ? 'bg-white dark:bg-forest-900' : ''
+      }`}
     >
-      {/* Left: guest avatar */}
-      <div className="shrink-0">
-        <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-forest-100 text-forest-800 font-medium">
-          <span className="text-sm">
-            {summary.guestName
-              ? summary.guestName.split(' ').map((n) => n.charAt(0).toUpperCase()).slice(0, 2).join('')
-              : 'G'}
-          </span>
-        </div>
-      </div>
+      <GuestAvatar
+        name={perspective === 'admin' ? summary.guestName : 'Hacienda de LuisAna'}
+        variant={perspective === 'admin' ? 'guest' : 'hacienda'}
+        size="sm"
+      />
 
-      {/* Main content */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-sm font-semibold text-forest-900 group-hover:text-forest-700 transition-colors truncate">
-            {summary.guestName || 'Guest'}
+        <div className="flex items-baseline justify-between gap-2">
+          <span
+            className={`truncate text-[13.5px] leading-snug text-forest-900 dark:text-cream-50 ${
+              unread ? 'font-bold' : 'font-semibold'
+            }`}
+          >
+            {primaryTitle}
           </span>
-          {hasUnread && (
-            <span
-              className="flex h-5 w-5 items-center justify-center rounded-full bg-forest-600 text-white text-[10px] font-bold shrink-0"
-              aria-label={`${summary.unreadCount} unread`}
+          {timeText && (
+            <time
+              className={`shrink-0 text-[11px] tabular-nums ${
+                unread
+                  ? 'font-semibold text-forest-800 dark:text-brass-300'
+                  : 'text-forest-600 dark:text-sage-400'
+              }`}
             >
-              {summary.unreadCount > 9 ? '9+' : summary.unreadCount}
+              {timeText}
+            </time>
+          )}
+        </div>
+
+        <p className="mt-0.5 truncate text-[11.5px] font-medium text-forest-700/85 dark:text-sage-300">
+          {secondaryLine}
+        </p>
+
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <p
+            className={`truncate text-xs leading-snug ${
+              unread
+                ? 'font-semibold text-forest-900 dark:text-cream-50'
+                : 'text-forest-600 dark:text-sage-400'
+            }`}
+          >
+            {preview}
+          </p>
+          {unread && (
+            <span className="inline-flex min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-forest-700 px-1.5 py-0.5 text-[10.5px] font-bold leading-none text-cream-50 dark:bg-brass-400 dark:text-forest-950">
+              {summary.unreadCount > 99 ? '99+' : summary.unreadCount}
             </span>
           )}
         </div>
-        <p className="mt-0.5 text-sm text-forest-600 truncate">
-          {summary.propertyName && summary.bookingReference
-            ? `${summary.propertyName} · Ref #${summary.bookingReference}`
-            : summary.propertyName || summary.bookingReference || 'Booking details unavailable'}
-        </p>
-        <p className="mt-1 text-sm text-forest-500 truncate">
-          {summary.latestMessageText || 'No messages yet — start the conversation.'}
-        </p>
-      </div>
-
-      {/* Right: timestamp + unread indicator */}
-      <div className="shrink-0 flex flex-col items-end gap-1 text-right">
-        {latestTime ? (
-          <span className="text-xs text-forest-400 leading-none">
-            {latestTime}
-          </span>
-        ) : null}
-        {hasUnread && latestTime ? (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-forest-100 text-forest-700 text-xs font-semibold border border-forest-200">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-forest-600" aria-hidden="true" />
-            {summary.unreadCount > 9 ? '9+' : summary.unreadCount}
-          </span>
-        ) : null}
       </div>
     </button>
   )

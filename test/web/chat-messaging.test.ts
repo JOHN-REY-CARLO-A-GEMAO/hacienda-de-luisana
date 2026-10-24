@@ -22,8 +22,11 @@ import { join } from 'node:path'
 import {
   CHAT_MAX_PAGE_SIZE,
   CHAT_PAGE_SIZE,
+  fetchConversationSummaries,
   loadMessagePage,
   mergeMessages,
+  propertyNameFromAccommodation,
+  sanitizeBookingReference,
   sendChatMessage,
   subscribeMessages,
   type ChatMessage,
@@ -240,3 +243,79 @@ describe('retention — a finished thread is disposable, a Booking is not', () =
     expect(rules).toContain("!request.resource.data.keys().hasAny(['messages_expires_at'])")
   })
 })
+
+describe('unified booking-scoped conversation summaries & legacy backward compatibility', () => {
+  it('sanitizes booking references and maps accommodation IDs to friendly display names', () => {
+    expect(sanitizeBookingReference('HDL-4091')).toBe('HDL-4091')
+    expect(sanitizeBookingReference('hdl-9921')).toBe('HDL-9921')
+    // Raw Firestore/UUID document IDs are never passed off as human booking references.
+    expect(sanitizeBookingReference('8f9a12b4c6e71234567890ab')).toBeNull()
+    expect(sanitizeBookingReference('')).toBeNull()
+
+    expect(propertyNameFromAccommodation('main-house')).toBe('The Main House')
+    expect(propertyNameFromAccommodation('annex')).toBe('HDL Annex')
+    expect(propertyNameFromAccommodation('house-a-camping')).toBe('A-House')
+  })
+
+  it('sorts booking conversations by newest activity descending and preserves legacy inquiry threads', async () => {
+    localStorage.setItem(
+      'hdl:bookings',
+      JSON.stringify([
+        {
+          id: 'bk_older',
+          ref_id: 'HDL-1001',
+          uid: 'guest-u1',
+          guest_name: 'Maria Clara',
+          email: 'maria@example.com',
+          accommodation: 'annex',
+          check_in: '2026-11-10',
+          check_out: '2026-11-12',
+          guests: 4,
+          status: 'Reserved',
+          created_at: '2026-10-01T00:00:00.000Z',
+        },
+        {
+          id: 'bk_newer',
+          ref_id: 'HDL-2002',
+          uid: 'guest-u1',
+          guest_name: 'Maria Clara',
+          email: 'maria@example.com',
+          accommodation: 'main-house',
+          check_in: '2026-12-10',
+          check_out: '2026-12-12',
+          guests: 8,
+          status: 'Reserved',
+          created_at: '2026-10-15T00:00:00.000Z',
+        },
+      ]),
+    )
+
+    // Pre-existing legacy topic message remains accessible non-destructively.
+    await sendChatMessage({
+      convoId: 'local:payment-help',
+      uid: 'guest-u1',
+      text: 'Earlier GCash receipt inquiry',
+    })
+
+    // Sending a newer message on `bk_older` promotes it to the top of the list.
+    await sendChatMessage({
+      convoId: 'local:booking-bk_older',
+      uid: 'guest-u1',
+      text: 'Updated arrival note for Annex',
+    })
+
+    const summaries = await fetchConversationSummaries('guest-u1', {
+      email: 'maria@example.com',
+      guestName: 'Maria Clara',
+    })
+
+    expect(summaries.map((s) => s.conversationId)).toContain('local:booking-bk_older')
+    expect(summaries.map((s) => s.conversationId)).toContain('local:booking-bk_newer')
+    expect(summaries.map((s) => s.conversationId)).toContain('local:payment-help')
+    // `bk_older` received the newest message so it sorts ahead of `bk_newer`.
+    const idxOlder = summaries.findIndex((s) => s.conversationId === 'local:booking-bk_older')
+    const idxNewer = summaries.findIndex((s) => s.conversationId === 'local:booking-bk_newer')
+    expect(idxOlder).toBeLessThan(idxNewer)
+  })
+})
+

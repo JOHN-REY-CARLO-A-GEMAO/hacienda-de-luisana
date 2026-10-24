@@ -28,6 +28,15 @@ void main() {
       // number: the rules are the enforcement and the other two are the courtesy.
       expect(AppConstants.messageMax, 1000);
     });
+
+    test('derives booking-scoped conversation ids identically to the website', () {
+      expect(AppConstants.conversationId('bk_42'), 'booking-bk_42');
+      expect(AppConstants.legacyConversationId('u1', 'booking'), 'inquiry-u1-booking');
+      expect(
+        AppConstants.resortDirectionsUrl,
+        'https://www.google.com/maps/dir/?api=1&destination=14.1754304,121.519389',
+      );
+    });
   });
 
   group('retention', () {
