@@ -35,8 +35,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cream-50 px-5 pt-28">
-        <LoadingPanel label="Checking authentication…" className="max-w-sm" />
+      <div className="guest-ground flex min-h-screen items-center justify-center px-5 pt-28">
+        <LoadingPanel label="Checking authentication…" className="guest-panel max-w-sm" />
       </div>
     )
   }
@@ -45,16 +45,40 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen flex-col items-center bg-cream-50 px-5 pb-24 pt-28">
-        <div className="w-full max-w-md py-8">
-          {sessionEnded && (
-            <Alert tone="warning" className="mb-4">
-              Your session has ended. Please sign in again to continue — nothing on your bookings was changed.
-            </Alert>
-          )}
-          <LoginForm />
+      <div className="guest-ground flex min-h-screen flex-col items-center px-5 pb-24 pt-28">
+        {/* One panel, and the Hacienda's own photograph across its head: the
+            gate is the first thing a Guest sees of their own side of the site,
+            and it should look like the place they booked rather than like a
+            form that fell off a template. */}
+        <div className="guest-panel w-full max-w-md overflow-hidden">
+          <div className="relative h-28 overflow-hidden bg-forest-950">
+            <img
+              src="/images/gmaps/img-01.jpg"
+              alt=""
+              className="h-full w-full object-cover"
+              loading="eager"
+              decoding="async"
+            />
+            <div
+              className="absolute inset-0 bg-gradient-to-t from-forest-950/90 via-forest-950/35 to-forest-950/10"
+              aria-hidden="true"
+            />
+            <p className="absolute inset-x-0 bottom-0 px-5 pb-3 text-[11px] font-medium tracking-eyebrow text-cream-100/85">
+              Your stay at the Hacienda
+            </p>
+          </div>
+
+          <div className="px-5 py-6 sm:px-7">
+            {sessionEnded && (
+              <Alert tone="warning" className="mb-5">
+                Your session has ended. Please sign in again to continue — nothing on your bookings
+                was changed.
+              </Alert>
+            )}
+            <LoginForm />
+          </div>
         </div>
-        <p className="mt-4 max-w-sm text-center text-xs text-forest-700/60">
+        <p className="mt-5 max-w-sm text-center text-xs leading-relaxed text-forest-700/70 dark:text-cream-100/60">
           Sign in to see your own bookings. Signing up here makes you a Guest.
         </p>
       </div>
@@ -68,8 +92,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return (
     <>
       {!isConfigured && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-amber-200 bg-amber-100/90 px-4 py-2 text-xs text-amber-900">
-          <span className="text-[10px] font-semibold uppercase tracking-eyebrow">Local Mode Active</span>
+        <div className="mx-3 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[10px] border border-amber-300/70 bg-amber-100/80 px-4 py-2 text-xs text-amber-900 sm:mx-auto sm:max-w-5xl lg:max-w-7xl">
+          <span className="text-[11px] font-semibold uppercase tracking-eyebrow">Local Mode Active</span>
           <span>Signed in as {role ? ROLE_LABELS[role] : 'Guest'} · bookings are stored in this browser only.</span>
           <Link to="/status" className="ml-auto whitespace-nowrap underline underline-offset-2">
             Why?

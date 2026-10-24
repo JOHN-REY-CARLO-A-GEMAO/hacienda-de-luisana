@@ -48,50 +48,61 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
   }
 
   return (
-    <div className="bg-white rounded-3xl border border-forest-900/10 shadow-lg p-6 sm:p-8 max-w-2xl mx-auto my-4 print:shadow-none print:border-none print:m-0 print:p-0">
-      {/* Header */}
-      <div className="flex justify-between items-start border-b border-forest-900/10 pb-6">
-        <div>
-          <h2 className="font-serif text-2xl font-bold text-forest-900">Hacienda de LuisAna</h2>
-          <p className="text-xs text-forest-700/70 mt-1">Private Countryside Stay · Luisiana, Laguna</p>
-          <p className="text-xs text-forest-700/70">haciendadeluisana.com</p>
+    <div className="mx-auto my-4 max-w-2xl rounded-[14px] border border-forest-900/10 bg-white p-6 shadow-[0_1px_2px_rgba(21,36,27,0.05),0_18px_50px_-28px_rgba(21,36,27,0.4)] print:m-0 print:border-none print:p-0 print:shadow-none sm:p-8">
+      {/* Letterhead */}
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4 border-b-2 border-forest-800 pb-5">
+        <div className="min-w-0">
+          <h2 className="font-serif text-2xl leading-tight text-forest-900">Hacienda de LuisAna</h2>
+          <p className="mt-1 text-xs leading-relaxed text-forest-700/80">
+            Private countryside stay
+            <br />
+            Luisiana, Laguna · haciendadeluisana.com
+          </p>
         </div>
         <div className="text-right">
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-cream-100 text-forest-800 border border-forest-900/10">
-            OFFICIAL INVOICE
+          <span className="inline-block rounded-full border border-forest-900/15 bg-cream-100 px-3 py-1 text-[11px] font-bold uppercase tracking-eyebrow text-forest-800">
+            Invoice
           </span>
-          <p className="text-xs font-mono font-bold text-forest-900 mt-2">
-            Ref: {booking.ref_id || booking.id.slice(0, 8).toUpperCase()}
+          <p className="guest-num mt-2.5 text-sm font-bold text-forest-900">
+            {booking.ref_id || booking.id.slice(0, 8).toUpperCase()}
           </p>
-          <p className="text-[11px] text-forest-600">
-            Date: {new Date(booking.created_at || Date.now()).toLocaleDateString('en-PH', { dateStyle: 'medium' })}
+          <p className="guest-num mt-0.5 text-[11px] text-forest-600">
+            {new Date(booking.created_at || Date.now()).toLocaleDateString('en-PH', { dateStyle: 'medium' })}
           </p>
         </div>
       </div>
 
-      {/* Guest & Stay Details */}
-      <div className="grid grid-cols-2 gap-4 py-6 border-b border-forest-900/10 text-xs">
+      {/* Who and what — two columns of facts, ruled, not boxed */}
+      <div className="grid grid-cols-1 gap-x-8 gap-y-5 border-b border-forest-900/10 py-5 text-xs sm:grid-cols-2">
         <div>
-          <h3 className="font-bold text-forest-900 mb-1">Guest Information</h3>
-          <p className="font-medium text-forest-900">{booking.guest_name}</p>
-          <p className="text-forest-700/80">{booking.email}</p>
-          <p className="text-forest-700/80">{booking.phone}</p>
+          <h3 className="text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600">Guest</h3>
+          <p className="mt-1.5 text-sm font-medium text-forest-900">{booking.guest_name}</p>
+          <p className="mt-0.5 text-forest-700/85">{booking.email}</p>
+          <p className="guest-num text-forest-700/85">{booking.phone}</p>
         </div>
         <div>
-          <h3 className="font-bold text-forest-900 mb-1">Stay Details</h3>
-          <p className="font-medium text-forest-900">{getAccommodationName(booking.accommodation)}</p>
-          <p className="text-forest-700/80">Check-in: {booking.check_in} (2:00 PM)</p>
-          <p className="text-forest-700/80">Check-out: {booking.check_out} (12:00 PM)</p>
-          <p className="text-forest-700/80">Guests: {booking.guests}</p>
+          <h3 className="text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600">Stay</h3>
+          <p className="mt-1.5 text-sm font-medium text-forest-900">
+            {getAccommodationName(booking.accommodation)}
+          </p>
+          <p className="guest-num mt-0.5 text-forest-700/85">
+            {booking.check_in} in at 2:00 PM
+          </p>
+          <p className="guest-num text-forest-700/85">{booking.check_out} out by 12:00 PM</p>
+          <p className="text-forest-700/85">
+            {booking.guests} guest{booking.guests === 1 ? '' : 's'}
+          </p>
         </div>
       </div>
 
-      {/* Itemized charges table */}
-      <div className="py-6">
-        <h3 className="font-serif text-base font-bold text-forest-900 mb-3">Itemized Statement</h3>
-        <table className="w-full text-xs text-left">
+      {/* Itemised charges */}
+      <div className="py-5">
+        <h3 className="text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600">
+          Itemised statement
+        </h3>
+        <table className="mt-3 w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-forest-900/10 text-forest-700/70 font-bold">
+            <tr className="border-b border-forest-900/15 text-[11px] font-semibold uppercase tracking-wide text-forest-600">
               <th className="py-2">Description</th>
               <th className="py-2 text-right">Amount</th>
             </tr>
@@ -101,24 +112,24 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
               <td className="py-2.5 font-medium text-forest-900">
                 Base Stay Total ({getAccommodationName(booking.accommodation)})
               </td>
-              <td className="py-2.5 text-right font-mono text-forest-900">₱{stayTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+              <td className="guest-num py-2.5 text-right font-medium text-forest-900">₱{stayTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
             </tr>
             {securityDeposit > 0 && (
               <tr>
                 <td className="py-2.5 text-forest-800">Refundable Security Deposit</td>
-                <td className="py-2.5 text-right font-mono text-forest-900">₱{securityDeposit.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                <td className="guest-num py-2.5 text-right font-medium text-forest-900">₱{securityDeposit.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
               </tr>
             )}
             {petFee > 0 && (
               <tr>
                 <td className="py-2.5 text-forest-800">Pet Fee (Standard flat rate)</td>
-                <td className="py-2.5 text-right font-mono text-forest-900">₱{petFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                <td className="guest-num py-2.5 text-right font-medium text-forest-900">₱{petFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
               </tr>
             )}
             {lateCheckoutFee > 0 && (
               <tr>
                 <td className="py-2.5 text-forest-800">Late Checkout Extension Fee</td>
-                <td className="py-2.5 text-right font-mono text-forest-900">₱{lateCheckoutFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                <td className="guest-num py-2.5 text-right font-medium text-forest-900">₱{lateCheckoutFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
               </tr>
             )}
             {petCount > 0 && petFee === 0 && (
@@ -134,7 +145,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
                   Pet sanitation fee ({petRequest.count} pet{petRequest.count === 1 ? '' : 's'}) —{' '}
                   <RequestBadge status={petRequest.status} />
                 </td>
-                <td className="py-2.5 text-right font-mono text-forest-900">
+                <td className="guest-num py-2.5 text-right font-medium text-forest-900">
                   {petRequest.status === 'approved' ? '' : `₱${(petRequest.estimated_fee || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} est.`}
                 </td>
               </tr>
@@ -152,7 +163,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
                   Late checkout (+{lateCheckoutRequest.hours} hour{lateCheckoutRequest.hours === 1 ? '' : 's'}) —{' '}
                   <RequestBadge status={lateCheckoutRequest.status} />
                 </td>
-                <td className="py-2.5 text-right font-mono text-forest-900">₱{(lateCheckoutRequest.fee || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} est.</td>
+                <td className="guest-num py-2.5 text-right font-medium text-forest-900">₱{(lateCheckoutRequest.fee || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} est.</td>
               </tr>
             )}
             {bonfireWoodSets > 0 && (
@@ -166,7 +177,7 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
             {additionalCharges.map((item, idx) => (
               <tr key={idx}>
                 <td className="py-2.5 text-forest-800">{item.description}</td>
-                <td className="py-2.5 text-right font-mono text-forest-900">₱{(item.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                <td className="guest-num py-2.5 text-right font-medium text-forest-900">₱{(item.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
               </tr>
             ))}
           </tbody>
@@ -174,27 +185,31 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
       </div>
 
       {/* Totals Summary */}
-      <div className="bg-cream-50 rounded-2xl p-4 text-xs space-y-2 border border-forest-900/5">
-        <div className="flex justify-between text-forest-800 font-bold text-sm pt-1 border-t border-forest-900/10">
-          <span>Grand Total</span>
-          <span className="font-mono text-forest-900">₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+      <div className="rounded-[10px] border border-forest-900/8 bg-cream-100/70 px-4 py-3.5 text-xs">
+        <div className="flex items-baseline justify-between gap-4 border-t border-forest-900/10 py-2 first:border-t-0">
+          <span className="font-bold text-forest-900">Grand total</span>
+          <span className="guest-num text-lg font-bold text-forest-900">
+            ₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+          </span>
         </div>
-        <div className="flex justify-between text-forest-700/80">
-          <span>Required 50% Downpayment</span>
-          <span className="font-mono">₱{downpaymentRequired.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+        <div className="flex items-baseline justify-between gap-4 border-t border-forest-900/10 py-1.5 text-forest-700/85">
+          <span>Required 50% downpayment</span>
+          <span className="guest-num">₱{downpaymentRequired.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
         </div>
-        <div className="flex justify-between text-emerald-800 font-semibold">
-          <span>Total Paid / Verified</span>
-          <span className="font-mono">₱{amountPaid.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+        <div className="flex items-baseline justify-between gap-4 border-t border-forest-900/10 py-1.5 font-semibold text-emerald-800">
+          <span>Paid and verified</span>
+          <span className="guest-num">₱{amountPaid.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
         </div>
-        <div className="flex justify-between text-forest-900 font-bold text-sm pt-1 border-t border-forest-900/10">
-          <span>Remaining Balance Due (on check-in)</span>
-          <span className="font-mono text-forest-900">₱{balanceDue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+        <div className="flex items-baseline justify-between gap-4 border-t border-forest-900/10 py-2">
+          <span className="font-bold text-forest-900">Balance due at check-in</span>
+          <span className="guest-num text-lg font-bold text-forest-900">
+            ₱{balanceDue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+          </span>
         </div>
       </div>
 
       {/* Footer / Actions */}
-      <div className="mt-6 flex items-center justify-between print:hidden">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
         {onClose ? (
           <button
             type="button"
@@ -206,12 +221,8 @@ export const BookingInvoice: React.FC<BookingInvoiceProps> = ({ booking, onClose
         ) : (
           <span />
         )}
-        <button
-          type="button"
-          onClick={printInvoice}
-          className="btn-primary btn-sm flex items-center gap-1.5"
-        >
-          🖨️ Print / Save Invoice
+        <button type="button" onClick={printInvoice} className="btn-primary btn-sm">
+          Print or save invoice
         </button>
       </div>
     </div>

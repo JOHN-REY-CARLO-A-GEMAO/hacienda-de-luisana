@@ -18,7 +18,7 @@ import { retentionDaysLeft, retentionElapsed } from '../lib/chatRetention'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { MESSAGE_MAX } from '../lib/validation'
 import { formatDateTime } from '../lib/formatDate'
-import { Alert, Card, Container, EmptyState, Field, Input, LoadingPanel, Page, PageHeader, Select } from '../components/ui'
+import { Alert, Container, EmptyState, Field, Input, LoadingPanel, Page, PageHeader, Select } from '../components/ui'
 import { MessageCircle } from '../lib/icons'
 
 /** How many older messages one "Load earlier messages" press fetches. */
@@ -185,8 +185,8 @@ export function MessagesPage() {
           }
         />
 
-        <div className="card-tight mt-6 p-4">
-          <Field label="Topic">
+        <div className="guest-panel mt-6 flex flex-wrap items-end gap-3 px-4 py-3.5">
+          <Field label="Topic" className="min-w-[12rem] flex-1">
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
               {inquiries.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -197,11 +197,15 @@ export function MessagesPage() {
           </Field>
         </div>
 
-        <Card padding="sm" className="mt-4 min-h-[240px]">
+        {/* The thread: a dotted ground so a run of bubbles has somewhere to sit,
+            with the Guest's own messages in the Hacienda's forest and the
+            Admin's on white. Which side a message came from should be readable
+            without reading the timestamp. */}
+        <div className="guest-thread mt-4 flex min-h-[20rem] flex-col p-4">
           {status === 'loading' && <LoadingPanel label="Loading conversation…" bare />}
           {status === 'error' && (
             <Alert tone="danger" className="text-xs">
-              Could not open the conversation.
+              Could not open the conversation. Check your connection, then reload the page.
             </Alert>
           )}
           {status === 'ready' && messages.length === 0 && (
@@ -217,7 +221,7 @@ export function MessagesPage() {
               {hasMore && (
                 <button
                   type="button"
-                  className="btn-ghost btn-sm mb-3"
+                  className="btn-ghost btn-sm mb-4 self-center"
                   disabled={loadingOlder}
                   onClick={() => void loadOlder()}
                   data-tour="load-older"
@@ -225,26 +229,28 @@ export function MessagesPage() {
                   {loadingOlder ? 'Loading…' : 'Load earlier messages'}
                 </button>
               )}
-              <ul className="space-y-3">
+              <ul className="flex flex-1 flex-col justify-end gap-4">
                 {messages.map((m) => (
-                  <li key={m.id} className={`text-sm ${m.mine ? 'text-right' : ''}`}>
+                  <li key={m.id} className={`flex flex-col gap-1 ${m.mine ? 'items-end' : 'items-start'}`}>
                     <span
-                      className={`inline-block max-w-[85%] rounded-2xl px-3.5 py-2.5 text-left leading-relaxed ${
-                        m.mine ? 'bg-forest-700 text-cream-50' : 'bg-cream-100 text-forest-900'
+                      className={`max-w-[85%] text-left ${
+                        m.mine ? 'guest-bubble-mine' : 'guest-bubble-theirs'
                       }`}
                     >
                       {m.text}
                     </span>
-                    <div className="data-label mt-1">{formatDateTime(m.at, 'Time unavailable')}</div>
+                    <span className="guest-num px-1 text-[11px] text-forest-600 dark:text-sage-400">
+                      {formatDateTime(m.at, 'Time unavailable')}
+                    </span>
                   </li>
                 ))}
               </ul>
               <div ref={bottomRef} />
             </>
           )}
-        </Card>
+        </div>
 
-        <div className="mt-4 flex gap-2" data-tour="message-composer">
+        <div className="mt-3 flex gap-2" data-tour="message-composer">
           <Input
             className="flex-1"
             aria-label="Write a message"
@@ -266,21 +272,21 @@ export function MessagesPage() {
           <button
             type="button"
             disabled={sending || !text.trim() || text.length > MESSAGE_MAX || Boolean(error)}
-            className="btn-primary"
+            className="btn-primary shrink-0"
             onClick={() => void send()}
           >
             {sending ? 'Sending…' : 'Send'}
           </button>
         </div>
-        <div className="mt-1 flex items-center justify-between text-[11px]">
-          <span className="text-forest-600/70 dark:text-cream-200/60">Press Enter to send</span>
+        <div className="mt-1.5 flex items-center justify-between text-[11px]">
+          <span className="text-forest-600/90 dark:text-cream-200/75">Press Enter to send</span>
           <span
             className={`font-mono tabular-nums transition-colors ${
               text.length >= MESSAGE_MAX
                 ? 'text-amber-700 font-semibold dark:text-brass-300'
                 : text.length >= MESSAGE_MAX * 0.9
                   ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-forest-600/70 dark:text-cream-200/60'
+                  : 'text-forest-600/90 dark:text-cream-200/75'
             }`}
             aria-live="polite"
           >
