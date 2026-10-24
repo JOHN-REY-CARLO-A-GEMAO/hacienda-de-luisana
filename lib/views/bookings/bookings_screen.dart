@@ -397,9 +397,13 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
       return;
     }
 
+    final openThread = thread;
     TourBus.event('open-thread');
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ThreadScreen(convoId: thread.id, guestUid: thread.guestUid),
+      builder: (_) => ThreadScreen(
+        convoId: openThread.id,
+        guestUid: openThread.guestUid,
+      ),
     ));
   }
 
