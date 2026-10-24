@@ -182,7 +182,7 @@ function GuestSchedule({ schedule }: { schedule: GuestBracketPricing }) {
     <div className="mt-4 rounded-xl bg-cream-50 p-3 text-xs leading-relaxed text-forest-800">
       <p>{scheduleLine('Weekday (Sunday–Thursday check-in night)', schedule.weekday)}</p>
       <p className="mt-1">{scheduleLine('Weekend / Admin holiday (Friday/Saturday check-in night)', schedule.weekend_holiday)}</p>
-      <p className="mt-2 text-forest-700/70">One booking · one 22-hour standard stay (2:00 PM–12:00 noon). The check-in night sets the rate; Sunday check-in is weekday unless it is an Admin-listed holiday.</p>
+      <p className="mt-2 text-forest-700/70">One booking · per 22-hour standard stay (2:00 PM–12:00 noon), times the nights of your stay. The check-in night sets the rate; Sunday check-in is weekday unless it is an Admin-listed holiday.</p>
     </div>
   )
 }

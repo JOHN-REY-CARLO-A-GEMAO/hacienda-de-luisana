@@ -108,14 +108,27 @@ describe('the shared booking preflight refuses a stay over the maximum', () => {
     expect(result.failure.message).toContain('21')
   })
 
-  it('still applies the existing published-stay rule inside the maximum', () => {
-    // Exactly 20 nights passes the cap, and is then refused by the one 22-hour
-    // standard stay the Published rate model supports. The cap is additive.
+  it('quotes a stay of exactly twenty nights at the check-in night rate', () => {
+    // Exactly 20 nights passes the cap and is quoted in full: one standard stay
+    // per night, priced at the check-in night's classification (2026-11-06 is a
+    // Friday, so the weekend schedule). The cap bounds the length; it does not
+    // change the price model.
     const result = selection(CHECK_IN, checkoutAfter(20))
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.failure.code).toBe('STAY_LENGTH_NOT_SUPPORTED')
-    expect(result.failure.message).toContain('one 22-hour standard stay')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.nights).toBe(20)
+      expect(result.quote.stayTotal).toBe(20 * 6000)
+      expect(result.quote.addons.rateAmount).toBe(6000)
+    }
+  })
+
+  it('prices a three-night stay at the check-in night rate, addons once', () => {
+    const result = selection(CHECK_IN, checkoutAfter(3))
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.nights).toBe(3)
+      expect(result.quote.stayTotal).toBe(3 * 6000)
+    }
   })
 
   it('refuses a checkout before the check-in', () => {

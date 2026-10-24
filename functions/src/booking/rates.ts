@@ -19,9 +19,12 @@
 // ----------------------------------------------------------------------------
 // The shared rates document publishes per-Accommodation weekday and
 // weekend/holiday guest-count schedules, the Security deposit, a 50% down
-// payment and cancellation policy. Every quote is one 22-hour standard stay.
-// A Booking records the version, date, and rate classification used at submit;
-// later rate publications do not rewrite an existing Booking.
+// payment and cancellation policy. Every quote prices standard stays: the
+// published per-stay rate times the nights of the stay, where each 22-hour
+// standard stay checks in at 2:00 PM and checks out by 12:00 noon the next
+// day. A Booking records the version, date, rate classification and per-night
+// figure used at submit; later rate publications do not rewrite an existing
+// Booking.
 //
 // This file owns the document's shape and its pure validator so both publishing
 // surfaces and tests check one contract without requiring Firebase.
@@ -269,6 +272,12 @@ export type PropertyQuote = {
   classification: RateClassification
   bracket: string
   units: 1
+  /**
+   * The standard stays this stay is made of: one per night from check-in to
+   * check-out. `stayTotal` is the per-night `addons.rateAmount` times this
+   * number, plus the one-per-stay addons.
+   */
+  nights: number
   /** Pesos added on top of `stayTotal`, and what each was for. */
   addons: StayAddons
 }
@@ -286,7 +295,7 @@ export type StayAddons = {
   petFee: number
   /** `late_checkout_hours * late_checkout_per_hour`; zero when neither is published. */
   lateCheckoutFee: number
-  /** The accommodation's own published figure, before any addon. */
+  /** The accommodation's own published figure per standard stay, before any addon. */
   rateAmount: number
   /** Pets declared for this Booking. */
   petCount: number
@@ -361,8 +370,11 @@ function scheduledAmount(schedule: GuestRateSchedule, guests: number): { amount:
 
 /**
  * The authoritative quote path for new guest bookings. Tiered rates are per
- * one 22-hour standard stay; multi-stay mixing is refused until the business
- * defines that policy.
+ * one 22-hour standard stay, and a longer stay is that rate times its nights:
+ * every night of the stay is priced at the classification of the *check-in*
+ * night, the same night that already sets the rate today. Pets and a late
+ * checkout are charged once per stay rather than per night — the published
+ * figures are a pet fee and an hourly extension, not nightly ones.
  *
  * A stay is priced either by the accommodation's guest-count schedule or, when
  * the Guest names one, by an event package — never both. Pets and a late
@@ -376,7 +388,9 @@ export function quoteAccommodation(
 ): PropertyQuote | undefined {
   const figures = doc.accommodations[accommodationId]
   if (!figures || figures.active === false || !figures.guest_pricing
-      || figures.rate_unit !== 'standard_stay' || calendarNights(input.check_in, input.check_out) !== 1) return undefined
+      || figures.rate_unit !== 'standard_stay') return undefined
+  const nights = calendarNights(input.check_in, input.check_out)
+  if (nights < 1) return undefined
   const classification = classifyRateDate(input.check_in, doc.holiday_dates)
   if (!classification) return undefined
   const addons = stayAddons(doc, input)
@@ -389,7 +403,7 @@ export function quoteAccommodation(
   rateAmount = scheduled.amount
   bracket = scheduled.bracket
 
-  const stayTotal = roundMoney(rateAmount + addons.petFee + addons.lateCheckoutFee)
+  const stayTotal = roundMoney(rateAmount * nights + addons.petFee + addons.lateCheckoutFee)
   return {
     policy: doc.refund !== undefined ? refundPolicyFromPublished(doc.refund) : undefined,
     snapshot: { version: doc.version, effectiveDate: doc.effective_date },
@@ -397,6 +411,7 @@ export function quoteAccommodation(
     classification,
     bracket,
     stayTotal,
+    nights,
     addons: { ...addons, rateAmount },
     rateCard: {
       nightlyRate: rateAmount,

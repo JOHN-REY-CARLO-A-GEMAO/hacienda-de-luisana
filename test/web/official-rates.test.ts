@@ -63,14 +63,17 @@ describe('official guest-count standard-stay pricing', () => {
     expect(quote('annex', '2026-10-05', 25)?.stayTotal).toBe(13500)
   })
 
-  it('refuses invalid counts, A-House counts above its cap, inactive properties and unresolved multi-stays', () => {
+  it('refuses invalid counts, A-House counts above its cap and inactive properties, and prices multi-night stays one standard stay per night', () => {
     expect(quote('annex', '2026-10-05', 0)).toBeUndefined()
     // The A-House takes three. Four is already past its documented limit, so it
     // is refused rather than priced.
     expect(quote('house-a-camping', '2026-10-05', 4)).toBeUndefined()
     expect(quote('house-a-camping', '2026-10-05', 5)).toBeUndefined()
     expect(quote('missing', '2026-10-05', 2)).toBeUndefined()
-    expect(quoteAccommodation(official, 'annex', { check_in: '2026-10-05', check_out: '2026-10-07', guests: 2 })).toBeUndefined()
+    // Two nights at the check-in night's weekday rate: one standard stay per night.
+    const twoNights = quoteAccommodation(official, 'annex', { check_in: '2026-10-05', check_out: '2026-10-07', guests: 2 })
+    expect(twoNights?.nights).toBe(2)
+    expect(twoNights?.stayTotal).toBe(8000)
     expect(quoteAccommodation({ ...official, accommodations: { annex: { ...official.accommodations.annex, active: false } } }, 'annex', { check_in: '2026-10-05', check_out: '2026-10-06', guests: 2 })).toBeUndefined()
   })
 

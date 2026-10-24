@@ -177,9 +177,9 @@ export function BookingPage() {
    * time, and the shared 1–20 night length rule. Nothing else.
    *
    * Deliberately NOT `validateBookingSelection`. That is the pricing/eligibility
-   * preflight, and it refuses anything that is not one 22-hour standard stay
-   * because the published rate model only prices one night. Letting a *pricing*
-   * rule decide which dates can be picked made the calendar force
+   * preflight — guest-count tiers, published figures, addons — and it is run
+   * before payment, not when a date is merely picked. Letting a *pricing* rule
+   * decide which dates can be picked made the calendar force
    * checkout = check-in + 1, which is a date-range question, not a price
    * question. Pricing stays enforced where it belongs: before payment and again
    * inside `submitBooking`.
@@ -301,15 +301,11 @@ export function BookingPage() {
       e.accommodation = 'This property does not have a published guest-count rate.'
     }
     if (configuredRate && !authoritativeQuote) {
-      // A multi-night selection is a legitimate date range (the calendar offers
-      // it), but the published rate model prices exactly one 22-hour standard
-      // stay. Say that plainly on the checkout field instead of blaming the
-      // property or the guest count, and change no money to make it fit.
-      if (nights !== 1 && nights > 0) {
-        e.check_out = `A ${nights}-night stay can be selected, but online booking currently prices one 22-hour standard stay only. Choose a checkout one night after check-in, or contact the Hacienda for a longer stay.`
-      } else {
-        e.accommodation = 'The selected guest count is outside this property’s published rate rules.'
-      }
+      // The stay length (1–20 nights) is a date-range question the calendar
+      // already answers; what reaches this branch is a pricing problem — the
+      // guest count outside the published tiers, or an extra without a
+      // published figure. Say so on the field the Guest can fix.
+      e.accommodation = 'The selected guest count is outside this property’s published rate rules.'
     }
     const name = validateName(form.name)
     if (!name.ok) e.name = name.message
@@ -564,10 +560,9 @@ export function BookingPage() {
                 </p>
                 {nights > 1 && (
                   <Alert tone="info" className="mt-4 text-xs" title={`${nights}-night range selected.`}>
-                    You can select and review any stay of 1 to {MAX_STAY_NIGHTS} nights. Online booking still
-                    quotes one 22-hour standard stay, so a multi-night range cannot be submitted until
-                    multi-night pricing is approved. Nothing about availability, pricing or payment rules is
-                    changed by selecting it.
+                    Every night of this stay is a standard stay (2:00 PM–12:00 noon) priced at the rate of the
+                    check-in night, so the total below covers all {nights} nights. The down payment, balance
+                    and security deposit follow from that total and are re-checked before payment.
                   </Alert>
                 )}
               </div>

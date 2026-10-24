@@ -164,7 +164,7 @@ function moneyOf(stored: Record<string, unknown>): AuthoritativeMoney {
     rate_unit: 'standard_stay',
     rate_amount: Number(stored.rate_amount),
     rate_classification: String(stored.rate_classification) as AuthoritativeMoney['rate_classification'],
-    nights: 1,
+    nights: Number(stored.nights),
     stay_total: Number(stored.stay_total),
     amount_due: Number(stored.amount_due),
     balance_due: Number(stored.balance_due),

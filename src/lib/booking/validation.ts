@@ -15,7 +15,7 @@
 // ----------------------------------------------------------------------------
 
 import { assertSubmittable, type SubmissionProof } from './submit'
-import { MAX_STAY_NIGHTS, maximumCheckoutDate } from './availability'
+import { MAX_STAY_NIGHTS, maximumCheckoutDate, nightsBetween } from './availability'
 import {
   BOOKING_TIME_ZONE,
   minimumBookingLeadTimeMessage,
@@ -93,7 +93,7 @@ export type BookingSelectionOptions = {
 }
 
 export type BookingSelectionValidation =
-  | { ok: true; quote: PropertyQuote; nights: 1 }
+  | { ok: true; quote: PropertyQuote; nights: number }
   | { ok: false; failure: BookingRuleFailure }
 
 /** The fields the create rules derive from the published quote. */
@@ -115,7 +115,7 @@ export type BookingPayloadForValidation = BookingSelection & SubmissionProof & {
 }
 
 export type BookingPayloadValidation =
-  | { ok: true; quote: PropertyQuote; nights: 1 }
+  | { ok: true; quote: PropertyQuote; nights: number }
   | { ok: false; failure: BookingRuleFailure }
 
 function failure(
@@ -161,7 +161,8 @@ function guestRuleMessage(
 
 /**
  * Validate the stay selection before the Guest is allowed to see the payment
- * step. This is intentionally the same one-night quote path used by the page.
+ * step. This is intentionally the same quote path used by the page: one
+ * standard stay per night, priced at the check-in night's rate.
  */
 export function validateBookingSelection(
   selection: BookingSelection,
@@ -195,20 +196,15 @@ export function validateBookingSelection(
 
   const nights = Math.round((checkOut.time - checkIn.time) / 86_400_000)
   // The maximum is checked first so a 21-night attempt is told the actual rule
-  // it broke, rather than the shorter-stay message that would not explain it.
+  // it broke, rather than some other message that would not explain it. Every
+  // stay of 1 to MAX_STAY_NIGHTS nights is quotable: the rate model prices one
+  // standard stay per night at the check-in night's classification.
   if (nights > MAX_STAY_NIGHTS) {
     const lastCheckout = maximumCheckoutDate(selection.check_in)
     return failure(
       'STAY_LENGTH_NOT_SUPPORTED',
       `A stay for ${property} may be at most ${MAX_STAY_NIGHTS} nights; this selection is ${nights}.`
         + (lastCheckout ? ` Choose a checkout date on or before ${lastCheckout}.` : ''),
-      'check_out',
-    )
-  }
-  if (nights !== 1) {
-    return failure(
-      'STAY_LENGTH_NOT_SUPPORTED',
-      `Online booking for ${property} currently supports one 22-hour standard stay. This selection is ${nights} nights; please choose one night or contact the Hacienda for a longer stay.`,
       'check_out',
     )
   }
@@ -279,7 +275,7 @@ export function validateBookingSelection(
       'accommodation',
     )
   }
-  return { ok: true, quote, nights: 1 }
+  return { ok: true, quote, nights: quote.nights }
 }
 
 function isWholeCount(value: unknown): boolean {
@@ -364,7 +360,11 @@ export function validateBookingPayload(
       'payment',
     )
   }
-  if (input.nights !== 1) return snapshotFailure(property, 'number of nights', 1, input.nights)
+  // The stored length has to be the length the dates describe, field for
+  // field: a tampered `nights` would break the money arithmetic the rules and
+  // the attestation both assume (stay_total = rate_amount × nights + addons).
+  const expectedNights = nightsBetween(input.check_in, input.check_out)
+  if (input.nights !== expectedNights) return snapshotFailure(property, 'number of nights', expectedNights, input.nights)
   if (input.rate_amount !== quote.rateCard.nightlyRate) return snapshotFailure(property, 'rate', quote.rateCard.nightlyRate, input.rate_amount)
   if (input.rate_unit !== 'standard_stay') return snapshotFailure(property, 'rate unit', 'standard_stay', input.rate_unit)
   if (input.rate_classification !== quote.classification) return snapshotFailure(property, 'rate classification', quote.classification, input.rate_classification)
@@ -385,7 +385,7 @@ export function validateBookingPayload(
       'payment',
     )
   }
-  return { ok: true, quote, nights: 1 }
+  return { ok: true, quote, nights: quote.nights }
 }
 
 /** A compact description for logs and tests, without leaking rule internals. */

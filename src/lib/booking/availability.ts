@@ -57,11 +57,11 @@ export const DATE_HOLD_MS = DAY_MS
 /**
  * The longest stay a Guest may book online, in nights.
  *
- * A maximum, not a target. The published rate model is still one 22-hour
- * standard stay (`quoteAccommodation`), so this bounds the range a Guest may
- * even select without inventing a longer-stay price. One number, read by the
- * calendar picker, the client preflight and the `submitBooking` callable, so
- * the three cannot disagree about where the limit is.
+ * A maximum, not a target. Every night of a stay is one quotable standard stay
+ * (`quoteAccommodation`); this bounds how many nights a Guest may select. One
+ * number, read by the calendar picker, the client preflight and the
+ * `submitBooking` callable, so the three cannot disagree about where the limit
+ * is.
  */
 export const MAX_STAY_NIGHTS = 20
 

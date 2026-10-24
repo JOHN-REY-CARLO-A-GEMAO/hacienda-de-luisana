@@ -198,7 +198,7 @@ describe('enforcement is the Admin’s switch, and the website obeys it', () => 
 
 describe('attestationForStay', () => {
   it('throws the named refusal, not a generic one, when enforcement is on', async () => {
-    sdk.call.mockRejectedValue(callableFailure('invalid-argument', { cause: 'NOT_A_STANDARD_STAY', message: 'That stay is not one we can quote online. Please contact the Hacienda.' }))
+    sdk.call.mockRejectedValue(callableFailure('invalid-argument', { cause: 'GUEST_COUNT_UNPRICED', message: 'That party size is outside what this unit takes. Please adjust the guest count.' }))
     await expect(attestationForStay({ accommodation: 'main-house', check_in: CHECK_IN, check_out: '2026-11-03', guests: 2 }, true))
       .rejects.toBeInstanceOf(QuoteRefusedError)
   })

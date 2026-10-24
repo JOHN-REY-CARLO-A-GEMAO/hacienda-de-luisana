@@ -145,7 +145,8 @@ Things that remain **outside** the rules' reach, unchanged by the pass:
   row spent automatically, so duplicate detection is still a contract function
   rather than a workflow. ADR-0018, *Corrections*, has the detail.
 - **The rules do not price a Booking; the functions do, when the estate asks them to.**
-  The rules hold a Booking's figures coherent with each other — one 22-hour stay, a
+  The rules hold a Booking's figures coherent with each other — a stay of 1–20
+  nights (one standard stay per night), a
   known classification, the 50/50 split within one centavo, a claim not below the
   downpayment, counts that are counts — and they refuse a *rate document* whose shape
   cannot be priced. Re-deriving the money *inside* `firestore.rules` from

@@ -215,7 +215,7 @@ export function DownpaymentPage() {
       // Re-run the complete selection rules before the screenshot leaves the
       // device. `/book/pay` can be opened from a stale or hand-edited session
       // draft, so checking only the lead-time date is not enough: property
-      // status, one-night support, guest count and the current published quote
+      // status, stay length, guest count and the current published quote
       // all have to agree first.
       const rules = validateBookingSelection(
         {
@@ -501,7 +501,7 @@ refund_policy_snapshot: published.refund ?? null,
                   <>
                     <div className="font-serif text-4xl mt-1">{peso(dueNow)}</div>
                     <p className="mt-2 text-xs text-cream-100/75 leading-relaxed">
-                      50% of {peso(stayTotal!)} for one 22-hour standard stay (2:00 PM–12:00 noon). The {quoted?.classification === 'weekend_holiday' ? 'weekend/holiday rate (Friday or Saturday check-in, or an Admin-listed holiday)' : 'weekday rate (Sunday–Thursday check-in)'} uses your check-in date
+                      50% of {peso(stayTotal!)} for your {nights}-night stay (each night a standard stay, 2:00 PM–12:00 noon). The {quoted?.classification === 'weekend_holiday' ? 'weekend/holiday rate (Friday or Saturday check-in, or an Admin-listed holiday)' : 'weekday rate (Sunday–Thursday check-in)'} of every night follows your check-in date
                       {rate?.source ? ` · ${rate.source}` : ''}.
                       {deposit ? ` The refundable security deposit (${peso(deposit)}) is shown separately.` : ''}
                       {stayTotal !== null && dueNow < stayTotal

@@ -629,7 +629,7 @@ export const HOUSE_RULES: HouseRule[] = [
   {
     id: 'times',
     title: 'Check-in and check-out',
-    body: `The standard 22-hour stay checks in at ${BUSINESS.policies.checkIn} and checks out by ${BUSINESS.policies.checkOut} for cleaning before the next guest. Late checkout is by request and approval, at ₱250 per hour after noon.`,
+    body: `The standard 22-hour stay checks in at ${BUSINESS.policies.checkIn} and checks out by ${BUSINESS.policies.checkOut} for cleaning before the next guest. A longer stay is simply successive standard stays, one per night. Late checkout is by request and approval, at ₱250 per hour after noon.`,
   },
   {
     id: 'capacity',

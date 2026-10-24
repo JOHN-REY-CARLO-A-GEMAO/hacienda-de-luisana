@@ -5,9 +5,10 @@
 // Why this exists is the important part.
 //
 // The authoritative price of a stay is computed in `src/lib/booking/rates.ts`
-// (`quoteAccommodation`) — one 22-hour standard stay, the guest-count schedule,
-// classification against the published holiday list, addons, the 50/50 split,
-// the Security deposit, the refund snapshot. That module is pure and closed:
+// (`quoteAccommodation`) — the guest-count schedule per standard stay times the
+// nights of the stay, classification against the published holiday list,
+// addons, the 50/50 split, the Security deposit, the refund snapshot. That
+// module is pure and closed:
 // nothing in `src/lib/booking/` imports Firebase, Vite or a browser API, which
 // is why it is testable without them.
 //
