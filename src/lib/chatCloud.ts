@@ -36,6 +36,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   startAfter,
@@ -55,8 +56,58 @@ import {
   parseChatAttachment,
   type ChatAttachment,
 } from './chatAttachments'
+import { ACCOMMODATIONS } from '../config/site'
 
 export type { ChatAttachment } from './chatAttachments'
+
+// ----------------------------------------------------------------------------
+// Unified conversation types — one continuous thread per guest booking.
+//
+// A conversation is identified by its booking: `booking-${bookingId}`.
+// `conversationId` is internal only and never displayed to the user.
+// ----------------------------------------------------------------------------
+
+export type ConversationSummary = {
+  /** Internal document id: `booking-${bookingId}` or legacy `inquiry-*-*`. Never displayed. */
+  conversationId: string
+  /** Internal: the guest's Firebase uid. Never displayed. */
+  guestId: string
+  /** Internal: the booking document id. Never displayed. */
+  bookingId: string | null
+  /** Human-readable guest full name, resolved from the booking or profile. */
+  guestName: string
+  /** Human-readable booking reference (e.g. `HDL-2024-001`), or null. */
+  bookingReference: string | null
+  /** Human-readable property / villa / room name, or null. */
+  propertyName: string | null
+  latestMessageText: string | null
+  latestMessageAt: number | null
+  unreadCount: number
+  /** True when this is a legacy topic-based thread without a booking. */
+  isLegacy: boolean
+}
+
+/** Derive a stable, booking-scoped conversation id from a booking document id. */
+export function bookingConversationId(bookingId: string): string {
+  return `booking-${bookingId}`
+}
+
+/** Is a conversation id the new booking-scoped form? */
+export function isBookingConversationId(convoId: string): boolean {
+  return convoId.startsWith('booking-')
+}
+
+/** Is a conversation id a legacy topic-based form (`inquiry-*-*`)? */
+export function isLegacyConversationId(convoId: string): boolean {
+  return convoId.startsWith('inquiry-')
+}
+
+/** Resolve a property display name from an accommodation id. */
+export function propertyNameFromAccommodation(accommodationId: string | null | undefined): string | null {
+  if (!accommodationId) return null
+  const match = ACCOMMODATIONS.find((a) => a.id === accommodationId)
+  return match ? match.name : accommodationId || null
+}
 
 export type ChatMessage = {
   id: string
@@ -122,6 +173,20 @@ export function conversationDocId(uid: string, category: string): string {
 
 /** The preview the Admin's inbox shows — never the whole message. */
 export const CHAT_PREVIEW_CHARS = 140
+
+/** Booking-scoped conversation document fields a Guest may write at creation. */
+export const BOOKING_CONVO_CREATE_FIELDS = [
+  'booking_id',
+  'guest_uid',
+  'guest_name',
+  'booking_reference',
+  'property_name',
+  'created_at',
+  'updated_at',
+  'last_message',
+  'unread_admin',
+  'unread_guest',
+] as const
 
 const LOCAL_KEY = 'hdl:chat'
 
@@ -228,6 +293,163 @@ export async function ensureConversation(uid: string, category: string): Promise
     unread_guest: 0,
   })
   return { id, retentionExpiresAt: null }
+}
+
+// ---------------------------------------------------------------------------
+// Opening a booking-scoped conversation — one thread per booking.
+//
+// Uses a Firestore transaction so two simultaneous requests cannot create
+// duplicate threads for the same booking. The transaction reads the existing
+// document (if any), returns it when present, and creates it only once.
+// ---------------------------------------------------------------------------
+
+export type BookingConversationInput = {
+  /** The guest's Firebase uid. */
+  uid: string
+  /** The booking document id. */
+  bookingId: string
+  /** The guest's full name, resolved from the booking or profile. */
+  guestName: string
+  /** The human-readable booking reference (e.g. `HDL-2024-001`), or null. */
+  bookingReference: string | null
+  /** The accommodation id, resolved to a property name. */
+  accommodationId: string | null
+}
+
+/**
+ * Find (or create) the one conversation for a guest booking, atomically.
+ *
+ * The conversation id is `booking-${bookingId}`, so the same booking always
+ * resolves to the same thread. A transaction guards against two concurrent
+ * requests creating duplicate threads.
+ *
+ * Legacy topic-based threads (`inquiry-*-*`) are not touched: a booking that
+ * already has one keeps it, and new messages go to the booking-scoped thread
+ * instead.
+ */
+export async function ensureBookingConversation(input: BookingConversationInput): Promise<Conversation> {
+  if (offline()) {
+    return {
+      id: `local:booking-${input.bookingId}`,
+      retentionExpiresAt: null,
+    }
+  }
+
+  const id = bookingConversationId(input.bookingId)
+  const ref = doc(conversations(), id)
+
+  const result = await runTransaction(db as never, async (tx) => {
+    const snap = await tx.get(ref)
+    if (snap.exists()) {
+      const data = snap.data()
+      // Never re-point an existing thread at a different guest or booking.
+      if (data.guest_uid && data.guest_uid !== input.uid) {
+        throw new Error('That conversation belongs to somebody else.')
+      }
+      return { id, exists: true }
+    }
+    const propertyName = propertyNameFromAccommodation(input.accommodationId)
+    tx.set(ref, {
+      booking_id: input.bookingId,
+      guest_uid: input.uid,
+      guest_name: input.guestName || 'Guest',
+      booking_reference: input.bookingReference ?? null,
+      property_name: propertyName ?? null,
+      category: 'booking',
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+      last_message: '',
+      unread_admin: 0,
+      unread_guest: 0,
+    })
+    return { id, exists: false }
+  })
+
+  return { id: result.id, retentionExpiresAt: null }
+}
+
+/**
+ * Subscribe to the conversation summaries for one guest.
+ *
+ * The guest cannot query `conversations` by `guest_uid` (the rules refuse it),
+ * so this reads the guest's own bookings instead, derives each conversation
+ * id, and reads each conversation document by id — which the rules allow.
+ *
+ * Returns summaries for conversations that exist. Bookings without a thread
+ * yet are not listed until a message opens one.
+ */
+export async function fetchConversationSummaries(uid: string): Promise<ConversationSummary[]> {
+  if (offline()) return []
+
+  // Read the guest's own bookings — a query the rules allow for `uid`.
+  const { cloudBookingsDB } = await import('./firestoreBookings')
+  const bookings = await cloudBookingsDB.listMine(uid)
+
+  const summaries: ConversationSummary[] = []
+  for (const booking of bookings) {
+    const convoId = bookingConversationId(booking.id)
+    const snap = await getDoc(doc(conversations(), convoId))
+    if (!snap.exists()) continue
+
+    const data = snap.data()
+    const createdAt = parseDate(data.created_at)
+    const updatedAt = parseDate(data.updated_at)
+    const latestAt = updatedAt ?? createdAt ??
+      (data.latestMessageAt ? new Date(data.latestMessageAt) : null)
+
+    summaries.push({
+      conversationId: convoId,
+      guestId: uid,
+      bookingId: booking.id,
+      guestName: data.guest_name || booking.guest_name || 'Guest',
+      bookingReference: data.booking_reference || booking.ref_id || null,
+      propertyName: data.property_name ||
+        propertyNameFromAccommodation(booking.accommodation) || null,
+      latestMessageText: data.last_message || null,
+      latestMessageAt: latestAt ? latestAt.getTime() : null,
+      unreadCount: typeof data.unread_guest === 'number' ? data.unread_guest : 0,
+      isLegacy: false,
+    })
+  }
+
+  // Sort by most recent activity first.
+  summaries.sort((a, b) => {
+    const at = b.latestMessageAt ?? 0
+    const bt = a.latestMessageAt ?? 0
+    return at - bt
+  })
+
+  return summaries
+}
+
+/**
+ * Build a summary for a legacy topic-based conversation (`inquiry-*-*`),
+ * read by id. Used to keep older threads visible without merging them into
+ * the booking-scoped inbox.
+ */
+export async function legacyConversationSummary(convoId: string, uid: string): Promise<ConversationSummary | null> {
+  if (!isLegacyConversationId(convoId)) return null
+  const snap = await getDoc(doc(conversations(), convoId))
+  if (!snap.exists()) return null
+  const data = snap.data()
+  if (data.guest_uid !== uid) return null
+  const updatedAt = parseDate(data.updated_at)
+  const createdAt = parseDate(data.created_at)
+  const latestAt = updatedAt ?? createdAt ??
+    (data.latestMessageAt ? new Date(data.latestMessageAt) : null)
+
+  return {
+    conversationId: convoId,
+    guestId: uid,
+    bookingId: null,
+    guestName: data.guest_name || 'Guest',
+    bookingReference: null,
+    propertyName: null,
+    latestMessageText: data.last_message || null,
+    latestMessageAt: latestAt ? latestAt.getTime() : null,
+    unreadCount: typeof data.unread_guest === 'number' ? data.unread_guest : 0,
+    isLegacy: true,
+  }
 }
 
 // ---------------------------------------------------------------------------

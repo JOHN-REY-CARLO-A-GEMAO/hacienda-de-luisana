@@ -57,22 +57,21 @@ class AppConstants {
   /// The inquiry category a Guest opens first, and the one a Booking is about.
   static const String categoryBooking = 'booking';
 
-  /// The document id a Guest's conversation for a category has.
+  /// The document id a Guest's conversation for a booking has.
   ///
+  /// One continuous conversation per guest booking — no topic-based threads.
   /// Derived, not random, and **the website derives it identically** — see
-  /// `conversationDocId()` in `src/lib/chatCloud.ts`. The two apps share one
-  /// Firestore project, so a Guest's thread on the website has to be the same
-  /// document the Admin app opens, and a formula both sides write down is what
-  /// guarantees that.
+  /// `ensureBookingConversation` in `src/lib/chatCloud.ts`. The two apps share
+  /// one Firestore project, so a Guest's thread on the website has to be the
+  /// same document the Admin app opens, and a formula both sides write down is
+  /// what guarantees that.
   ///
   /// It is derived rather than looked up because the rules refuse the lookup.
   /// `firestore.rules` reads membership with `isConversationMember(convoId)`,
   /// which resolves the conversation *by id*; on a `where('guest_uid','==',uid)`
   /// query the id is unbound, so Firestore cannot prove the query is safe and
-  /// refuses it. The website hit exactly that and the chat page answered "Could
-  /// not open the conversation."
-  static String conversationId(String guestUid, String category) =>
-      'inquiry-$guestUid-$category';
+  /// refuses it.
+  static String conversationId(String bookingId) => 'booking-$bookingId';
 
   /// A Guest's words about a finished stay, filed at the Booking's own id —
   /// which is what makes "one Review per stay" something `firestore.rules`
