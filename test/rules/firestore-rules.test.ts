@@ -1898,6 +1898,53 @@ describe('conversations and messages', () => {
     expect(deny({ path: `conversations/${CONVO_ID}/messages/m-admin-over`, method: 'create', auth: allowlistedAdmin(), requestData: messageDoc(ADMIN_UID, 'admin', { text: 'x'.repeat(1001) }) })).toBe(true)
   })
 
+  it('accepts an image with an optional caption for the Guest and the Admin', () => {
+    const attachment = (messageId: string, overrides: DocData = {}) => ({
+      path: `messageAttachments/${CONVO_ID}/${messageId}`,
+      content_type: 'image/jpeg',
+      size: 1024,
+      ...overrides,
+    })
+    expect(allow({
+      path: `conversations/${CONVO_ID}/messages/m-image`,
+      method: 'create', auth: anonymousGuest(),
+      requestData: messageDoc(GUEST_UID, 'guest', { text: '', attachment: attachment('m-image') }),
+    })).toBe(true)
+    expect(allow({
+      path: `conversations/${CONVO_ID}/messages/m-image-admin`,
+      method: 'create', auth: allowlistedAdmin(),
+      requestData: messageDoc(ADMIN_UID, 'admin', { text: 'Here is the gate.', attachment: attachment('m-image-admin', { content_type: 'image/webp', size: 5 * 1024 * 1024 }) }),
+    })).toBe(true)
+  })
+
+  it('binds every attachment to its exact conversation/message and enforces image metadata', () => {
+    const attachment = (overrides: DocData = {}) => ({
+      path: 'messageAttachments/convo-1/m-image',
+      content_type: 'image/png',
+      size: 1024,
+      ...overrides,
+    })
+    const createWith = (data: DocData, id = 'm-image', auth = anonymousGuest()) =>
+      deny({ path: `conversations/${CONVO_ID}/messages/${id}`, method: 'create', auth, requestData: messageDoc(GUEST_UID, 'guest', { text: '', attachment: data }) })
+    for (const invalid of [
+      attachment({ path: 'messageAttachments/another-convo/m-image' }),
+      attachment({ path: 'messageAttachments/convo-1/another-message' }),
+      attachment({ content_type: 'image/gif' }),
+      attachment({ content_type: 'application/pdf' }),
+      attachment({ size: 0 }),
+      attachment({ size: 5 * 1024 * 1024 + 1 }),
+      attachment({ public_url: 'https://example.invalid/image' }),
+    ]) {
+      expect(createWith(invalid)).toBe(true)
+    }
+    // The root message shape is closed too; a second arbitrary payload cannot
+    // ride beside the small attachment map.
+    expect(deny({
+      path: `conversations/${CONVO_ID}/messages/m-image`, method: 'create', auth: anonymousGuest(),
+      requestData: { ...messageDoc(GUEST_UID, 'guest', { text: '', attachment: attachment() }), public_url: 'https://example.invalid/image' },
+    })).toBe(true)
+  })
+
   it('lets the Admin stamp the retention expiry, and no Guest', () => {
     const stamped = ruleTimestamp('2026-12-30T00:00:00.000Z')
     expect(allow({ path: `conversations/${CONVO_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: conversationDoc(), requestData: conversationDoc({ messages_expires_at: stamped }) })).toBe(true)

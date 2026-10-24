@@ -14,7 +14,7 @@ This comprehensive audit evaluates the **Hacienda de LuisAna** repository agains
 ### Key Architectural Baseline
 The system adheres to a strict **Two-Role, Two-Application Architecture** ([ADR-0007](docs/adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md)):
 1. **Guest Website** (`src/`): Built with React 18, Vite, TypeScript, and Tailwind CSS. Deployed to Vercel and Firebase Hosting. Serves public visitors and registered guests (`/book`, `/account`, `/messages`, `/status`). Has no management or operational administration UI.
-2. **Admin Mobile App** (`lib/`): Built with Flutter / Dart. Admin-only management suite (`dashboard`, `bookings`, `stays`, `analytics`, `smartlock`, `rooms`, `crm`, `rates`, `disputes`, `inbox`).
+2. **Admin Mobile App** (`lib/`): Built with Flutter / Dart. Admin-only management suite (`dashboard`, `bookings`, `stays`, `analytics`, `smartlock`, `rooms`, `crm`, `rates`, `inbox`).
 3. **Roles & Authority**: Exactly two roles exist: `guest` and `admin` ([ADR-0005](docs/adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md)). There is no Staff, Host, or Cleaner role. Role assignment is enforced at the database level via `firestore.rules` and `storage.rules`.
 
 ### Audit Findings Summary
@@ -38,7 +38,7 @@ hacienda-de-luisana/
 │   └── tutorial/             # Guest interactive guided tour engine
 ├── lib/                      # Admin Flutter Mobile App (Dart)
 │   ├── main.dart             # App entry, theme, routes
-│   ├── models/               # Booking, SmartLockEvent, Review, Dispute, GuestCRM, Room models
+│   ├── models/               # Booking, SmartLockEvent, Review, GuestCRM, Room models
 │   ├── services/             # Pure Dart lifecycle (booking_lifecycle.dart), Firestore, PIN Store
 │   ├── views/                # Dashboard, Bookings, Stays, Analytics, SmartLock, Rooms, CRM, Rates
 │   └── tutorial/             # Admin interactive guided tour
@@ -70,11 +70,11 @@ hacienda-de-luisana/
 | **8. Access Logs & Security Monitoring** | **Implemented (Simulated)** | `lib/views/smartlock/smart_lock_screen.dart`, `firestore.rules` | Reads/writes `access_logs` collection (`timestamp`, `uid`, `ref_id`, `result`, `reason`). App provides an RFID swipe simulator. |
 | **9. Accommodation Rates & Cancellation Policy** | **Implemented** | `site_config/rates`, `lib/views/rates/rates_screen.dart`, `src/lib/booking/rates.ts` | Configurable weekday/weekend pricing schedules, holiday dates, pet fees, late checkout fees, and tiered cancellation refund rules. |
 | **10. Payment Reference Search** | **Implemented** | `payment_references` collection, `lib/views/payments/` | Ref search by code, status tracking (`available`, `used`, `void`), enforced in `firestore.rules`. |
-| **11. Messaging Grouped by Conversation** | **Implemented** | `conversations/{id}/messages/{id}`, `src/pages/MessagesPage.tsx`, `lib/views/inbox/` | 1,000 character limit enforced in rules and UI (`MESSAGE_MAX`). Guest membership validation in `firestore.rules`. |
+| **11. Messaging Grouped by Conversation** | **Implemented** | `conversations/{id}/messages/{id}`, `messageAttachments/{conversationId}/{messageId}`, `src/pages/MessagesPage.tsx`, `lib/views/inbox/` | Optional captions and private JPEG/PNG/WebP images up to 5 MiB. Membership, exact path binding, MIME and size limits are enforced in Firestore/Storage rules. |
 | **12. Biometric Authentication** | **Missing** | `lib/services/pin_store.dart` | Biometrics (Fingerprint/Face ID) not implemented (`local_auth` package not in `pubspec.yaml`). Security PIN sheet is used instead. |
 | **13. Occupancy & Revenue Analytics** | **Implemented** | `lib/views/analytics/analytics_screen.dart` | Revenue breakdown, conversion rates, average length of stay, top accommodations rendered via FL Chart. |
 | **14. Live Location & Proximity Alerts** | **Implemented** | `database.rules.json`, `src/lib/liveLocation.ts`, `lib/services/live_location_service.dart` | Realtime Database stream ([ADR-0013](docs/adr/0013-live-location-as-a-stream.md)), max 1h session, stream secret token. Proximity banner on Admin dashboard when guest < 5km away. No coordinates saved to Firestore ([ADR-0009](docs/adr/0009-no-live-location-tracking.md)). |
-| **15. Disputes & Complaints** | **Implemented** | `disputes/{id}`, `src/components/DisputeForm.tsx`, `lib/services/dispute_service.dart` | Category, description (max 2000 chars), evidence URLs, status tracking (`open`, `under_review`, `resolved`, `rejected`). |
+| **15. Disputes & Complaints** | **Retired 2026-10-24** | `docs/adr/0020-retire-dispute-cases-for-private-message-images.md` | Active case management was replaced by ordinary private message images. Historical data is retained under default-deny rules pending separately approved archival/deletion. |
 | **16. Guest Reviews & Moderation** | **Implemented** | `reviews/{bookingId}`, `public_reviews/{id}`, `src/pages/AccountPage.tsx`, `lib/views/reviews/` | 14-day guest edit window, 1-5 star categories, Admin moderation & response, curated public testimonials ([ADR-0014](docs/adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md)). |
 
 ---

@@ -2,7 +2,14 @@ import { beforeAll, expect, it, vi } from 'vitest'
 import { scenarios, NOW } from './fixtures'
 const transport = vi.hoisted(() => ({ set: vi.fn(async (_ref: unknown, _payload: { expires_at_ms: number }) => {}), consent: vi.fn(async () => {}) }))
 vi.mock('../../src/lib/firebase', () => ({ db: {}, isFirebaseConfigured: true, hasRealtimeDatabaseConfig: () => true, ensureRealtimeDatabase: async () => ({}) }))
-vi.mock('firebase/firestore', () => ({ doc: () => ({}), setDoc: transport.consent, serverTimestamp: () => 'synthetic', updateDoc: vi.fn() }))
+vi.mock('firebase/firestore', () => ({
+  doc: () => ({}),
+  getDoc: vi.fn(async () => ({ exists: () => false })),
+  deleteDoc: vi.fn(async () => {}),
+  setDoc: transport.consent,
+  serverTimestamp: () => 'synthetic',
+  updateDoc: vi.fn(),
+}))
 vi.mock('firebase/database', () => ({ ref: () => ({}), set: transport.set, onDisconnect: () => ({ remove: async () => {} }), remove: vi.fn() }))
 beforeAll(async () => { await import('firebase/database') })
 import { startSharing, publishFix } from '../../src/lib/liveLocation'

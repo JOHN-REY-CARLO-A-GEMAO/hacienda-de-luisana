@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../services/auth_store.dart';
+import '../../services/chat_attachment_service.dart';
 import '../../services/chat_retention.dart';
 import '../../services/live_location_service.dart';
 import '../security/secure_action_sheet.dart';
@@ -12,6 +13,7 @@ import '../../tutorial/tutorial_controller.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
 import 'live_location_panel.dart';
+import 'private_chat_image.dart';
 
 /// Guest → Admin messages from `conversations/*`.
 ///
@@ -119,6 +121,13 @@ class ThreadScreen extends StatefulWidget {
 
 class ThreadScreenState extends State<ThreadScreen> {
   final _text = TextEditingController();
+  final _attachments = ChatAttachmentService();
+  ChatImage? _selectedImage;
+  String? _imageMessageId;
+  String _sendStage = 'idle';
+  String? _composerError;
+
+  bool get _sending => _sendStage != 'idle';
 
   /// The oldest message loaded, and whether anything older exists. Both come
   /// from a read that happened; neither is guessed from a full collection.
@@ -196,30 +205,98 @@ class ThreadScreenState extends State<ThreadScreen> {
     }
   }
 
+  Future<void> _pickImage() async {
+    if (_sending) return;
+    try {
+      final image = await ChatImagePicker.pick();
+      if (image != null && mounted) {
+        setState(() {
+          _selectedImage = image;
+          _imageMessageId = null;
+          _composerError = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _composerError = chatAttachmentFailure(error));
+    }
+  }
+
   Future<void> _send() async {
     final v = _text.text.trim();
-    // The field stops a Guest typing past the limit; this is the same check on
-    // the Admin's side, and `firestore.rules` is the one that always holds.
-    if (v.isEmpty || v.length > AppConstants.messageMax) return;
+    final image = _selectedImage;
+    // An image may carry an optional caption. Text-only messages retain the
+    // original non-empty rule and the same 1,000-character backend limit.
+    if ((v.isEmpty && image == null) || v.length > AppConstants.messageMax || _sending) return;
     final auth = context.read<AuthStore>();
     final uid = auth.uid;
     if (uid == null || uid.isEmpty) return;
-    await _messages.add({
-      'sender_uid': uid,
-      'sender_role': 'admin',
-      'text': v,
-      'created_at': FieldValue.serverTimestamp(),
+    setState(() {
+      _sendStage = image == null ? 'sending' : 'uploading';
+      _composerError = null;
     });
-    await FirebaseFirestore.instance.collection(AppConstants.colConversations).doc(widget.convoId).update({
-      'updated_at': FieldValue.serverTimestamp(),
-      'last_message': v.length > 140 ? v.substring(0, 140) : v,
-      'unread_guest': 1,
-    });
-    _text.clear();
+    try {
+      if (image != null) {
+        final messageId = _imageMessageId ??= _messages.doc().id;
+        final attachment = await _attachments.upload(
+          conversationId: widget.convoId,
+          messageId: messageId,
+          image: image,
+        );
+        if (mounted) setState(() => _sendStage = 'sending');
+        final reference = _messages.doc(messageId);
+        final existing = await reference.get();
+        if (existing.exists) {
+          final data = existing.data();
+          final prior = data == null ? null : ChatAttachment.fromMessage(data);
+          if (data?['sender_uid'] != uid ||
+              data?['sender_role'] != 'admin' ||
+              data?['text'] != v ||
+              prior?.path != attachment.path) {
+            throw StateError('This message id is already in use. Start a new draft.');
+          }
+        } else {
+          await reference.set({
+            'sender_uid': uid,
+            'sender_role': 'admin',
+            'text': v,
+            'created_at': FieldValue.serverTimestamp(),
+            'attachment': attachment.toMap(),
+          });
+        }
+      } else {
+        await _messages.add({
+          'sender_uid': uid,
+          'sender_role': 'admin',
+          'text': v,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+      }
+      await FirebaseFirestore.instance.collection(AppConstants.colConversations).doc(widget.convoId).update({
+        'updated_at': FieldValue.serverTimestamp(),
+        'last_message': (v.isEmpty ? '📷 Photo' : (v.length > 140 ? v.substring(0, 140) : v)),
+        'unread_guest': 1,
+      });
+      _text.clear();
+      if (mounted) {
+        setState(() {
+          _selectedImage = null;
+          _imageMessageId = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _composerError = image == null
+            ? 'Message could not be sent. Check the connection and retry.'
+            : chatAttachmentFailure(error));
+      }
+    } finally {
+      if (mounted) setState(() => _sendStage = 'idle');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final selectedImage = _selectedImage;
     return Scaffold(
       appBar: AppBar(
         title: Text('Thread', style: GoogleFonts.cinzel(fontSize: 16)),
@@ -268,15 +345,33 @@ class ThreadScreenState extends State<ThreadScreen> {
                     if (i >= page.length) return older[i - page.length];
                     final m = page[i].data();
                     final admin = m['sender_role'] == 'admin';
+                    final text = m['text']?.toString() ?? '';
+                    final attachment = ChatAttachment.fromMessage(m);
                     return Align(
                       alignment: admin ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
+                        padding: EdgeInsets.all(attachment == null ? 12 : 5),
                         color: admin ? AppColors.primaryForest : Colors.white,
-                        child: Text(
-                          m['text']?.toString() ?? '',
-                          style: TextStyle(color: admin ? Colors.white : AppColors.textDark),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (attachment != null)
+                              PrivateChatImage(
+                                key: ValueKey(attachment.path),
+                                attachment: attachment,
+                                caption: text.isEmpty ? null : text,
+                                service: _attachments,
+                              ),
+                            if (text.isNotEmpty)
+                              Padding(
+                                padding: EdgeInsets.fromLTRB(attachment == null ? 0 : 8, attachment == null ? 0 : 8, attachment == null ? 0 : 8, attachment == null ? 0 : 5),
+                                child: Text(
+                                  text,
+                                  style: TextStyle(color: admin ? Colors.white : AppColors.textDark),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     );
@@ -287,19 +382,108 @@ class ThreadScreenState extends State<ThreadScreen> {
           ),
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    key: TourKeys.threadComposer,
-                    controller: _text,
-                    maxLength: AppConstants.messageMax,
-                    decoration: const InputDecoration(hintText: 'Reply'),
+                if (_composerError != null)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    color: AppColors.alertDangerSurface,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _composerError!,
+                            style: const TextStyle(color: AppColors.alertDangerText, fontSize: 12),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _sending ? null : _send,
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  onPressed: _send,
-                  icon: const Icon(Icons.send),
+                if (selectedImage != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(selectedImage.bytes, width: 56, height: 56, fit: BoxFit.cover),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(selectedImage.name, overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 3),
+                              Text(
+                                _sendStage == 'uploading'
+                                    ? 'Uploading privately…'
+                                    : _sendStage == 'sending'
+                                        ? 'Sending message…'
+                                        : '${(selectedImage.bytes.length / 1024).ceil()} KB · ready to send',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Replace attached image',
+                          onPressed: _sending ? null : _pickImage,
+                          icon: const Icon(Icons.swap_horiz),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove attached image',
+                          onPressed: _sending
+                              ? null
+                              : () => setState(() {
+                                    _selectedImage = null;
+                                    _imageMessageId = null;
+                                    _composerError = null;
+                                  }),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: selectedImage == null
+                          ? 'Attach JPEG, PNG, or WebP (5 MB maximum)'
+                          : 'Replace with JPEG, PNG, or WebP (5 MB maximum)',
+                      onPressed: _sending ? null : _pickImage,
+                      icon: const Icon(Icons.attach_file),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        key: TourKeys.threadComposer,
+                        controller: _text,
+                        enabled: !_sending,
+                        maxLength: AppConstants.messageMax,
+                        decoration: InputDecoration(hintText: selectedImage == null ? 'Reply' : 'Add a caption'),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: _sendStage == 'uploading' ? 'Uploading image' : 'Send message',
+                      onPressed: _sending ? null : _send,
+                      icon: _sending
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.send),
+                    ),
+                  ],
                 ),
               ],
             ),

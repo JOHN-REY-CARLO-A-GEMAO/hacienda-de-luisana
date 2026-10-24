@@ -8,7 +8,7 @@
  * this bundle by `scripts/sync-booking-pricing.mjs` and hash-checked by
  * `test/booking-sync.test.ts`. One arithmetic, two places it is read.
  *
- * Run with `npm run test:disputes` (from the repository root: `npm --prefix
+ * Run with `npm run test:functions` (from the repository root: `npm --prefix
  * functions test`). No emulator, no network, no clock that moves on its own.
  */
 import assert from 'node:assert/strict'

@@ -112,9 +112,16 @@ class LiveLocationSession {
   /// document that somehow carries a coordinate.
   static LiveLocationSession? fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
-    if (data == null) return null;
+    return data == null ? null : fromData(doc.id, data);
+  }
+
+  /// Pure form of [fromDoc], shared by the parser regression test.
+  static LiveLocationSession? fromData(String conversationId, Map<String, dynamic> data) {
     final guestUid = data['guest_uid'];
-    final secret = data['session_secret'];
+    // Firestore stores the consent as `stream_secret`; the ephemeral RTDB fix
+    // restates that value as `session_secret`. Reading the latter here made
+    // every otherwise-valid session look foreign before the Admin could watch.
+    final secret = data['stream_secret'];
     final startedAt = data['started_at'];
     final expiresAt = data['expires_at'];
     if (guestUid is! String ||
@@ -128,7 +135,7 @@ class LiveLocationSession {
     const forbidden = <String>['lat', 'lng', 'latitude', 'longitude', 'position', 'fix', 'points', 'trail'];
     if (forbidden.any((key) => data.containsKey(key))) return null;
     return LiveLocationSession(
-      conversationId: doc.id,
+      conversationId: conversationId,
       guestUid: guestUid,
       streamSecret: secret,
       startedAt: startedAt.toDate(),

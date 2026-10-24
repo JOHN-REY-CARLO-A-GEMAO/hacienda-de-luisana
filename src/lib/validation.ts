@@ -39,8 +39,8 @@ export const EMAIL_MAX = 120
  * An inquiry's subject line.
  *
  * 120 is the figure the Admin's inbox column can show without ellipsis, and 3
- * is the shortest string that is a subject rather than a grunt. `DisputeForm`'s
- * and `ContactInquiryForm`'s counters print this constant, so the number on the
+ * is the shortest string that is a subject rather than a grunt. The inquiry
+ * form's counter prints this constant, so the number on the
  * page and the number in the refusal cannot drift apart.
  */
 export const SUBJECT_MIN = 3
@@ -66,16 +66,6 @@ export const ADDRESS_MAX = 200
  */
 export const ADDITIONAL_NOTES_MAX = 500
 export const EVENT_DETAIL_MAX = 160
-/**
- * The two dispute-case text fields, bound to what the Case Function accepts.
- *
- * `functions/src/domain.ts` validates every case string through
- * `text(value, min, max = 4000)`, so 4,000 is not a preference here — a longer
- * description would be refused by the Function after the Guest wrote it. The
- * 10-character floor the form prints is the same `text(cmd.description, 10)`.
- */
-export const DISPUTE_DESCRIPTION_MAX = 4000
-export const DISPUTE_MESSAGE_MAX = 4000
 /**
  * The longest a chat message may be, in characters.
  *

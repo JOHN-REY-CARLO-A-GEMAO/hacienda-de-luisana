@@ -710,6 +710,11 @@ function evalExpr(node: Node, scope: Scope): unknown {
       // here rather than resolved through the scope.
       if (text(base).trim() === 'duration') return durationConstructor(name, args)
       if (text(base).trim() === 'timestamp') return timestampConstructor(name, args)
+      // Cloud Storage rules reach Firestore through the namespaced
+      // `firestore.get()` / `firestore.exists()` API. It answers from the same
+      // synthetic document store as a bare Firestore get(), and is counted as
+      // a document read rather than being treated as an unknown free variable.
+      if (text(base).trim() === 'firestore') return globalCall(name, args, scope, node)
       return method(evalExpr(base, scope), name, args)
     }
     case 'FunctionCallSimpleExpression': {

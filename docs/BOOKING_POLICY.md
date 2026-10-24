@@ -126,7 +126,7 @@ Run from the repository root:
 ```bash
 npm test
 npm run test:rules
-npm run test:disputes
+npm run test:functions
 npm run lint
 npm run build
 npm run test:emulator

@@ -49,14 +49,24 @@ import { db, isFirebaseConfigured } from './firebase'
 import { validateMessage } from './validation'
 import { isActiveCategory } from './categories'
 import { dateToISOString, parseDate } from './formatDate'
+import {
+  attachmentDocument,
+  messageAttachmentPath,
+  parseChatAttachment,
+  type ChatAttachment,
+} from './chatAttachments'
+
+export type { ChatAttachment } from './chatAttachments'
 
 export type ChatMessage = {
   id: string
+  /** Empty only when this message carries an image without a caption. */
   text: string
   /** ISO-8601, so a page and a listener hand the UI the same shape. */
   at: string
   mine: boolean
   sender_uid: string
+  attachment?: ChatAttachment
 }
 
 /**
@@ -133,6 +143,7 @@ function toMessage(snap: QueryDocumentSnapshot<DocumentData>, uid: string): Chat
     at,
     sender_uid: String(data.sender_uid ?? ''),
     mine: data.sender_uid === uid,
+    attachment: parseChatAttachment(data.attachment),
   }
 }
 
@@ -321,29 +332,88 @@ export async function sendChatMessage(input: {
   convoId: string
   uid: string
   text: string
-}): Promise<{ ok: true } | { ok: false; message: string }> {
-  const v = validateMessage(input.text)
+  attachment?: ChatAttachment
+  /** Required for a retryable image draft; it is also the Storage object id. */
+  messageId?: string
+}): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  // Captions are optional only when an image is present. Text-only messages
+  // keep the original validation and wire format.
+  const caption = input.text.trim()
+  const v = input.attachment
+    ? caption.length <= 1000
+      ? { ok: true as const, value: caption }
+      : { ok: false as const, message: 'Message must be at most 1000 characters' }
+    : validateMessage(input.text)
   if (!v.ok) return { ok: false, message: v.message }
 
-  if (offline() || isLocal(input.convoId)) {
-    const next = [
-      ...localLoad(),
-      { id: crypto.randomUUID(), text: v.value, at: new Date().toISOString(), mine: true, sender_uid: input.uid },
-    ]
-    localStore(next)
-    return { ok: true }
+  const id = input.messageId ?? crypto.randomUUID()
+  if (input.attachment) {
+    const valid = parseChatAttachment(attachmentDocument(input.attachment))
+    if (!valid || input.attachment.path !== messageAttachmentPath(input.convoId, id)) {
+      return { ok: false, message: 'The image attachment is not bound to this message. Select it again.' }
+    }
   }
 
-  await addDoc(messagesOf(input.convoId), {
-    sender_uid: input.uid,
-    sender_role: 'guest',
-    text: v.value,
-    created_at: serverTimestamp(),
-  })
+  if (offline() || isLocal(input.convoId)) {
+    const current = localLoad()
+    const existing = current.find((message) => message.id === id)
+    if (existing) {
+      if (existing.sender_uid !== input.uid || existing.text !== v.value || existing.attachment?.path !== input.attachment?.path) {
+        return { ok: false, message: 'This message could not be safely retried. Start a new draft.' }
+      }
+      return { ok: true, id }
+    }
+    localStore([
+      ...current,
+      {
+        id,
+        text: v.value,
+        at: new Date().toISOString(),
+        mine: true,
+        sender_uid: input.uid,
+        attachment: input.attachment,
+      },
+    ])
+    return { ok: true, id }
+  }
+
+  if (input.attachment) {
+    // A stable document id makes an uncertain retry idempotent. If the first
+    // write reached Firestore but its response did not arrive, the retry reads
+    // that exact message, verifies it is the same draft, and skips recreation.
+    const reference = doc(messagesOf(input.convoId), id)
+    const existing = await getDoc(reference)
+    if (existing.exists()) {
+      const data = existing.data()
+      if (
+        data.sender_uid !== input.uid ||
+        data.sender_role !== 'guest' ||
+        data.text !== v.value ||
+        data.attachment?.path !== input.attachment.path
+      ) {
+        return { ok: false, message: 'This message id is already in use. Start a new draft.' }
+      }
+    } else {
+      await setDoc(reference, {
+        sender_uid: input.uid,
+        sender_role: 'guest',
+        text: v.value,
+        created_at: serverTimestamp(),
+        attachment: attachmentDocument(input.attachment),
+      })
+    }
+  } else {
+    await addDoc(messagesOf(input.convoId), {
+      sender_uid: input.uid,
+      sender_role: 'guest',
+      text: v.value,
+      created_at: serverTimestamp(),
+    })
+  }
   await updateDoc(doc(db as never, 'conversations', input.convoId), {
     updated_at: serverTimestamp(),
-    last_message: v.value.slice(0, CHAT_PREVIEW_CHARS),
+    last_message: (v.value || (input.attachment ? '📷 Photo' : '')).slice(0, CHAT_PREVIEW_CHARS),
     unread_admin: 1,
   })
-  return { ok: true }
+  return { ok: true, id }
 }

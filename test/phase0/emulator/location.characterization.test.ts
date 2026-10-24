@@ -26,7 +26,7 @@ it('F21-CANONICAL-CURRENT: actual first 30-minute publisher lease is rejected wh
   await denied(() => guest().database().ref(leaf).set(fix({ expires_at_ms: Date.now() + 30 * 60_000 })))
   await assertSucceeds(guest().database().ref(leaf).set(fix()))
 })
-it('F21-CANONICAL-CURRENT: stopping then recreating consent at the same ID is refused; explicit deletion is a separate operation', async () => {
+it('F21-CANONICAL-CURRENT: direct consent recreation is refused; the app uses explicit deletion before a fresh create', async () => {
   await prepareConversation()
   const session = doc(guest().firestore(), 'location_sessions', convoId)
   await assertSucceeds(setDoc(session, locationSession()))
@@ -34,7 +34,8 @@ it('F21-CANONICAL-CURRENT: stopping then recreating consent at the same ID is re
   await denied(() => setDoc(session, locationSession({ stream_secret: 'abcdef0123456789abcdef0123456789' })))
   await assertSucceeds(deleteDoc(session))
   await assertSucceeds(setDoc(session, locationSession()))
-  // The current app does not perform this deletion on restart. No redesign.
+  // The rules still refuse a raw reopen; startSharing now performs this exact
+  // delete-then-create sequence for a stopped or expired prior session.
 })
 it('F22-CANONICAL-CURRENT: UID owner can publish without any Firestore conversation/consent document; Admin leaf is readable', async () => {
   await assertSucceeds(guest().database().ref(leaf).set(fix()))

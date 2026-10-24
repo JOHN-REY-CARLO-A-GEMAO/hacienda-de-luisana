@@ -269,6 +269,10 @@ export const Navigation = base(
   </>
 )
 
+export const Paperclip = base(
+  <path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 0 1-2.8-2.8l8.9-8.9" />
+)
+
 export const Copy = base(
   <>
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />

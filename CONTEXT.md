@@ -157,7 +157,7 @@ What the public website shows, held at `public_reviews/{reviewId}` — six field
 _Avoid_: Review (the Guest's own document, private), Public review, Feedback, Quote.
 
 **Conversation**:
-The one thread between a Guest and the Admin, held at `conversations/{id}` with its messages in a `messages` subcollection. It belongs to exactly one Guest, and knowing its id is not membership. Messages are text, at most 1,000 characters, read a page at a time.
+The one thread between a Guest and the Admin, held at `conversations/{id}` with its messages in a `messages` subcollection. It belongs to exactly one Guest, and knowing its id is not membership. A message carries text up to 1,000 characters, one private image, or an image with a caption, and is read a page at a time.
 _Avoid_: Thread (fine in the UI), inbox on the website, DM
 
 **Message page**:
@@ -172,22 +172,6 @@ _Avoid_: Purging on completion, message cap
 A Guest choosing, from inside their Conversation, to let the Admin watch where they are for 15, 30 or 60 minutes. The Firestore side is a **Live location session** — consent metadata with no coordinate — and the position itself is ephemeral: a Realtime Database node the server deletes at the session's expiry. Reinstated by ADR-0013, which reopened what ADR-0009 withdrew; `tracking_sessions` remains closed, because a position written to Firestore is a position stored forever.
 _Avoid_: Tracking session, breadcrumb, ping, route, radar, geofence, ETA — the shape this repository has is a stream with an expiry, not a route.
 
-### Issue & Dispute Management
-
-**Case**: A server-owned Issue or Dispute reported by a recoverable Guest account
-or an Admin, optionally linked to a verified Booking. Identified by a human-readable
-reference; its lifecycle never executes a Booking or financial action. Guest-facing
-cases and internal operational reports have separate visibility. Private notes and
-restricted evidence are not fields that a Guest-readable document merely hides.
-
-**Independent review**: An appeal decided by another Admin who has not investigated,
-proposed or decided the case and is not its complainant. Assignment alone is not
-participation. No eligible reviewer means pending. One ordinary appeal, with
-exceptional reopening and remedy enforcement distinct from repeated merits appeals.
-
-**Case resolution**: A completed simple fix, accepted completed remedy, or reasoned
-independent determination. A promise is not fulfillment, and silence is not consent.
-Closed is administrative finality, not a statement that the Guest agreed.
-
-See ADR-0017 and `docs/disputes/IMPLEMENTATION.md`. Production release, retention
-policy and legal approval remain explicit prerequisites, not implementation claims.
+**Message image attachment**:
+One JPEG, PNG or WebP image, at most 5 MiB, attached to an ordinary message with an optional caption. Bytes live at `messageAttachments/{conversationId}/{messageId}` and are read through authenticated Storage access, never a public download token. The path must match the exact conversation and immutable message ID.
+_Avoid_: Case evidence, dispute attachment, public image URL

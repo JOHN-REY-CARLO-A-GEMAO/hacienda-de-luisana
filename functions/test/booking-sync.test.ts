@@ -8,7 +8,7 @@
  * committed manifest produced by `scripts/sync-booking-pricing.mjs` and compares it
  * to what is actually on disk.
  *
- * Run with `npm run test:disputes`, or directly: `cd functions && npm test`.
+ * Run with `npm run test:functions`, or directly: `cd functions && npm test`.
  */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'

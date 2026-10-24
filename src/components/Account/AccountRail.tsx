@@ -76,7 +76,7 @@ export function HelpPanel() {
       <p className="mt-3.5 flex items-start gap-2 text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
         <Help size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
         <Link to="/support" className="text-link">
-          Disputes and how a booking is reviewed
+          Booking, account and official support
         </Link>
       </p>
     </RailPanel>

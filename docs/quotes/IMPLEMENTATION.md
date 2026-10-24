@@ -64,8 +64,7 @@ then flip the document. Turning the document off is the rollback and needs no re
 
 1. `npm run check:pricing` — the mirror is current. If it is not: `npm run sync:pricing`, then
    `cd functions && npx tsc --noEmit && npm test`.
-2. `npm test && npm run test:rules && npm run test:disputes` — expected on this checkout:
-   **958 web**, **334 rules**, **223 functions**. `npx tsc -b` and `npm run build` clean.
+2. `npm test && npm run test:rules && npm run test:functions`; then `npx tsc -b` and `npm run build`. Record the current counts rather than relying on historical totals.
    `npm run test:e2e` (44) and `npm run test:invariants` are separate: the latter is a
    pre-existing **22 failed / 9 passed** of `DESIRED` cases, unchanged by this mechanism.
 3. Emulator first, always: `firebase emulators:exec --only firestore,functions --project demo-hdl "npm run test:emulator"`.
@@ -78,8 +77,7 @@ then flip the document. Turning the document off is the rollback and needs no re
 4. `firebase deploy --only firestore:rules`, then `firebase deploy --only functions`.
    **`functions` deployment requires the Blaze plan** — on the free Spark plan the deploy fails,
    and nothing in this ADR can be rolled out. The environment the Functions runtime reads must set
-   `BOOKING_QUOTES_ENABLED=true`; the repository's `.env.example` names it beside
-   `DISPUTES_ENABLED`, and `.env` files stay uncommitted. `QUOTE_TTL_MINUTES` optionally shortens
+   `BOOKING_QUOTES_ENABLED=true`; the repository's `.env.example` names it, and `.env` files stay uncommitted. `QUOTE_TTL_MINUTES` optionally shortens
    how long a price is honoured (default 30), `QUOTE_RATE_LIMIT_PER_MINUTE` the mints per identity per
    minute (default 12); all three are listed in the repository's `.env.example`. Both callables ship in the existing `disputes`
    codebase (`firebase.json` → `functions[0]`), so there is no second deploy target to configure.
@@ -147,7 +145,7 @@ built or run. The security property does not depend on any of it.
 - Nothing deletes expired `booking_quotes` documents: they are the evidence behind a price and what
   `verifyBookingMoney` compares against later. Growth is bounded by distinct
   (identity, stay, rates version) — see ADR-0019's consequences. If the estate ever wants a bound,
-  `disputeMaintenance`'s schedule is where it belongs, with a floor of "never delete an
+  a separately approved scheduler is required, with a floor of "never delete an
   attestation a live Booking still points at".
 - No rate limiting beyond the in-process `spend()` guard already in `quotes.ts`; it is per instance
   and best-effort, the same posture as the rest of this codebase (`docs/LIMITATIONS.md`).

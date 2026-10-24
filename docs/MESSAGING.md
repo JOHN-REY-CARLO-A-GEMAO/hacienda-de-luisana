@@ -2,7 +2,7 @@
 
 The Guest ↔ Admin conversation, end to end: what is stored, what is refused, what is read, what is deleted, and where a Guest's live position goes.
 
-Everything here is enforced in the backend. `src/` and `lib/` are the courtesy; `firestore.rules` and `database.rules.json` are the enforcement, because a browser or a phone can call either directly and nothing in the application stops it.
+Application validation is the courtesy; `firestore.rules`, `storage.rules`, and `database.rules.json` are the enforcement, because a browser or a phone can call Firebase directly.
 
 ---
 
@@ -22,13 +22,19 @@ conversations/{convoId}                    Firestore
 conversations/{convoId}/messages/{messageId}    Firestore, append-only
   sender_uid     string   the writer's own uid
   sender_role    'guest' | 'admin'   must match what the writer actually is
-  text           string   1…1,000 characters
+  text           string   0…1,000 characters; empty only with an image
   created_at     ts
+  attachment     OPTIONAL map: path, content_type, size
+
+messageAttachments/{convoId}/{messageId}       Firebase Storage, create-only
+  JPEG, PNG or WebP bytes; 1 byte…5 MiB
 ```
 
 `location_sessions/{convoId}` (live location) and `live_location/{convoId}/{guestUid}` (Realtime Database) are in [§ 5](#5-live-location).
 
-**Attachments: there are none.** Chat carries text only, on both sides. The website's only upload path is the Payment proof (Supabase Storage, `payment-proofs`, ADR-0011) and it is not reachable from the composer, so there is no size or type limit to set and no unlimited-upload surface to close. If attachments are ever added to the composer, they need a bucket with a size ceiling and a MIME allowlist *and* a rule that refuses a message document carrying a blob — not a client-side check.
+**Private image attachments.** The composer accepts JPEG, PNG, and WebP up to 5 MiB, with an optional caption or no text. The image preview can be removed or replaced before sending. Storage rules independently enforce the byte ceiling, MIME allowlist, conversation membership/Admin authorization, and create-only writes. Firestore rules require the attachment path to equal `messageAttachments/{convoId}/{messageId}` and keep messages immutable.
+
+The clients use a stable draft/message ID. A retry checks existing object metadata and the existing message before reusing them, preventing an uncertain upload/send from intentionally creating a duplicate or overwriting another object. Images render inline through authenticated byte reads and have an accessible larger viewer. No `getDownloadURL`, public object token, or dispute-evidence path is used. Failed sends retain the selected image and caption for retry.
 
 ---
 
@@ -37,7 +43,8 @@ conversations/{convoId}/messages/{messageId}    Firestore, append-only
 | Limit | Value | Enforced in |
 | --- | --- | --- |
 | Maximum message length | **1,000 characters** | `firestore.rules` (`text.size() <= 1000`) · `MESSAGE_MAX` in `src/lib/validation.ts` · `kMessageMax` in `lib/views/inbox/inbox_screen.dart` |
-| Minimum message length | 1 character (after trimming) | same rule, and `validateMessage` |
+| Minimum message length | 1 character after trimming for text-only; 0 with an image | same rule, and the message adapters |
+| Image type / size | JPEG, PNG, WebP / **5 MiB** | `storage.rules` and both clients |
 | Messages per conversation | **no cap** | — deliberately. A cap makes a legitimate conversation unusable and saves nothing, because the cost is in what is *read*, not in what exists. |
 
 1,000 is the figure because a thread is read a page at a time: every character is paid for on every page read. The number is written out in three places on purpose, and `test/web/chat-messaging.test.ts` asserts the website and the rules agree, so the two cannot drift.
@@ -89,10 +96,10 @@ After that      →  a scheduled backend job sweeps the thread
 
 ### The deletion mechanism (required, not implemented here)
 
-**Firestore Security Rules cannot perform scheduled deletion.** They can only refuse a write. The repository has no `functions/` directory and no scheduled job, so the mechanism is specified here and **must be deployed** for the policy to have teeth:
+**Firestore Security Rules cannot perform scheduled deletion.** The current Functions entry point has no messaging-retention job, so this mechanism is specified here and **must be deployed** for the policy to have teeth:
 
 1. **Enable a Firestore TTL policy** on the `conversations` collection, field `messages_expires_at`. The conversation document is then deleted by Firestore itself, within about 24 hours of the stamp. Firestore's TTL deletes *documents*, not subcollections, so step 2 covers the messages.
-2. **A Cloud Function on conversation deletion** that removes the `messages` subcollection in batches of 500 (Firestore caps a batch at 500 operations; delete, then re-query until empty). Firestore deletes are billed and do not cascade.
+2. **A Cloud Function on conversation deletion** that removes the `messages` subcollection in batches of 500 and deletes the private `messageAttachments/{convoId}/` Storage prefix. Firestore deletes are billed and do not cascade to subcollections or Storage. This attachment cleanup is part of the unimplemented retention work, not a claim that images currently expire.
 
 ```js
 // functions/index.js — firebase-functions v2, Node 20
@@ -210,6 +217,7 @@ The map panel is closed by default. Opening it is one tap; closing it releases t
 | Door events | Firestore `access_logs` | yes, forever |
 | Payment references | Firestore `payment_references` | yes (void-only once used) |
 | Chat messages | Firestore `conversations/*/messages` | until the retention sweep |
+| Message images | Storage `messageAttachments/{convoId}/{messageId}` | until attachment cleanup is implemented and runs |
 | Retention stamp | Firestore `conversations.messages_expires_at` | until the sweep |
 | Live-location consent | Firestore `location_sessions/{convoId}` | until the Admin or the Guest clears it |
 | **Live position** | **Realtime Database** | **no — unreadable past `expires_at_ms`, and removed on Stop / disconnect** |
@@ -224,11 +232,18 @@ The map panel is closed by default. Opening it is one tap; closing it releases t
 | --- | --- | --- |
 | `test/web/chat-messaging.test.ts` | `npm test` | the 1,000 limit and the rules agreeing with it, empty messages, 40-message first page, a 500-message walk with no repeats or skips, the page cap, the bounded listener, merge-by-id, the whole retention policy, and the Admin-only stamp |
 | `test/web/live-location.test.ts` | `npm test` | the three durations and the one-hour cap, the countdown, the publish cadence, distance, the distance maths, every `checkFix` refusal (wrong secret, wrong Guest, wrong conversation, expired, stopped, malformed, out of world, future-dated), the secret's shape, and that a build with no transport cannot share |
-| `test/web/messages-page.test.tsx` | `npm test` | the composer's `maxLength` and counter, "Load earlier messages" on a 140-message thread, and the share control's disabled-and-explained state, active panel, offline wording, stop button and refusal message |
+| `test/web/messages-page.test.tsx` | `npm test` | composer limits and pagination; image preview/remove/replace, optional captions, inline/larger viewing, failed-send retention and idempotent retry; live-location controls |
+| `test/web/chat-attachments.test.ts` | `npm test` | MIME/5 MiB validation, stable private paths, create-only retry behavior, authenticated byte reads and expired-session errors |
 | `test/web/realtime-database-rules.test.ts` | `npm test` | reads `database.rules.json` and holds it to the claims: closed root, uid-bound write, the nine fields, the Philippine bounds, the window, the Admin read and the allowlist mirror, and that it is registered in `firebase.json` |
-| `test/rules/firestore-rules.test.ts` | `npm run test:rules` | 1,000 vs 1,001 from both sides, the retention stamp's authorization, and the full `location_sessions` matrix: create, membership, impersonation, the one-hour cap, an already-expired window, a malformed secret, a smuggled coordinate in eight shapes, reads, the ending update, no reopening, and deletes |
+| `test/rules/firestore-rules.test.ts` | `npm run test:rules` | 1,000 vs 1,001 from both sides, exact attachment-path binding and immutable metadata, the retention stamp's authorization, and the full `location_sessions` matrix |
+| `test/rules/storage-rules.test.ts` | `npm run test:rules` | participant/Admin image access, cross-conversation and signed-out denial, MIME/5 MiB enforcement, create-only writes, and Admin-only deletion |
 | `test/rules/engine.test.ts` | `npm run test:rules` | the semantics this work added to the evaluator: `request.time`, `timestamp` as a type, timestamp ordering, `timestamp + int`, `timestamp - timestamp`, `keys().hasAny()` |
-| `test/chat_limits_test.dart` | `flutter test` | the Dart copies: the retention policy, the 1,000 limit, and every `LiveFix.fromData` refusal |
+| `test/chat_limits_test.dart` | `flutter test` — **not run in this checkout; Flutter/Dart SDK unavailable** | the Dart copies: the retention policy, the 1,000 limit, private attachment metadata, and every `LiveFix.fromData` refusal |
+
+The supplemental `test/rules/` evaluator is not the canonical Firebase emulator.
+The canonical emulator was also unavailable in this checkout, so deployed-rules
+and native-device behavior still require the environment checks in
+`docs/DISPUTE_RETIREMENT.md`.
 | `test/emulator/rules.emulator.test.ts` | `npm run test:emulator` | the same chat and `location_sessions` cases against Google's own implementation |
 | `test/emulator/realtime-rules.emulator.test.ts` | `npm run test:emulator` | the Realtime Database matrix against the Database emulator |
 
@@ -243,4 +258,5 @@ The map panel is closed by default. Opening it is one tap; closing it releases t
 3. **Deploy the database rules**: `firebase deploy --only database`. Until this runs, `live_location` is unreadable and unwritable.
 4. **Flutter**: `flutter pub get` picks up `firebase_database`. A `databaseURL` is not required in `google-services.json` for the plugin to build; the app degrades to "no transport" if the project has none.
 5. **The Admin role mirror**: an allowlisted Admin opens the app once after step 3, which writes `live_location_admins/{uid}`. A Profile-promoted Admin becomes readable after that.
-6. **Retention**: the Firestore TTL policy and the `sweepMessages` function in [§ 4](#the-deletion-mechanism-required-not-implemented-here).
+6. **Private message images**: configure Firebase Storage, deploy `firestore.rules` and `storage.rules`, and run `flutter pub get` for `firebase_storage`. Verify participant/Admin reads, cross-conversation denial, 5 MiB/MIME refusal, overwrite denial, and Android picking on authorized test accounts.
+7. **Retention**: the Firestore TTL policy, message subcollection sweep, and attachment-prefix cleanup in [§ 4](#the-deletion-mechanism-required-not-implemented-here).

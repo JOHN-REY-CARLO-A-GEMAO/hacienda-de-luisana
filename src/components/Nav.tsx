@@ -36,7 +36,7 @@ export const LINKS: NavLink[] = [
 
 /** Pages that are linked from a page or the footer rather than the bar. */
 export const SECONDARY_LINKS: NavLink[] = [
-  { href: '/support', label: 'Support & disputes' },
+  { href: '/support', label: 'Support' },
   { href: '/house-rules', label: 'House rules' },
   { href: '/legal', label: 'Terms & policies' },
 ]

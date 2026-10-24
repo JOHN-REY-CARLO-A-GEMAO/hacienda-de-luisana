@@ -11,8 +11,10 @@
 // NOTE: this file was authored in an environment with no Flutter SDK, so it has
 // NOT been executed. Run `flutter test` before relying on it.
 // ----------------------------------------------------------------------------
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hacienda_de_luisana/core/constants/app_constants.dart';
+import 'package:hacienda_de_luisana/services/chat_attachment_service.dart';
 import 'package:hacienda_de_luisana/services/chat_retention.dart';
 import 'package:hacienda_de_luisana/services/live_location_service.dart';
 
@@ -62,6 +64,59 @@ void main() {
       expect(retentionDaysLeft(DateTime.utc(2026, 12, 31), now: now), 30);
       expect(retentionDaysLeft(DateTime.utc(2026, 11, 30), now: now), 0);
       expect(retentionDaysLeft(null, now: now), isNull);
+    });
+  });
+
+  group('private chat attachment metadata', () {
+    test('accepts the same private path, MIME type and size as the website', () {
+      final attachment = ChatAttachment.fromMessage({
+        'attachment': {
+          'path': 'messageAttachments/convo-1/message-1',
+          'content_type': 'image/png',
+          'size': 1024,
+        },
+      });
+      expect(attachment, isNotNull);
+      expect(attachment!.contentType, 'image/png');
+      expect(attachment.path, 'messageAttachments/convo-1/message-1');
+      expect(kChatImageMaxBytes, 5 * 1024 * 1024);
+    });
+
+    test('refuses public paths, unsupported types and oversized metadata', () {
+      for (final attachment in [
+        {'path': 'gallery/public.png', 'content_type': 'image/png', 'size': 4},
+        {'path': 'messageAttachments/convo-1/message-1', 'content_type': 'image/gif', 'size': 4},
+        {'path': 'messageAttachments/convo-1/message-1', 'content_type': 'image/png', 'size': kChatImageMaxBytes + 1},
+      ]) {
+        expect(ChatAttachment.fromMessage({'attachment': attachment}), isNull);
+      }
+    });
+  });
+
+  group('live location consent parsing', () {
+    test('reads stream_secret from Firestore and session_secret only from a fix', () {
+      final now = DateTime.now();
+      final session = LiveLocationSession.fromData('convo-1', {
+        'guest_uid': 'guest-uid-1',
+        'stream_secret': 'a' * 32,
+        'started_at': Timestamp.fromDate(now.subtract(const Duration(minutes: 1))),
+        'expires_at': Timestamp.fromDate(now.add(const Duration(minutes: 29))),
+        'active': true,
+      });
+      expect(session, isNotNull);
+      expect(session!.streamSecret, 'a' * 32);
+      expect(session.conversationId, 'convo-1');
+    });
+
+    test('does not mistake the fix field name for the consent field name', () {
+      final now = DateTime.now();
+      expect(LiveLocationSession.fromData('convo-1', {
+        'guest_uid': 'guest-uid-1',
+        'session_secret': 'a' * 32,
+        'started_at': Timestamp.fromDate(now),
+        'expires_at': Timestamp.fromDate(now.add(const Duration(minutes: 30))),
+        'active': true,
+      }), isNull);
     });
   });
 

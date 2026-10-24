@@ -1,8 +1,8 @@
 # Disputes are server-owned cases with independent appeals
 
-**Status:** accepted design, 2026-10-15; implementation pending release verification.
-The user confirmed Q1–Q23 and recommendations A–D in the requirements interview.
-Implementation is authorized; deployment, migration and production-data changes are not.
+**Status:** superseded by [ADR-0020](0020-retire-dispute-cases-for-private-message-images.md), 2026-10-24.
+This ADR remains as the historical decision record; it no longer describes the
+active product. Historical data remains subject to the separate archival plan.
 
 Extends ADR-0007 (Guest website, Admin mobile app) without adding roles. Extends
 ADR-0010: Booking money/audit rules remain unchanged; the **separate dispute
@@ -49,4 +49,4 @@ contain internal notes. An approved migration must split those fields before
 restoring historical Guest access through the new schema. UI rollback must never
 restore the old data exposure.
 
-See [specification and release verification](../disputes/IMPLEMENTATION.md).
+See [the retirement, inventory, and archival plan](../DISPUTE_RETIREMENT.md).

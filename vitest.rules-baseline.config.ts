@@ -8,6 +8,5 @@ export default defineConfig({
     fileParallelism: false, maxWorkers: 1, environment: 'node', globals: true,
     setupFiles: ['test/rules/baseline.setup.ts'],
     include: ['test/rules/**/*.test.ts'],
-    exclude: ['test/rules/disputes*.test.ts'],
   },
 })

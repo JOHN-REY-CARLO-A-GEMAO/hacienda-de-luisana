@@ -16,7 +16,6 @@ import { validateSearch } from '../lib/validation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
-import { DisputeForm } from '../components/DisputeForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
 import { Calendar, Sparkle, Bell, Clock, CreditCard, Home, LogOut, User } from '../lib/icons'
 import { Alert, Container, Drawer, EmptyState, Field, Input, Modal, Page, Select, SkeletonLines, StatCard, StatusBadge, Tabs } from '../components/ui'
@@ -514,12 +513,6 @@ export function AccountPage() {
                                 </p>
                               )}
                               <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
-                            </div>
-                          )}
-
-                          {user?.uid && (
-                            <div className="mt-4">
-                              <DisputeForm bookingId={booking.id} guestId={user.uid} />
                             </div>
                           )}
                         </>

@@ -21,7 +21,7 @@
 // A copy is only safe if it cannot go stale silently, so this script also writes
 // `manifest.json` with the SHA-256 of every source file and every copy, and
 // `functions/test/booking-sync.test.ts` recomputes them on every run of
-// `npm run test:disputes`. Edit `src/lib/booking/`, forget to re-sync, and the
+// `npm run test:functions`. Edit `src/lib/booking/`, forget to re-sync, and the
 // Functions suite goes red naming the file.
 //
 // Usage:

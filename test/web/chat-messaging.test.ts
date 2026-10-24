@@ -87,6 +87,28 @@ describe('how long a message may be', () => {
     expect((await sendChatMessage({ convoId: 'local:u1', uid: 'u1', text: '   ' })).ok).toBe(false)
     expect(validateMessage('  \n ').ok).toBe(false)
   })
+
+  it('allows an image without a caption and retries its stable message id without duplication', async () => {
+    const input = {
+      convoId: 'local:u1',
+      uid: 'u1',
+      text: '',
+      messageId: 'message-image-1',
+      attachment: {
+        path: 'messageAttachments/local:u1/message-image-1',
+        contentType: 'image/png' as const,
+        size: 4,
+      },
+    }
+    const first = await sendChatMessage(input)
+    const second = await sendChatMessage(input)
+    expect(first).toEqual({ ok: true, id: 'message-image-1' })
+    expect(second).toEqual({ ok: true, id: 'message-image-1' })
+    const stored = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]') as ChatMessage[]
+    expect(stored).toHaveLength(1)
+    expect(stored[0].text).toBe('')
+    expect(stored[0].attachment?.path).toBe(input.attachment.path)
+  })
 })
 
 describe('reading a thread a page at a time', () => {
