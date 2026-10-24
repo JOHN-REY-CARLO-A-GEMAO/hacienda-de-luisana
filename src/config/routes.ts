@@ -191,9 +191,9 @@ export const ROUTE_META: readonly RouteMeta[] = [
   },
   {
     path: '/support',
-    title: `Support & Disputes | ${BRAND}`,
+    title: `Guest Support | ${BRAND}`,
     description:
-      'Report a problem with a booking, attach evidence, and follow the case the Admin reviews in the Hacienda de LuisAna mobile app.',
+      'Get Booking, account, payment and stay help through private Guest–Admin messages and the Hacienda’s official contact channels.',
     index: true,
     prerender: true,
     priority: 0.4,

@@ -10,8 +10,19 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { evaluate, type RuleRequest } from './engine'
-import { ADMIN_UID, BOOKING_ID, GUEST_UID, OTHER_GUEST_UID, allowlistedAdmin, anonymousGuest, emailGuest } from './context'
+import { evaluate, type RuleRequest, type Store } from './engine'
+import {
+  ADMIN_UID,
+  BOOKING_ID,
+  CONVO_ID,
+  GUEST_UID,
+  OTHER_GUEST_UID,
+  allowlistedAdmin,
+  anonymousGuest,
+  conversationDoc,
+  emailGuest,
+  promotedAdmin,
+} from './context'
 
 const rules = readFileSync(join(__dirname, '../../storage.rules'), 'utf8')
 
@@ -96,6 +107,69 @@ describe('payment proofs: what the Guest sends for verification', () => {
   it('lets only the Admin delete a proof', () => {
     expect(storage({ path, method: 'delete', auth: allowlistedAdmin() })).toBe(true)
     expect(storage({ path, method: 'delete', auth: anonymousGuest(), resourceData: {}, ...IMAGE })).toBe(false)
+  })
+})
+
+describe('private message images: the conversation, not a public bucket', () => {
+  const path = `messageAttachments/${CONVO_ID}/message-1`
+  const store: Store = {
+    [`conversations/${CONVO_ID}`]: conversationDoc(),
+    'profiles/promoted-admin-1': { role: 'admin' },
+  }
+  const messageStorage = (
+    partial: Partial<RuleRequest> & { path: string; method: RuleRequest['method'] },
+    documents: Store = store,
+  ) =>
+    evaluate({ auth: null, resourceData: null, requestData: null, ...partial }, rules, {
+      service: 'firebase.storage',
+      bucket: BUCKET,
+      store: documents,
+    }).allow
+
+  it('lets the owning Guest create and read JPEG, PNG and WebP up to exactly 5 MB', () => {
+    for (const contentType of ['image/jpeg', 'image/png', 'image/webp']) {
+      expect(messageStorage({ path, method: 'create', auth: anonymousGuest(), requestData: { size: 5 * 1024 * 1024, contentType } })).toBe(true)
+      expect(messageStorage({ path, method: 'get', auth: anonymousGuest(), resourceData: {}, size: 1000, contentType })).toBe(true)
+    }
+  })
+
+  it('refuses empty, oversized, and non-image uploads at the Storage boundary', () => {
+    for (const requestData of [
+      { size: 0, contentType: 'image/png' },
+      { size: 5 * 1024 * 1024 + 1, contentType: 'image/png' },
+      { size: 1000, contentType: 'image/gif' },
+      { size: 1000, contentType: 'application/pdf' },
+      { size: 1000, contentType: 'text/plain' },
+    ]) {
+      expect(messageStorage({ path, method: 'create', auth: anonymousGuest(), requestData })).toBe(false)
+    }
+  })
+
+  it('keeps another Guest and the signed-out public out even when they know the path', () => {
+    for (const auth of [anonymousGuest(OTHER_GUEST_UID), emailGuest(OTHER_GUEST_UID), null]) {
+      expect(messageStorage({ path, method: 'get', auth, resourceData: {}, ...IMAGE })).toBe(false)
+      expect(messageStorage({ path, method: 'create', auth, requestData: { ...IMAGE } })).toBe(false)
+    }
+  })
+
+  it('admits both bootstrap and Profile-promoted Admins, but requires a real conversation', () => {
+    for (const auth of [allowlistedAdmin(), promotedAdmin()]) {
+      expect(messageStorage({ path, method: 'get', auth, resourceData: {}, ...IMAGE })).toBe(true)
+      expect(messageStorage({ path, method: 'create', auth, requestData: { ...IMAGE } })).toBe(true)
+    }
+    for (const auth of [allowlistedAdmin(), promotedAdmin()]) {
+      expect(messageStorage(
+        { path: 'messageAttachments/missing-convo/message-1', method: 'create', auth, requestData: { ...IMAGE } },
+        {},
+      )).toBe(false)
+    }
+  })
+
+  it('makes objects immutable to writers and does not let a Guest delete one', () => {
+    expect(messageStorage({ path, method: 'update', auth: anonymousGuest(), resourceData: { ...IMAGE }, requestData: { ...IMAGE } })).toBe(false)
+    expect(messageStorage({ path, method: 'update', auth: allowlistedAdmin(), resourceData: { ...IMAGE }, requestData: { ...IMAGE } })).toBe(false)
+    expect(messageStorage({ path, method: 'delete', auth: anonymousGuest(), resourceData: { ...IMAGE } })).toBe(false)
+    expect(messageStorage({ path, method: 'delete', auth: allowlistedAdmin(), resourceData: { ...IMAGE } })).toBe(true)
   })
 })
 

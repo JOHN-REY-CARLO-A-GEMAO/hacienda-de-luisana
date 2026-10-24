@@ -66,15 +66,15 @@ in-house counter and their scale is not Firestore's.
 | `npm --prefix functions test` | **PASS** — runs `tsc` then 223/223 |
 | `npm run test:invariants` | **FAIL — pre-existing, unchanged**: 22 failed / 9 passed, all `DESIRED` cases. Reproduced identically in a worktree at `3a0c7e6`, so this work did not move it |
 | `npm run test:qa:booking` | **BLOCKED** — "Playwright (optional browser QA tooling) missing" |
-| `npm run test:rules:baseline` / `check:rules:baseline` | **BLOCKED** — the harness pins base commit `e5155de`, unreachable in this shallow clone (3 commits). Needs a full clone |
+| `npm run test:rules:baseline` | **BLOCKED** — the harness pins base commit `e5155de`, unreachable in this shallow clone (3 commits). Needs a full clone |
 | `npm run test:emulator` | **BLOCKED** — no `java`/`javac`, `apt-get` unavailable, no docker, `storage.googleapis.com` refused at TLS. Not attempted blindly |
 | `npm run test:flutter` / `test:flutter:analyze` | **BLOCKED** — no `flutter`, no `dart` |
 
 **No existing security test was weakened or deleted**, checked rather than asserted: diffing every
 `it()` title under `test/rules/` between base `c0f443e` and this branch finds **zero removals or
 renames**, and across all of `test/` the count goes 1,204 → 1,214. The only deleted files are three
-stray `scratch-probe` / `zz-probe` scratch tests. `test/rules/disputes.rules.test.ts` still passes,
-so the canonical rules comparison is intact.
+stray `scratch-probe` / `zz-probe` scratch tests, so the historical rules comparison remained intact
+at the time of that verification.
 
 ---
 
@@ -132,7 +132,7 @@ On a machine with a JDK (or `npm run prepare:phase0:java`) and a **full** clone:
 npm ci && npm --prefix functions ci
 firebase emulators:exec --only firestore --project demo-hacienda \
   'npx vitest run --config vitest.emulator.config.ts'      # includes test/emulator/quote-attestation.emulator.test.ts
-npm run test:rules && npm run check:rules:baseline         # the baseline harness needs the real history
+npm run test:rules && npm run test:rules:baseline          # the baseline harness needs the real history
 cd lib && flutter analyze && flutter test                  # and the Dart suite from the repo root: npm run test:flutter
 ```
 
@@ -155,7 +155,7 @@ mints per uid per minute); Firestore rules provide no throttling of any kind.
 with `FUNCTIONS_EMULATOR=true` the one convenience for local runs), `QUOTE_TTL_MINUTES` (clamped
 1–240, default 30) and `QUOTE_RATE_LIMIT_PER_MINUTE` (clamped to at least 1) — all three named in
 `.env.example`, none committed, and because these are generation-2 functions they must be set in the
-runtime environment that already carries `DISPUTES_ENABLED`; `.env` files are not read at deploy time.
+runtime environment; `.env` files are not read at deploy time.
 The bootstrap Admin addresses are **not** configuration: they are a hard-coded pair at
 `functions/src/quotes.ts:48`. The **enforcement** switch is not an env var either — it is the
 Admin-writable document `site_config/booking.quotes_required`, so flipping it needs no deploy and

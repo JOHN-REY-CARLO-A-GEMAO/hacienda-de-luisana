@@ -11,56 +11,55 @@
 // ----------------------------------------------------------------------------
 
 import { useState } from 'react'
-import {
-  SHARE_DURATIONS,
-  type ShareDuration,
-} from '../../lib/liveLocationPolicy'
+import { SHARE_DURATIONS, type ShareDuration } from '../../lib/liveLocationPolicy'
 import type { UseLiveLocation } from '../../hooks/useLiveLocation'
+import { MapPin } from '../../lib/icons'
 
 export function ShareLocationBar({ sharing }: { sharing: UseLiveLocation }) {
   const [choosing, setChoosing] = useState(false)
 
   if (sharing.phase === 'active' && sharing.session) {
+    const hasPublished = sharing.lastSentAtMs !== null
     return (
-      <div
-        className="mt-3 rounded-[20px] border border-forest-900/10 bg-cream-100 p-3"
-        role="status"
-        data-tour="live-location-active"
-      >
-        <div className="flex items-center gap-2 text-sm text-forest-900">
-          <span className="inline-block h-2 w-2 rounded-full bg-forest-700 animate-pulse" aria-hidden="true" />
-          <span className="font-medium">📍 Sharing live location</span>
+      <div className="messages-location-active" role="status" data-tour="live-location-active">
+        <div className="messages-location-active-heading">
+          <MapPin size={16} className="messages-location-active-icon" />
+          <span>{hasPublished ? 'Sharing live location' : 'Finding your location…'}</span>
         </div>
-        <p className="mt-1 text-xs text-forest-800/80">
-          The Admin can see your location while this is on.
+        <p className="messages-location-active-copy">
+          {hasPublished
+            ? 'The Admin can see your location while this is on.'
+            : 'The private session was created. No position has been sent yet; keep this page open while your device finds one.'}
           {sharing.offline && ' You are offline, so the position is not updating.'}
         </p>
-        <p className="mt-1 text-xs text-forest-800/80">
-          Expires in: <span className="font-medium tabular-nums">{sharing.countdown}</span>
-          {sharing.lastSentAtMs ? ' · sending' : ''}
-        </p>
-        <button type="button" className="btn-primary btn-sm mt-3" onClick={() => void sharing.stop()}>
-          Stop Sharing
-        </button>
+        <div className="messages-location-active-footer">
+          <p className="messages-location-expiry">
+            Expires in: <span className="font-medium tabular-nums">{sharing.countdown}</span>
+            {sharing.lastSentAtMs ? ' · sending' : ''}
+          </p>
+          <button type="button" className="btn-quiet btn-sm" onClick={() => void sharing.stop()}>
+            Stop Sharing
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="mt-2">
+    <div className="messages-location">
       {sharing.phase === 'error' && sharing.message && (
-        <p className="text-xs text-red-700 mb-2" role="alert">
+        <p className="messages-location-error" role="alert">
           {sharing.message}
         </p>
       )}
       {choosing ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-[20px] border border-forest-900/10 bg-white p-3">
-          <span className="text-xs text-forest-800/80">Share for</span>
+        <div className="messages-location-choice" role="group" aria-label="Live location duration">
+          <span className="messages-location-choice-label">Share for</span>
           {SHARE_DURATIONS.map((minutes) => (
             <button
               key={minutes}
               type="button"
-              className="btn-ghost btn-sm"
+              className="btn-quiet btn-sm"
               disabled={sharing.phase === 'starting'}
               onClick={() => {
                 setChoosing(false)
@@ -83,10 +82,17 @@ export function ShareLocationBar({ sharing }: { sharing: UseLiveLocation }) {
           onClick={() => setChoosing(true)}
           data-tour="share-location"
         >
-          {sharing.phase === 'starting' ? 'Starting…' : '📍 Live Location'}
+          {sharing.phase === 'starting' ? (
+            'Starting…'
+          ) : (
+            <>
+              <MapPin size={15} />
+              Live Location
+            </>
+          )}
         </button>
       )}
-      <p className="mt-1 text-[11px] text-forest-700/60">
+      <p className="messages-location-hint">
         Sharing is off until you choose a time, and stops on its own when it runs out.
       </p>
     </div>

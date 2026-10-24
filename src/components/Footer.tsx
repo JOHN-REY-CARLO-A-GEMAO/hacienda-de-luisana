@@ -39,7 +39,7 @@ const POLICY_LINKS: NavLink[] = [
   { href: '/faqs', label: 'FAQs' },
   { href: '/house-rules', label: 'House rules' },
   { href: '/legal', label: 'Terms & policies' },
-  { href: '/support', label: 'Support & disputes' },
+  { href: '/support', label: 'Support' },
   { href: '/contact', label: 'Contact' },
 ]
 

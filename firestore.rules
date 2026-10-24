@@ -1405,11 +1405,37 @@ service cloud.firestore {
         // branch never reads the Admin's token claim, so a Guest is judged on the
         // conversation's own `guest_uid` alone and the rule does not depend on
         // how a missing claim behaves.
+        function hasAttachment() {
+          return request.resource.data.keys().hasAny(['attachment']);
+        }
+
+        // The message carries metadata only. Its path must name this exact
+        // conversation and this exact immutable message id; otherwise a member
+        // could point a new message at an object from another private thread.
+        // The bytes, actual MIME metadata and size ceiling are independently
+        // enforced by storage.rules before this document can be written.
+        function validAttachment() {
+          return !hasAttachment() ? true : (
+            request.resource.data.attachment is map
+            && request.resource.data.attachment.keys().hasAll(['path', 'content_type', 'size'])
+            && request.resource.data.attachment.keys().hasOnly(['path', 'content_type', 'size'])
+            && request.resource.data.attachment.path is string
+            && request.resource.data.attachment.path
+                 == 'messageAttachments/' + convoId + '/' + messageId
+            && request.resource.data.attachment.content_type in ['image/jpeg', 'image/png', 'image/webp']
+            && request.resource.data.attachment.size is int
+            && request.resource.data.attachment.size > 0
+            && request.resource.data.attachment.size <= 5 * 1024 * 1024
+          );
+        }
+
         allow create: if request.resource.data.keys().hasAll(['sender_uid', 'sender_role', 'text', 'created_at'])
+          && request.resource.data.keys().hasOnly(['sender_uid', 'sender_role', 'text', 'created_at', 'attachment'])
           && request.resource.data.sender_uid == request.auth.uid
           && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 1000
+          && (request.resource.data.text.size() > 0 || hasAttachment())
+          && validAttachment()
           && ((request.resource.data.sender_role == 'guest' && isConversationMember(convoId))
               || (request.resource.data.sender_role == 'admin' && isAdmin()));
       allow read: if isAdmin() || isConversationMember(convoId);
@@ -1701,51 +1727,8 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Legacy disputes are frozen. Never return legacy internal_notes to Guests.
-    // An approved migration splits private content before access is restored via cases.
-    match /disputes/{disputeId} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-
-    function caseAccount() {
-      return isSignedIn()
-        && request.auth.token.get('firebase', {}).get('sign_in_provider', 'anonymous') != 'anonymous';
-    }
-    function caseAdmin() {
-      return caseAccount() && (storedRole() == 'admin'
-        || (tokenEmail() in adminEmails() && request.auth.token.get('email_verified', false) == true));
-    }
-    function caseReadable(data) {
-      return caseAdmin() || (caseAccount() && data.visibility == 'guest' && data.guest_id == request.auth.uid);
-    }
-    match /cases/{caseId} {
-      allow read: if caseReadable(resource.data);
-      // All commands pass through the backend, including Admin actions.
-      allow write: if false;
-      match /activity/{eventId} {
-        allow read: if caseReadable(get(/databases/$(database)/documents/cases/$(caseId)).data);
-        allow write: if false;
-      }
-      match /evidence/{evidenceId} {
-        allow read: if caseReadable(get(/databases/$(database)/documents/cases/$(caseId)).data);
-        allow write: if false;
-      }
-    }
-    match /casePrivate/{caseId} {
-      allow read: if caseAdmin();
-      allow write: if false;
-      match /notes/{noteId} {
-        allow read: if caseAdmin();
-        allow write: if false;
-      }
-    }
-    // Inboxes, upload manifests, operation receipts, rate limits and policy are
-    // server-only. Callable APIs apply ownership and per-Admin read state.
-    match /caseNotifications/{id} { allow read, write: if false; }
-    match /caseUploads/{id} { allow read, write: if false; }
-    match /caseOperations/{id} { allow read, write: if false; }
-    match /casePolicy/{id} { allow read, write: if false; }
+    // Retired case/dispute collections intentionally have no match blocks.
+    // Historical data remains untouched and is denied by the catch-all below.
 
     // Guest & Admin notifications
     match /notifications/{notificationId} {

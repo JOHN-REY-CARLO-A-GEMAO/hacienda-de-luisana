@@ -64,7 +64,7 @@
 // See docs/adr/0013-live-location-as-a-stream.md.
 // ----------------------------------------------------------------------------
 
-import { doc as fsDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { deleteDoc, doc as fsDoc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { db, ensureRealtimeDatabase, hasRealtimeDatabaseConfig, isFirebaseConfigured } from './firebase'
 import {
   MAX_SHARE_MINUTES,
@@ -135,7 +135,16 @@ export async function startSharing(input: {
   }
 
   try {
-    await setDoc(fsDoc(db, LOCATION_SESSIONS_COLLECTION, input.convoId), {
+    const reference = fsDoc(db, LOCATION_SESSIONS_COLLECTION, input.convoId)
+    // A stopped or expired consent is deliberately immutable: Firestore rules
+    // refuse to reopen it with a different secret. `setDoc` at that same id is
+    // therefore an UPDATE on every restart, not the CREATE the Guest just asked
+    // for. Complete the approved two-step restart instead: remove only the old
+    // consent owned by this Guest, then create a fresh one. Deleting a missing
+    // document is not permitted by these rules, so the existence read matters.
+    const previous = await getDoc(reference)
+    if (previous.exists()) await deleteDoc(reference)
+    await setDoc(reference, {
       guest_uid: session.guest_uid,
       conversation_id: session.conversation_id,
       active: true,

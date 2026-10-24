@@ -23,7 +23,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore'
-import { ref, uploadBytes, deleteObject, getDownloadURL } from 'firebase/storage'
+import { ref, uploadBytes, deleteObject, getBlob, getDownloadURL, getMetadata } from 'firebase/storage'
 import { conversationDocId } from '../../src/lib/chatCloud'
 
 /** `firebase emulators:exec` puts the project id in the environment. */
@@ -645,6 +645,26 @@ describe('chat', () => {
     await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', CONVO_ID, 'messages', 'anything')))
   })
 
+  it('accepts a private image with an optional caption, bound to the exact message id', async () => {
+    const attachment = (id: string) => ({
+      path: `messageAttachments/${CONVO_ID}/${id}`,
+      content_type: 'image/jpeg', size: 1024,
+    })
+    await assertSucceeds(setDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID, 'messages', 'image-one'), {
+      sender_uid: GUEST_UID, sender_role: 'guest', text: '', created_at: new Date(), attachment: attachment('image-one'),
+    }))
+    await assertSucceeds(setDoc(doc(admin().firestore(), 'conversations', CONVO_ID, 'messages', 'image-two'), {
+      sender_uid: 'admin-uid-1', sender_role: 'admin', text: 'The gate.', created_at: new Date(), attachment: attachment('image-two'),
+    }))
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID, 'messages', 'image-three'), {
+      sender_uid: GUEST_UID, sender_role: 'guest', text: '', created_at: new Date(), attachment: attachment('another-message'),
+    }))
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID, 'messages', 'image-four'), {
+      sender_uid: GUEST_UID, sender_role: 'guest', text: '', created_at: new Date(),
+      attachment: { ...attachment('image-four'), content_type: 'image/gif' },
+    }))
+  })
+
   it('refuses a message labelled as the other side', async () => {
     await assertFails(addDoc(collection(anonymousGuest().firestore(), 'conversations', CONVO_ID, 'messages'), {
       sender_uid: GUEST_UID,
@@ -947,6 +967,20 @@ describe('smart lock and the retired tracker', () => {
     }))
   })
 
+  it('restarts a stopped live-location consent by delete then create, never by reopening it', async () => {
+    const session = (secret: string) => ({
+      guest_uid: GUEST_UID, conversation_id: CONVO_ID, active: true,
+      started_at: new Date(), expires_at: new Date(Date.now() + 30 * 60 * 1000),
+      duration_minutes: 30, stream_secret: secret,
+    })
+    const reference = doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID)
+    await assertSucceeds(setDoc(reference, session('a'.repeat(32))))
+    await assertSucceeds(updateDoc(reference, { active: false, expires_at: new Date() }))
+    await assertFails(setDoc(reference, session('b'.repeat(32))))
+    await assertSucceeds(deleteDoc(reference))
+    await assertSucceeds(setDoc(reference, session('b'.repeat(32))))
+  })
+
   it('leaves the Admin the delete that purges an old session', async () => {
     await seed(async (db) => setDoc(doc(db.firestore(), 'tracking_sessions', BOOKING_ID), { bookingId: BOOKING_ID, uid: GUEST_UID }))
     await assertSucceeds(deleteDoc(doc(admin().firestore(), 'tracking_sessions', BOOKING_ID)))
@@ -963,6 +997,24 @@ describe('storage', () => {
 
   it('refuses a non-image upload', async () => {
     await assertFails(uploadBytes(ref(anonymousGuest().storage(), `payments/${GUEST_UID}/${BOOKING_ID}/proof.txt`), bytes, { contentType: 'text/plain' }))
+  })
+
+  it('keeps message images private, bound to a real conversation, and create-only', async () => {
+    await seedBaseline()
+    const path = `messageAttachments/${CONVO_ID}/image-one`
+    const mine = ref(anonymousGuest().storage(), path)
+    await assertSucceeds(uploadBytes(mine, bytes, { contentType: 'image/png' }))
+    await assertSucceeds(getMetadata(mine))
+    await assertSucceeds(getBlob(ref(anonymousGuest().storage(), path)))
+    await assertSucceeds(getBlob(ref(admin().storage(), path)))
+    await assertFails(getBlob(ref(anonymousGuest(OTHER_GUEST_UID).storage(), path)))
+    await assertFails(getBlob(ref(env.unauthenticatedContext().storage(), path)))
+    // The same path is an update on retry, not a second create. The client
+    // reuses getMetadata() instead of overwriting the bytes.
+    await assertFails(uploadBytes(mine, bytes, { contentType: 'image/png' }))
+    await assertFails(uploadBytes(ref(anonymousGuest().storage(), `messageAttachments/${CONVO_ID}/bad-type`), bytes, { contentType: 'image/gif' }))
+    await assertFails(uploadBytes(ref(anonymousGuest().storage(), `messageAttachments/${CONVO_ID}/too-large`), new Uint8Array(5 * 1024 * 1024 + 1), { contentType: 'image/png' }))
+    await assertFails(uploadBytes(ref(admin().storage(), 'messageAttachments/missing-conversation/image'), bytes, { contentType: 'image/png' }))
   })
 
   it('refuses the retired /kyc slot to everyone — Guest upload, Admin upload, Admin read', async () => {

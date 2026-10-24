@@ -36,8 +36,7 @@ Booking may not carry money that the estate has not attested, once the estate as
 Four parts.
 
 1. **`quoteBooking`** — an `onCall` function in the existing `functions/` bundle (`disputes`
-   codebase, `asia-southeast1`, gated by `BOOKING_QUOTES_ENABLED` the way cases are gated by
-   `DISPUTES_ENABLED`). It takes *quoteable inputs only* — `accommodation`, `check_in`,
+   codebase, `asia-southeast1`, gated by `BOOKING_QUOTES_ENABLED`). It takes *quoteable inputs only* — `accommodation`, `check_in`,
    `check_out`, `guests`, `pet_count`, `late_checkout_hours` — reads `site_config/rates` and
    `site_config/booking`, prices the stay, and writes the answer to `booking_quotes/{id}`. Money
    is not an input, so there is no money to negotiate with: a field the client cannot send cannot

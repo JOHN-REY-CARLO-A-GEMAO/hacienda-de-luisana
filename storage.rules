@@ -7,16 +7,11 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // The Admin, by the bootstrap allowlist (ADR-0005, ADR-0007).
-    //
-    // Deliberately NOT the `profiles/{uid}` role that firestore.rules reads:
-    // Storage rules would have to reach into Firestore to see it, and the only
-    // people who need an Admin Storage grant are the allowlisted addresses that
-    // sign into the mobile app. The Admin-only reads that matter — legacy
-    // payment proofs under /payments — are keyed by uid and opened here by the
-    // same allowlist. If a promoted Admin (Profile
-    // role 'admin', not on the allowlist) ever needs Storage, this becomes the
-    // place to teach Storage about Profiles.
+    // The bootstrap Admin, by email allowlist (ADR-0005, ADR-0007). Site assets
+    // and legacy payment proofs below keep that existing boundary. Private
+    // message images additionally recognize a promoted Admin through the stored
+    // `profiles/{uid}` role in isMessageAdmin()/canAccessMessageImages().
+    // Neither path grants public attachment access.
     // The claim is read defensively, in the same order as tokenEmail() in
     // firestore.rules: an anonymous token has no `email` key, and touching it
     // is an evaluation error rather than a false.
@@ -53,6 +48,57 @@ service firebase.storage {
         && request.resource.size < 2 * 1024 * 1024;
     }
 
+    // ------------------------------------------------------------------
+    // Private Guest ↔ Admin message images.
+    //
+    // Separate from public site images and anonymous payment-proof uploads.
+    // Storage receives the same Firebase Auth token as Firestore. These two
+    // cross-service reads resolve the actual conversation and, only when
+    // needed, the caller's stored Admin role. `get` of a missing conversation
+    // errors and denies; no public read or shareable download token is needed.
+    // ------------------------------------------------------------------
+    function messageConversation(convoId) {
+      return /databases/(default)/documents/conversations/$(convoId);
+    }
+
+    function messageProfile(uid) {
+      return /databases/(default)/documents/profiles/$(uid);
+    }
+
+    function isMessageAdmin() {
+      return isSignedIn()
+        && (isAdminEmail()
+            || firestore.get(messageProfile(request.auth.uid)).data.get('role', 'guest') == 'admin');
+    }
+
+    function canAccessMessageImages(convoId) {
+      // Do not write this as `get(...).guest_uid == uid || isAdmin()`: CEL can
+      // resolve `error || true` to true, which would let an Admin manufacture a
+      // path for a missing conversation. The ternaries make the missing get()
+      // fatal, keep every branch at two reads or fewer, and let a successful
+      // non-owner read prove existence before a promoted Admin's profile read.
+      return isSignedIn()
+        && (isAdminEmail()
+            ? firestore.exists(messageConversation(convoId))
+            : (firestore.get(messageConversation(convoId)).data.get('guest_uid', '') == request.auth.uid
+                ? true
+                : firestore.get(messageProfile(request.auth.uid)).data.get('role', 'guest') == 'admin'));
+    }
+
+    match /messageAttachments/{convoId}/{messageId} {
+      allow read: if canAccessMessageImages(convoId);
+      // Create-only makes an uncertain retry safe: metadata at the same stable
+      // message id is reused, and nobody can replace an old message's image.
+      allow create: if canAccessMessageImages(convoId)
+        && request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+      // Admins may remove an orphan or perform retention cleanup. Guests
+      // cannot erase an image from the shared record.
+      allow delete: if isMessageAdmin();
+      allow update: if false;
+    }
+
     // P4 ENABLED (#14): payment proof uploads (screenshots/receipts of money
     // sent outside the system — GCash / bank transfer, ADR-0001).
     // Layout: /payments/{uid}/{bookingRef}/proof.jpg
@@ -74,13 +120,6 @@ service firebase.storage {
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
       allow write: if isAdminEmail() && request.resource == null;
-    }
-
-    // Private case bytes have no Firebase download tokens. Only trusted
-    // callable handlers stream validated evidence after current authorization.
-    // Neither Guests nor Admin clients can list/read/write raw objects.
-    match /caseEvidence/{allPaths=**} {
-      allow read, write: if false;
     }
 
     // Deny everything else by default

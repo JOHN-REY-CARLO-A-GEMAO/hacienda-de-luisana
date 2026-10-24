@@ -12,7 +12,7 @@
  *
  * Two switches, deliberately separate:
  *   • `BOOKING_QUOTES_ENABLED` (deploy-time, this codebase's convention) turns the
- *     functions on at all, the way `DISPUTES_ENABLED` does for cases.
+ *     the Booking quote callables on at all.
  *   • `site_config/booking.quotes_required` is what the *rules* read. It is Admin
  *     data, so enforcement can be switched on without a web redeploy.
  * This client reads the second so a Guest is never stranded by the first: with

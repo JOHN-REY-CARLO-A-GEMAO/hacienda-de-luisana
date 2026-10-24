@@ -53,8 +53,8 @@ it('F20-SOURCE: mobile simulator toJson omits required booking/UID/result fields
   expect(source('firestore.rules')).toContain("hasAll(['timestamp','uid','ref_id','result','reason'])")
   expect(source('lib/services/firestore_service.dart')).toContain('.add(event.toJson())')
 })
-it('F21-SOURCE: mobile consent reader asks for session_secret; the actual web writer uses stream_secret', () => {
-  expect(source('lib/services/live_location_service.dart')).toContain("data['session_secret']")
+it('F21-SOURCE: mobile consent and web writer both use stream_secret; only RTDB fixes use session_secret', () => {
+  expect(source('lib/services/live_location_service.dart')).toContain("data['stream_secret']")
   expect(source('src/lib/liveLocation.ts')).toContain('stream_secret: secret')
   // The stream's expiry bound is the longest share a Guest may start — the same
   // figure `MAX_SHARE_MINUTES` gives the web client and `firestore.rules` caps the

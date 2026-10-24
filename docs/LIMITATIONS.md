@@ -27,8 +27,8 @@ function that reads the image: nothing that runs where a key could be kept. A
 hosted pipeline would be image → function → engine → text → reference + amount →
 confirmation → submission → Admin verification, with the key in the function's
 secret store — never in web JS, the Flutter APK, public config, or Git.
-`functions/` exists and holds the Dispute API (`npm run deploy:functions`); it
-holds no OCR. Guests confirm or type the reference and amount either way, and
+`functions/` exists and holds the Booking quote, money-verification, availability
+and submit callables; it holds no OCR. Guests confirm or type the reference and amount either way, and
 **OCR never sets `payment_status` to verified**: `canAutoVerifyFromOcr()` returns
 `false`.
 
@@ -58,14 +58,14 @@ The version is displayed and the checkbox is required by the UI, but acceptance 
 
 **The Admin-side role mirror needs a first run by an allowlisted Admin.** `firestore.rules` can read `profiles/{uid}.role`; Realtime Database rules cannot read Firestore, so a Profile-promoted Admin is admitted by `live_location_admins/{uid}`, which only an address on the bootstrap allowlist may write. Until an allowlisted Admin has opened the app once after deploying the database rules, a promoted Admin gets a refused read and the panel says so.
 
-**Retention has no scheduler in this repository.** `messages_expires_at` is stamped and the policy is unit-tested, but Firestore Security Rules cannot delete on a schedule, and the deployed `functions/` directory is the Dispute API alone — nothing is scheduled to run this sweep. The TTL policy and the `sweepMessages` function to deploy are written out in `docs/MESSAGING.md` § 4. Until they are deployed, the stamp is a schedule with nobody on it.
+**Retention has no scheduler in this repository.** `messages_expires_at` is stamped and the policy is unit-tested, but Firestore Security Rules cannot delete on a schedule, and the current `functions/` entry point has no messaging-retention scheduler — nothing is scheduled to run this sweep. The TTL policy and the `sweepMessages` function to deploy are written out in `docs/MESSAGING.md` § 4. Until they are deployed, the stamp is a schedule with nobody on it.
 
 ## Cache and cookies
 
 - Cookie `hdl_tutorial_done`: the only cookie. Tour preference only; 180 days, `SameSite=Lax`, `Secure` on HTTPS, **not HttpOnly** (JS must read it). No auth or payment secrets.
 - Hosting caches `**/*.js` and `**/*.css` for a year as `immutable`; Vite's content hashes make that safe. No service worker, no app-shell cache.
 - Firebase Auth persistence (IndexedDB) is the session: ID token (~1h) + refresh token. Standard SDK behaviour, XSS-readable; there is **no CSP header** (a hardening gap). Sign-out clears it.
-- localStorage (`hdl:bookings`, `hdl:activity`, `hdl:rates`, `hdl:chat`, `hdl:review:{bookingId}`, local auth store) is the **demo fallback when Firebase is not configured**. No payment credentials, card data or API keys — ever.
+- localStorage (`hdl:bookings`, `hdl:activity`, `hdl:rates`, `hdl:chat`, `hdl:chat-images`, `hdl:review:{bookingId}`, local auth store) is the **demo fallback when Firebase is not configured**. No payment credentials, card data or API keys — ever.
 
 ## Chat / reviews without Firebase
 
@@ -170,9 +170,8 @@ Things that remain **outside** the rules' reach, unchanged by the pass:
   afterwards, so it is evidence rather than cache and is deliberately kept. Growth is
   bounded by distinct (identity, stay, rates version) requests — a retry of the same
   stay returns the same document, un-extended — not by bookings, so an abandoned form
-  costs one small row. If a bound is ever needed, `disputeMaintenance`'s schedule is
-  the place, with a floor of never deleting an attestation a live Booking still points
-  at.
+  costs one small row. Any future cleanup needs a separately approved scheduler,
+  with a floor of never deleting an attestation a live Booking still points at.
 - **The currency of a price is a convention, not a check.** Nothing in `firestore.rules` or
   `functions/src/pricing.ts` verifies that `rate_amount` and the totals are pesos; the published
   card is a single-currency document by agreement, and `down_payment_percent == 50` is pinned

@@ -21,6 +21,9 @@ dependencies:
   # bandwidth rather than a write per GPS fix; the rules that guard it are
   # database.rules.json.
   firebase_database: ^12.6.0
+  # Private Guest ↔ Admin message images. Bytes are read with the current
+  # Firebase Auth token under storage.rules; no public download URLs.
+  firebase_storage: ^13.0.0
   # Charts & Visuals
   fl_chart: ^0.67.0
   # UI, Icons, Helpers & Utilities

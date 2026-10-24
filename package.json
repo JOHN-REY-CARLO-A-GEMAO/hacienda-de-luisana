@@ -34,11 +34,10 @@
     "prepare:phase0:emulators": "node scripts/phase0/prepare-emulators.mjs",
     "prepare:phase0:java": "node scripts/phase0/prepare-java.mjs",
     "prepare:phase0:supabase-rls": "npm install --prefix .cache/phase0/tools --ignore-scripts --no-audit --no-fund --no-save @electric-sql/pglite@0.3.15",
-    "test:disputes": "npm --prefix functions test",
+    "test:functions": "npm --prefix functions test",
     "sync:pricing": "node scripts/sync-booking-pricing.mjs",
     "check:pricing": "node scripts/sync-booking-pricing.mjs --check",
-    "test:rules:baseline": "node scripts/phase0/run.mjs rules-baseline",
-    "check:rules:baseline": "node scripts/disputes/compare-rules.mjs"
+    "test:rules:baseline": "node scripts/phase0/run.mjs rules-baseline"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

@@ -525,24 +525,296 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 }
 
 /* ------------------------------------------------------------------ */
-/* Chat                                                               */
+/* Chat — a correspondence desk, not an admin inbox                   */
 /* ------------------------------------------------------------------ */
 
-/* The thread gets a ground of its own so a wall of bubbles has somewhere to
-   sit, and the Guest's own messages carry the forest rather than a tint. */
-.guest-thread {
-  @apply rounded-[14px] border border-forest-900/8 bg-white dark:border-cream-100/10 dark:bg-forest-900/60;
-  background-image: radial-gradient(rgba(36, 61, 46, 0.05) 1px, transparent 1px);
-  background-size: 18px 18px;
+/* One restrained workspace. The topic rail is separated by a structural rule;
+   the conversation owns the remaining width and scrolls independently. */
+.messages-workspace {
+  @apply mt-8 flex overflow-hidden;
+  height: clamp(34rem, calc(100dvh - 16rem), 45rem);
 }
-.dark .guest-thread {
-  background-image: radial-gradient(rgba(245, 241, 232, 0.06) 1px, transparent 1px);
+.messages-topics {
+  display: none;
+  @apply w-full shrink-0 flex-col border-r border-forest-900/10 bg-cream-100/45 dark:border-cream-100/10 dark:bg-forest-950/30;
 }
+.messages-conversation {
+  display: none;
+  @apply min-w-0 flex-1 flex-col bg-white dark:bg-forest-900/60;
+}
+.messages-topics.messages-mobile-visible,
+.messages-conversation.messages-mobile-visible {
+  display: flex;
+}
+@media (min-width: 768px) {
+  .messages-topics,
+  .messages-topics.messages-mobile-visible {
+    display: flex;
+    width: 17.5rem;
+  }
+  .messages-conversation,
+  .messages-conversation.messages-mobile-visible {
+    display: flex;
+  }
+}
+
+.messages-topics-heading {
+  @apply border-b border-forest-900/8 px-5 py-5 dark:border-cream-100/10;
+}
+.messages-topics-heading h2 {
+  @apply font-serif text-2xl font-medium text-forest-900 dark:text-cream-50;
+}
+.messages-topics-heading p {
+  @apply mt-1.5 max-w-[15rem] text-xs leading-relaxed text-forest-600 dark:text-sage-400;
+}
+.messages-topic-list {
+  @apply flex-1 overflow-y-auto;
+}
+.messages-topic {
+  @apply relative flex w-full items-start gap-3 border-b border-forest-900/8 px-4 py-4 text-left transition-colors duration-150 last:border-b-0 dark:border-cream-100/10;
+}
+.messages-topic:hover {
+  @apply bg-white/60 dark:bg-forest-900/50;
+}
+.messages-topic[data-active='true'] {
+  @apply bg-white dark:bg-forest-900;
+  box-shadow: inset 3px 0 #B89A64;
+}
+.messages-topic-icon {
+  @apply mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-forest-900/10 text-forest-600 dark:border-cream-100/15 dark:text-sage-300;
+}
+.messages-topic[data-active='true'] .messages-topic-icon {
+  @apply border-forest-700 bg-forest-700 text-cream-50 dark:border-brass-400 dark:bg-brass-400 dark:text-forest-950;
+}
+.messages-topic-name {
+  @apply block text-[13px] font-semibold leading-snug text-forest-900 dark:text-cream-50;
+}
+.messages-topic-description {
+  @apply mt-1 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400;
+}
+.messages-privacy-note {
+  @apply mt-auto flex items-start gap-2.5 border-t border-forest-900/8 px-5 py-4 text-forest-600 dark:border-cream-100/10 dark:text-sage-400;
+}
+.messages-privacy-note svg {
+  @apply mt-0.5 shrink-0;
+}
+.messages-privacy-note p {
+  @apply text-[11px] leading-relaxed;
+}
+
+.messages-conversation-header {
+  @apply flex min-h-[4.5rem] shrink-0 items-center gap-3 border-b border-forest-900/8 px-4 py-3 dark:border-cream-100/10 sm:px-5;
+}
+.messages-conversation-header h2 {
+  @apply truncate text-sm font-semibold text-forest-900 dark:text-cream-50;
+}
+.messages-conversation-header p {
+  @apply mt-0.5 truncate text-xs text-forest-600 dark:text-sage-400;
+}
+.messages-back {
+  @apply inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-2 text-xs font-medium text-forest-700 transition-colors hover:bg-forest-900/5 dark:text-cream-100 dark:hover:bg-cream-100/10 md:hidden;
+}
+.messages-back span {
+  @apply hidden min-[360px]:inline;
+}
+.messages-admin-mark {
+  @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-forest-700 text-cream-50 dark:bg-brass-400 dark:text-forest-950;
+}
+.messages-private {
+  @apply hidden shrink-0 items-center gap-1.5 text-[11px] font-medium text-forest-600 dark:text-sage-400 sm:inline-flex;
+}
+.messages-retention {
+  @apply flex shrink-0 items-start gap-2 border-b border-forest-900/8 bg-cream-100/60 px-4 py-2.5 text-forest-700 dark:border-cream-100/10 dark:bg-forest-950/30 dark:text-cream-100/75 sm:px-5;
+}
+.messages-retention svg {
+  @apply mt-0.5 shrink-0;
+}
+.messages-retention p {
+  @apply text-[11px] leading-relaxed;
+}
+
+.messages-thread-wrap {
+  @apply relative min-h-0 flex-1;
+}
+.messages-thread {
+  @apply h-full overflow-y-auto overscroll-contain px-4 py-5 sm:px-6;
+}
+@media (min-width: 768px) {
+  .messages-thread {
+    scrollbar-gutter: stable;
+  }
+}
+.messages-thread-state {
+  @apply flex min-h-full w-full items-center justify-center;
+}
+.messages-empty h2 {
+  @apply dark:text-cream-50;
+}
+.messages-empty p {
+  @apply dark:text-cream-100/75;
+}
+.messages-day + .messages-day {
+  @apply mt-7;
+}
+.messages-day-label {
+  @apply mb-5 flex items-center gap-3 text-[11px] font-medium text-forest-600 dark:text-sage-400;
+}
+.messages-day-label::before,
+.messages-day-label::after {
+  content: '';
+  @apply h-px flex-1 bg-forest-900/8 dark:bg-cream-100/10;
+}
+.messages-day-label time {
+  @apply whitespace-nowrap;
+}
+.messages-group {
+  @apply text-left;
+}
+.messages-group-mine {
+  @apply text-right;
+}
+.messages-sender {
+  @apply mb-1.5 block px-1 text-[11px] font-medium text-forest-600 dark:text-sage-400;
+}
+.messages-group ul {
+  @apply space-y-1;
+}
+.messages-bubble {
+  display: block;
+  width: fit-content;
+  max-width: min(82%, 38rem);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  text-align: left;
+}
+.messages-time {
+  @apply mt-1.5 block px-1 text-[11px] leading-none text-forest-600 dark:text-sage-400;
+}
+.messages-latest {
+  @apply absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-cream-100/20 bg-forest-800 px-4 py-2 text-xs font-medium text-cream-50 shadow-float transition-colors hover:bg-forest-700 dark:border-cream-100/20 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white;
+}
+
+.messages-composer {
+  @apply shrink-0 border-t border-forest-900/10 bg-white px-4 py-4 dark:border-cream-100/10 dark:bg-forest-900/80 sm:px-5;
+}
+.messages-composer-row {
+  @apply flex items-center gap-2;
+}
+.messages-send {
+  @apply h-12 w-12 shrink-0 px-0 shadow-none sm:w-auto sm:px-5;
+}
+.messages-composer-meta {
+  @apply mt-2 flex items-center justify-between gap-3 text-[11px] text-forest-600 dark:text-cream-200/65;
+}
+
+/* The Guest's own messages carry the forest; the Admin's stay on paper. */
 .guest-bubble-mine {
   @apply rounded-[14px] rounded-br-[4px] bg-forest-700 px-4 py-2.5 text-sm leading-relaxed text-cream-50 dark:bg-brass-400 dark:text-forest-950;
 }
 .guest-bubble-theirs {
-  @apply rounded-[14px] rounded-bl-[4px] border border-forest-900/8 bg-white px-4 py-2.5 text-sm leading-relaxed text-forest-900 dark:border-cream-100/12 dark:bg-forest-900 dark:text-cream-50;
+  @apply rounded-[14px] rounded-bl-[4px] border border-forest-900/8 bg-white px-4 py-2.5 text-sm leading-relaxed text-forest-900 dark:border-cream-100/12 dark:bg-forest-950/45 dark:text-cream-50;
+}
+
+/* Private image attachments: bytes are loaded by the authorized client. */
+.messages-message-text {
+  display: block;
+}
+.messages-bubble-has-attachment {
+  max-width: min(88%, 22rem);
+  padding: 6px;
+}
+.messages-bubble-has-attachment .messages-message-text {
+  padding: 8px 10px 6px;
+}
+.messages-attachment {
+  width: min(72vw, 20rem);
+  max-width: 100%;
+}
+.messages-attachment-open {
+  @apply relative block w-full overflow-hidden rounded-[10px] bg-forest-950/15 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400;
+}
+.messages-attachment-open img {
+  display: block;
+  width: 100%;
+  max-height: 22rem;
+  object-fit: contain;
+}
+.messages-attachment-open > span {
+  @apply absolute bottom-2 right-2 rounded-full bg-forest-950/80 px-2.5 py-1 text-[10px] font-medium text-cream-50 shadow-sm;
+}
+.messages-attachment-state {
+  @apply flex min-h-24 flex-col items-center justify-center gap-2 rounded-[10px] bg-cream-100 p-4 text-center text-xs leading-relaxed text-forest-800;
+}
+.messages-attachment-preview {
+  @apply mb-3 flex items-center gap-3 rounded-[12px] border border-forest-900/10 bg-cream-100/70 p-2.5 dark:border-cream-100/12 dark:bg-forest-950/35;
+}
+.messages-attachment-preview > img {
+  @apply h-14 w-14 shrink-0 rounded-[9px] object-cover;
+}
+.messages-attachment-preview strong {
+  @apply block truncate text-xs font-medium text-forest-900 dark:text-cream-50;
+}
+.messages-attachment-preview span {
+  @apply mt-1 block text-[11px] text-forest-600 dark:text-sage-400;
+}
+.messages-attachment-remove {
+  @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-forest-600 transition-colors hover:bg-forest-900/8 hover:text-forest-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400 dark:text-sage-300 dark:hover:bg-cream-100/10 dark:hover:text-cream-50;
+}
+.messages-attach {
+  @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] border border-forest-900/10 text-forest-600 transition-colors hover:bg-forest-900/5 hover:text-forest-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400 disabled:cursor-not-allowed disabled:opacity-45 dark:border-cream-100/12 dark:text-sage-300 dark:hover:bg-cream-100/10 dark:hover:text-cream-50;
+}
+.messages-image-viewer {
+  @apply fixed inset-0 z-[100] flex items-center justify-center bg-forest-950/95 p-4 backdrop-blur-sm;
+}
+.messages-image-viewer figure {
+  @apply flex max-h-full w-full flex-col items-center justify-center gap-3;
+}
+.messages-image-viewer figure img {
+  max-width: min(100%, 80rem);
+  max-height: 82vh;
+  object-fit: contain;
+  @apply rounded-[10px] shadow-float;
+}
+.messages-image-viewer figcaption {
+  @apply max-w-2xl text-center text-sm leading-relaxed text-cream-50;
+}
+.messages-image-viewer-close {
+  @apply absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-cream-100/20 bg-forest-900/70 text-cream-50 transition-colors hover:bg-forest-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400;
+}
+
+/* Live location stays inside the composer, secondary to the message itself. */
+.messages-location {
+  @apply mt-3;
+}
+.messages-location-error {
+  @apply mb-2 text-xs leading-relaxed text-red-700 dark:text-red-300;
+}
+.messages-location-choice {
+  @apply flex flex-wrap items-center gap-2 border-t border-forest-900/8 pt-3 dark:border-cream-100/10;
+}
+.messages-location-choice-label {
+  @apply mr-1 text-xs font-medium text-forest-700 dark:text-cream-100/80;
+}
+.messages-location-hint {
+  @apply mt-2 text-[11px] leading-relaxed text-forest-600 dark:text-sage-400;
+}
+.messages-location-active {
+  @apply mt-3 rounded-[10px] border border-forest-900/10 bg-cream-100/65 p-3 dark:border-cream-100/12 dark:bg-forest-950/35;
+}
+.messages-location-active-heading {
+  @apply flex items-center gap-2 text-sm font-medium text-forest-900 dark:text-cream-50;
+}
+.messages-location-active-icon {
+  @apply shrink-0 text-forest-600 dark:text-brass-400;
+}
+.messages-location-active-copy {
+  @apply mt-1.5 text-xs leading-relaxed text-forest-700 dark:text-cream-100/75;
+}
+.messages-location-active-footer {
+  @apply mt-3 flex flex-wrap items-center justify-between gap-3;
+}
+.messages-location-expiry {
+  @apply text-xs text-forest-700 dark:text-cream-100/80;
 }
 
 /* ------------------------------------------------------------------ */

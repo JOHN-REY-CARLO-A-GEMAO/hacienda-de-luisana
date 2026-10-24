@@ -40,7 +40,7 @@ export function BookingFolio({
   booking: Booking
   /** The Guest's own controls for this Booking, in the folio's foot band. */
   actions?: ReactNode
-  /** What renders under the activity log: the review prompt, the dispute form. */
+  /** What renders under the activity log: the optional review prompt. */
   trailing?: ReactNode
   /** Between the ledger and the action band: the hold countdown, a refusal. */
   children?: ReactNode

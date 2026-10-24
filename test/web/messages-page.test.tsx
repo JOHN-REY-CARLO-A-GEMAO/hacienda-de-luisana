@@ -92,13 +92,27 @@ function renderPage(): HTMLElement {
 }
 
 function button(container: HTMLElement, label: RegExp): HTMLButtonElement {
-  const found = [...container.querySelectorAll('button')].find((b) => label.test(b.textContent ?? ''))
+  const found = [...container.querySelectorAll('button')].find((b) =>
+    label.test(b.textContent ?? '') || label.test(b.getAttribute('aria-label') ?? ''),
+  )
   if (!found) throw new Error(`no button matching ${label}`)
   return found
 }
 
+function chooseFile(container: HTMLElement, file: File) {
+  const input = container.querySelector('input[type="file"]') as HTMLInputElement
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] })
+  act(() => {
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
+let objectUrlSequence = 0
+
 beforeEach(() => {
   localStorage.clear()
+  URL.createObjectURL = vi.fn(() => `blob:private-${++objectUrlSequence}`)
+  URL.revokeObjectURL = vi.fn(() => {})
 })
 
 afterEach(() => {
@@ -179,6 +193,141 @@ describe('a long thread', () => {
   })
 })
 
+describe('conversation navigation and timeline grouping', () => {
+  it('switches topics and provides a way back to the mobile topic list', async () => {
+    const container = renderPage()
+    await pump(3)
+
+    const payment = button(container, /Payment help/)
+    act(() => payment.click())
+    await pump(3)
+    expect(payment.getAttribute('aria-current')).toBe('true')
+    expect(container.querySelector('.messages-conversation-header p')?.textContent).toBe('Payment help')
+
+    const back = container.querySelector('button[aria-label="Back to conversation topics"]') as HTMLButtonElement
+    act(() => back.click())
+    expect(container.querySelector('.messages-topics')?.className).toContain('messages-mobile-visible')
+    expect(container.querySelector('.messages-conversation')?.className).not.toContain('messages-mobile-visible')
+
+    act(() => button(container, /Access \/ smart lock/).click())
+    await pump(3)
+    expect(container.querySelector('.messages-conversation-header p')?.textContent).toBe('Access / smart lock')
+    expect(container.querySelector('.messages-conversation')?.className).toContain('messages-mobile-visible')
+  })
+
+  it('groups nearby messages from the same sender without losing any message', async () => {
+    const at = (minutes: number) => new Date(Date.parse('2026-10-01T00:00:00.000Z') + minutes * 60_000).toISOString()
+    localStorage.setItem(
+      'hdl:chat',
+      JSON.stringify([
+        { id: 'm1', text: 'first', at: at(0), mine: true, sender_uid: 'guest-ui-1' },
+        { id: 'm2', text: 'second', at: at(2), mine: true, sender_uid: 'guest-ui-1' },
+        { id: 'm3', text: 'later', at: at(10), mine: true, sender_uid: 'guest-ui-1' },
+      ]),
+    )
+
+    const container = renderPage()
+    await pump(3)
+    expect(container.querySelectorAll('#message-timeline li')).toHaveLength(3)
+    expect(container.querySelectorAll('.messages-group')).toHaveLength(2)
+    expect(container.querySelectorAll('.messages-time')).toHaveLength(2)
+  })
+})
+
+describe('private image attachments', () => {
+  const image = () => new File([new Uint8Array([137, 80, 78, 71])], 'gate.png', { type: 'image/png' })
+
+  it('selects, previews, replaces, and removes an image, and refuses an invalid file', async () => {
+    const container = renderPage()
+    await pump(3)
+    chooseFile(container, image())
+    await pump()
+    expect(container.querySelector('[data-testid="attachment-preview"]')?.textContent).toContain('gate.png')
+    expect(button(container, /^Send$/).disabled).toBe(false)
+
+    const picker = container.querySelector('input[type="file"]') as HTMLInputElement
+    const openPicker = vi.spyOn(picker, 'click').mockImplementation(() => {})
+    act(() => button(container, /Replace attached image/).click())
+    expect(openPicker).toHaveBeenCalledOnce()
+    chooseFile(container, new File([new Uint8Array([137, 80, 78, 71])], 'replacement.png', { type: 'image/png' }))
+    await pump()
+    expect(container.querySelector('[data-testid="attachment-preview"]')?.textContent).toContain('replacement.png')
+    expect(container.querySelector('[data-testid="attachment-preview"]')?.textContent).not.toContain('gate.png')
+
+    act(() => button(container, /Remove attached image/).click())
+    await pump()
+    expect(container.querySelector('[data-testid="attachment-preview"]')).toBeNull()
+    expect(button(container, /^Send$/).disabled).toBe(true)
+
+    chooseFile(container, new File(['not an image'], 'notes.pdf', { type: 'application/pdf' }))
+    await pump()
+    expect(container.querySelector('[data-testid="attachment-preview"]')).toBeNull()
+    expect(container.textContent).toMatch(/JPEG, PNG, or WebP/)
+  })
+
+  it('sends an image with an optional caption, renders it inline, and opens the larger view', async () => {
+    const container = renderPage()
+    await pump(3)
+    chooseFile(container, image())
+    await pump()
+    const input = container.querySelector('input[data-tour-field="message"]') as HTMLInputElement
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, 'The front gate')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await pump()
+    act(() => button(container, /^Send$/).click())
+    await pump(10)
+
+    const stored = JSON.parse(localStorage.getItem('hdl:chat') ?? '[]')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].text).toBe('The front gate')
+    expect(stored[0].attachment.path).toBe(`messageAttachments/local:guest-ui-1/${stored[0].id}`)
+    expect(localStorage.getItem('hdl:chat-images')).toContain(stored[0].id)
+    expect(container.querySelector('[data-testid="attachment-preview"]')).toBeNull()
+
+    const open = button(container, /View larger image from you/i)
+    act(() => open.click())
+    await pump()
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('The front gate')
+    act(() => (document.querySelector('button[aria-label="Close larger image"]') as HTMLButtonElement).click())
+    await pump()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('keeps the draft after an upload failure and retries without a duplicate message', async () => {
+    const original = Storage.prototype.setItem
+    let shouldFail = true
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key === 'hdl:chat-images' && shouldFail) {
+        shouldFail = false
+        throw new DOMException('Quota reached', 'QuotaExceededError')
+      }
+      return original.call(this, key, value)
+    })
+    try {
+      const container = renderPage()
+      await pump(3)
+      chooseFile(container, image())
+      await pump()
+      act(() => button(container, /^Send$/).click())
+      await pump(8)
+      expect(container.textContent).toContain('Retry send')
+      expect(container.querySelector('[data-testid="attachment-preview"]')?.textContent).toContain('gate.png')
+      expect(JSON.parse(localStorage.getItem('hdl:chat') ?? '[]')).toHaveLength(0)
+
+      act(() => button(container, /Retry send/).click())
+      await pump(10)
+      expect(JSON.parse(localStorage.getItem('hdl:chat') ?? '[]')).toHaveLength(1)
+      expect(container.querySelector('[data-testid="attachment-preview"]')).toBeNull()
+      expect(container.textContent).not.toContain('Retry send')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})
+
 describe('📍 Live Location, offered from inside the conversation', () => {
   it('offers the three durations, and says what sharing means before it starts', async () => {
     const start = vi.fn(async () => {})
@@ -186,7 +335,7 @@ describe('📍 Live Location, offered from inside the conversation', () => {
     await pump()
     expect(container.textContent).toMatch(/Sharing is off until you choose a time/)
 
-    act(() => button(container, /📍 Live Location/).click())
+    act(() => button(container, /Live Location/).click())
     await pump()
     for (const minutes of ['15 minutes', '30 minutes', '60 minutes']) {
       expect(container.textContent).toContain(minutes)
@@ -208,6 +357,16 @@ describe('📍 Live Location, offered from inside the conversation', () => {
     expect(container.textContent).toContain('The Admin can see your location')
     expect(container.textContent).toContain('Expires in:')
     expect(container.textContent).toContain('27:43')
+  })
+
+  it('does not claim a position was shared before the first fix is published', async () => {
+    const container = render(
+      <ShareLocationBar sharing={sharing({ phase: 'active', session: SESSION, countdown: '29:59', lastSentAtMs: null })} />,
+    )
+    await pump()
+    expect(container.textContent).toContain('Finding your location')
+    expect(container.textContent).toContain('No position has been sent yet')
+    expect(container.textContent).not.toContain('The Admin can see your location')
   })
 
   it('always offers a way to stop', async () => {
@@ -246,19 +405,27 @@ describe('📍 Live Location, offered from inside the conversation', () => {
       <ShareLocationBar sharing={sharing({ blocked: 'no-firebase' })} />,
     )
     await pump()
-    const control = button(container, /📍 Live Location/)
+    const control = button(container, /Live Location/)
     expect(control.disabled).toBe(true)
     expect(control.getAttribute('title')).toMatch(/not available/i)
   })
 })
 
 describe('the page a Guest without a cloud connection sees', () => {
+  it('keeps support inside the private conversation without a separate case workflow', async () => {
+    const container = renderPage()
+    await pump(3)
+    expect(container.textContent).not.toMatch(/dispute|case management/i)
+    expect(container.querySelector('a[href*="support"]')).toBeNull()
+    expect(container.textContent).toContain('Only you and the Admin can read these conversations.')
+  })
+
   it('never shows a share as running when the build cannot share', async () => {
     // The test run has no Firebase project, so the stream transport is absent.
     // The one unforgivable failure here is a control that looks active.
     const container = renderPage()
     await pump(3)
-    const control = button(container, /📍 Live Location/)
+    const control = button(container, /Live Location/)
     expect(control.disabled).toBe(true)
     expect(container.textContent).not.toContain('Sharing live location')
   })

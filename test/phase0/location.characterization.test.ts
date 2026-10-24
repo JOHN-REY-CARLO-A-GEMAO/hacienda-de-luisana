@@ -4,13 +4,17 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { scenarios, NOW } from './fixtures'
 import { checkFix, isStale } from '../../src/lib/liveLocationPolicy'
 
-const transport = vi.hoisted(() => ({ consent: vi.fn(), update: vi.fn(), set: vi.fn(), remove: vi.fn(), disconnect: vi.fn() }))
+const transport = vi.hoisted(() => ({
+  readConsent: vi.fn(), deleteConsent: vi.fn(), consent: vi.fn(), update: vi.fn(),
+  set: vi.fn(), remove: vi.fn(), disconnect: vi.fn(),
+}))
 vi.mock('../../src/lib/firebase', () => ({
   db: { phase0Double: true }, isFirebaseConfigured: true,
   hasRealtimeDatabaseConfig: () => true, ensureRealtimeDatabase: async () => ({ phase0Double: true }),
 }))
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, ...parts: string[]) => ({ path: parts.join('/') }),
+  getDoc: transport.readConsent, deleteDoc: transport.deleteConsent,
   setDoc: transport.consent, updateDoc: transport.update, serverTimestamp: () => 'synthetic-server-timestamp',
 }))
 vi.mock('firebase/database', () => ({
@@ -24,6 +28,7 @@ const start = () => startSharing({ convoId: location.conversationId, uid: locati
 const fix = { lat: location.lat, lng: location.lng, accuracy_m: location.accuracy, seq: 1 }
 beforeEach(() => {
   for (const fn of Object.values(transport)) { fn.mockReset(); fn.mockResolvedValue(undefined) }
+  transport.readConsent.mockResolvedValue({ exists: () => false })
   vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => {
     bytes.set(location.streamSecret.match(/../g)!.map(hex => parseInt(hex, 16))); return bytes
   } })
