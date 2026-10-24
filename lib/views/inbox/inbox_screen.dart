@@ -165,12 +165,16 @@ class ThreadScreenState extends State<ThreadScreen> {
       confirm: 'Open the reader',
     );
     if (!ok || !mounted) return;
-    setState(() => _showLiveLocation = true);
     final service = _liveLocation ??= LiveLocationService();
     final auth = context.read<AuthStore>();
     final uid = auth.uid;
-    if (uid == null || uid.isEmpty) return;
-    service.registerReader(uid: uid, allowlisted: AuthStore.isAllowlisted(auth.sessionEmail));
+    // Register before the panel opens: the panel's first read must not race
+    // the mirror write that admits a Profile-promoted Admin.
+    if (uid != null && uid.isNotEmpty) {
+      await service.registerReader(uid: uid, allowlisted: AuthStore.isAllowlisted(auth.sessionEmail));
+    }
+    if (!mounted) return;
+    setState(() => _showLiveLocation = true);
   }
 
   CollectionReference<Map<String, dynamic>> get _messages =>

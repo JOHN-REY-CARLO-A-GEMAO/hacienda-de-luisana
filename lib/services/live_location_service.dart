@@ -28,6 +28,16 @@
 /// window closes, whether or not the node was cleaned up. What the Admin *can*
 /// do is close the panel at any time — watching is opt-in on the Admin's side
 /// too, and a notification does not drag the Admin into anything.
+///
+/// What this reader deliberately does NOT do is end on a missing node. The
+/// panel opens *before* the Guest's first fix — it is the panel that says
+/// "Waiting for the Guest's first position…" — and `startSharing` restarts a
+/// share by deleting and recreating the consent, so both the position node and
+/// the consent document can be briefly absent while everything is working.
+/// Absent is `LiveLocationPhase.noSession` or `.waiting`, not death; only a
+/// refusal, a foreign payload, or the window closing ends the watch. Every one
+/// of those endings carries a [LiveLocationStop] reason the panel shows — an
+/// Admin left looking at a spinner is the failure this file exists to prevent.
 library;
 
 import 'dart:async';
@@ -49,26 +59,76 @@ const String kLiveLocationPath = 'live_location';
 /// The address list itself is `AuthStore.kAdminEmails`, not a second copy.
 const String kLiveLocationAdmins = 'live_location_admins';
 
+/// Where the Admin roles live, so `registerReader` can mirror them.
+const String kProfiles = 'profiles';
+
 /// A fix older than this is shown as stale rather than as "live now".
 const Duration kStaleAfter = Duration(seconds: 20);
 
-/// Why a stream is not being shown. The panel says the reason rather than
-/// going quietly blank.
+/// Why a watch ended. The panel says the reason rather than going quietly
+/// blank — every one of these replaces what used to be an endless spinner.
 enum LiveLocationStop {
   /// No `databaseURL`, or the database is not initialised on this build.
   noTransport,
 
-  /// The device is not online.
+  /// The position stream dropped: offline, or the connection failed.
   offline,
 
-  /// The consent is gone, or was never there.
-  noSession,
-
-  /// The Guest pressed Stop, or the window closed.
+  /// The Guest pressed Stop, the window closed, or the consent is gone.
   expired,
 
-  /// A node arrived that does not belong to this session.
+  /// A payload arrived that does not belong to this session.
   foreign,
+
+  /// Firestore or the Realtime Database refused this Admin a read. On the
+  /// Realtime Database that is the allowlist/mirror rules: a Profile-promoted
+  /// Admin is only readable once an allowlisted Admin has run the app once
+  /// (`registerReader`).
+  denied,
+}
+
+/// One sentence for the Admin, per ending. Pure, so it is unit-tested in
+/// `test/chat_limits_test.dart` beside the parsers.
+String liveLocationStopMessage(LiveLocationStop reason) {
+  switch (reason) {
+    case LiveLocationStop.noTransport:
+      return 'This build has no live-location channel configured.';
+    case LiveLocationStop.offline:
+      return 'The position stream dropped. Check the connection and open the reader again.';
+    case LiveLocationStop.expired:
+      return 'The Guest stopped sharing, or the time they chose ran out.';
+    case LiveLocationStop.foreign:
+      return 'What arrived from the database did not match this session.';
+    case LiveLocationStop.denied:
+      return 'This Admin account cannot read live locations yet. An allowlisted Admin must run the app once.';
+  }
+}
+
+/// Where the panel is, on the way to drawing a position.
+enum LiveLocationPhase {
+  /// Listening, but this conversation has no live share on record right now.
+  /// The Guest may start at any moment, which is why the watch stays open.
+  noSession,
+
+  /// The consent is live and the first position has not arrived yet.
+  waiting,
+
+  /// A position has been accepted and is being drawn.
+  live,
+
+  /// The watch is over. [LiveLocationView.reason] says why.
+  ended,
+}
+
+/// One frame of what the Admin's panel should show: the phase, the last
+/// position accepted (kept through the ending so a map does not vanish when a
+/// share stops), and — for [LiveLocationPhase.ended] — why.
+class LiveLocationView {
+  const LiveLocationView(this.phase, {this.fix, this.reason});
+
+  final LiveLocationPhase phase;
+  final LiveFix? fix;
+  final LiveLocationStop? reason;
 }
 
 /// The session as `location_sessions/{conversationId}` stores it. No
@@ -247,76 +307,109 @@ class LiveLocationService {
   /// Make this Admin readable by the Realtime Database when the role lives in
   /// a Profile rather than in the allowlist.
   ///
-  /// Only an allowlisted address can write `live_location_admins`, so this is
-  /// a no-op for a promoted Admin until one of them has run the app once — a
-  /// deliberate ordering, because the allowlist is the one role that needs no
-  /// document to exist and therefore cannot be locked out of itself.
+  /// Only an allowlisted address can write `live_location_admins`, so a
+  /// Profile-promoted Admin is admitted by a mirror an allowlisted Admin
+  /// writes. This call therefore mirrors every `profiles/{uid}` that carries
+  /// `role == 'admin'` — not just the caller — so the promise holds: once one
+  /// allowlisted Admin has opened the reader once, every promoted Admin can
+  /// read. Until then their read is refused, and the panel says so
+  /// (`LiveLocationStop.denied`) instead of spinning.
+  ///
+  /// Best-effort, and never fatal: the allowlist itself needs no mirror and
+  /// cannot be locked out of itself.
   Future<void> registerReader({required String uid, required bool allowlisted}) async {
     final db = _database;
     if (db == null || !allowlisted) return;
     try {
       await db.ref('$kLiveLocationAdmins/$uid').set(true);
+      final admins = await _firestore.collection(kProfiles).where('role', isEqualTo: 'admin').get();
+      for (final profile in admins.docs) {
+        final id = profile.id;
+        if (id.isEmpty) continue;
+        await db.ref('$kLiveLocationAdmins/$id').set(true);
+      }
     } catch (error) {
-      debugPrint('[live-location] could not register as a stream reader: $error');
+      debugPrint('[live-location] could not register stream readers: $error');
     }
   }
 
   /// Follow one Guest's position for one conversation.
   ///
-  /// The returned stream emits a fix, or null with a reason. It closes itself
-  /// when the window closes — the Admin app is not left with a subscription
-  /// outliving the consent that justified it.
-  Stream<LiveFix?> watch({
+  /// The returned stream emits [LiveLocationView] frames — `noSession` while
+  /// no consent is on record, `waiting` while the first fix is outstanding,
+  /// `live` once one is accepted, and `ended` with a [LiveLocationStop] reason
+  /// when the watch is over. It closes itself when the window closes — the
+  /// Admin app is not left with a subscription outliving the consent that
+  /// justified it.
+  ///
+  /// A missing node or a missing consent does NOT end the stream. The panel
+  /// opens before the Guest's first fix (it is the panel that says "Waiting for
+  /// the Guest's first position…"), and `startSharing` restarts a share with a
+  /// delete-then-create of the consent, so both can be briefly absent while
+  /// everything is working. Ending on absence is what left the old panel
+  /// spinning forever on its first frame.
+  Stream<LiveLocationView> watch({
     required String conversationId,
     String? guestUid,
   }) {
     final db = _database;
     if (db == null) {
-      return Stream<LiveFix?>.value(null);
+      return Stream<LiveLocationView>.value(
+        const LiveLocationView(LiveLocationPhase.ended, reason: LiveLocationStop.noTransport),
+      );
     }
-    final controller = StreamController<LiveFix?>();
+    final controller = StreamController<LiveLocationView>();
     StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? sessionSub;
     StreamSubscription<DatabaseEvent>? positionSub;
     Timer? expiry;
     var closed = false;
+    LiveFix? lastFix;
 
-    void emitStop() {
+    void emit(LiveLocationPhase phase) {
       if (closed || controller.isClosed) return;
-      controller.add(null);
+      controller.add(LiveLocationView(phase, fix: lastFix));
     }
 
-    void stop([LiveLocationStop? reason]) {
+    void stop(LiveLocationStop reason) {
       if (closed) return;
       closed = true;
       expiry?.cancel();
       sessionSub?.cancel();
       positionSub?.cancel();
-      if (!controller.isClosed) controller.close();
-      if (reason != null) debugPrint('[live-location] ${conversationId}: $reason');
+      if (!controller.isClosed) {
+        controller.add(LiveLocationView(LiveLocationPhase.ended, fix: lastFix, reason: reason));
+        controller.close();
+      }
+      debugPrint('[live-location] $conversationId: $reason');
     }
 
     sessionSub = _firestore.collection(kLocationSessions).doc(conversationId).snapshots().listen((snapshot) {
+      if (closed) return;
       if (!snapshot.exists) {
-        emitStop();
-        stop(LiveLocationStop.noSession);
+        // No consent on record: the Guest has not started, or `startSharing` is
+        // between the delete and the create of a restart. Keep listening — the
+        // panel's "not sharing right now" is true in both cases, and flips back
+        // when a session appears.
+        emit(LiveLocationPhase.noSession);
         return;
       }
       final next = LiveLocationSession.fromDoc(snapshot);
-      if (next == null || !next.isLive) {
-        emitStop();
-        stop(next == null ? LiveLocationStop.foreign : LiveLocationStop.expired);
+      if (next == null) {
+        stop(LiveLocationStop.foreign);
+        return;
+      }
+      if (!next.isLive) {
+        stop(LiveLocationStop.expired);
         return;
       }
       // The window closing ends the stream from the Admin's side too, without
       // waiting for the server to sweep the node.
       expiry?.cancel();
-      expiry = Timer(next.remaining, () {
-        emitStop();
-        stop(LiveLocationStop.expired);
-      });
+      expiry = Timer(next.remaining, () => stop(LiveLocationStop.expired));
 
       final target = guestUid ?? next.guestUid;
       positionSub?.cancel();
+      emit(LiveLocationPhase.waiting);
       positionSub = db
           .ref('$kLiveLocationPath/$conversationId/$target')
           .onValue
@@ -326,26 +419,27 @@ class LiveLocationService {
         // rather than being one (firebase_database 12).
         final data = event.snapshot.value;
         if (data == null) {
-          // The node is gone: the Guest stopped, or the server swept it.
-          emitStop();
+          // The node is absent: the first fix has not landed, or it was
+          // removed. Absent is not "ended" — the consent listener owns that —
+          // and it is certainly not a reason to tear the listener down and
+          // never see the fix that is on its way.
+          emit(lastFix == null ? LiveLocationPhase.waiting : LiveLocationPhase.live);
           return;
         }
         final fix = LiveFix.fromData(data, next);
         if (fix == null) {
-          emitStop();
           stop(LiveLocationStop.foreign);
           return;
         }
-        if (controller.isClosed) return;
-        controller.add(fix);
+        lastFix = fix;
+        emit(LiveLocationPhase.live);
       }, onError: (Object error) {
-        debugPrint('[live-location] $conversationId: stream error $error');
-        emitStop();
+        debugPrint('[live-location] $conversationId: position stream error $error');
+        stop(_isPermissionError(error) ? LiveLocationStop.denied : LiveLocationStop.offline);
       });
     }, onError: (Object error) {
       debugPrint('[live-location] $conversationId: session error $error');
-      emitStop();
-      stop(LiveLocationStop.noSession);
+      stop(_isPermissionError(error) ? LiveLocationStop.denied : LiveLocationStop.offline);
     });
 
     controller.onCancel = () {
@@ -356,4 +450,11 @@ class LiveLocationService {
     };
     return controller.stream;
   }
+}
+
+/// A refused read is a rules answer, not a network one: it says who is not
+/// allowed, and the panel must say that rather than "check the connection".
+bool _isPermissionError(Object error) {
+  final code = error.toString().toLowerCase();
+  return code.contains('permission') || code.contains('unauthorized') || code.contains('unauthenticated');
 }

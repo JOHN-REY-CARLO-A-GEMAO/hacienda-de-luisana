@@ -14,6 +14,13 @@ import '../../services/live_location_service.dart';
 /// to stop looking. Stopping is one tap and is not a setting anybody has to go
 /// and find — the panel closes and the stream subscription goes with it.
 ///
+/// The spinner is reserved for one state only: the consent is live and the
+/// first position is genuinely on its way. Every other state says what is
+/// true — "not sharing right now" before a share exists, and after a watch
+/// ends, the reason it ended (with the last position kept on screen rather
+/// than wiped). An Admin left watching an endless "Waiting for the Guest's
+/// first position…" is the failure this panel exists to prevent.
+///
 /// The map is an OpenStreetMap raster tile with the Guest's position drawn on
 /// it, refreshed no more than once every ten seconds. That is a deliberate
 /// trade: `google_maps_flutter` would need a second API key, a billing account
@@ -44,9 +51,8 @@ class LiveLocationPanel extends StatefulWidget {
 }
 
 class _LiveLocationPanelState extends State<LiveLocationPanel> {
-  StreamSubscription<LiveFix?>? _sub;
-  LiveFix? _fix;
-  bool _stopped = false;
+  StreamSubscription<LiveLocationView>? _sub;
+  LiveLocationView? _view;
   String? _reason;
   Timer? _tick;
 
@@ -55,17 +61,13 @@ class _LiveLocationPanelState extends State<LiveLocationPanel> {
     super.initState();
     final service = widget.service ?? LiveLocationService();
     if (!service.hasTransport) {
-      _stopped = true;
       _reason = 'This build has no live-location channel configured.';
     } else {
       _sub = service
           .watch(conversationId: widget.conversationId, guestUid: widget.guestUid)
-          .listen((fix) {
+          .listen((view) {
         if (!mounted) return;
-        setState(() {
-          _fix = fix;
-          if (fix == null) _stopped = true;
-        });
+        setState(() => _view = view);
       });
     }
     // The "3 seconds ago" and the countdown both move; a one-second tick is
@@ -103,7 +105,45 @@ class _LiveLocationPanelState extends State<LiveLocationPanel> {
       );
     }
 
-    if (_fix == null) {
+    final view = _view;
+    if (view == null) {
+      // The first snapshot from Firestore is on its way; it always answers
+      // with a phase below, or with an `ended` view that names the reason.
+      return _card(
+        child: Row(
+          children: [
+            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text('Opening the live location reader…', style: TextStyle(fontSize: 12)),
+            ),
+            _closeButton(),
+          ],
+        ),
+      );
+    }
+
+    if (view.phase == LiveLocationPhase.noSession) {
+      return _card(
+        child: Row(
+          children: [
+            const Icon(Icons.location_off_outlined, size: 18, color: AppColors.textMuted),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'This Guest is not sharing their location right now.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            _closeButton(),
+          ],
+        ),
+      );
+    }
+
+    if (view.phase == LiveLocationPhase.waiting) {
+      // The one state where a spinner is the truth: the consent is live and
+      // the Guest's device is producing its first fix.
       return _card(
         child: Row(
           children: [
@@ -118,22 +158,41 @@ class _LiveLocationPanelState extends State<LiveLocationPanel> {
       );
     }
 
-    final fix = _fix!;
+    final fix = view.fix;
+    if (fix == null) {
+      // Ended before a single position arrived — say why, in words. This is
+      // the case that used to spin on "Waiting for the Guest's first
+      // position…" forever.
+      final message = liveLocationStopMessage(view.reason ?? LiveLocationStop.expired);
+      return _card(
+        child: Row(
+          children: [
+            const Icon(Icons.location_off_outlined, size: 18, color: AppColors.textMuted),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message, style: const TextStyle(fontSize: 12, color: AppColors.textMuted))),
+            _closeButton(),
+          ],
+        ),
+      );
+    }
+
+    final ended = view.phase == LiveLocationPhase.ended;
+    final stoppedMessage = ended ? liveLocationStopMessage(view.reason ?? LiveLocationStop.expired) : null;
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              _pulse(),
+              _pulse(ended),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  _stopped ? 'Live location ended' : 'Guest is sharing live location',
+                  ended ? 'Live location ended' : 'Guest is sharing live location',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: _stopped ? AppColors.textMuted : AppColors.primaryForest,
+                    color: ended ? AppColors.textMuted : AppColors.primaryForest,
                   ),
                 ),
               ),
@@ -157,6 +216,13 @@ class _LiveLocationPanelState extends State<LiveLocationPanel> {
               color: fix.isStale ? Colors.amber.shade800 : AppColors.textDark,
             ),
           ),
+          if (stoppedMessage != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              stoppedMessage,
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+            ),
+          ],
         ],
       ),
     );
@@ -173,13 +239,13 @@ class _LiveLocationPanelState extends State<LiveLocationPanel> {
     );
   }
 
-  Widget _pulse() {
+  Widget _pulse(bool ended) {
     return Container(
       width: 10,
       height: 10,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: _stopped ? AppColors.textMuted : AppColors.primaryForest,
+        color: ended ? AppColors.textMuted : AppColors.primaryForest,
       ),
     );
   }
