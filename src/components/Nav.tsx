@@ -5,6 +5,7 @@ import { Menu, Close, Bell } from '../lib/icons'
 import { useAuth } from '../hooks/useAuth'
 import { useNotifications } from '../hooks/useNotifications'
 import { canOpenPage, homeForRole } from '../lib/auth'
+import { ariaCurrent, currentStateFor, type NavLink } from '../lib/nav-state'
 
 /**
  * The seven visitor destinations, in the order a first-time Guest needs them.
@@ -16,9 +17,13 @@ import { canOpenPage, homeForRole } from '../lib/auth'
  * while "Contact" also covers /faqs. The detail pages keep their own addresses
  * and are linked from their related page and the footer, so
  * no bookmark or shared link stops working.
+ *
+ * "In this section" and "this page" are different claims, and the bar says
+ * which is which. `aria-current="page"` belongs on the link that *is* the page
+ * being read; /rates is not /stay, so "Stay" carries `aria-current="true"`
+ * there — same underline, honest announcement. Everything else (Home, Gallery,
+ * the phone drawer's own secondary links) is an exact match and gets "page".
  */
-export type NavLink = { href: string; label: string; also?: readonly string[] }
-
 export const LINKS: NavLink[] = [
   { href: '/', label: 'Home' },
   { href: '/stay', label: 'Stay', also: ['/rates'] },
@@ -36,11 +41,7 @@ export const SECONDARY_LINKS: NavLink[] = [
   { href: '/legal', label: 'Terms & policies' },
 ]
 
-/** True when `pathname` sits in the section `link` stands for. */
-export function isCurrentSection(link: NavLink, pathname: string): boolean {
-  const under = (base: string) => pathname === base || pathname.startsWith(`${base}/`)
-  return under(link.href) || (link.also ?? []).some(under)
-}
+export type { NavLink }
 
 const FOCUS_RING =
   'rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-current'
@@ -125,12 +126,13 @@ export function Nav() {
             aria-label="Site"
           >
             {LINKS.map((l) => {
-              const current = isCurrentSection(l, location.pathname)
+              const state = currentStateFor(l, location.pathname)
+              const current = state !== null
               return (
                 <Link
                   key={l.href}
                   to={l.href}
-                  aria-current={current ? 'page' : undefined}
+                  aria-current={ariaCurrent(state)}
                   className={`relative inline-flex items-center whitespace-nowrap py-2 text-[12.5px] 2xl:text-[13px] font-medium leading-none transition-colors ${FOCUS_RING} ${
                     transparent
                       ? current
@@ -286,13 +288,14 @@ export function Nav() {
         <div className="px-5 sm:px-6 pt-4 pb-6 flex flex-col gap-0.5">
           <nav aria-label="Mobile" className="flex flex-col">
             {LINKS.map((l) => {
-              const current = isCurrentSection(l, location.pathname)
+              const state = currentStateFor(l, location.pathname)
+              const current = state !== null
               return (
                 <Link
                   key={l.href}
                   to={l.href}
                   onClick={() => setOpen(false)}
-                  aria-current={current ? 'page' : undefined}
+                  aria-current={ariaCurrent(state)}
                   className={`${drawerRow} py-3 text-base font-serif ${
                     current ? 'font-medium text-forest-950 dark:text-white' : 'text-forest-900 dark:text-cream-50'
                   }`}
@@ -305,16 +308,22 @@ export function Nav() {
 
           <div className="mt-4 pt-2">
             <div className="eyebrow mb-1">Also at the Hacienda</div>
-            {SECONDARY_LINKS.map((l) => (
-              <Link
-                key={l.href}
-                to={l.href}
-                onClick={() => setOpen(false)}
-                className={`${drawerRow} py-2.5 text-sm text-forest-800 dark:text-cream-100/80`}
-              >
-                {l.label}
-              </Link>
-            ))}
+            {SECONDARY_LINKS.map((l) => {
+              const state = currentStateFor(l, location.pathname)
+              return (
+                <Link
+                  key={l.href}
+                  to={l.href}
+                  onClick={() => setOpen(false)}
+                  aria-current={ariaCurrent(state)}
+                  className={`${drawerRow} py-2.5 text-sm ${
+                    state ? 'font-medium text-forest-950 dark:text-white' : 'text-forest-800 dark:text-cream-100/80'
+                  }`}
+                >
+                  {l.label}
+                </Link>
+              )
+            })}
           </div>
 
           <div className="mt-4 pt-2 space-y-2">

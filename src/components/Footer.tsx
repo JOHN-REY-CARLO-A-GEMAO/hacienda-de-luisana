@@ -1,6 +1,47 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { BUSINESS, LISTINGS } from '../config/site'
+import { ariaCurrent, currentStateFor, type NavLink } from '../lib/nav-state'
 import { Facebook, Instagram, Mail, Phone, MapPin } from '../lib/icons'
+
+/**
+ * A footer destination, marked the way the bar marks the same page.
+ *
+ * The footer is the only place /legal, /support and /house-rules appear on a
+ * desktop screen, so it is the only place that can say "you are here" for them.
+ * The rule is the shared one (`src/lib/nav-state.ts`), not a second opinion:
+ * the current page takes `aria-current="page"` and its weight; a sibling does
+ * not.
+ */
+function FooterLink({ link }: { link: NavLink }) {
+  const { pathname } = useLocation()
+  const state = currentStateFor(link, pathname)
+  return (
+    <Link
+      to={link.href}
+      aria-current={ariaCurrent(state)}
+      className={`transition hover:text-white ${state ? 'text-white' : ''}`}
+    >
+      {link.label}
+    </Link>
+  )
+}
+
+const EXPLORE_LINKS: NavLink[] = [
+  { href: '/stay', label: 'Stay' },
+  { href: '/rates', label: 'Rates & fees' },
+  { href: '/experience', label: 'Experience' },
+  { href: '/gallery', label: 'Gallery' },
+  { href: '/location', label: 'Location' },
+  { href: '/reviews', label: 'Reviews' },
+]
+
+const POLICY_LINKS: NavLink[] = [
+  { href: '/faqs', label: 'FAQs' },
+  { href: '/house-rules', label: 'House rules' },
+  { href: '/legal', label: 'Terms & policies' },
+  { href: '/support', label: 'Support & disputes' },
+  { href: '/contact', label: 'Contact' },
+]
 
 export function Footer() {
   return (
@@ -29,23 +70,18 @@ export function Footer() {
         <div>
           <div className="eyebrow mb-4 text-cream-100/60">Explore</div>
           <ul className="space-y-3 text-sm">
-            <li><Link to="/stay" className="hover:text-white">Stay</Link></li>
-            <li><Link to="/rates" className="hover:text-white">Rates &amp; fees</Link></li>
-            <li><Link to="/experience" className="hover:text-white">Experience</Link></li>
-            <li><Link to="/gallery" className="hover:text-white">Gallery</Link></li>
-            <li><Link to="/location" className="hover:text-white">Location</Link></li>
-            <li><Link to="/reviews" className="hover:text-white">Reviews</Link></li>
+            {EXPLORE_LINKS.map((link) => (
+              <li key={link.href}><FooterLink link={link} /></li>
+            ))}
           </ul>
         </div>
 
         <div>
           <div className="eyebrow mb-4 text-cream-100/60">Plan &amp; policies</div>
           <ul className="space-y-3 text-sm">
-            <li><Link to="/faqs" className="hover:text-white">FAQs</Link></li>
-            <li><Link to="/house-rules" className="hover:text-white">House rules</Link></li>
-            <li><Link to="/legal" className="hover:text-white">Terms &amp; policies</Link></li>
-            <li><Link to="/support" className="hover:text-white">Support &amp; disputes</Link></li>
-            <li><Link to="/contact" className="hover:text-white">Contact</Link></li>
+            {POLICY_LINKS.map((link) => (
+              <li key={link.href}><FooterLink link={link} /></li>
+            ))}
           </ul>
         </div>
 
