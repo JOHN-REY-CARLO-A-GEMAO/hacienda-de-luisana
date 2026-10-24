@@ -26,6 +26,7 @@ import { MessageScreen } from './components/ui'
 import { GuestAuthPage } from './pages/AuthPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { useReveal } from './lib/reveal'
+import { RouteMeta } from './components/RouteMeta'
 
 /**
  * Homepage anchors that now live on a page of their own.
@@ -74,6 +75,7 @@ function WebsiteLayout() {
         Skip to content
       </a>
       <Nav />
+      <RouteMeta />
       <ScrollHandler />
       <main id="main" className="flex-1">
         <Outlet />

@@ -138,6 +138,16 @@ export type GalleryImage = {
 // -----------------------------------------------------------------------------
 // BUSINESS
 // -----------------------------------------------------------------------------
+/**
+ * The origin every canonical URL, Open Graph tag, sitemap entry and `llms.txt`
+ * link is written against — one string, so a domain change is one edit rather
+ * than a hunt through the head of the document.
+ *
+ * No trailing slash: `absoluteUrl()` in `src/lib/seo.ts` is the only place that
+ * joins it to a path, and it always emits exactly one slash at the root.
+ */
+export const SITE_ORIGIN = 'https://haciendadeluisana.com'
+
 export const BUSINESS = {
   name: 'Hacienda de LuisAna',
   tagline: 'Munting mansyon ng Luisiana',

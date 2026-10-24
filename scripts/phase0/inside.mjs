@@ -63,7 +63,12 @@ try {
       requireFile(binary('vite/bin/vite.js'), 'locked Vite')
       // Compile the genuine production bundle, without executing it or
       // deploying it. This process still has no external network interface.
+      // The three steps mirror `npm run build`: the browser bundle, the SSR
+      // bundle the prerender renders from, and the prerender itself, which
+      // writes the static pages, `sitemap.xml`, `llms.txt` and `robots.txt`.
       exitCode = await execute(node, [binary('vite/bin/vite.js'), 'build'], { env: { ...process.env, NODE_ENV: 'production' }, logName: 'build-vite' })
+      if (!exitCode) exitCode = await execute(node, [binary('vite/bin/vite.js'), 'build', '--config', 'vite.ssr.config.ts'], { env: { ...process.env, NODE_ENV: 'production' }, logName: 'build-ssr' })
+      if (!exitCode) exitCode = await execute(node, ['scripts/prerender.mjs'], { env: { ...process.env, NODE_ENV: 'production' }, logName: 'build-prerender' })
     }
   } else if (action === 'emulator' || action === 'emulator-invariants' || action === 'emulator-auth') {
     requireFile(binary('firebase-tools/lib/bin/firebase.js'), 'locked Firebase CLI')

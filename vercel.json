@@ -1,4 +1,16 @@
 {
   "cleanUrls": true,
-  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
+  "rewrites": [
+    { "source": "/login", "destination": "/404.html" },
+    { "source": "/guest/auth", "destination": "/404.html" },
+    { "source": "/account", "destination": "/404.html" },
+    { "source": "/messages", "destination": "/404.html" },
+    { "source": "/book/pay", "destination": "/404.html" },
+    { "source": "/booking/status", "destination": "/404.html" },
+    { "source": "/review", "destination": "/404.html" },
+    { "source": "/admin", "destination": "/404.html" },
+    { "source": "/admin/(.*)", "destination": "/404.html" },
+    { "source": "/app", "destination": "/404.html" },
+    { "source": "/app/(.*)", "destination": "/404.html" }
+  ]
 }

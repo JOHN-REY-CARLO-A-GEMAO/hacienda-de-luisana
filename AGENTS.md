@@ -20,6 +20,15 @@ log prints it (`[firebase] Building for project …`). Never put a secret in a
 `VITE_*` variable — everything Vite exposes is public — and read
 `docs/FIREBASE_SETUP.md` § 3c before changing any of this.
 
+## SEO and the prerender
+
+The Guest website is a single-page app that is prerendered at build time
+(`scripts/prerender.mjs`) into one `.html` file per public route. A page's title,
+description and whether it may be indexed are declared once, in
+`src/config/routes.ts`; adding a route to `src/App.tsx` without a row there gives
+it the not-found head, and `test/web/seo.test.ts` fails. Read `docs/SEO.md`
+before touching the `<head>`, the JSON-LD, or the deploy configuration.
+
 ## Agent skills
 
 ### Issue tracker

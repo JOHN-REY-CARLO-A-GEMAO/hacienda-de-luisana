@@ -1,6 +1,7 @@
 # Node / Vite
 node_modules/
 dist/
+dist-ssr/
 *.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
