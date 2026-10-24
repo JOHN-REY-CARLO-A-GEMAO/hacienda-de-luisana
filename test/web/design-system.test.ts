@@ -149,13 +149,13 @@ describe('one message, one shape', () => {
     const trapOwners = allSources.filter((file) => /addEventListener\('keydown'/.test(read(file)))
     expect(trapOwners.sort()).toEqual(
       [
-        // The one implementation every dialog, drawer and lightbox uses.
+        // The one implementation every dialog, drawer, lightbox and the guided
+        // tour use. The tour used to own a keydown listener of its own — which
+        // is exactly how it ended up with `aria-modal` and no focus trap.
         'src/components/ui/overlay.ts',
         // Escape closes the header's mobile menu. It is a disclosure, not a
         // dialog: it has no focus trap and no backdrop to click.
         'src/components/Nav.tsx',
-        // The guided tour owns its own key handling — arrows advance a script.
-        'src/tutorial/TourOverlay.tsx',
         // The lightbox keeps only its own arrow keys; Escape, focus and the
         // scroll lock come from `useOverlay`.
         'src/sections/Gallery.tsx',

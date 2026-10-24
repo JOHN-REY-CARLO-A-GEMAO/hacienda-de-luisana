@@ -42,6 +42,20 @@ export type TourContextValue = {
   /** True while the step still waits for the Guest to use the highlighted control. */
   awaiting: boolean
   awaitingHint: string | null
+  /**
+   * The element the current step spotlights, if any.
+   *
+   * The overlay reads it to keep the highlighted control inside the dialog's
+   * focus order: a Guest moving with the keyboard must be able to reach the
+   * button the step is asking them to press, and nothing beyond it.
+   */
+  targetEl: React.MutableRefObject<HTMLElement | null>
+  /**
+   * The named group of steps the current step belongs to (the booking request
+   * spans five of the twelve), or null. Its "2 of 5" is counted here from the
+   * step list, so no step has to carry a hand-written counter.
+   */
+  section: { name: string; index: number; total: number } | null
   /** (Re)start the tour from step one. */
   start: () => void
   /** Continue an informational step / skip an interactive one. */
@@ -182,8 +196,18 @@ export function TourProvider({
   const [rect, setRect] = useState<Rect | null>(null)
   const [missing, setMissing] = useState(false)
   const insets = useRef<ViewportInsets>({ top: 0, bottom: 0 })
+  const targetEl = useRef<HTMLElement | null>(null)
 
   const step = steps[Math.min(index, steps.length - 1)]
+
+  /* "Your request · 2 of 5" — counted from the list, never hand-written. */
+  const section = useMemo(() => {
+    const name = step.section
+    if (!name) return null
+    const members = steps.filter((candidate) => candidate.section === name)
+    const at = members.indexOf(step)
+    return at === -1 ? null : { name, index: at + 1, total: members.length }
+  }, [step, steps])
 
   /* Live refs so long-lived listeners always see the freshest values. */
   const stepRef = useRef(step)
@@ -245,6 +269,7 @@ export function TourProvider({
     if (!running) {
       setRect(null)
       setMissing(false)
+      targetEl.current = null
       return
     }
     let rafId = 0
@@ -252,6 +277,9 @@ export function TourProvider({
     const tick = () => {
       const current = stepRef.current
       const el = findTarget(current)
+      /* The overlay keeps the spotlighted control inside the dialog's focus
+         order, so it needs the element itself, not just its rectangle. */
+      targetEl.current = el
       if (el) {
         const r = paddedRect(el)
         setRect((prev) => (sameRect(prev, r) ? prev : r))
@@ -266,7 +294,10 @@ export function TourProvider({
       rafId = requestFrame(tick)
     }
     rafId = requestFrame(tick)
-    return () => cancelFrame(rafId)
+    return () => {
+      cancelFrame(rafId)
+      targetEl.current = null
+    }
   }, [running, index])
 
   /* Bring the freshly highlighted control into view on each new step. */
@@ -408,8 +439,10 @@ export function TourProvider({
       skip: finish,
       exit,
       insets,
+      targetEl,
+      section,
     }
-  }, [running, step, index, steps.length, rect, missing, start, next, back, finish, exit])
+  }, [running, step, index, steps.length, rect, missing, start, next, back, finish, exit, section])
 
   return <TourContext.Provider value={value}>{children}</TourContext.Provider>
 }

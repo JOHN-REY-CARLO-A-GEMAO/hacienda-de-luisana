@@ -159,6 +159,7 @@ Android: see [ANDROID.md](./ANDROID.md). Without a configured Firebase app the s
 - [MESSAGING.md](./MESSAGING.md) — the Guest ↔ Admin conversation: data model, the 1,000-character limit, cursor pagination, retention, and live location
 - [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md); live location is [0013](./adr/0013-live-location-as-a-stream.md); reviews and the public testimonial are [0014](./adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md); the Admin's Security PIN is [0015](./adr/0015-a-sensitive-admin-action-needs-a-deliberate-second-input.md) and resetting a forgotten one is [0016](./adr/0016-a-forgotten-security-pin-is-reset-by-disposing-of-the-record.md), which deliberately contradicts 0015's never-deletable rule
 - [docs/REVIEWS.md](./REVIEWS.md) — the Review data model, eligibility, the edit window, moderation, and what the website publishes
+- [docs/SEO.md](./SEO.md) — how the single-page website is prerendered to static HTML, where each page's title and description live, and the crawler files (`robots.txt`, `sitemap.xml`, `llms.txt`) and structured data the build writes
 - [HDL_FLOW_CORRECTED.md](./HDL_FLOW_CORRECTED.md) — the system flow (thesis chart), per module
 - [FLUTTER_FLOW.md](./FLUTTER_FLOW.md) — the Admin app's flow and screen contracts
 - [FLUTTER_UI_UX.md](./FLUTTER_UI_UX.md) — the Admin app's design system

@@ -6,11 +6,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#243b26" />
 
-    <title>Hacienda de LuisAna | Private Stay & Camping in Luisiana, Laguna</title>
-    <meta name="description" content="Discover Hacienda de LuisAna in Luisiana, Laguna — a peaceful private getaway for families, small gatherings, camping, and countryside escapes." />
+    <!-- seo:start -->
+    <!--
+      This block is the homepage's fallback. `scripts/prerender.mjs` replaces
+      everything between the two markers with the head for the page it is
+      writing, built by `headFor()` in `src/lib/seo.ts` — title, description,
+      canonical, robots, Open Graph, Twitter and JSON-LD. The copy here is what
+      the Vite dev server serves, and what a build that has not been prerendered
+      would fall back to.
 
+      Do not add page-specific tags here: they belong in `src/config/routes.ts`
+      so the browser (`RouteMeta`), the prerender and the sitemap all agree.
+    -->
+    <title>Hacienda de LuisAna | Private Stay &amp; Camping in Luisiana, Laguna</title>
+    <meta name="description" content="Discover Hacienda de LuisAna in Luisiana, Laguna — a peaceful private getaway for families, small gatherings, camping, and countryside escapes." />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <link rel="canonical" href="https://haciendadeluisana.com/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Hacienda de LuisAna | Private Stay & Camping in Luisiana, Laguna" />
+    <meta property="og:site_name" content="Hacienda de LuisAna" />
+    <meta property="og:locale" content="en_PH" />
+    <meta property="og:url" content="https://haciendadeluisana.com/" />
+    <meta property="og:title" content="Hacienda de LuisAna | Private Stay &amp; Camping in Luisiana, Laguna" />
     <meta property="og:description" content="A peaceful private countryside escape in Luisiana, Laguna — made for family bonding, weekend escapes, small gatherings, and unforgettable countryside moments." />
     <!-- The Hacienda's own roundel, served from this site so a shared link always
          carries a picture. Absolute URL because crawlers do not resolve relative ones. -->
@@ -19,9 +35,14 @@
     <meta property="og:image:height" content="835" />
     <meta property="og:image:alt" content="Hacienda de LuisAna — Munting Mansyon ng Luisiana" />
     <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Hacienda de LuisAna | Private Stay &amp; Camping in Luisiana, Laguna" />
+    <meta name="twitter:description" content="A peaceful private countryside escape in Luisiana, Laguna — made for family bonding, weekend escapes, small gatherings, and unforgettable countryside moments." />
     <meta name="twitter:image" content="https://haciendadeluisana.com/images/brand/hdl-logo.jpg" />
     <meta name="twitter:image:alt" content="Hacienda de LuisAna — Munting Mansyon ng Luisiana" />
+    <!-- seo:end -->
 
+    <!-- Typefaces. Outside the seo block on purpose: they belong to every page,
+         so the prerender must not drop them when it swaps the head above. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -56,48 +77,16 @@
       })();
     </script>
 
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "LodgingBusiness",
-      "name": "Hacienda de LuisAna",
-      "description": "A peaceful private countryside escape in Luisiana, Laguna for families, small gatherings, camping, and reconnecting with nature.",
-      "url": "https://haciendadeluisana.com/",
-      "telephone": "+63 925 850 7707",
-      "email": "haciendadeluisiana@gmail.com",
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "Luisiana–Lucban Road, Brgy. San Isidro",
-        "addressLocality": "Luisiana",
-        "addressRegion": "Laguna",
-        "addressCountry": "PH"
-      },
-      "geo": {
-        "@type": "GeoCoordinates",
-        "latitude": 14.1754304,
-        "longitude": 121.519389
-      },
-      "checkinTime": "14:00",
-      "checkoutTime": "12:00",
-      "petsAllowed": true,
-      "sameAs": [
-        "https://www.facebook.com/haciendadeluisiana/",
-        "https://instagram.com/hacienda.de.luisiana",
-        "https://www.airbnb.com/rooms/1127261595245933990",
-        "https://www.agoda.com/hacienda-de-luisana/hotel/luisiana-ph.html"
-      ],
-      "amenityFeature": [
-        {"@type": "LocationFeatureSpecification", "name": "Free Wi-Fi", "value": true},
-        {"@type": "LocationFeatureSpecification", "name": "Free Parking", "value": true},
-        {"@type": "LocationFeatureSpecification", "name": "Air Conditioning", "value": true},
-        {"@type": "LocationFeatureSpecification", "name": "Kitchen", "value": true},
-        {"@type": "LocationFeatureSpecification", "name": "Grill / Ihawan", "value": true},
-        {"@type": "LocationFeatureSpecification", "name": "Campfire Area", "value": true}
-      ]
-    }
-    </script>
   </head>
   <body>
+    <noscript>
+      <!-- The page ships as real HTML (scripts/prerender.mjs). Reveal-on-scroll
+           is a JavaScript enhancement, so the content must not stay at
+           opacity 0 when that JavaScript never runs. -->
+      <style>
+        .reveal { opacity: 1 !important; translate: none !important; }
+      </style>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -135,6 +135,13 @@ export const ArrowRight = base(<><path d="M5 12h14" /><path d="M13 5l7 7-7 7" />
 export const ArrowDown = base(<><path d="M12 5v14" /><path d="M5 13l7 7 7-7" /></>)
 export const Menu = base(<><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>)
 export const Close = base(<><path d="M6 6l12 12" /><path d="M18 6L6 18" /></>)
+export const Help = base(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.6 9.2a2.6 2.6 0 1 1 3.6 2.4c-.8.35-1.2 1-1.2 1.9" />
+    <circle cx="12" cy="16.8" r=".9" fill="currentColor" />
+  </>
+)
 export const Chevron = base(<><path d="M6 9l6 6 6-6" /></>)
 export const Star = base(<><path d="M12 3l2.9 6 6.6.6-5 4.5 1.5 6.5L12 17l-6 3.6L7.5 14l-5-4.5L9 9z" fill="currentColor" /></>)
 export const Facebook = base(<><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v2H7v4h3v8h4v-8h3l1-4h-4V8z" /></>)

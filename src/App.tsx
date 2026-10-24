@@ -26,6 +26,7 @@ import { MessageScreen } from './components/ui'
 import { GuestAuthPage } from './pages/AuthPage'
 import { ProtectedRoute } from './components/Auth/ProtectedRoute'
 import { useReveal } from './lib/reveal'
+import { RouteMeta } from './components/RouteMeta'
 
 /**
  * Homepage anchors that now live on a page of their own.
@@ -74,11 +75,16 @@ function WebsiteLayout() {
         Skip to content
       </a>
       <Nav />
+      <RouteMeta />
       <ScrollHandler />
       <main id="main" className="flex-1">
         <Outlet />
       </main>
       <Footer />
+      {/* The way back into the tour sits at the foot of the document, after the
+          footer: on a phone it is a row in the flow (nothing can scroll under
+          it, and at the last scroll position it is clear of the fixed header),
+          and from `lg` up it is the floating pill in the margin. */}
       <Tutorial />
     </div>
   )
