@@ -60,6 +60,12 @@ export function Nav() {
     'G'
   ).toUpperCase()
   const unreadLabel = unreadCount > 9 ? '9+' : String(unreadCount)
+  // The bell in the bar and the drawer's own Notifications row are the same
+  // destination: `/account?tab=notifications`. Derived from the location the
+  // header already reads, rather than a second router hook.
+  const onNotifications =
+    location.pathname === '/account' &&
+    new URLSearchParams(location.search).get('tab') === 'notifications'
   const transparent = location.pathname === '/' && !scrolled
   // Once the visitor scrolls (or leaves the homepage) the bar detaches into a
   // floating pill; at the top of the homepage it sits flush over the hero.
@@ -159,51 +165,70 @@ export function Nav() {
             {/* The Guest's own page; the Admin has no page on this website */}
             {user ? (
               <>
-                {signedIn && role !== 'admin' && (
-                  <Link
-                    to="/account?tab=notifications"
-                    aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-                    title="Notifications"
-                    className={`relative w-8 h-8 rounded-full transition flex items-center justify-center shrink-0 ${FOCUS_RING} ${
-                      transparent
-                        ? 'text-cream-100 hover:text-white hover:bg-white/10'
-                        : 'text-forest-700 dark:text-cream-100 hover:text-forest-900 dark:hover:text-white hover:bg-forest-900/5 dark:hover:bg-cream-100/10'
-                    }`}
-                  >
-                    <Bell size={17} />
-                    {unreadCount > 0 && (
-                      <span
-                        className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-4 text-center"
-                        aria-hidden="true"
-                      >
-                        {unreadLabel}
-                      </span>
-                    )}
-                  </Link>
-                )}
-                {/* One account control, not two: the avatar *is* the link to the
-                    Guest's own page. The separate "My Bookings" pill this used to
-                    sit beside said the same thing a few pixels apart. */}
-                <Link
-                  to={homeForRole(role)}
-                  aria-label={role === 'admin' ? 'Admin account' : 'My bookings and profile'}
-                  className={`inline-flex h-8 items-center gap-2 rounded-full border px-2 xl:px-3 text-xs whitespace-nowrap transition shrink-0 ${FOCUS_RING} ${
+                {/* One bordered group for the Guest's own side of the site: the
+                    bell and their identity sit together because they are the
+                    same thing — what is waiting for them — and the bar's public
+                    destinations stay visually separate from it. */}
+                <div
+                  className={`flex items-center gap-0.5 rounded-full border py-0.5 pl-0.5 pr-1 transition-colors ${
                     transparent
-                      ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
-                      : 'border-forest-900/10 dark:border-cream-100/15 text-forest-700 dark:text-cream-200 hover:bg-forest-50 dark:hover:bg-forest-800'
+                      ? 'border-cream-200/25 bg-forest-950/25'
+                      : 'border-forest-900/10 bg-white/60 dark:border-cream-100/15 dark:bg-forest-900/50'
                   }`}
-                  title={user.email ?? undefined}
                 >
-                  <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-                      transparent ? 'bg-cream-50/20 text-cream-50' : 'bg-forest-800 text-cream-50 dark:bg-cream-100 dark:text-forest-950'
+                  {signedIn && role !== 'admin' && (
+                    <Link
+                      to="/account?tab=notifications"
+                      aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+                      title="Notifications"
+                      className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition ${FOCUS_RING} ${
+                        transparent
+                          ? 'text-cream-100 hover:bg-white/10 hover:text-white'
+                          : 'text-forest-700 hover:bg-forest-900/5 hover:text-forest-900 dark:text-cream-100 dark:hover:bg-cream-100/10 dark:hover:text-white'
+                      }`}
+                    >
+                      <Bell size={16} />
+                      {unreadCount > 0 && (
+                        <span
+                          className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-center text-[11px] font-bold leading-none text-white"
+                          aria-hidden="true"
+                        >
+                          {unreadLabel}
+                        </span>
+                      )}
+                    </Link>
+                  )}
+                  {/* One account control, not two: the avatar *is* the link to the
+                      Guest's own page. The separate "My Bookings" pill this used to
+                      sit beside said the same thing a few pixels apart. */}
+                  <Link
+                    to={homeForRole(role)}
+                    aria-label={role === 'admin' ? 'Admin account' : 'My bookings and profile'}
+                    className={`inline-flex h-7 shrink-0 items-center gap-2 rounded-full px-1 pr-2.5 text-xs whitespace-nowrap transition ${FOCUS_RING} ${
+                      transparent
+                        ? 'text-cream-100 hover:bg-cream-50/10'
+                        : 'text-forest-700 hover:bg-forest-900/5 dark:text-cream-200 dark:hover:bg-cream-100/10'
                     }`}
-                    aria-hidden="true"
+                    title={user.email ?? undefined}
                   >
-                    {initial}
-                  </span>
-                  <span className="hidden xl:inline">{role === 'admin' ? 'Admin account' : 'My bookings'}</span>
-                </Link>
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                        transparent ? 'bg-cream-50/20 text-cream-50' : 'bg-forest-800 text-cream-50 dark:bg-cream-100 dark:text-forest-950'
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {initial}
+                    </span>
+                    <span
+                      className="hidden max-w-[7.5rem] truncate xl:inline"
+                      title={profile?.first_name?.trim() || undefined}
+                    >
+                      {role === 'admin'
+                        ? 'Admin account'
+                        : profile?.first_name?.trim() || 'My bookings'}
+                    </span>
+                  </Link>
+                </div>
                 <button
                   onClick={() => void logout()}
                   className={`text-xs whitespace-nowrap shrink-0 ${FOCUS_RING} ${
@@ -326,27 +351,92 @@ export function Nav() {
             })}
           </div>
 
-          <div className="mt-4 pt-2 space-y-2">
-            {canOpenPage(role, '/account') && (
-              <Link to="/account" onClick={() => setOpen(false)} className="btn-ghost w-full btn-sm">
-                My bookings &amp; profile
-              </Link>
-            )}
-            {signedIn && canOpenPage(role, '/account') && (
-              <Link
-                to="/account?tab=notifications"
-                onClick={() => setOpen(false)}
-                className="btn-ghost w-full btn-sm"
-              >
-                Notifications{unreadCount > 0 ? ` (${unreadCount} new)` : ''}
-              </Link>
-            )}
-            {canOpenPage(role, '/messages') && (
-              <Link to="/messages" onClick={() => setOpen(false)} className="btn-ghost w-full btn-sm">
-                Messages
-              </Link>
-            )}
-          </div>
+          {/* The Guest's own side of the site. When they are signed in it leads
+              with who they are, so the drawer answers "am I signed in as me"
+              without making them open the account page to find out. */}
+          {user && canOpenPage(role, '/account') ? (
+            <div className="mt-4 rounded-[14px] border border-forest-900/10 bg-white/70 p-3 dark:border-cream-100/12 dark:bg-forest-900/50">
+              <div className="flex items-center gap-3 px-1 pb-3">
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-forest-800 text-sm font-semibold text-cream-50 dark:bg-cream-100 dark:text-forest-950"
+                  aria-hidden="true"
+                >
+                  {initial}
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className="block truncate text-sm font-medium text-forest-900 dark:text-cream-50"
+                    title={profile?.display_name || profile?.first_name || undefined}
+                  >
+                    {profile?.display_name || profile?.first_name || 'Guest'}
+                  </span>
+                  <span
+                    className="block truncate text-[11px] text-forest-600 dark:text-sage-400"
+                    title={user.email ?? undefined}
+                  >
+                    {user.email}
+                  </span>
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Link
+                  to="/account"
+                  onClick={() => setOpen(false)}
+                  className={`flex items-center justify-between gap-2 rounded-[10px] px-3 py-2.5 text-sm transition-colors ${FOCUS_RING} ${
+                    location.pathname === '/account'
+                      ? 'bg-forest-800 text-cream-50 dark:bg-brass-400 dark:text-forest-950'
+                      : 'text-forest-800 hover:bg-cream-100 dark:text-cream-100 dark:hover:bg-forest-800/70'
+                  }`}
+                >
+                  My bookings &amp; profile
+                </Link>
+                {signedIn && (
+                  <Link
+                    to="/account?tab=notifications"
+                    onClick={() => setOpen(false)}
+                    className={`flex items-center justify-between gap-2 rounded-[10px] px-3 py-2.5 text-sm transition-colors ${FOCUS_RING} ${
+                      onNotifications
+                        ? 'bg-forest-800 text-cream-50 dark:bg-brass-400 dark:text-forest-950'
+                        : 'text-forest-800 hover:bg-cream-100 dark:text-cream-100 dark:hover:bg-forest-800/70'
+                    }`}
+                  >
+                    Notifications
+                    {unreadCount > 0 && (
+                      <span className="guest-num rounded-full bg-red-600 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
+                        {unreadLabel}
+                      </span>
+                    )}
+                  </Link>
+                )}
+                {canOpenPage(role, '/messages') && (
+                  <Link
+                    to="/messages"
+                    onClick={() => setOpen(false)}
+                    className={`rounded-[10px] px-3 py-2.5 text-sm transition-colors ${FOCUS_RING} ${
+                      location.pathname === '/messages'
+                        ? 'bg-forest-800 text-cream-50 dark:bg-brass-400 dark:text-forest-950'
+                        : 'text-forest-800 hover:bg-cream-100 dark:text-cream-100 dark:hover:bg-forest-800/70'
+                    }`}
+                  >
+                    Messages
+                  </Link>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 pt-2 space-y-2">
+              {canOpenPage(role, '/account') && (
+                <Link to="/account" onClick={() => setOpen(false)} className="btn-ghost w-full btn-sm">
+                  My bookings &amp; profile
+                </Link>
+              )}
+              {canOpenPage(role, '/messages') && (
+                <Link to="/messages" onClick={() => setOpen(false)} className="btn-ghost w-full btn-sm">
+                  Messages
+                </Link>
+              )}
+            </div>
+          )}
 
           {user ? (
             <button

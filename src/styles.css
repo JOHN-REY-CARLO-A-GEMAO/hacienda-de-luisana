@@ -329,3 +329,234 @@ body[data-scroll-locked='true'] { overflow: hidden; }
   .reveal { translate: 0 0; transition: opacity 400ms ease; }
   .tilt-glare { display: none; }
 }
+
+/* ------------------------------------------------------------------ */
+/* Signed-in (Guest) surfaces                                         */
+/*                                                                    */
+/* Everything below this line is ADDITIVE: no rule above it is edited, */
+/* so every public page renders exactly as it did before. These tokens  */
+/* belong to the Guest's own pages — /account, /messages, the booking   */
+/* status reading and the booking components behind them.               */
+/*                                                                    */
+/* The idea they carry: a signed-in page is a document about a real     */
+/* stay, not a dashboard. So it is ruled and quiet, with one bold        */
+/* element (the masthead photograph) rather than a grid of soft cards.  */
+/*                                                                    */
+/* Radii are deliberately NOT the marketing 28px here. A reservation    */
+/* reads as a document: 14px on a panel, 10px on an inset block. That   */
+/* difference is what keeps the signed-in pages from looking like the   */
+/* marketing site pasted into an admin shell — and it is why a signed-in */
+/* surface never competes with a marketing card.                        */
+/* ------------------------------------------------------------------ */
+
+/* The signed-in page ground: cream, with a faint forest wash that falls
+   away. It separates a Guest page from a public one without changing a
+   single colour the public pages use. */
+.guest-ground {
+  background-color: #FAF7F2;
+  background-image: linear-gradient(to bottom, rgba(36, 61, 46, 0.055), rgba(36, 61, 46, 0) 420px);
+}
+.dark .guest-ground {
+  background-color: #0D1711;
+  background-image: linear-gradient(to bottom, rgba(166, 178, 155, 0.07), rgba(166, 178, 155, 0) 420px);
+}
+
+/* The document surface. A hairline, a whisper of shadow, and a 14px corner. */
+.guest-panel {
+  @apply bg-white dark:bg-forest-900/80 rounded-[14px] border border-forest-900/10 dark:border-cream-100/12 shadow-[0_1px_2px_rgba(21,36,27,0.04),0_10px_28px_-22px_rgba(21,36,27,0.28)];
+}
+/* A recessed block inside a panel — the ledger, a summary, a nested form. */
+.guest-inset {
+  @apply rounded-[10px] border border-forest-900/8 dark:border-cream-100/10 bg-cream-100/70 dark:bg-forest-950/40;
+}
+/* A single hairline rule. Used instead of a border when the rule is doing
+   structural work between two facts rather than boxing something in. */
+.guest-rule { @apply border-t border-forest-900/10 dark:border-cream-100/10; }
+
+/* ------------------------------------------------------------------ */
+/* The masthead — the one bold element on a signed-in page            */
+/* ------------------------------------------------------------------ */
+
+/* Squared at the top so it reads as a photograph held under the fixed bar,
+   soft at the foot where it meets the page. */
+.guest-masthead {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 0 0 20px 20px;
+  background-color: #15241B;
+  color: #F5F1E8;
+}
+.guest-masthead-media {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+}
+.guest-masthead-media > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Two overlays, both for legibility rather than for effect: one lifts the
+   type off the brightest part of the photograph, one holds the foot. */
+.guest-masthead-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(100deg, rgba(11, 26, 18, 0.93) 0%, rgba(11, 26, 18, 0.72) 42%, rgba(11, 26, 18, 0.3) 78%),
+    linear-gradient(to top, rgba(11, 26, 18, 0.85), rgba(11, 26, 18, 0) 62%);
+}
+/* A guest page with no photograph to show still gets the same band, in the
+   Hacienda's own forest, so the page never changes shape when it is empty. */
+.guest-masthead-plain {
+  background-image: linear-gradient(115deg, #243D2E 0%, #1B3024 52%, #15241B 100%);
+}
+/* The brass hairline under the masthead's own eyebrow: one accent, used once. */
+.guest-masthead-rule {
+  @apply h-px w-10 bg-brass-400/70;
+}
+
+/* ------------------------------------------------------------------ */
+/* Ledger — a fact is a label over a value, on a hairline             */
+/* ------------------------------------------------------------------ */
+
+/* Sentence case on purpose. The tracked ALL-CAPS `.eyebrow` belongs to the
+   page; inside the data it made every row shout at the same volume. */
+.guest-label {
+  @apply block text-[11px] font-medium leading-tight text-forest-600 dark:text-sage-400;
+}
+.guest-value {
+  @apply mt-1 block text-sm font-medium leading-snug text-forest-900 dark:text-cream-50;
+}
+/* Numerals that matter — dates, pesos, a countdown — are set in the display
+   face with lining figures, so columns of them line up and read as amounts
+   rather than as prose. */
+.guest-num {
+  @apply font-serif tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+/* The grid a booking's facts sit in: hairlines between rows, never boxes. */
+.guest-ledger {
+  @apply grid gap-x-6 gap-y-0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Activity spine — the log is a sequence, so it gets a spine         */
+/* ------------------------------------------------------------------ */
+
+.guest-spine { @apply relative pl-6; }
+.guest-spine::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: linear-gradient(to bottom, #B89A64 0%, rgba(36, 61, 46, 0.18) 34%, rgba(36, 61, 46, 0.12) 100%);
+}
+.dark .guest-spine::before {
+  background: linear-gradient(to bottom, #B89A64 0%, rgba(245, 241, 232, 0.2) 34%, rgba(245, 241, 232, 0.12) 100%);
+}
+.guest-spine-item { @apply relative pb-4 last:pb-0; }
+.guest-spine-node {
+  @apply absolute -left-6 top-[6px] flex h-[9px] w-[9px] items-center justify-center rounded-full border bg-cream-50 dark:bg-forest-950;
+  border-color: rgba(36, 61, 46, 0.28);
+}
+.dark .guest-spine-node { border-color: rgba(245, 241, 232, 0.28); }
+/* The newest entry is the one a Guest is looking for, so it is the one the
+   brass marks. */
+.guest-spine-node[data-current='true'] {
+  border-color: #B89A64;
+  background: #B89A64;
+  box-shadow: 0 0 0 3px rgba(184, 154, 100, 0.18);
+}
+
+/* ------------------------------------------------------------------ */
+/* Status spine — where a booking is in its life                      */
+/* ------------------------------------------------------------------ */
+
+.guest-track { @apply flex items-center gap-0; }
+.guest-track-step {
+  @apply flex min-w-0 flex-1 flex-col gap-1.5;
+}
+.guest-track-bar {
+  @apply h-[3px] w-full rounded-full;
+  background: rgba(36, 61, 46, 0.12);
+}
+.dark .guest-track-bar { background: rgba(245, 241, 232, 0.14); }
+.guest-track-bar[data-done='true'] { background: #243D2E; }
+.dark .guest-track-bar[data-done='true'] { background: #B89A64; }
+/* The step the booking is sitting on: brass, and slightly taller so the eye
+   finds it without a label having to say "here". */
+.guest-track-bar[data-now='true'] {
+  background: #B89A64;
+  height: 5px;
+  margin-top: -1px;
+}
+.guest-track-name {
+  @apply text-[11px] leading-tight text-forest-600 dark:text-sage-400;
+}
+.guest-track-step[data-now='true'] .guest-track-name {
+  @apply font-semibold text-forest-900 dark:text-cream-50;
+}
+.guest-track-step[data-done='true'] .guest-track-name {
+  @apply text-forest-800 dark:text-cream-100/85;
+}
+
+/* ------------------------------------------------------------------ */
+/* Rail, toolbar, and the folio's photograph strip                    */
+/* ------------------------------------------------------------------ */
+
+.guest-rail { @apply flex flex-col gap-3 lg:sticky lg:top-24 lg:self-start; }
+
+/* The folio's photograph strip: the actual accommodation, so a booking is
+   never an abstract row. Clipped to the panel's left edge. */
+.guest-photo {
+  @apply relative overflow-hidden bg-forest-900;
+}
+.guest-photo > img {
+  @apply h-full w-full object-cover;
+}
+/* The band a booking's actions sit in. It is the foot of the document, so it
+   is tinted — not a third card floating under the other two. */
+.guest-actionbar {
+  @apply border-t border-forest-900/8 bg-cream-100/55 px-5 py-4 dark:border-cream-100/10 dark:bg-forest-950/30;
+}
+
+/* ------------------------------------------------------------------ */
+/* Chat                                                               */
+/* ------------------------------------------------------------------ */
+
+/* The thread gets a ground of its own so a wall of bubbles has somewhere to
+   sit, and the Guest's own messages carry the forest rather than a tint. */
+.guest-thread {
+  @apply rounded-[14px] border border-forest-900/8 bg-white dark:border-cream-100/10 dark:bg-forest-900/60;
+  background-image: radial-gradient(rgba(36, 61, 46, 0.05) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.dark .guest-thread {
+  background-image: radial-gradient(rgba(245, 241, 232, 0.06) 1px, transparent 1px);
+}
+.guest-bubble-mine {
+  @apply rounded-[14px] rounded-br-[4px] bg-forest-700 px-4 py-2.5 text-sm leading-relaxed text-cream-50 dark:bg-brass-400 dark:text-forest-950;
+}
+.guest-bubble-theirs {
+  @apply rounded-[14px] rounded-bl-[4px] border border-forest-900/8 bg-white px-4 py-2.5 text-sm leading-relaxed text-forest-900 dark:border-cream-100/12 dark:bg-forest-900 dark:text-cream-50;
+}
+
+/* ------------------------------------------------------------------ */
+/* One entrance, on the masthead only, and only when motion is welcome */
+/* ------------------------------------------------------------------ */
+
+.guest-rise {
+  animation: guestRise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes guestRise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guest-rise { animation: none; }
+  .guest-masthead-media > img { animation: none !important; transform: none !important; }
+}

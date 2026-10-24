@@ -6,11 +6,16 @@ export type TabItem<K extends string> = {
 }
 
 /**
- * The tab strip for a page with two or three views of the same subject.
+ * The switch between the two or three views a page has of the same subject.
  *
- * Implemented as a real `tablist`: arrow keys move between tabs, the selected
- * tab is announced, and the underline — rather than a filled pill — keeps the
- * page title the strongest element on the screen.
+ * A real `tablist`: arrow keys move between tabs, the selected tab is
+ * announced, and `aria-selected` — not colour alone — carries the state.
+ *
+ * It is a segmented control rather than an underlined strip. The underline read
+ * as a page-level divider under the header, which is a claim this control does
+ * not make: it switches the content below it, and it sits inside a ruled
+ * document. One rule runs along the bottom of the group, so the switch belongs
+ * to the panel it controls instead of splitting the page in two.
  */
 export function Tabs<K extends string>({
   items,
@@ -36,7 +41,7 @@ export function Tabs<K extends string>({
     <div
       role="tablist"
       aria-label={label}
-      className={`flex gap-1 border-b border-forest-900/10 ${className}`}
+      className={`no-scrollbar -mx-1 inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-forest-900/10 bg-cream-100/70 p-1 dark:border-cream-100/12 dark:bg-forest-900/60 ${className}`}
       onKeyDown={(event) => {
         if (event.key === 'ArrowRight') {
           event.preventDefault()
@@ -57,20 +62,22 @@ export function Tabs<K extends string>({
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(item.key)}
-            className={`relative px-4 py-3 text-sm font-medium transition-colors ${
+            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 focus-visible:ring-offset-2 focus-visible:ring-offset-cream-50 dark:focus-visible:ring-brass-400 dark:focus-visible:ring-offset-forest-950 ${
               selected
-                ? 'text-forest-900'
-                : 'text-forest-700/70 hover:text-forest-900'
+                ? 'bg-forest-800 text-cream-50 shadow-[0_1px_2px_rgba(21,36,27,0.18)] dark:bg-brass-400 dark:text-forest-950'
+                : 'text-forest-700 hover:bg-white/70 hover:text-forest-900 dark:text-cream-100/80 dark:hover:bg-forest-800/60 dark:hover:text-cream-50'
             }`}
           >
             {item.label}
-            {item.meta && <span className="ml-1.5 text-xs text-forest-600">{item.meta}</span>}
-            <span
-              aria-hidden="true"
-              className={`absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-forest-800 transition-transform duration-300 origin-left ${
-                selected ? 'scale-x-100' : 'scale-x-0'
-              }`}
-            />
+            {item.meta && (
+              <span
+                className={`guest-num text-xs ${
+                  selected ? 'text-cream-100/80 dark:text-forest-950/70' : 'text-forest-600 dark:text-sage-400'
+                }`}
+              >
+                {item.meta}
+              </span>
+            )}
           </button>
         )
       })}

@@ -1,9 +1,17 @@
 import type { ComponentType, ReactNode } from 'react'
 
 /**
- * A single metric. The Guest account's three counters and the Admin app's
- * dashboard tiles say the same kind of thing, so they look the same kind of
- * thing: a quiet label, one number, an icon that carries the tone.
+ * One count on a Guest's own page.
+ *
+ * It used to be a tile: a boxed card with a coloured disc beside the number,
+ * three of them in a row, identical but for the figure. Three identical tiles
+ * say "dashboard" before they say anything about a stay, and the discs competed
+ * with the status colours that do carry meaning.
+ *
+ * So a count is now drawn the same way as every other fact on the page — a
+ * label, a number in the display face, a hairline under it — and only the
+ * numeral takes a colour, and only for the two counts that make a claim: a
+ * request still waiting, and a stay coming up.
  */
 export function StatCard({
   label,
@@ -19,23 +27,21 @@ export function StatCard({
   hint?: string
 }) {
   const toneClass = {
-    neutral: 'bg-cream-100 text-forest-700',
-    pending: 'bg-amber-100 text-amber-700',
-    success: 'bg-emerald-100 text-emerald-700',
+    neutral: 'text-forest-900 dark:text-cream-50',
+    pending: 'text-amber-700 dark:text-amber-300',
+    success: 'text-emerald-800 dark:text-emerald-300',
   }[tone]
 
   return (
-    <div className="card-tight flex items-center justify-between gap-4 p-5">
+    <div className="flex items-start justify-between gap-4 border-t border-forest-900/8 py-2.5 first:border-t-0 dark:border-cream-100/10">
       <div className="min-w-0">
-        <div className="data-label">{label}</div>
-        <div className="mt-1 font-serif text-3xl leading-none text-forest-900">{value}</div>
-        {hint && <div className="mt-1.5 text-[11px] text-forest-600">{hint}</div>}
+        <div className="guest-label flex items-center gap-1.5">
+          {Icon && <Icon size={13} className="shrink-0 text-forest-500 dark:text-sage-400" aria-hidden="true" />}
+          {label}
+        </div>
+        {hint && <div className="mt-0.5 text-[11px] leading-snug text-forest-600/85 dark:text-sage-400/85">{hint}</div>}
       </div>
-      {Icon && (
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${toneClass}`} aria-hidden="true">
-          <Icon size={20} />
-        </span>
-      )}
+      <div className={`guest-num shrink-0 text-2xl leading-none ${toneClass}`}>{value}</div>
     </div>
   )
 }

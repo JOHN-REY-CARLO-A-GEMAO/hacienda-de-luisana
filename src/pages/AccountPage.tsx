@@ -4,7 +4,6 @@ import { ROLE_LABELS } from '../lib/auth'
 import { effectiveStatus } from '../lib/booking'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { formatStayDuration, type Booking } from '../lib/storage'
-import { ACCOMMODATIONS } from '../config/site'
 import { BookingHistory } from '../components/Booking/BookingHistory'
 import { BookingInvoice } from '../components/Booking/BookingInvoice'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
@@ -19,8 +18,20 @@ import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
 import { DisputeForm } from '../components/DisputeForm'
 import { isReviewableStatus } from '../lib/reviewPolicy'
-import { Calendar, Sparkle, Bell, Clock, CreditCard, Home, LogOut } from '../lib/icons'
-import { Alert, Card, Container, Drawer, EmptyState, Field, Input, Modal, Page, PageHeader, Select, SkeletonLines, StatCard, StatusBadge, StatusIconTile, Tabs } from '../components/ui'
+import { Calendar, Sparkle, Bell, Clock, CreditCard, Home, LogOut, User } from '../lib/icons'
+import { Alert, Container, Drawer, EmptyState, Field, Input, Modal, Page, Select, SkeletonLines, StatCard, StatusBadge, Tabs } from '../components/ui'
+import {
+  AccountRail,
+  BookingFolio,
+  HelpPanel,
+  RailFacts,
+  RailPanel,
+  StayMasthead,
+  accommodationName,
+  bookingReference,
+  daysUntil,
+  peso,
+} from '../components/Account'
 import { useNotifications } from '../hooks/useNotifications'
 import { notifyAdmin } from '../lib/notifications'
 import {
@@ -64,19 +75,6 @@ function cancellationTerms(booking: Booking): string {
     `• If it is not rescheduled within ${RESCHEDULE_WINDOW_MONTHS} months, the payment is forfeited.`,
     'If you cancel now, you will not get a refund and the payment will not be moved to another date.',
   ].join('\n')
-}
-
-function accommodationName(id: string) {
-  return ACCOMMODATIONS.find((accommodation) => accommodation.id === id)?.name ?? id
-}
-
-function daysUntil(dateStr: string): number {
-  const checkIn = new Date(dateStr)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  checkIn.setHours(0, 0, 0, 0)
-  const diff = checkIn.getTime() - today.getTime()
-  return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
 
 /**
@@ -241,8 +239,8 @@ export function AccountPage() {
               tone: 'good',
               text:
                 how === 'cancel'
-                  ? `Booking ${reference(booking)} was cancelled. Those dates are free again.`
-                  : `Request ${reference(booking)} was withdrawn. Those dates are free again.`,
+                  ? `Booking ${bookingReference(booking)} was cancelled. Those dates are free again.`
+                  : `Request ${bookingReference(booking)} was withdrawn. Those dates are free again.`,
             }
           : { tone: 'bad', text: result.reason },
       )
@@ -251,7 +249,7 @@ export function AccountPage() {
           bookingId: booking.id,
           type: 'cancellation_by_guest',
           title: how === 'cancel' ? 'Guest cancelled a booking' : 'Guest withdrew a request',
-          message: `${booking.guest_name} ${how === 'cancel' ? 'cancelled' : 'withdrew'} ${reference(booking)} (${booking.check_in} → ${booking.check_out}).`,
+          message: `${booking.guest_name} ${how === 'cancel' ? 'cancelled' : 'withdrew'} ${bookingReference(booking)} (${booking.check_in} → ${booking.check_out}).`,
         })
       }
     } catch (error) {
@@ -306,412 +304,414 @@ export function AccountPage() {
     return futureBookings[0] || null
   }, [bookings])
 
+  const greeting = profile?.display_name || user?.displayName || 'Your stay at the Hacienda'
+
   return (
-    <Page>
-      <Container width="content">
-        <PageHeader
-          eyebrow={`Your stay · ${role ? ROLE_LABELS[role] : 'Guest'}`}
-          title={profile?.display_name || user?.displayName || 'Guest account'}
-          lead={
-            <p>
-              {user?.email}
-              {profile?.created_at && (
-                <>
-                  {' '}
-                  · Member since{' '}
-                  {new Date(profile.created_at).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}
-                </>
-              )}
-            </p>
-          }
+    <Page className="guest-ground">
+      {/* The one loud element on the page: the stay that is coming, on the
+          Hacienda's own photograph. Everything below it is a quiet document. */}
+      <Container width="wide">
+        <StayMasthead
+          booking={nextStay}
+          greeting={greeting}
+          roleLabel={role ? ROLE_LABELS[role] : 'Guest'}
+          hasBookings={bookings.length > 0}
+          email={user?.email}
+          memberSince={profile?.created_at}
           actions={
             <>
               <button
                 type="button"
                 onClick={() => setNotificationSidebarOpen(true)}
-                className="btn-quiet"
+                className="btn-secondary btn-sm"
               >
-                <Bell size={16} />
+                <Bell size={15} aria-hidden="true" />
                 Notifications
                 {unreadCount > 0 && (
-                  <span className="ml-0.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                  <span className="guest-num rounded-full bg-cream-50/25 px-1.5 py-0.5 text-[11px] font-bold leading-none text-cream-50">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
               </button>
-              <Link to="/book" className="btn-primary">
+              <Link to="/book" className="btn-on-dark btn-sm">
                 Book a stay
               </Link>
             </>
           }
         />
+      </Container>
 
-        {/* The three numbers a Guest actually acts on. Everything else is the list. */}
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          <StatCard label="Total bookings" value={stats.total} icon={Calendar} />
-          <StatCard label="Pending requests" value={stats.pending} icon={Clock} tone="pending" />
-          <StatCard label="Upcoming stays" value={stats.upcoming} icon={Home} tone="success" />
-        </div>
-
-        {nextStay && (
-          <section className="mt-6 overflow-hidden rounded-[28px] border border-forest-900/20 bg-forest-900 text-cream-100 shadow-soft">
-            <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60">Your next stay</div>
-                <h2 className="mt-1 font-serif text-2xl text-cream-50">
-                  {accommodationName(nextStay.accommodation)}
-                </h2>
-                <p className="mt-1 text-sm text-cream-100/80">
-                  {nextStay.check_in} → {nextStay.check_out} · {formatStayDuration(nextStay.check_in, nextStay.check_out)}
-                  {daysUntil(nextStay.check_in) > 0 && (
-                    <span className="ml-2 text-cream-100/60">
-                      ({daysUntil(nextStay.check_in)} day{daysUntil(nextStay.check_in) === 1 ? '' : 's'} away)
-                    </span>
-                  )}
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <StatusBadge status={effectiveStatus(nextStay)} />
-                  {typeof nextStay.amount_claimed === 'number' && (
-                    <span className="text-xs text-cream-100/70">
-                      Downpayment ₱{nextStay.amount_claimed.toLocaleString('en-PH')}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setViewingInvoice(nextStay)}
-                className="btn btn-sm shrink-0 border border-cream-100/25 bg-white/10 text-cream-100 hover:bg-white/20"
-              >
-                View invoice
-              </button>
-            </div>
-          </section>
-        )}
-
+      <Container width="wide" className="mt-8">
         <Tabs
-          className="mt-10"
           label="Account sections"
           value={activeTab}
           onChange={setActiveTab}
           items={[
-            { key: 'bookings', label: 'My bookings', meta: `(${bookings.length})` },
+            { key: 'bookings', label: 'My bookings', meta: String(bookings.length) },
             { key: 'profile', label: 'My profile' },
           ]}
         />
 
-        {activeTab === 'profile' && (
-          <Card padding="lg" className="mt-6 max-w-2xl">
-            <h2 className="h3">Personal information</h2>
-            <p className="mt-1 text-sm text-forest-700/80">
-              Keep your contact details current so the Admin can reach you about your stay.
-            </p>
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          {/* ---------------------------------------------------------- */}
+          {/* Bookings                                                    */}
+          {/* ---------------------------------------------------------- */}
+          {activeTab === 'bookings' ? (
+            <div className="min-w-0">
+              {notice && (
+                <Alert tone={notice.tone === 'good' ? 'success' : 'danger'} className="mb-5">
+                  {notice.text}
+                </Alert>
+              )}
 
-            {profileMsg && (
-              <Alert tone={profileMsg.tone === 'good' ? 'success' : 'danger'} className="mt-4">
-                {profileMsg.text}
-              </Alert>
-            )}
+              {loading && (
+                <div className="guest-panel p-6" role="status" aria-live="polite">
+                  <span className="sr-only">Reading your bookings…</span>
+                  <SkeletonLines rows={4} />
+                </div>
+              )}
 
-            <form onSubmit={handleSaveProfile} className="mt-6 space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="First name" required>
-                  <Input
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    required
-                    placeholder="First name"
-                    autoComplete="given-name"
-                  />
-                </Field>
-                <Field label="Last name" required>
-                  <Input
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    required
-                    placeholder="Last name"
-                    autoComplete="family-name"
-                  />
-                </Field>
-              </div>
-
-              <Field label="Middle name" hint="Optional — an initial is enough.">
-                <Input
-                  value={middleName}
-                  onChange={(e) => setMiddleName(e.target.value)}
-                  placeholder="Middle name"
-                  autoComplete="additional-name"
-                />
-              </Field>
-
-              <Field label="Mobile phone number" required hint="Philippine mobile format: 09XX XXX XXXX">
-                <Input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                  placeholder="09171234567"
-                  inputMode="tel"
-                  autoComplete="tel"
-                />
-              </Field>
-
-              <Field label="Date of birth" hint="Optional.">
-                <Input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
-              </Field>
-
-              <Field label="Email address" hint="The sign-in address cannot be changed here.">
-                <Input value={user?.email ?? ''} disabled />
-              </Field>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                <button type="submit" disabled={profileSaving} className="btn-primary">
-                  {profileSaving ? 'Saving…' : 'Save changes'}
-                </button>
-                <button type="button" onClick={() => void logout()} className="btn-ghost">
-                  <LogOut size={16} />
-                  Sign out
-                </button>
-              </div>
-            </form>
-          </Card>
-        )}
-
-        {activeTab === 'bookings' && (
-          <div className="mt-6">
-            {notice && (
-              <Alert tone={notice.tone === 'good' ? 'success' : 'danger'} className="mb-5">
-                {notice.text}
-              </Alert>
-            )}
-
-            {loading && (
-              <div className="card mt-6 p-6" role="status" aria-live="polite">
-                <span className="sr-only">Reading your bookings…</span>
-                <SkeletonLines rows={4} />
-              </div>
-            )}
-
-            {!loading && bookings.length === 0 && (
-              <EmptyState
-                icon={Home}
-                title="No bookings on this account yet"
-                body="A request only shows up here if it was made while you were signed in with this account. Requests made before you signed up stay with the browser that made them — ask the Admin and they will find it by name."
-                actions={
-                  <>
-                    <Link to="/book" className="btn-primary">
-                      Book your first stay
-                    </Link>
-                    <Link to="/stay" className="btn-ghost">
-                      Browse accommodations
-                    </Link>
-                  </>
-                }
-              />
-            )}
-
-            {!loading && bookings.length > 0 && (
-              <div className="grid gap-3 sm:grid-cols-3" data-tour="account-tools">
-                <Input
-                  className="text-sm"
-                  placeholder="Search bookings"
-                  aria-label="Search bookings"
-                  value={q}
-                  maxLength={80}
-                  onChange={(e) => {
-                    setQ(e.target.value)
-                    setPage(1)
-                  }}
-                />
-                <Select
-                  className="text-sm"
-                  aria-label="Filter by status"
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value)
-                    setPage(1)
-                  }}
-                >
-                  <option value="all">All statuses</option>
-                  {['Pending', 'Payment Pending', 'Reserved', 'Completed', 'Cancelled'].map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  className="text-sm"
-                  aria-label="Sort bookings"
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
-                >
-                  <option value="created_at">Newest first</option>
-                  <option value="check_in">By check-in date</option>
-                  <option value="accommodation">By accommodation</option>
-                </Select>
-              </div>
-            )}
-
-            <div className="mt-6 space-y-5">
-              {!loading && bookings.length > 0 && filtered.length === 0 && (
+              {!loading && bookings.length === 0 && (
                 <EmptyState
-                  title="No bookings match those filters"
-                  body={`${bookings.length} booking${bookings.length === 1 ? '' : 's'} on this account, none matching${
-                    q.trim() ? ` “${q.trim()}”` : ' the selected status'
-                  }. Widen the search or choose All statuses.`}
+                  icon={Home}
+                  title="No bookings on this account yet"
+                  body="A request only shows up here if it was made while you were signed in with this account. Requests made before you signed up stay with the browser that made them — ask the Admin and they will find it by name."
                   actions={
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQ('')
-                        setStatusFilter('all')
-                        setPage(1)
-                      }}
-                      className="btn-ghost"
-                    >
-                      Clear search and filters
-                    </button>
+                    <>
+                      <Link to="/book" className="btn-primary">
+                        Book your first stay
+                      </Link>
+                      <Link to="/stay" className="btn-ghost">
+                        Browse accommodations
+                      </Link>
+                    </>
                   }
                 />
               )}
 
-              {paged.items.map((booking) => {
-                const status = effectiveStatus(booking)
-                const days = daysUntil(booking.check_in)
-                return (
-                  <article key={booking.id} className="card overflow-hidden" data-tour="booking-card">
-                    <div className="flex items-start justify-between gap-4 border-b border-forest-900/5 px-6 py-4">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <StatusIconTile status={status} />
-                        <div className="min-w-0">
-                          <div className="data-label">Request {reference(booking)}</div>
-                          <h2 className="mt-0.5 truncate font-serif text-xl text-forest-900">
-                            {accommodationName(booking.accommodation)}
-                          </h2>
-                        </div>
-                      </div>
-                      <StatusBadge status={status} size="md" />
-                    </div>
+              {!loading && bookings.length > 0 && (
+                <div className="guest-panel flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center" data-tour="account-tools">
+                  <Input
+                    className="text-sm sm:flex-1"
+                    placeholder="Search bookings"
+                    aria-label="Search bookings"
+                    value={q}
+                    maxLength={80}
+                    onChange={(e) => {
+                      setQ(e.target.value)
+                      setPage(1)
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <Select
+                      className="text-sm"
+                      aria-label="Filter by status"
+                      value={statusFilter}
+                      onChange={(e) => {
+                        setStatusFilter(e.target.value)
+                        setPage(1)
+                      }}
+                    >
+                      <option value="all">All statuses</option>
+                      {['Pending', 'Payment Pending', 'Reserved', 'Completed', 'Cancelled'].map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      className="text-sm"
+                      aria-label="Sort bookings"
+                      value={sortKey}
+                      onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
+                    >
+                      <option value="created_at">Newest first</option>
+                      <option value="check_in">By check-in date</option>
+                      <option value="accommodation">By accommodation</option>
+                    </Select>
+                  </div>
+                </div>
+              )}
 
-                    <div className="p-6">
-                      <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-                        {[
-                          ['Check-in', booking.check_in],
-                          ['Check-out', booking.check_out],
-                          ['Duration', formatStayDuration(booking.check_in, booking.check_out)],
-                          ['Guests', `${booking.guests} guest${booking.guests === 1 ? '' : 's'}`],
-                        ].map(([label, value]) => (
-                          <div key={label}>
-                            <dt className="data-label">{label}</dt>
-                            <dd className="mt-0.5 font-medium text-forest-900">{value}</dd>
+              <div className="mt-5 space-y-5">
+                {!loading && bookings.length > 0 && filtered.length === 0 && (
+                  <EmptyState
+                    title="No bookings match those filters"
+                    body={`${bookings.length} booking${bookings.length === 1 ? '' : 's'} on this account, none matching${
+                      q.trim() ? ` “${q.trim()}”` : ' the selected status'
+                    }. Widen the search or choose All statuses.`}
+                    actions={
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQ('')
+                          setStatusFilter('all')
+                          setPage(1)
+                        }}
+                        className="btn-ghost"
+                      >
+                        Clear search and filters
+                      </button>
+                    }
+                  />
+                )}
+
+                {paged.items.map((booking) => {
+                  const status = effectiveStatus(booking)
+                  return (
+                    <BookingFolio
+                      key={booking.id}
+                      booking={booking}
+                      actions={
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setViewingInvoice(booking)}
+                              className="btn-quiet btn-sm"
+                            >
+                              <CreditCard size={14} aria-hidden="true" />
+                              Invoice
+                            </button>
+
+                            {can('booking:update:own') && CANCELLABLE.includes(status) && (
+                              <button
+                                onClick={() => setConfirmingCancel(booking)}
+                                disabled={busy === booking.id}
+                                className="btn-danger-quiet btn-sm"
+                              >
+                                {busy === booking.id ? 'Cancelling…' : 'Cancel booking'}
+                              </button>
+                            )}
+
+                            {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
+                              <button
+                                onClick={() => setConfirmingWithdraw(booking)}
+                                disabled={busy === booking.id}
+                                className="btn-danger-quiet btn-sm"
+                              >
+                                {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
+                              </button>
+                            )}
                           </div>
-                        ))}
-                      </dl>
 
-                      {days > 0 && days <= 30 && (
-                        <p className="mt-4 inline-flex items-center gap-2 rounded-xl bg-cream-50 px-3 py-2 text-xs text-forest-700">
-                          <Clock size={14} />
-                          {days} day{days === 1 ? '' : 's'} until check-in
-                        </p>
+                          {!WITHDRAWABLE.includes(status) && !CANCELLABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
+                            <span className="flex items-center gap-1.5 text-[11px] text-forest-600 dark:text-sage-400">
+                              <Sparkle size={12} aria-hidden="true" /> Contact the Admin to change dates
+                            </span>
+                          )}
+                        </div>
+                      }
+                      trailing={
+                        <>
+                          <BookingHistory bookingId={booking.id} />
+
+                          {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
+                            <div data-testid="review-entry" className="mt-4">
+                              {isReviewableStatus(status) && (
+                                <p className="mb-2 text-sm text-forest-800 dark:text-cream-100">
+                                  <strong className="font-medium">Your stay is complete.</strong> How was it?
+                                </p>
+                              )}
+                              <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
+                            </div>
+                          )}
+
+                          {user?.uid && (
+                            <div className="mt-4">
+                              <DisputeForm bookingId={booking.id} guestId={user.uid} />
+                            </div>
+                          )}
+                        </>
+                      }
+                    >
+                      <HoldCountdown booking={booking} />
+
+                      {/* Money and stay extensions are forms, not buttons: they
+                          belong in the document's body, not in its action bar. */}
+                      {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
+                        <PaymentStep booking={booking} />
                       )}
 
-                      <div className="mt-4">
-                        <HoldCountdown booking={booking} />
-                      </div>
+                      {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
+                        <LateCheckoutRequest booking={booking} />
+                      )}
 
                       {booking.rejection_reason && (
-                        <Alert tone="danger" className="mt-4 text-xs">
-                          <strong>Admin declined:</strong> &ldquo;{booking.rejection_reason}&rdquo;. Those dates are free
-                          again.
+                        <Alert tone="danger" className="text-xs">
+                          <strong>Admin declined:</strong> &ldquo;{booking.rejection_reason}&rdquo;. Those dates are
+                          free again.
                         </Alert>
                       )}
-                    </div>
+                    </BookingFolio>
+                  )
+                })}
+              </div>
 
-                    <div className="border-t border-forest-900/5 bg-cream-50/60 px-6 py-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex flex-wrap gap-2">
-                          {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
-                            <PaymentStep booking={booking} />
-                          )}
-
-                          {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
-                            <LateCheckoutRequest booking={booking} />
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => setViewingInvoice(booking)}
-                            className="btn-quiet btn-sm"
-                          >
-                            <CreditCard size={14} />
-                            Invoice
-                          </button>
-
-                          {can('booking:update:own') && CANCELLABLE.includes(status) && (
-                            <button
-                              onClick={() => setConfirmingCancel(booking)}
-                              disabled={busy === booking.id}
-                              className="btn-danger-quiet btn-sm"
-                            >
-                              {busy === booking.id ? 'Cancelling…' : 'Cancel booking'}
-                            </button>
-                          )}
-
-                          {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
-                            <button
-                              onClick={() => setConfirmingWithdraw(booking)}
-                              disabled={busy === booking.id}
-                              className="btn-danger-quiet btn-sm"
-                            >
-                              {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
-                            </button>
-                          )}
-                        </div>
-
-                        {!WITHDRAWABLE.includes(status) && !CANCELLABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
-                          <span className="flex items-center gap-1 text-[11px] text-forest-600">
-                            <Sparkle size={12} /> Contact Admin to modify dates
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-4 border-t border-forest-900/10 pt-4">
-                        <BookingHistory bookingId={booking.id} />
-
-                        {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
-                          <div data-testid="review-entry" className="mt-4">
-                            {isReviewableStatus(status) && (
-                              <p className="mb-2 text-sm text-forest-800">
-                                <strong className="font-medium">Your stay is complete.</strong> How was it?
-                              </p>
-                            )}
-                            <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
-                          </div>
-                        )}
-
-                        {user?.uid && (
-                          <div className="mt-4">
-                            <DisputeForm bookingId={booking.id} guestId={user.uid} />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                )
-              })}
+              {!loading && bookings.length > 0 && (
+                <Pager
+                  page={paged}
+                  onPage={setPage}
+                  onPageSize={(n) => {
+                    setPageSize(n)
+                    setPage(1)
+                  }}
+                />
+              )}
             </div>
+          ) : (
+            /* -------------------------------------------------------- */
+            /* Profile                                                   */
+            /* -------------------------------------------------------- */
+            <div className="min-w-0">
+              <section className="guest-panel px-5 py-6 sm:px-7">
+                <h2 className="font-serif text-2xl text-forest-900 dark:text-cream-50">
+                  Personal information
+                </h2>
+                <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-forest-800/80 dark:text-cream-100/75">
+                  Keep your contact details current so the Admin can reach you about your stay.
+                </p>
 
-            {!loading && bookings.length > 0 && (
-              <Pager
-                page={paged}
-                onPage={setPage}
-                onPageSize={(n) => {
-                  setPageSize(n)
-                  setPage(1)
-                }}
-              />
+                {profileMsg && (
+                  <Alert tone={profileMsg.tone === 'good' ? 'success' : 'danger'} className="mt-5">
+                    {profileMsg.text}
+                  </Alert>
+                )}
+
+                <form onSubmit={handleSaveProfile} className="mt-6 space-y-5">
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <Field label="First name" required>
+                      <Input
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        required
+                        placeholder="First name"
+                        autoComplete="given-name"
+                      />
+                    </Field>
+                    <Field label="Last name" required>
+                      <Input
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        required
+                        placeholder="Last name"
+                        autoComplete="family-name"
+                      />
+                    </Field>
+                  </div>
+
+                  <Field label="Middle name" hint="Optional — an initial is enough.">
+                    <Input
+                      value={middleName}
+                      onChange={(e) => setMiddleName(e.target.value)}
+                      placeholder="Middle name"
+                      autoComplete="additional-name"
+                    />
+                  </Field>
+
+                  <Field label="Mobile phone number" required hint="Philippine mobile format: 09XX XXX XXXX">
+                    <Input
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      required
+                      placeholder="09171234567"
+                      inputMode="tel"
+                      autoComplete="tel"
+                    />
+                  </Field>
+
+                  <Field label="Date of birth" hint="Optional.">
+                    <Input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
+                  </Field>
+
+                  <Field label="Email address" hint="The sign-in address cannot be changed here.">
+                    <Input value={user?.email ?? ''} disabled />
+                  </Field>
+
+                  <div className="guest-rule -mx-5 mt-6 flex flex-wrap items-center justify-between gap-3 px-5 pt-5 sm:-mx-7 sm:px-7">
+                    <button type="submit" disabled={profileSaving} className="btn-primary">
+                      {profileSaving ? 'Saving…' : 'Save changes'}
+                    </button>
+                    <button type="button" onClick={() => void logout()} className="btn-ghost">
+                      <LogOut size={16} aria-hidden="true" />
+                      Sign out
+                    </button>
+                  </div>
+                </form>
+              </section>
+            </div>
+          )}
+
+          {/* ---------------------------------------------------------- */}
+          {/* The rail                                                    */}
+          {/* ---------------------------------------------------------- */}
+          <AccountRail>
+            <RailPanel title={activeTab === 'bookings' ? 'Your bookings' : 'Your account'}>
+              {activeTab === 'bookings' ? (
+                <>
+                  <StatCard label="Total bookings" value={stats.total} icon={Calendar} />
+                  <StatCard label="Waiting on the Hacienda" value={stats.pending} icon={Clock} tone="pending" />
+                  <StatCard label="Coming up in 30 days" value={stats.upcoming} icon={Home} tone="success" />
+                </>
+              ) : (
+                <RailFacts
+                  icon={User}
+                  rows={[
+                    { label: 'Name', value: profile?.display_name || user?.displayName || '—' },
+                    { label: 'Phone', value: profile?.phone || 'Not saved yet' },
+                    {
+                      label: 'Role',
+                      value: role ? ROLE_LABELS[role] : 'Guest',
+                    },
+                  ]}
+                />
+              )}
+            </RailPanel>
+
+            {nextStay && (
+              <RailPanel
+                title="Next stay"
+                footer={
+                  <button
+                    type="button"
+                    onClick={() => setViewingInvoice(nextStay)}
+                    className="btn-quiet btn-sm w-full"
+                  >
+                    <CreditCard size={14} aria-hidden="true" />
+                    View invoice
+                  </button>
+                }
+              >
+                <RailFacts
+                  rows={[
+                    { label: 'Accommodation', value: accommodationName(nextStay.accommodation) },
+                    {
+                      label: 'Dates',
+                      value: (
+                        <span className="guest-num">
+                          {nextStay.check_in} → {nextStay.check_out}
+                        </span>
+                      ),
+                    },
+                    { label: 'Length', value: formatStayDuration(nextStay.check_in, nextStay.check_out) },
+                    { label: 'Guests', value: <span className="guest-num">{nextStay.guests}</span> },
+                    ...(typeof nextStay.amount_claimed === 'number'
+                      ? [{ label: 'Downpayment', value: peso(nextStay.amount_claimed) }]
+                      : []),
+                  ]}
+                />
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <StatusBadge status={effectiveStatus(nextStay)} />
+                  <span className="text-[11px] text-forest-600 dark:text-sage-400">
+                    {daysUntil(nextStay.check_in)} day{daysUntil(nextStay.check_in) === 1 ? '' : 's'} away
+                  </span>
+                </div>
+              </RailPanel>
             )}
-          </div>
-        )}
+
+            <HelpPanel />
+          </AccountRail>
+        </div>
       </Container>
 
       <Drawer
@@ -736,10 +736,10 @@ export function AccountPage() {
                 <button
                   type="button"
                   onClick={() => void handleMarkRead(n.id)}
-                  className={`card-tight w-full p-4 text-left text-xs transition hover:shadow-md ${
+                  className={`w-full rounded-[14px] border p-4 text-left text-xs transition hover:border-forest-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 dark:focus-visible:ring-brass-400 ${
                     n.read
-                      ? 'bg-cream-50/60 text-forest-800'
-                      : 'border-emerald-200 bg-emerald-50/60 font-medium text-emerald-950'
+                      ? 'border-forest-900/10 bg-white text-forest-800 dark:border-cream-100/10 dark:bg-forest-900/60'
+                      : 'border-emerald-200 bg-emerald-50/70 font-medium text-emerald-950'
                   }`}
                 >
                   <span className="flex items-start justify-between gap-2">
@@ -747,7 +747,7 @@ export function AccountPage() {
                     {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-label="Unread" />}
                   </span>
                   <span className="mt-2 block leading-relaxed">{n.message}</span>
-                  <span className="mt-3 block text-[10px] text-forest-600/70">
+                  <span className="mt-3 block text-[11px] text-forest-600/90">
                     {new Date(n.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
                   </span>
                 </button>
@@ -763,7 +763,7 @@ export function AccountPage() {
         title="Withdraw this request?"
         body={
           confirmingWithdraw
-            ? `Request ${reference(confirmingWithdraw)} for ${accommodationName(
+            ? `Request ${bookingReference(confirmingWithdraw)} for ${accommodationName(
                 confirmingWithdraw.accommodation,
               )} (${confirmingWithdraw.check_in} → ${confirmingWithdraw.check_out}) will be cancelled and those dates released for other Guests. The Admin cannot undo this from their own app.\n\nNo money has been verified on a pending request, so nothing is charged and nothing is refunded.`
             : ''
@@ -783,7 +783,7 @@ export function AccountPage() {
         title="Cancel this booking?"
         body={
           confirmingCancel
-            ? `${reference(confirmingCancel)} · ${accommodationName(confirmingCancel.accommodation)} (${confirmingCancel.check_in} → ${confirmingCancel.check_out}). The dates are released and this cannot be undone.\n\n${cancellationTerms(confirmingCancel)}`
+            ? `${bookingReference(confirmingCancel)} · ${accommodationName(confirmingCancel.accommodation)} (${confirmingCancel.check_in} → ${confirmingCancel.check_out}). The dates are released and this cannot be undone.\n\n${cancellationTerms(confirmingCancel)}`
             : ''
         }
         confirmLabel="Cancel booking"
@@ -800,8 +800,4 @@ export function AccountPage() {
       </Modal>
     </Page>
   )
-}
-
-function reference(booking: Booking) {
-  return booking.ref_id || booking.id.slice(0, 8).toUpperCase()
 }

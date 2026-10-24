@@ -1,4 +1,4 @@
-import { Alert } from '../ui'
+import { Alert, Input } from '../ui'
 import { useRef, useState } from 'react'
 import { usePaymentInformation } from '../../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from './PaymentInformationPanel'
@@ -209,16 +209,21 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   const planChosen = booking.payment_plan !== undefined
 
   return (
-    <div className="rounded-2xl border border-forest-900/10 bg-white p-4">
-      <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
-        Step 3 · Pay and send proof
+    <section className="guest-inset px-4 py-4 sm:px-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h4 className="text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
+          Pay and send proof
+        </h4>
+        <span className="guest-num text-[11px] text-forest-600/90 dark:text-sage-400">
+          Step 3 of 3
+        </span>
       </div>
 
       {status === 'Payment Pending' && !planChosen && (
         <>
-          <p className="mt-2 text-xs text-forest-700/80 leading-relaxed">
-            The Admin approved your dates. Choose how to pay — then send the money externally and upload
-            your proof below.
+          <p className="mt-2.5 text-sm leading-relaxed text-forest-800/85 dark:text-cream-100/80">
+            The Admin approved your dates. Choose how to pay — then send the money externally and
+            upload your proof below.
           </p>
           {options.length === 0 ? (
             <Alert tone="warning" className="mt-3 text-xs">
@@ -226,26 +231,27 @@ export function PaymentStep({ booking }: { booking: Booking }) {
               Admin for the original quote — the current rate card will not reprice it.
             </Alert>
           ) : (
-            <div className="mt-3 space-y-2">
+            <div className="mt-4 space-y-2">
               {options.map((option) => (
                 <label
                   key={option.plan}
-                  className={`block rounded-xl border px-3 py-2.5 text-xs cursor-pointer transition ${
+                  className={`block cursor-pointer rounded-[10px] border px-4 py-3 transition-colors focus-within:ring-2 focus-within:ring-forest-600/30 dark:focus-within:ring-brass-400/30 ${
                     plan === option.plan
-                      ? 'border-forest-700 bg-cream-50'
-                      : 'border-forest-900/10 hover:bg-cream-50/50'
+                      ? 'border-forest-700 bg-white dark:border-brass-400/70 dark:bg-forest-900/80'
+                      : 'border-forest-900/12 bg-white/60 hover:border-forest-900/25 hover:bg-white dark:border-cream-100/12 dark:bg-forest-900/40 dark:hover:border-cream-100/25'
                   }`}
                 >
-                  <span className="flex items-center gap-2 font-medium text-forest-900">
+                  <span className="flex items-center gap-2.5 text-sm font-medium text-forest-900 dark:text-cream-50">
                     <input
                       type="radio"
                       name={`plan-${booking.id}`}
                       checked={plan === option.plan}
                       onChange={() => setPlan(option.plan)}
+                      className="h-4 w-4 shrink-0 accent-forest-700 dark:accent-brass-400"
                     />
                     {option.plan === 'down-payment' ? 'Down payment' : 'Full payment'}
                   </span>
-                  <span className="block mt-1 text-forest-700/80">
+                  <span className="mt-1.5 block pl-[1.625rem] text-xs leading-relaxed text-forest-700/85 dark:text-cream-100/75">
                     {peso(option.dueNow)} now + {peso(option.securityDeposit)} refundable Security deposit
                     {option.balance > 0 && <> · {peso(option.balance)} remaining 50% due at check-in</>}
                   </span>
@@ -254,7 +260,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
               <button
                 onClick={() => void choosePlan()}
                 disabled={busy}
-                className="px-4 py-2.5 rounded-xl text-xs font-medium bg-forest-800 text-cream-50 hover:bg-forest-900 transition disabled:opacity-50"
+                className="btn-primary btn-sm mt-3 w-full sm:w-auto"
               >
                 {busy ? 'Saving…' : 'Choose this plan'}
               </button>
@@ -264,19 +270,23 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       )}
 
       {status === 'Payment Pending' && planChosen && (
-        <div className="mt-3">
+        <div className="mt-4">
           {owed > 0 && (
-            <p className="text-xs text-forest-900 font-medium">
-              Amount to send: {peso(owed)}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-forest-900/8 pt-3 dark:border-cream-100/10">
+              <span className="guest-label">Amount to send</span>
+              <span className="guest-num text-2xl leading-none text-forest-900 dark:text-cream-50">
+                {peso(owed)}
+              </span>
               {booking.amount_due !== undefined && booking.security_deposit !== undefined && (
-                <span className="font-normal text-forest-700/70">
-                  {' '}({peso(booking.amount_due)} stay + {peso(booking.security_deposit)} refundable deposit)
+                <span className="w-full text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
+                  {peso(booking.amount_due)} stay + {peso(booking.security_deposit)} refundable
+                  deposit
                 </span>
               )}
-            </p>
+            </div>
           )}
 
-          <div className="mt-2">
+          <div className="mt-4">
             <PaymentInformationPanel
               payment={paymentInformation}
               requiredAmount={owed > 0 ? owed : undefined}
@@ -295,10 +305,10 @@ export function PaymentStep({ booking }: { booking: Booking }) {
             </p>
           ) : null}
 
-          <div className="mt-3 space-y-2">
+          <div className="mt-5 space-y-4">
               <label className="block">
-                <span className="block text-xs font-medium text-forest-900">Payment receipt</span>
-                <span className="block text-[11px] text-forest-700/70 mb-1">
+                <span className="guest-label">Payment receipt</span>
+                <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
                   Screenshot or photo · jpg, png, webp or heic, under 5MB
                 </span>
                 <input
@@ -358,12 +368,12 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                       }
                     })()
                   }}
-                  className="block w-full text-xs text-forest-800 file:mr-3 file:px-3 file:py-2 file:rounded-xl file:border-0 file:bg-cream-100 file:text-forest-800 file:text-xs file:font-medium hover:file:bg-cream-200 file:cursor-pointer"
+                  className="block w-full cursor-pointer rounded-[10px] border border-dashed border-forest-900/20 bg-white/70 px-3 py-3 text-xs text-forest-800 transition-colors hover:border-forest-900/40 focus-within:border-forest-700 dark:border-cream-100/15 dark:bg-forest-900/50 dark:text-cream-100 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-forest-800 file:px-3 file:py-2 file:text-xs file:font-medium file:text-cream-50 hover:file:bg-forest-900 dark:file:bg-brass-400 dark:file:text-forest-950"
                 />
-                {proofFile && <span className="block mt-1 text-[11px] text-forest-700">{proofFile.name} chosen.</span>}
+                {proofFile && <span className="mt-1.5 block text-[11px] text-forest-700 dark:text-cream-100/75">{proofFile.name} chosen.</span>}
                 {ocrBusy && (
                   <span
-                    className="block mt-1 text-[11px] text-forest-700"
+                    className="mt-1.5 block text-[11px] text-forest-700 dark:text-cream-100/75"
                     role="status"
                     aria-live="polite"
                   >
@@ -408,12 +418,12 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                 </Alert>
               )}
               <label className="block">
-                <span className="block text-xs font-medium text-forest-900">Reference number</span>
-                <span className="block text-[11px] text-forest-700/70 mb-1">
+                <span className="guest-label">Reference number</span>
+                <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
                   10–13 digits from your GCash, Maya or bank receipt · OCR fills this in — correct it
                   if it misread
                 </span>
-                <input
+                <Input
                   value={reference}
                   onChange={(e) => setReference(sanitizeReferenceInput(e.target.value))}
                   onKeyDown={(e) => {
@@ -426,17 +436,16 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="e.g. 1234567890123"
-                  className="block w-full text-xs rounded-xl border border-forest-900/15 bg-white px-3 py-2 text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-700/30"
                 />
               </label>
               <label className="block">
-                <span className="block text-xs font-medium text-forest-900">Amount you sent (₱)</span>
+                <span className="guest-label">Amount you sent (₱)</span>
                 {amountCandidates.length <= 1 && (
-                  <span className="block text-[11px] text-forest-700/70 mb-1">
+                  <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
                     OCR fills this in — correct it if it misread
                   </span>
                 )}
-                <input
+                <Input
                   value={amountClaimed}
                   onChange={(e) => setAmountClaimed(sanitizeAmountInput(e.target.value))}
                   onKeyDown={(e) => {
@@ -449,7 +458,6 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="e.g. 10500"
-                  className="block w-full text-xs rounded-xl border border-forest-900/15 bg-white px-3 py-2 text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-700/30"
                 />
               </label>
               {amountMismatchNote(Number(amountClaimed) || 0, owed) && (
@@ -457,22 +465,22 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   {amountMismatchNote(Number(amountClaimed) || 0, owed)}
                 </Alert>
               )}
-              <label className="flex items-start gap-2 text-[11px] text-forest-700 leading-relaxed cursor-pointer">
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-forest-900/10 bg-white/60 px-3.5 py-3 text-[11px] leading-relaxed text-forest-700 transition-colors hover:border-forest-900/25 dark:border-cream-100/12 dark:bg-forest-900/40 dark:text-cream-100/80">
                 <input
                   type="checkbox"
                   checked={acceptPayTerms}
                   onChange={(e) => setAcceptPayTerms(e.target.checked)}
-                  className="mt-0.5"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-forest-700 dark:accent-brass-400"
                 />
                 <span>
                   I accept the payment and smart-lock rules (version {LEGAL_VERSION})
-                  <Link to="/legal" className="underline text-forest-800 hover:text-forest-900"> — read them</Link>.
+                  <Link to="/legal" className="text-link"> — read them</Link>.
                 </span>
               </label>
               <button
                 onClick={() => void sendProof()}
                 disabled={busy}
-                className="px-4 py-2.5 rounded-xl text-xs font-medium bg-forest-800 text-cream-50 hover:bg-forest-900 transition disabled:opacity-50"
+                className="btn-primary btn-sm w-full sm:w-auto"
               >
                 {busy ? 'Uploading…' : sent ? 'Send another proof' : 'Send my proof'}
               </button>
@@ -481,11 +489,11 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       )}
 
       {message && (
-        <Alert tone={message.tone === 'good' ? 'success' : 'danger'} className="mt-3 text-xs">
+        <Alert tone={message.tone === 'good' ? 'success' : 'danger'} className="mt-4 text-xs">
           {message.text}
         </Alert>
       )}
-    </div>
+    </section>
   )
 }
 

@@ -82,6 +82,22 @@ export default {
       letterSpacing: {
         eyebrow: '0.28em',
       },
+      /**
+       * Two opacities the default scale (steps of 5) has no name for.
+       *
+       * Both exist to keep a hierarchy of hairlines: the signed-in surfaces rule
+       * their internal rows at 8% so those rules sit *under* the panel's own 10%
+       * border, and dark-mode panel borders sit at 12% so a hairline stays
+       * visible against forest-900. Neither value was usable through `@apply`
+       * before, which is how the first build of the Guest surfaces failed.
+       *
+       * Additive: no existing class uses /8 or /12, so nothing already on screen
+       * changes.
+       */
+      opacity: {
+        8: '0.08',
+        12: '0.12',
+      },
       boxShadow: {
         soft: '0 20px 60px -30px rgba(30,49,32,0.35)',
         card: '0 12px 40px -20px rgba(30,49,32,0.25)',
