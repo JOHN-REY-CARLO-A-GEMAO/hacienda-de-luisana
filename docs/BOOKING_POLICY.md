@@ -32,14 +32,14 @@ Selection is two-step: the Guest picks an available check-in, then a checkout. T
 
 ### Date-range selection is separate from pricing eligibility
 
-Any checkout date after check-in, up to 20 nights later, is selectable — not only the next day. The calendar's range validator checks **dates and stay length only** (valid calendar dates, booking lead time, 1–20 nights). It deliberately does not call the pricing preflight: `validateBookingSelection` refuses anything that is not one 22-hour standard stay, and letting that rule decide which dates could be picked is what previously forced `checkout = check-in + 1`.
+Any checkout date after check-in, up to 20 nights later, is selectable — not only the next day. The calendar's range validator checks **dates and stay length only** (valid calendar dates, booking lead time, 1–20 nights). It deliberately does not call the pricing preflight: pricing decides what a stay *costs*, not which dates can be picked — letting it decide is what previously forced `checkout = check-in + 1`.
 
-Pricing eligibility remains enforced where it belongs, unchanged:
+Every stay of 1–20 nights is quotable and submittable (ADR-0022): the published rate is per 22-hour standard stay, so the total is the check-in night's rate times the nights of the stay, with pets and late checkout charged once per stay. Pricing eligibility remains enforced where it belongs, unchanged:
 
 - `validateBookingSelection` runs before `/book` advances to payment.
-- `deriveQuote` in the `quoteBooking` and `submitBooking` callables refuses a multi-night range with `NOT_A_STANDARD_STAY`.
+- `deriveQuote` in the `quoteBooking` and `submitBooking` callables re-derives the price server-side and refuses anything the published card cannot price.
 
-A multi-night range is therefore visible, selectable and reviewable, and it highlights fully, but it cannot be quoted or submitted while the published rate model prices one night. The UI says so in plain language instead of pretending the range is bookable.
+A multi-night range is therefore visible, selectable, quoted and paid for on the same terms as a one-night stay.
 
 ### Maximum stay length
 

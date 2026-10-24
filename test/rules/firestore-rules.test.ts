@@ -181,6 +181,25 @@ describe('official guest-count rates', () => {
     }
   })
 
+  it('allows a coherent multi-night Guest create inside the ceiling, and refuses twenty-one', () => {
+    // One standard stay per night: the money arithmetic is the same shape as a
+    // one-night Booking — `stay_total` the per-night rate times the nights, the
+    // same 50/50 split on the larger figure.
+    const threeNights = officialBooking({
+      check_out: '2026-10-29', nights: 3, stay_total: 15000, amount_due: 7500, balance_due: 7500,
+    })
+    expect(allow({
+      path: 'bookings/direct-guest-three-nights', method: 'create', auth: anonymousGuest(), requestData: threeNights,
+    }, officialStore)).toBe(true)
+
+    const tooLong = officialBooking({
+      check_out: '2026-11-16', nights: 21, stay_total: 105000, amount_due: 52500, balance_due: 52500,
+    })
+    expect(deny({
+      path: 'bookings/direct-guest-twenty-one', method: 'create', auth: anonymousGuest(), requestData: tooLong,
+    }, officialStore)).toBe(true)
+  })
+
   // -------------------------------------------------------------------------
   // A Guest's money at the rule layer: what it decides, and where the rest went
   // -------------------------------------------------------------------------

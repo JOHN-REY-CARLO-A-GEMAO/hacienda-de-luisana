@@ -93,9 +93,24 @@ describe('guest booking rule preflight', () => {
     if (!result.ok) expect(result.failure.message).toContain('30 days')
   })
 
-  it('names an unsupported stay length rather than assuming a two-night minimum', () => {
+  it('quotes a longer stay at one standard stay per night', () => {
+    // 2026-11-06 is a Friday: the weekend schedule prices the check-in night,
+    // and every night of the stay the same way.
     const result = validateBookingSelection(
       { ...selection, check_out: '2026-11-08' },
+      { published, checkLeadTime: false },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.nights).toBe(2)
+      expect(result.quote.stayTotal).toBe(2 * 6000)
+      expect(result.quote.addons.rateAmount).toBe(6000)
+    }
+  })
+
+  it('names an unsupported stay length at twenty-one nights', () => {
+    const result = validateBookingSelection(
+      { ...selection, check_out: '2026-12-07' },
       { published, checkLeadTime: false },
     )
     expect(result).toMatchObject({ ok: false, failure: { code: 'STAY_LENGTH_NOT_SUPPORTED', field: 'check_out' } })

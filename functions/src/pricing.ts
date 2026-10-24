@@ -46,7 +46,8 @@ export interface AuthoritativeMoney {
   rate_unit: 'standard_stay'
   rate_amount: number
   rate_classification: RateClassification
-  nights: 1
+  /** One standard stay per night of the stay; `stay_total` is this times `rate_amount` plus the addons. */
+  nights: number
   stay_total: number
   amount_due: number
   balance_due: number
@@ -77,7 +78,6 @@ export interface DerivedQuote {
 export type QuoteCause =
   | 'REQUEST_SHAPE'
   | 'STAY_TOO_LONG'
-  | 'NOT_A_STANDARD_STAY'
   | 'LEAD_TIME'
   | 'PUBLISHED_RATES_MISSING'
   | 'PUBLISHED_RATES_MALFORMED'
@@ -118,7 +118,6 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const GUEST_MESSAGES: Record<QuoteCause, string> = {
   REQUEST_SHAPE: 'We could not read the dates or the party size you sent. Please check the form and try again.',
   STAY_TOO_LONG: `A stay may be at most ${MAX_STAY_NIGHTS} nights. Please choose an earlier checkout date.`,
-  NOT_A_STANDARD_STAY: 'Online booking currently prices one 22-hour standard stay (one night). Your selected range is longer, so it cannot be quoted yet — choose a checkout one night after check-in, or contact the Hacienda.',
   LEAD_TIME: 'Those dates are too soon to book.',
   PUBLISHED_RATES_MISSING: 'Prices are being updated right now, so we cannot take a booking this minute. Please try again shortly.',
   PUBLISHED_RATES_MALFORMED: 'Prices are being updated right now, so we cannot take a booking this minute. Please try again shortly.',
@@ -247,9 +246,6 @@ export function deriveQuote(
       'invalid-argument',
     )
   }
-  if (nights !== 1) {
-    return refuse('NOT_A_STANDARD_STAY', `a quote is one 22-hour standard stay; the range asked for is ${nights} night(s)`, 'invalid-argument')
-  }
 
   const figures = (rates.accommodations as Record<string, unknown>)[request.accommodation]
   if (figures === undefined) {
@@ -319,7 +315,7 @@ export function deriveQuote(
         rate_unit: 'standard_stay',
         rate_amount: quoted.addons.rateAmount,
         rate_classification: quoted.classification,
-        nights: 1,
+        nights: quoted.nights,
         stay_total: quoted.stayTotal,
         amount_due: option.dueNow,
         balance_due: option.balance,
@@ -389,8 +385,8 @@ export function attestationSurvivesRuleLayer(money: AuthoritativeMoney): string[
   }
   if (!(money.rate_amount > 0)) problems.push(`rate_amount ${money.rate_amount} is not positive`)
   if (!(money.security_deposit >= 0)) problems.push(`security_deposit ${money.security_deposit} is negative`)
-  if (!(Number.isInteger(money.nights) && money.nights === 1)) {
-    problems.push(`nights ${money.nights} is not the single standard stay the rules allow`)
+  if (!(Number.isInteger(money.nights) && money.nights >= 1 && money.nights <= MAX_STAY_NIGHTS)) {
+    problems.push(`nights ${money.nights} is not a whole stay of at least one night and at most ${MAX_STAY_NIGHTS}`)
   }
   // The rule's own arithmetic: `int(stay_total * 50)` is the half in centavos,
   // truncated, and it admits `amount_due` up to one centavo above that — which is
@@ -495,7 +491,7 @@ export function unattestedVerdict(
     ? `the attestation it names is not there (${String(booking.quote_id)} — never written, or removed)`
     : 'this Booking carries no quote reference'
   if (!fresh.ok) {
-    if (fresh.cause === 'REQUEST_SHAPE' || fresh.cause === 'NOT_A_STANDARD_STAY') {
+    if (fresh.cause === 'REQUEST_SHAPE') {
       return { verdict: 'UNPARSEABLE', mismatches: [], detail: `${reason}; and the record cannot be priced as written: ${fresh.detail}` }
     }
     return { verdict: 'NO_RATE', mismatches: [], detail: `${reason}; and the card cannot price it today: ${fresh.detail}` }

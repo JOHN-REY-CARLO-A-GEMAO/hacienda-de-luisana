@@ -94,7 +94,7 @@ Money returned to a Guest through the refund pipeline after verified payment.
 _Avoid_: Reversal, reimbursement
 
 **Published rates**:
-The Admin's published per-Accommodation weekday and weekend/holiday guest-count schedules, Security deposit, fixed 50% down-payment rule, configured holiday dates and cancellation policy. Each automated quote is one 22-hour standard stay, using the check-in night. Published from the Admin app's Rates screen to `site_config/rates`; the website only reads them. New guest Bookings cannot be submitted until a valid schedule is published.
+The Admin's published per-Accommodation weekday and weekend/holiday guest-count schedules, Security deposit, fixed 50% down-payment rule, configured holiday dates and cancellation policy. Each automated quote prices one 22-hour standard stay per night of the stay (1–20 nights), using the check-in night's classification for every night. Published from the Admin app's Rates screen to `site_config/rates`; the website only reads them. New guest Bookings cannot be submitted until a valid schedule is published.
 _Avoid_: Price list (the prices in the page copy are display placeholders), tariff, menu
 
 **Policy stamp**:

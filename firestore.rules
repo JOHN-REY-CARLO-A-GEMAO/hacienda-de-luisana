@@ -262,9 +262,14 @@ service cloud.firestore {
       return data.rate_unit == 'standard_stay'
         && data.rate_classification in ['weekday', 'weekend_holiday']
         && data.payment_plan == 'down-payment'
-        // One 22-hour standard stay is the only length a Guest may book online.
+        // A Guest may book a stay of 1 to 20 nights online. The length is
+        // shape-checked here; the *price* of the stay is the attestation's
+        // business. The 20-night ceiling is MAX_STAY_NIGHTS in
+        // src/lib/booking/availability.ts, the shared constant the website's
+        // calendar, preflight and the quote callable all read.
         && data.nights is int
-        && data.nights == 1
+        && data.nights >= 1
+        && data.nights <= 20
         && data.rate_amount is number
         && data.rate_amount > 0
         // A count, not a price. The rules do not know how many guests an

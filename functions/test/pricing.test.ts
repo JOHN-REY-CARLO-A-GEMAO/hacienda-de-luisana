@@ -148,7 +148,8 @@ describe('the price comes from the published card', () => {
     assert.equal(cause({ accommodation: 'annex-kubo' }), 'ACCOMMODATION_INACTIVE')
     assert.equal(cause({ accommodation: 'the-treehouse' }), 'ACCOMMODATION_UNKNOWN')
     assert.equal(cause({ check_in: '2026-10-15', check_out: '2026-10-16' }), 'LEAD_TIME')
-    assert.equal(cause({ check_out: '2026-11-03' }), 'NOT_A_STANDARD_STAY')
+    // A longer range is not a refusal: every night is a standard stay.
+    assert.equal(cause({ check_out: '2026-11-03' }), 'ACCEPTED')
     assert.equal(cause({}, null), 'PUBLISHED_RATES_MISSING')
     // A retired flat `nightly_rate` in the live document is exactly the drift the
     // publication checks refuse at write time — and it must not be quietly priced
@@ -187,26 +188,26 @@ describe('the stay-length boundary is enforced on the server', () => {
   })
 
   for (const [nights, checkOut] of [[2, '2026-11-02'], [5, '2026-11-05'], [20, '2026-11-20']] as const) {
-    it(`refuses a ${nights}-night range with an accurate one-night-pricing message`, () => {
+    it(`prices a ${nights}-night range at one standard stay per night`, () => {
       const outcome = derive(CHECK_IN, checkOut)
-      assert.equal(outcome.ok, false)
-      const refusal = outcome as { cause: string; guestMessage: string; detail: string }
-      // The date range itself is fine; it is the published price model that only
-      // covers one night. The server must not price it and must say why.
-      assert.equal(refusal.cause, 'NOT_A_STANDARD_STAY')
-      assert.match(refusal.guestMessage, /one 22-hour standard stay/)
-      assert.match(refusal.detail, new RegExp(`${nights} night`))
-      assert.doesNotMatch(refusal.guestMessage, /at most 20 nights/)
+      assert.equal(outcome.ok, true, JSON.stringify(outcome))
+      const money = (outcome as { quote: { money: { nights: number; stay_total: number } } }).quote.money
+      assert.equal(money.nights, nights)
+      // CHECK_IN is a Saturday: the weekend schedule prices the check-in night
+      // of a one-night stay, and prices every night of a longer stay the same
+      // way. Addons are charged once per stay, not per night.
+      assert.equal(money.stay_total, nights * 6000)
     })
   }
 
-  it('accepts exactly 20 nights at the stay-length stage', () => {
-    // 2026-10-31 + 20 nights. It still has to clear the published-stay rule,
-    // which is the estate's pricing decision and not this cap's business; what
-    // matters here is that the cap itself does not refuse 20.
+  it('quotes exactly 20 nights at one standard stay per night', () => {
+    // 2026-10-31 + 20 nights: the stay-length cap is not a pricing question —
+    // the same arithmetic the one-night quote uses, twenty times over.
     const outcome = derive(CHECK_IN, '2026-11-20')
-    assert.equal(outcome.ok, false)
-    assert.equal((outcome as { cause: string }).cause, 'NOT_A_STANDARD_STAY')
+    assert.equal(outcome.ok, true, JSON.stringify(outcome))
+    const money = (outcome as { quote: { money: { nights: number; stay_total: number } } }).quote.money
+    assert.equal(money.nights, 20)
+    assert.equal(money.stay_total, 20 * 6000)
   })
 
   it('refuses 21 nights with the stay-length cause and a Guest-readable message', () => {
@@ -345,9 +346,12 @@ describe('the attestation stays writable by the estate it will be checked agains
     assert.deepEqual(attestationSurvivesRuleLayer(quote.money), [])
     assert.deepEqual(attestationSurvivesRuleLayer({ ...quote.money, amount_due: 100, balance_due: quote.money.stay_total - 100 }), ['amount_due 100 is not the floored half of stay_total 6000 within one centavo'])
     assert.ok(attestationSurvivesRuleLayer({ ...quote.money, stay_total: 999 }).join(';').includes('floor'))
-    // `nights` is typed as the literal 1 in the module; the guard still has to
-    // catch a record that somehow says otherwise, so the test casts past the type.
-    assert.deepEqual(attestationSurvivesRuleLayer({ ...quote.money, nights: 2 } as unknown as Parameters<typeof attestationSurvivesRuleLayer>[0]), ['nights 2 is not the single standard stay the rules allow'])
+    // The rules accept 1–20 nights; the guard still has to catch a record that
+    // somehow says otherwise, so the test casts past the type to reach the
+    // boundaries the rules do not.
+    assert.deepEqual(attestationSurvivesRuleLayer({ ...quote.money, nights: 2 }), [])
+    assert.ok(attestationSurvivesRuleLayer({ ...quote.money, nights: 0 } as unknown as Parameters<typeof attestationSurvivesRuleLayer>[0]).join(';').includes('nights 0'))
+    assert.ok(attestationSurvivesRuleLayer({ ...quote.money, nights: 21 } as unknown as Parameters<typeof attestationSurvivesRuleLayer>[0]).join(';').includes('at most 20'))
     assert.ok(attestationSurvivesRuleLayer({ ...quote.money, security_deposit: -1 }).length > 0)
   })
 
@@ -401,7 +405,7 @@ describe('the attestation stays writable by the estate it will be checked agains
 
     const unpriceable = unattestedVerdict({ ok: false, cause: 'ACCOMMODATION_UNKNOWN', detail: 'gone', guestMessage: '', status: 'invalid-argument' } as never, booking, 'official-v9', false)
     assert.equal(unpriceable.verdict, 'NO_RATE')
-    const malformed = unattestedVerdict({ ok: false, cause: 'NOT_A_STANDARD_STAY', detail: 'two nights', guestMessage: '', status: 'invalid-argument' } as never, booking, 'official-v9', false)
+    const malformed = unattestedVerdict({ ok: false, cause: 'REQUEST_SHAPE', detail: 'bad dates', guestMessage: '', status: 'invalid-argument' } as never, booking, 'official-v9', false)
     assert.equal(malformed.verdict, 'UNPARSEABLE')
   })
 
