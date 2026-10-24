@@ -176,7 +176,8 @@ export const paymentInfoDB = {
     if (!isFirebaseConfigured || !db) return local()
     try {
       const snap = await getDoc(doc(db, 'site_config', 'payment'))
-      const stored = snap.exists() ? valid(snap.data()) : null
+      if (!snap.exists()) return local()
+      const stored = valid(snap.data())
       return stored ? withOfficialQrCode(stored) : null
     } catch {
       return local()
@@ -190,7 +191,11 @@ export const paymentInfoDB = {
     return onSnapshot(
       doc(db, 'site_config', 'payment'),
       (snap) => {
-        const stored = snap.exists() ? valid(snap.data()) : null
+        if (!snap.exists()) {
+          callback(local())
+          return
+        }
+        const stored = valid(snap.data())
         callback(stored ? withOfficialQrCode(stored) : null)
       },
       () => callback(local()),

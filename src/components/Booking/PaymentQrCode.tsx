@@ -29,6 +29,10 @@ export function PaymentQrCode({
   useOverlay(enlarged, () => setEnlarged(false), panel, { initialFocus: closeButton })
 
   const alt = `${method} QR code — ${instruction}`
+  const isBdo = method.trim().toLowerCase() === 'bdo'
+  const scanGuidance = isBdo
+    ? 'In BDO Online or your InstaPay app, tap Scan QR and point the camera at this code from another phone. If you are scanning the screen you are paying from, enlarge the code first — or open the image and scan that. BDO to BDO transfers are free. Fees may apply for non-BDO transfers.'
+    : 'In GCash, tap Scan QR and point the camera at this code from another phone. If you are scanning the screen you are paying from, enlarge the code first — or open the image and scan that. Transfer fees may apply.'
 
   return (
     <div className="mt-2 rounded-lg border border-forest-900/10 bg-white px-3 py-3">
@@ -48,9 +52,7 @@ export function PaymentQrCode({
         <div className="text-center sm:text-left">
           <p className="font-medium text-forest-900">{instruction}</p>
           <p className="mt-1 text-[11px] text-forest-700/70 leading-relaxed">
-            In GCash, tap Scan QR and point the camera at this code from another phone. If you are
-            scanning the screen you are paying from, enlarge the code first — or open the image and
-            scan that. Transfer fees may apply.
+            {scanGuidance}
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
             <button

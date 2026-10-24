@@ -49,6 +49,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
   final _paymentMethod2 = TextEditingController();
   final _paymentRecipient2 = TextEditingController();
   final _paymentAccount2 = TextEditingController();
+  final _paymentQr2 = TextEditingController();
   final _paymentInstructions = TextEditingController();
   final _paymentDepositNotes = TextEditingController();
   final _paymentNotes = TextEditingController();
@@ -82,6 +83,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     _paymentMethod2.dispose();
     _paymentRecipient2.dispose();
     _paymentAccount2.dispose();
+    _paymentQr2.dispose();
     _paymentInstructions.dispose();
     _paymentDepositNotes.dispose();
     _paymentNotes.dispose();
@@ -338,8 +340,9 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
       _paymentAccount.text = '';
       _paymentQr.text = AppConstants.gcashQrPublishedPath;
       _paymentMethod2.text = 'BDO';
-      _paymentRecipient2.text = 'Agueda Hortillas';
-      _paymentAccount2.text = '005438013682';
+      _paymentRecipient2.text = 'Agueda Hortillas (Aida)';
+      _paymentAccount2.text = '';
+      _paymentQr2.text = AppConstants.bdoQrPublishedPath;
       _paymentInstructions.text = 'Send the 50% down payment calculated from the published stay total through one listed channel. The remaining 50% is due at check-in. Upload a screenshot for Admin review.';
       _paymentDepositNotes.text = 'The down payment is 50% of the computed stay total. Any refundable security deposit is shown separately on the published rate card.';
       return;
@@ -363,6 +366,11 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     _paymentMethod2.text = '${second?['method'] ?? ''}';
     _paymentRecipient2.text = '${second?['recipient_name'] ?? ''}';
     _paymentAccount2.text = '${second?['account_identifier'] ?? ''}';
+    final storedQr2 = '${second?['qr_image'] ?? ''}';
+    final secondMethod = '${second?['method'] ?? ''}'.trim().toLowerCase();
+    _paymentQr2.text = storedQr2.isNotEmpty
+        ? storedQr2
+        : (secondMethod == 'bdo' ? AppConstants.bdoQrPublishedPath : '');
     _paymentInstructions.text = '${doc['instructions'] ?? ''}';
     _paymentDepositNotes.text = '${doc['security_deposit_notes'] ?? ''}';
     _paymentNotes.text = '${doc['notes'] ?? ''}';
@@ -395,11 +403,18 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
           if (_paymentQr.text.trim().isNotEmpty)
             'qr_instructions': AppConstants.gcashQrInstruction,
         },
-        if (_paymentMethod2.text.trim().isNotEmpty || _paymentAccount2.text.trim().isNotEmpty)
+        if (_paymentMethod2.text.trim().isNotEmpty ||
+            _paymentAccount2.text.trim().isNotEmpty ||
+            _paymentQr2.text.trim().isNotEmpty)
           {
             'method': _paymentMethod2.text.trim(),
             'recipient_name': _paymentRecipient2.text.trim(),
-            'account_identifier': _paymentAccount2.text.trim(),
+            if (_paymentAccount2.text.trim().isNotEmpty)
+              'account_identifier': _paymentAccount2.text.trim(),
+            if (_paymentQr2.text.trim().isNotEmpty)
+              'qr_image': _paymentQr2.text.trim(),
+            if (_paymentQr2.text.trim().isNotEmpty)
+              'qr_instructions': AppConstants.bdoQrInstruction,
           },
       ],
       'instructions': _paymentInstructions.text.trim(),
@@ -421,7 +436,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
   /// it previews without a network round trip and without exposing anything
   /// private. A Storage URL previews over the network; anything else is named
   /// rather than drawn, because a QR code must never be invented on screen.
-  Widget _qrPreview(String source) {
+  Widget _qrPreview(String source, {String instruction = AppConstants.gcashQrInstruction}) {
     final value = source.trim();
     if (value.isEmpty) return const SizedBox.shrink();
 
@@ -430,6 +445,14 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
     if (value == AppConstants.gcashQrPublishedPath || value == AppConstants.gcashQrAsset) {
       image = Image.asset(
         AppConstants.gcashQrAsset,
+        width: edge,
+        height: edge,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.none,
+      );
+    } else if (value == AppConstants.bdoQrPublishedPath || value == AppConstants.bdoQrAsset) {
+      image = Image.asset(
+        AppConstants.bdoQrAsset,
         width: edge,
         height: edge,
         fit: BoxFit.contain,
@@ -447,7 +470,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
       return Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Text(
-          'That is not a path this app can preview. Use ${AppConstants.gcashQrPublishedPath} for the bundled QR code, or an https URL.',
+          'That is not a path this app can preview. Use ${AppConstants.gcashQrPublishedPath}, ${AppConstants.bdoQrPublishedPath}, or an https URL.',
           style: GoogleFonts.inter(fontSize: 12, color: AppColors.statusAlert, height: 1.4),
         ),
       );
@@ -472,8 +495,8 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Guests see this QR code instead of the GCash number. '
-                    '${AppConstants.gcashQrInstruction}',
+                    'Guests see this QR code instead of the account number. '
+                    '$instruction',
                     style: GoogleFonts.inter(
                         fontSize: 12, color: AppColors.textMuted, height: 1.4),
                   ),
@@ -621,7 +644,25 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                   const SizedBox(height: 8),
                   TextField(controller: _paymentRecipient2, decoration: const InputDecoration(labelText: 'Recipient / account name')),
                   const SizedBox(height: 8),
-                  TextField(controller: _paymentAccount2, decoration: const InputDecoration(labelText: 'Account number or payment ID')),
+                  TextField(
+                    controller: _paymentAccount2,
+                    decoration: const InputDecoration(
+                      labelText: 'Account number or payment ID',
+                      helperText: 'Not shown to Guests while a QR code is set below.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _paymentQr2,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Second channel QR code image path or URL',
+                      hintText: AppConstants.bdoQrPublishedPath,
+                      helperText:
+                          'Guests scan this instead of copying a number. Leave blank to show the account number.',
+                    ),
+                  ),
+                  _qrPreview(_paymentQr2.text, instruction: AppConstants.bdoQrInstruction),
                   const SizedBox(height: 8),
                   TextField(controller: _paymentInstructions, maxLines: 3, decoration: const InputDecoration(labelText: 'Payment instructions')),
                   const SizedBox(height: 8),
