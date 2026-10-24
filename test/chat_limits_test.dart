@@ -223,4 +223,30 @@ void main() {
       expect(ended.countdown, '0:00');
     });
   });
+
+  group('a watch ending always has words for the Admin', () {
+    test('every stop reason maps to a sentence, not a spinner', () {
+      // The panel used to render every failure as "Waiting for the Guest's
+      // first position…" forever. Each ending now has its own sentence, and
+      // this holds the mapping to one line per reason — no empty strings, no
+      // shared fallback that could quietly become a spinner again.
+      final messages = {
+        for (final reason in LiveLocationStop.values) reason: liveLocationStopMessage(reason),
+      };
+      expect(messages.values.every((m) => m.trim().isNotEmpty), isTrue);
+      expect(messages.values.toSet().length, LiveLocationStop.values.length);
+      expect(messages[LiveLocationStop.denied], contains('allowlisted Admin'));
+      expect(messages[LiveLocationStop.expired], contains('stopped sharing'));
+    });
+
+    test('a view keeps the last position through the ending', () {
+      // When a share stops, the map must not vanish with it: the Admin is
+      // shown where the Guest last was, labelled as ended.
+      final fix = LiveFix(lat: 14.1, lng: 121.3, accuracyM: 12, at: DateTime.now(), seq: 3);
+      final view = LiveLocationView(LiveLocationPhase.ended, fix: fix, reason: LiveLocationStop.expired);
+      expect(view.fix, same(fix));
+      expect(view.reason, LiveLocationStop.expired);
+      expect(const LiveLocationView(LiveLocationPhase.waiting).fix, isNull);
+    });
+  });
 }

@@ -292,6 +292,23 @@ describe('live location, the ephemeral stream', () => {
     await assertDenied(() => signedOut().ref(path()).once('value'), 'a signed-out reader')
   })
 
+  it('lets the Admin listen before the first fix exists, and still refuses every Guest', async () => {
+    // The Admin panel opens first and says "Waiting for the Guest's first
+    // position…" — the listener must be attachable at that moment. A read rule
+    // demanding `data.exists()` refused it with PERMISSION_DENIED at attach
+    // time, permanently: the Guest's fixes then landed on a node nobody was
+    // allowed to watch, and the panel spun forever. A missing node reads as
+    // null, which is exactly "no position yet" — and only for the Admin.
+    const before = await admin().ref(path()).once('value')
+    expect(before.exists()).toBe(false)
+    await assertDenied(() => guest().ref(path()).once('value'), 'the sharing Guest reading before the first fix')
+    await assertDenied(() => other().ref(path()).once('value'), 'another Guest reading before the first fix')
+    await assertDenied(() => signedOut().ref(path()).once('value'), 'a signed-out reader before the first fix')
+    await assertSucceeds(guest().ref(path()).set(fix()))
+    const after = await admin().ref(path()).once('value')
+    expect(after.exists()).toBe(true)
+  })
+
   it('refuses the Admin a position whose window has closed', async () => {
     // The guarantee that replaced the server-side TTL Realtime Database never
     // had. A `.read` cascades downward and a deeper rule cannot revoke a

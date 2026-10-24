@@ -227,12 +227,21 @@ describe('only the Admin may read a position', () => {
     expect(read.startsWith('auth != null &&')).toBe(true)
   })
 
-  it('refuses a read of a position whose window has closed', () => {
+  it('refuses a read of a position whose window has closed, and allows one before it exists', () => {
     // The guarantee that replaced the server-side TTL Realtime Database never
     // had: expiry is enforced by the rules, so the position is unreadable the
     // instant `expires_at_ms` passes, whether or not anything deleted the node.
-    expect(read).toContain("data.child('expires_at_ms').val() > now")
-    expect(read).toContain('data.exists()')
+    //
+    // The `!data.exists()` half of the clause is the other half of the same
+    // sentence: the Admin's panel opens BEFORE the Guest's first fix and waits
+    // for one. A read rule that demanded `data.exists()` refused the listener at
+    // attach time — PERMISSION_DENIED on an empty node, permanently, with every
+    // later fix invisible to it — and the panel spun on "Waiting for the Guest's
+    // first position…" forever. A missing node carries no position to leak: what
+    // it must not become is a listener that cannot be opened until after the
+    // answer has already arrived. An *existing* node past `expires_at_ms` stays
+    // unreadable; that is the property the feature rests on.
+    expect(read).toContain("(!data.exists() || data.child('expires_at_ms').val() > now)")
   })
 
   it('grants the read on the leaf, and nowhere shallower', () => {
@@ -242,14 +251,17 @@ describe('only the Admin may read a position', () => {
     expect(conversationRead).toBeUndefined()
   })
 
-  it('parenthesises the two ways in, so neither skips the auth check', () => {
+  it('parenthesises the two grouped clauses, so neither skips the auth check', () => {
     // `auth != null && a || b` parses as `(auth != null && a) || b`, which would
     // let the admins mirror be reached by a reader the guard was meant to refuse.
-    const guard = read.indexOf('auth != null &&')
-    const alternative = read.indexOf('||')
-    expect(alternative).toBeGreaterThan(-1)
-    expect(read.slice(0, alternative)).toContain('&&')
-    expect(read.indexOf('(', guard)).toBeGreaterThan(-1)
+    // The same trap applies to the expiry clause: `!data.exists() || expired-check`
+    // must not OR its way past the identity block. Two groups, each parenthesised,
+    // both AND-ed behind `auth != null`.
+    expect(read.startsWith('auth != null && (')).toBe(true)
+    expect(read).toContain("(!data.exists() || data.child('expires_at_ms').val() > now) && ((auth.token.email != null")
+    expect(read).toContain(
+      ")) || root.child('live_location_admins').child(auth.uid).val() == true)",
+    )
   })
 })
 
