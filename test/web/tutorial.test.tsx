@@ -302,6 +302,113 @@ describe('the interactive Guest tutorial', () => {
   )
 
   it(
+    'remembers a Guest who declines with "Explore on my own"',
+    async () => {
+      const first = openAt('/')
+      await first.wait('Let’s walk through your first stay')
+
+      // Declining the invitation is a decision: the same memory "Skip tour"
+      // writes, so the card cannot come back on the next page.
+      click(first, /Explore on my own/i)
+      await first.settle()
+      expect(first.text()).not.toContain('Let’s walk through your first stay')
+      expect(tutorialCookieSet()).toBe(true)
+
+      // A fresh visit — new document, cookie intact — is left alone.
+      mounted.pop()!.unmount()
+      document.body.innerHTML = ''
+      const second = openAt('/stay')
+      await second.wait('Replay tutorial')
+      expect(second.text()).not.toContain('Let’s walk through your first stay')
+
+      // …and the deliberate Replay still works, cookie or not.
+      click(second, /Replay tutorial/i)
+      await second.wait('Let’s walk through your first stay')
+    },
+    TIMEOUT_MS,
+  )
+
+  it(
+    'counts the tour once, and the request sub-flow as its own named stretch',
+    async () => {
+      const page = openAt('/')
+      await page.wait('Let’s walk through your first stay')
+      expect(page.text()).toContain('Step 1 of 12')
+
+      click(page, /Start the tour/i)
+      await page.wait('Choose how you want to stay')
+      expect(page.text()).toContain('Step 2 of 12')
+      // The welcome and the accommodation step are not part of a sub-flow.
+      expect(page.container.querySelector('[role="progressbar"]')).toBeTruthy()
+
+      clickTour(page, 'accommodation-cta')
+      await page.wait('Pick your dates first')
+
+      const card = page.container.querySelector('[data-tour-card]')
+      const text = (card?.textContent ?? '').replace(/\s+/g, ' ')
+      // One step counter for the whole tour…
+      expect(text).toContain('Step 3 of 12')
+      // …and a separately labelled counter for the five request steps, with
+      // the old hand-written "1 of 5 — your request" eyebrow gone.
+      expect(text).toContain('Your request')
+      expect(text).toContain('1 of 5')
+      expect(text).not.toMatch(/1 of 5 — your request/i)
+
+      // The progress bar tells a screen reader the same number the card does.
+      const bar = page.container.querySelector('[role="progressbar"]')
+      expect(bar?.getAttribute('aria-valuenow')).toBe('3')
+      expect(bar?.getAttribute('aria-valuemax')).toBe('12')
+    },
+    TIMEOUT_MS,
+  )
+
+  it(
+    'holds the keyboard inside the tour card, and gives it back on close',
+    async () => {
+      const page = openAt('/')
+      await page.wait('Let’s walk through your first stay')
+
+      const card = page.container.querySelector<HTMLElement>('[data-tour-card]')
+      expect(card).toBeTruthy()
+      // The card takes focus when it opens — not the page behind it.
+      expect(card!.contains(document.activeElement)).toBe(true)
+
+      const inside = () =>
+        [...card!.querySelectorAll<HTMLElement>('button, [href]')]
+
+      // Tab around the whole card twice: focus must never leave it.
+      for (let press = 0; press < inside().length * 2 + 2; press += 1) {
+        act(() => {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+        })
+        expect(card!.contains(document.activeElement), `Tab ${press + 1} escaped the card`).toBe(true)
+      }
+
+      // Shift+Tab wraps backwards the same way.
+      for (let press = 0; press < 3; press += 1) {
+        act(() => {
+          window.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }),
+          )
+        })
+        expect(card!.contains(document.activeElement), `Shift+Tab ${press + 1} escaped the card`).toBe(true)
+      }
+
+      // Escape closes it and focus returns to whatever held it before.
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      })
+      await page.settle()
+      expect(page.text()).not.toContain('Let’s walk through your first stay')
+      // Body held focus when the card auto-opened, so nothing is stranded on a
+      // control that no longer exists.
+      expect(card!.isConnected).toBe(false)
+    },
+    TIMEOUT_MS,
+  )
+
+
+  it(
     'stays closed for a returning visitor once completed',
     async () => {
       localStorage.setItem('hdl_tutorial_done', '1')

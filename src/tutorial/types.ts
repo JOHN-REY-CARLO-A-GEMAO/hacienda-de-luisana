@@ -40,6 +40,14 @@ export type TourStep = {
    */
   targets?: string[]
   eyebrow?: string
+  /**
+   * The named stretch of the tour this step belongs to, when the twelve steps
+   * are not all the same kind of work — "Your request" is the five steps that
+   * fill in and send a Booking. The card shows it as its own chip with its own
+   * "1 of 5", counted from this list; the step counter always counts the whole
+   * tour. Never write either number into `eyebrow`.
+   */
+  section?: string
   title: string
   /** What the feature does. */
   body: string

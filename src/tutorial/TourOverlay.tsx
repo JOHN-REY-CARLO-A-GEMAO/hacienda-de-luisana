@@ -17,7 +17,8 @@
 // would swallow it, whatever the panels leave open.
 // ----------------------------------------------------------------------------
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useOverlay } from '../components/ui/overlay'
 import { useTour } from './TourEngine'
 import type { Rect } from './types'
 
@@ -112,15 +113,22 @@ export function TourOverlay() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  /* Escape exits without remembering — the polite way out. */
-  useEffect(() => {
-    if (!tour.running) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') tour.exit()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [tour])
+  /* Escape, the focus trap and focus restoration come from the shared overlay
+     (`useOverlay`) — the same contract the drawer, the invoice dialog and the
+     gallery lightbox use. Two things are the tour's own:
+
+       * the page must keep scrolling, because the engine scrolls each step's
+         control into view (`lockScroll: false`);
+       * the highlighted control is part of the dialog, not the page behind it
+         — the step is asking the Guest to use it — so it joins the focus order
+         through `scope` and Tab can reach it without ever leaving the tour. */
+  const primaryRef = useRef<HTMLButtonElement | null>(null)
+  const closeTour = useCallback(() => tour.exit(), [tour.exit])
+  useOverlay(tour.running, closeTour, tipRef, {
+    initialFocus: primaryRef,
+    lockScroll: false,
+    scope: tour.targetEl,
+  })
 
   const vw = typeof window !== 'undefined' ? window.innerWidth || 1024 : 1024
   const vh = typeof window !== 'undefined' ? window.innerHeight || 768 : 768
@@ -130,7 +138,12 @@ export function TourOverlay() {
      each control in the free part: the whole card on phones (docked), only the
      header elsewhere (the card floats beside the highlight). */
   const insets = tour.insets
-  useLayoutEffect(() => {
+  // `useLayoutEffect` on the client, `useEffect` during the static prerender
+  // (`scripts/prerender.mjs`). React warns — correctly — that a layout effect
+  // cannot run on the server; this is the standard substitution, and the
+  // measurement below is meaningless without a DOM anyway.
+  const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
+  useIsomorphicLayoutEffect(() => {
     if (!tour.running) return
     const cardH = tipRef.current?.offsetHeight || tipH
     insets.current = { top: HEADER_CLEARANCE, bottom: narrow ? cardH + 2 * MARGIN : 0 }
@@ -228,8 +241,22 @@ export function TourOverlay() {
         style={tipStyle}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="eyebrow">
-            {step.eyebrow ?? 'Guest tour'} · Step {index + 1} of {total}
+          <div>
+            <div className="eyebrow">
+              {step.eyebrow ?? 'Guest tour'} · Step {index + 1} of {total}
+            </div>
+            {/* A second, clearly different counter: the stretch of work this
+                step belongs to. Without its own line the card used to read
+                "1 of 5 … Step 3 of 12" and neither number meant anything. */}
+            {tour.section && (
+              <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-forest-900/10 dark:border-cream-100/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-eyebrow text-forest-600 dark:text-cream-200/70">
+                {tour.section.name}
+                <span aria-hidden>·</span>
+                <span>
+                  {tour.section.index} of {tour.section.total}
+                </span>
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -262,8 +289,15 @@ export function TourOverlay() {
           </p>
         )}
 
-        {/* Progress */}
-        <div className="mt-4 flex items-center gap-1.5" aria-hidden>
+        {/* Progress — the dots are decoration; the bar carries the number. */}
+        <div
+          className="mt-4 flex items-center gap-1.5"
+          role="progressbar"
+          aria-valuemin={1}
+          aria-valuemax={total}
+          aria-valuenow={index + 1}
+          aria-label={`Guest tour progress: step ${index + 1} of ${total}`}
+        >
           {Array.from({ length: total }).map((_, i) => (
             <span
               key={i}
@@ -276,7 +310,10 @@ export function TourOverlay() {
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
           {index === 0 ? (
-            <button type="button" className="btn-ghost btn-sm" onClick={tour.exit}>
+            /* Declining the invitation is a decision, not a pause: it is
+               remembered exactly like "Skip tour", so the welcome card does
+               not come back on the next page. Replay still starts it. */
+            <button type="button" className="btn-ghost btn-sm" onClick={tour.skip}>
               Explore on my own
             </button>
           ) : (
@@ -295,11 +332,11 @@ export function TourOverlay() {
           <span className="flex-1" />
 
           {tour.awaiting ? (
-            <button type="button" className="text-xs underline text-forest-600 dark:text-cream-200 hover:text-forest-900 dark:hover:text-white" onClick={tour.next}>
+            <button ref={primaryRef} type="button" className="text-xs underline text-forest-600 dark:text-cream-200 hover:text-forest-900 dark:hover:text-white" onClick={tour.next}>
               Skip this step
             </button>
           ) : (
-            <button type="button" autoFocus className="btn-primary btn-sm" onClick={tour.next}>
+            <button ref={primaryRef} type="button" className="btn-primary btn-sm" onClick={tour.next}>
               {isLast ? 'Finish' : step.continueLabel ?? 'Next'}
             </button>
           )}

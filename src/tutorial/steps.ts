@@ -40,7 +40,8 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     id: 'dates',
     route: '/book',
     targets: ['stay-details'],
-    eyebrow: 'Guest tour · 1 of 5 — your request',
+    eyebrow: 'Guest tour',
+    section: 'Your request',
     title: 'Pick your dates first',
     body:
       'Every Booking starts with dates. While you choose, the website checks them against the live calendar — ' +
@@ -59,7 +60,8 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     id: 'party',
     route: '/book',
     targets: ['accommodation-field'],
-    eyebrow: 'Guest tour · 2 of 5 — your request',
+    eyebrow: 'Guest tour',
+    section: 'Your request',
     title: 'Tell us who’s coming',
     body:
       'Set the headcount and the Accommodation here — the summary on the right follows your choices and shows the ' +
@@ -71,7 +73,8 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     id: 'details',
     route: '/book',
     targets: ['guest-details'],
-    eyebrow: 'Guest tour · 3 of 5 — your details',
+    eyebrow: 'Guest tour',
+    section: 'Your request',
     title: 'Who do we confirm with?',
     body:
       'Your name, mobile number and email are how the Hacienda reaches you about this exact request — a real person ' +
@@ -87,7 +90,8 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     id: 'terms',
     route: '/book',
     targets: ['terms'],
-    eyebrow: 'Guest tour · 4 of 5 — the fine print',
+    eyebrow: 'Guest tour',
+    section: 'Your request',
     title: 'Read and accept the Terms',
     body:
       'One checkbox covers the Terms, privacy policy, cancellation and smart-lock rules — the link opens the exact ' +
@@ -99,7 +103,8 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     id: 'send',
     route: '/book',
     targets: ['submit-booking'],
-    eyebrow: 'Guest tour · 5 of 5 — send it',
+    eyebrow: 'Guest tour',
+    section: 'Your request',
     title: 'Continue to the downpayment',
     body:
       'This step does not submit the booking. Next you upload a screenshot of the downpayment — that file is ' +
