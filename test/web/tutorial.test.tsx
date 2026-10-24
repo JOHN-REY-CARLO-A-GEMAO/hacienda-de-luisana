@@ -407,6 +407,35 @@ describe('the interactive Guest tutorial', () => {
     TIMEOUT_MS,
   )
 
+  it(
+    'offers the tour from the page on a phone, not from a pill floating over it',
+    async () => {
+      const page = openAt('/')
+      await page.wait('Let’s walk through your first stay')
+      click(page, /Explore on my own/i)
+      await page.settle()
+
+      // Two presentations, one per breakpoint: a row in the flow at the foot of
+      // the page, and the labelled pill in the margin from `lg` up.
+      const replays = [...page.container.querySelectorAll<HTMLElement>('[aria-label="How to Book: Replay tutorial"]')]
+      expect(replays).toHaveLength(2)
+
+      const floating = replays.filter((el) => /\bfixed\b/.test(el.className))
+      expect(floating).toHaveLength(1)
+      // The one that floats is the desktop one, and nothing floats on a phone:
+      // a fixed control over a 390 px column sits on the prices and the copy,
+      // which is exactly what the audit found.
+      expect(floating[0].className).toContain('lg:inline-flex')
+      expect(floating[0].className).toMatch(/(^|\s)hidden(\s|$)/)
+
+      const inFlow = replays.find((el) => el !== floating[0])!
+      expect(inFlow.className).not.toMatch(/\bfixed\b/)
+      // Big enough for a thumb, and inside the safe area on a notched screen.
+      expect(inFlow.className).toContain('min-h-11')
+      expect(inFlow.parentElement!.className).toContain('env(safe-area-inset-bottom)')
+    },
+    TIMEOUT_MS,
+  )
 
   it(
     'stays closed for a returning visitor once completed',
