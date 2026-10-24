@@ -43,6 +43,13 @@ class AppConstants {
   /// names none of its own.
   static const String gcashQrInstruction =
       'Scan this QR code using GCash to pay your downpayment.';
+
+  /// The owner's official BDO InstaPay payment QR code, bundled alongside
+  /// `gcashQrAsset` from `assets/images/payment/` (`public/images/payment/`).
+  static const String bdoQrAsset = 'assets/images/payment/bdo-qr.png';
+  static const String bdoQrPublishedPath = '/images/payment/bdo-qr.png';
+  static const String bdoQrInstruction =
+      'Scan this QR code using BDO to pay your downpayment.';
   /// The Admin's Security PIN server copy — one doc per uid, own-doc-only
   /// in firestore.rules (ADR-0015). Not a Credential: that word is taken
   /// by the door RFID / Mobile Key (CONTEXT.md § Access).

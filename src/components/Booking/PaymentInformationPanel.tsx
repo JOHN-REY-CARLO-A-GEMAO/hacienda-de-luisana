@@ -88,7 +88,7 @@ export function PaymentInformationPanel({
               </p>
               {/* A published QR code replaces the number: the Guest scans, so the
                   owner's mobile/account number is not printed for copying. A
-                  channel without one (BDO today) still shows its account. */}
+                  channel without one still shows its account. */}
               {method.qr_image ? (
                 <PaymentQrCode src={method.qr_image} method={method.method} instruction={instruction} />
               ) : (

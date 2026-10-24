@@ -2192,7 +2192,7 @@ describe('site_config/payment', () => {
     expect(allow({ path: 'site_config/payment', method: 'get', auth: null, resourceData: payment })).toBe(true)
   })
 
-  it('accepts the GCash QR code in place of the owner’s mobile number', () => {
+  it('accepts the GCash and BDO QR codes in place of the owner’s mobile and bank numbers', () => {
     expect(allow({
       path: 'site_config/payment', method: 'create', auth: allowlistedAdmin(),
       requestData: {
@@ -2204,7 +2204,12 @@ describe('site_config/payment', () => {
             qr_image: '/images/payment/gcash-qr.png',
             qr_instructions: 'Scan this QR code using GCash to pay your downpayment.',
           },
-          { method: 'BDO', recipient_name: 'Agueda Hortillas', account_identifier: '005438013682' },
+          {
+            method: 'BDO',
+            recipient_name: 'Agueda Hortillas (Aida)',
+            qr_image: '/images/payment/bdo-qr.png',
+            qr_instructions: 'Scan this QR code using BDO to pay your downpayment.',
+          },
         ],
         instructions: 'Send the 50% down payment, then upload the proof.',
       },

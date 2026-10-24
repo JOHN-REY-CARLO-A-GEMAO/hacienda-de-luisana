@@ -70,12 +70,13 @@ void main() {
       expect(problem, contains('methods[0].account_identifier'));
     });
 
-    test('a GCash channel that publishes only the official QR code is accepted', () {
-      // The owner replaced the mobile number with their own QR code, so the
-      // screen sends `qr_image` and no `account_identifier`.
+    test('GCash and BDO channels that publish only the official QR codes are accepted', () {
+      // The owner replaced the mobile and bank account numbers with their own
+      // QR codes, so the screen sends `qr_image` and no `account_identifier`.
       expect(
         validatePaymentInformationDocument(listShape([
           channel(account: '', qr: '/images/payment/gcash-qr.png'),
+          channel(method: 'BDO', recipient: 'Agueda Hortillas (Aida)', account: '', qr: '/images/payment/bdo-qr.png'),
         ])),
         isNull,
       );

@@ -66,29 +66,37 @@ export const OFFICIAL_STAY_POLICIES: PublishedStayPolicies = {
 }
 
 /**
- * The owner's official GCash payment QR code.
+ * The owner's official GCash and BDO InstaPay payment QR codes.
  *
- * One constant, one asset: the Guest website serves it from `public/`, and the
- * Flutter Admin app bundles the same file from `assets/images/payment/`. The
+ * One constant per asset: the Guest website serves them from `public/`, and the
+ * Flutter Admin app bundles the same files from `assets/images/payment/`. Each
  * image is the owner's own QR code, cropped without resampling — never draw or
  * regenerate one, because a generated code points at a different account. See
- * `public/images/payment/README.md` for provenance and the payload it decodes to.
+ * `public/images/payment/README.md` for provenance and the payloads they decode to.
  */
 export const OFFICIAL_GCASH_QR_IMAGE = '/images/payment/gcash-qr.png'
 export const OFFICIAL_GCASH_QR_INSTRUCTION = 'Scan this QR code using GCash to pay your downpayment.'
+export const OFFICIAL_BDO_QR_IMAGE = '/images/payment/bdo-qr.png'
+export const OFFICIAL_BDO_QR_INSTRUCTION = 'Scan this QR code using BDO to pay your downpayment.'
 
 export const OFFICIAL_PAYMENT_INFORMATION: PaymentInformation = {
   active: true,
   methods: [
-    // The owner's mobile number is deliberately not published any more: the
-    // Guest scans the QR code instead of copying a number into GCash.
+    // The owner's mobile and bank account numbers are deliberately not
+    // published any more: the Guest scans the QR code instead of copying a
+    // number into GCash or BDO.
     {
       method: 'GCash',
       recipient_name: 'Agueda H.',
       qr_image: OFFICIAL_GCASH_QR_IMAGE,
       qr_instructions: OFFICIAL_GCASH_QR_INSTRUCTION,
     },
-    { method: 'BDO', recipient_name: 'Agueda Hortillas', account_identifier: '005438013682' },
+    {
+      method: 'BDO',
+      recipient_name: 'Agueda Hortillas (Aida)',
+      qr_image: OFFICIAL_BDO_QR_IMAGE,
+      qr_instructions: OFFICIAL_BDO_QR_INSTRUCTION,
+    },
   ],
   instructions: 'Send the 50% down payment calculated from the published stay total through one listed payment channel. The remaining 50% is due at check-in. After sending the down payment, upload a screenshot for Admin review.',
   security_deposit_notes: 'The down payment is 50% of the computed stay total. Any refundable security deposit is shown separately on the published rate card.',

@@ -9,7 +9,11 @@ import {
   withOfficialQrCode,
   type PaymentInformation,
 } from '../../src/lib/paymentInfoDB'
-import { OFFICIAL_GCASH_QR_IMAGE } from '../../src/config/officialBusiness'
+import {
+  OFFICIAL_BDO_QR_IMAGE,
+  OFFICIAL_GCASH_QR_IMAGE,
+  OFFICIAL_PAYMENT_INFORMATION,
+} from '../../src/config/officialBusiness'
 
 const valid: PaymentInformation = {
   active: true,
@@ -38,7 +42,7 @@ describe('payment information configuration', () => {
     expect(validatePaymentInformation(valid)).toEqual([])
   })
 
-  it('accepts a GCash channel that carries only the official QR code', () => {
+  it('accepts GCash and BDO channels that carry only their official QR codes', () => {
     const qrOnly: PaymentInformation = {
       active: true,
       methods: [
@@ -48,11 +52,17 @@ describe('payment information configuration', () => {
           qr_image: OFFICIAL_GCASH_QR_IMAGE,
           qr_instructions: 'Scan this QR code using GCash to pay your downpayment.',
         },
-        { method: 'BDO', recipient_name: 'Agueda Hortillas', account_identifier: '005438013682' },
+        {
+          method: 'BDO',
+          recipient_name: 'Agueda Hortillas (Aida)',
+          qr_image: OFFICIAL_BDO_QR_IMAGE,
+          qr_instructions: 'Scan this QR code using BDO to pay your downpayment.',
+        },
       ],
       instructions: 'Submit a screenshot or Gmail confirmation/reference.',
     }
     expect(validatePaymentInformation(qrOnly)).toEqual([])
+    expect(validatePaymentInformation(OFFICIAL_PAYMENT_INFORMATION)).toEqual([])
   })
 
   it('refuses a channel with neither an account nor a QR code, and unsafe QR sources', () => {
@@ -77,37 +87,31 @@ describe('payment information configuration', () => {
     }
   })
 
-  it('renders the official GCash QR code instead of the owner’s mobile number', () => {
-    const channels: PaymentInformation = {
-      active: true,
-      methods: [
-        {
-          method: 'GCash',
-          recipient_name: 'Agueda H.',
-          qr_image: OFFICIAL_GCASH_QR_IMAGE,
-          qr_instructions: 'Scan this QR code using GCash to pay your downpayment.',
-        },
-        { method: 'BDO', recipient_name: 'Agueda Hortillas', account_identifier: '005438013682' },
-      ],
-      instructions: 'Submit a screenshot or Gmail confirmation/reference.',
+  it('renders both official GCash and BDO QR codes with their transfer-fee notes', () => {
+    const host = render(OFFICIAL_PAYMENT_INFORMATION)
+    const images = [...host.querySelectorAll('img')]
+    expect(images.map((img) => img.getAttribute('src'))).toEqual([
+      '/images/payment/gcash-qr.png',
+      '/images/payment/bdo-qr.png',
+    ])
+    expect(images[0]?.getAttribute('alt')).toContain('GCash QR code')
+    expect(images[1]?.getAttribute('alt')).toContain('BDO QR code')
+    // Dense codes: below ~180 CSS px a scanner stops reading them, so each image
+    // keeps its native size as the layout's upper bound.
+    for (const image of images) {
+      expect(Number(image.getAttribute('width'))).toBeGreaterThanOrEqual(240)
     }
-    const host = render(channels)
-    const image = host.querySelector('img')
-    expect(image?.getAttribute('src')).toBe('/images/payment/gcash-qr.png')
-    expect(image?.getAttribute('alt')).toContain('GCash QR code')
-    // Dense code: below ~180 CSS px a scanner stops reading it, so the image
-    // keeps its full native size as the layout's upper bound.
-    expect(Number(image?.getAttribute('width'))).toBeGreaterThanOrEqual(240)
     expect(host.textContent).toContain('Scan this QR code using GCash to pay your downpayment.')
+    expect(host.textContent).toContain('Scan this QR code using BDO to pay your downpayment.')
+    expect(host.textContent).toContain('Transfer fees may apply.')
+    expect(host.textContent).toContain('BDO to BDO transfers are free. Fees may apply for non-BDO transfers.')
     expect(host.textContent).not.toContain('09258507707')
-    // The bank channel that has no QR code still shows its account number.
-    expect(host.textContent).toContain('005438013682')
-    expect(host.textContent).toContain('Gmail confirmation/reference')
+    expect(host.textContent).not.toContain('005438013682')
   })
 
-  it('fills in the official QR code for an older published document that names GCash', () => {
-    // What `site_config/payment` looked like before the owner supplied a QR
-    // code: GCash with a mobile number and no image.
+  it('fills in the official QR codes for an older published document that names GCash and BDO', () => {
+    // What `site_config/payment` looked like before the owner supplied QR
+    // codes: GCash and BDO with account numbers and no images.
     const legacy: PaymentInformation = {
       active: true,
       methods: [
@@ -118,13 +122,18 @@ describe('payment information configuration', () => {
     }
     const merged = withOfficialQrCode(legacy)
     expect(merged.methods?.[0].qr_image).toBe(OFFICIAL_GCASH_QR_IMAGE)
-    expect(merged.methods?.[1].qr_image).toBeUndefined()
-    // The stored number is not destroyed; the panel simply stops printing it.
+    expect(merged.methods?.[1].qr_image).toBe(OFFICIAL_BDO_QR_IMAGE)
+    // The stored numbers are not destroyed; the panel simply stops printing them.
     expect(legacy.methods?.[0].account_identifier).toBe('09258507707')
+    expect(legacy.methods?.[1].account_identifier).toBe('005438013682')
 
     const host = render(merged)
     expect(host.textContent).not.toContain('09258507707')
-    expect(host.querySelector('img')?.getAttribute('src')).toBe(OFFICIAL_GCASH_QR_IMAGE)
+    expect(host.textContent).not.toContain('005438013682')
+    expect([...host.querySelectorAll('img')].map((img) => img.getAttribute('src'))).toEqual([
+      OFFICIAL_GCASH_QR_IMAGE,
+      OFFICIAL_BDO_QR_IMAGE,
+    ])
   })
 
   it('keeps a channel’s own QR code rather than replacing it', () => {
@@ -175,22 +184,28 @@ describe('payment information configuration', () => {
     expect(host.textContent).toContain('Scan this QR code using GCash to pay your downpayment.')
   })
 
-  it('ships the owner’s actual QR image, in both apps, rather than a stand-in', () => {
-    // A PNG named gcash-qr.png proves nothing on its own, which is why the
-    // payload was decoded off the owner's poster before it was committed (see
-    // public/images/payment/README.md). What a test can hold on to is that the
-    // exact file is present at the path the config publishes, and that the
-    // Flutter bundle carries the identical bytes.
-    const web = join(process.cwd(), 'public', 'images', 'payment', 'gcash-qr.png')
-    expect(existsSync(web), `${web} is missing`).toBe(true)
-    const bytes = readFileSync(web)
-    expect(bytes.subarray(1, 4).toString('ascii')).toBe('PNG')
-    expect(bytes.readUInt32BE(16)).toBe(281)
-    expect(bytes.readUInt32BE(20)).toBe(281)
+  it('ships the owner’s actual GCash and BDO QR images, in both apps, rather than stand-ins', () => {
+    // A PNG named *-qr.png proves nothing on its own, which is why the
+    // payloads were decoded off the owner's posters before they were committed
+    // (see public/images/payment/README.md). What a test can hold on to is that
+    // the exact files are present at the paths the config publishes, and that
+    // the Flutter bundle carries the identical bytes.
+    const assets = [
+      { file: 'gcash-qr.png', width: 281, height: 281 },
+      { file: 'bdo-qr.png', width: 470, height: 470 },
+    ]
+    for (const { file, width, height } of assets) {
+      const web = join(process.cwd(), 'public', 'images', 'payment', file)
+      expect(existsSync(web), `${web} is missing`).toBe(true)
+      const bytes = readFileSync(web)
+      expect(bytes.subarray(1, 4).toString('ascii')).toBe('PNG')
+      expect(bytes.readUInt32BE(16)).toBe(width)
+      expect(bytes.readUInt32BE(20)).toBe(height)
 
-    const flutter = join(process.cwd(), 'assets', 'images', 'payment', 'gcash-qr.png')
-    expect(existsSync(flutter), `${flutter} is missing`).toBe(true)
-    expect(readFileSync(flutter).equals(bytes)).toBe(true)
+      const flutter = join(process.cwd(), 'assets', 'images', 'payment', file)
+      expect(existsSync(flutter), `${flutter} is missing`).toBe(true)
+      expect(readFileSync(flutter).equals(bytes)).toBe(true)
+    }
   })
 
   it('rejects missing or unsafe oversized configuration', () => {
