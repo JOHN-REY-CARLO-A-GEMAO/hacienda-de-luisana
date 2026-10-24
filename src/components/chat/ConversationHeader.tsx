@@ -1,115 +1,130 @@
-import { useState } from 'react'
-import { ArrowLeft, Lock, User } from '../../lib/icons'
+import { BUSINESS } from '../../config/site'
+import { Calendar, Chevron, Lock, MapPin, Phone } from '../../lib/icons'
+import { formatConversationTimestamp } from './ConversationListItem'
+import { GuestAvatar } from './GuestAvatar'
 
-/**
- * The conversation context header: guest avatar and name, online/last-seen
- * status, assigned property, booking reference, contact action, and a toggle
- * for the booking details panel. Role-aware: the Admin sees "Call Guest",
- * guests see "Call Host".
- */
+export type ConversationHeaderProps = {
+  guestName: string
+  propertyName: string | null
+  bookingReference: string | null
+  lastActiveAtMs?: number | null
+  showBack?: boolean
+  onBack?: () => void
+  detailsOpen?: boolean
+  onToggleBookingDetails: () => void
+  /** Guest perspective ('guest', website default) shows Hacienda de LuisAna Concierge; 'admin' shows Guest name. */
+  perspective?: 'guest' | 'admin'
+  contactPhoneHref?: string | null
+  contactPhoneLabel?: string
+  liveLocationActive?: boolean
+  liveLocationCountdown?: string | null
+  liveLocationDismissed?: boolean
+  onExpandLiveLocation?: () => void
+}
+
 export function ConversationHeader({
   guestName,
   propertyName,
   bookingReference,
-  status,
-  isAdmin,
+  lastActiveAtMs,
+  showBack = false,
   onBack,
-  onCall,
+  detailsOpen = false,
   onToggleBookingDetails,
-  bookingDetailsOpen,
-}: {
-  guestName: string
-  propertyName?: string | null
-  bookingReference?: string | null
-  /** 'online' | 'offline' | null — null means status is unknown (neutral). */
-  status?: 'online' | 'offline' | null
-  isAdmin: boolean
-  onBack: () => void
-  onCall: () => void
-  onToggleBookingDetails: () => void
-  bookingDetailsOpen: boolean
-}) {
-  const [showDetails, setShowDetails] = useState(bookingDetailsOpen)
+  perspective = 'guest',
+  contactPhoneHref = 'tel:+639258507707',
+  contactPhoneLabel = `Call ${BUSINESS.name} at ${BUSINESS.contact.phoneDisplay}`,
+  liveLocationActive = false,
+  liveLocationCountdown = null,
+  liveLocationDismissed = false,
+  onExpandLiveLocation,
+}: ConversationHeaderProps) {
+  const title = perspective === 'admin' ? guestName : `${BUSINESS.name} · Concierge`
+  const stayContext = [
+    propertyName || 'Stay conversation',
+    bookingReference || null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
-  const hasPhone = Boolean(
-    isAdmin ? undefined : true
-  )
+  const activityText = lastActiveAtMs
+    ? `Active ${formatConversationTimestamp(lastActiveAtMs)}`
+    : 'Private Guest–Admin channel'
 
   return (
-    <header
-      className="flex items-center justify-between gap-4 px-5 py-4 bg-white border-b border-card-surface"
-    >
-      <button
-        type="button"
-        className="inline-flex items-center gap-2 text-sm font-medium text-forest-600 hover:text-forest-900 transition-colors"
-        onClick={onBack}
-        aria-label="Back to inbox"
-      >
-        <ArrowLeft size={16} />
-        <span>Inbox</span>
-      </button>
+    <header className="messages-conversation-header justify-between">
+      <div className="flex min-w-0 items-center gap-3">
+        {showBack && onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="messages-back"
+            aria-label="Back to stays list"
+          >
+            <Chevron size={16} className="rotate-90" />
+            <span>Stays</span>
+          </button>
+        )}
 
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="relative flex shrink-0 items-center justify-center rounded-full bg-forest-100 text-forest-800 font-medium">
-          <span className="text-sm">
-            {guestName
-              ? guestName.split(' ').map((n) => n.charAt(0).toUpperCase()).slice(0, 2).join('')
-              : 'G'}
-          </span>
-          {status === 'online' && (
-            <span className="absolute -right-[2px] -bottom-[2px] flex h-3 w-3 rounded-full bg-status-success border-2 border-white"></span>
-          )}
-          {status === 'offline' && (
-            <span className="absolute -right-[2px] -bottom-[2px] flex h-3 w-3 rounded-full bg-forest-300 border-2 border-white"></span>
-          )}
-        </div>
+        <GuestAvatar
+          name={perspective === 'admin' ? guestName : BUSINESS.name}
+          variant={perspective === 'admin' ? 'guest' : 'hacienda'}
+          size="md"
+        />
 
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-forest-900 leading-tight truncate">
-            {guestName || 'Guest'}
-          </h2>
-          <p className="text-xs text-forest-500 truncate">
-            {propertyName && bookingReference
-              ? `${propertyName} · Ref #${bookingReference}`
-              : propertyName || bookingReference || 'Booking details unavailable'}
+          <div className="flex items-center gap-2">
+            <h2 className="truncate text-sm font-semibold text-forest-900 dark:text-cream-50">
+              {title}
+            </h2>
+            <span className="messages-private" title="End-to-end access controlled by Firestore rules">
+              <Lock size={11} />
+              <span>Private</span>
+            </span>
+          </div>
+          <p className="mt-0.5 truncate text-xs text-forest-600 dark:text-sage-300">
+            <span>{stayContext}</span>
+            <span className="hidden sm:inline"> · {activityText}</span>
           </p>
-          {status != null && (
-            <p className="text-[10px] text-forest-400 mt-0.5 leading-none">
-              {status === 'online'
-                ? 'Online'
-                : status === 'offline'
-                  ? 'Offline'
-                  : 'Status unavailable'}
-            </p>
-          )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {liveLocationActive && liveLocationDismissed && onExpandLiveLocation && (
+          <button
+            type="button"
+            onClick={onExpandLiveLocation}
+            className="inline-flex items-center gap-1.5 rounded-full border border-forest-700/25 bg-cream-100 px-2.5 py-1 text-[11px] font-semibold text-forest-800 transition-colors hover:bg-cream-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400"
+            aria-label="Show active live location status bar"
+          >
+            <MapPin size={12} />
+            <span className="tabular-nums">
+              Sharing{liveLocationCountdown ? ` · ${liveLocationCountdown}` : ''}
+            </span>
+          </button>
+        )}
+
+        {contactPhoneHref && (
+          <a
+            href={contactPhoneHref}
+            className="btn-ghost btn-sm"
+            aria-label={contactPhoneLabel}
+            title={contactPhoneLabel}
+          >
+            <Phone size={15} />
+            <span className="hidden md:inline">Call</span>
+          </a>
+        )}
+
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-forest-900 text-white text-sm font-medium hover:bg-forest-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={onCall}
-          disabled={!hasPhone}
-          aria-label={isAdmin ? 'Call guest' : 'Call host'}
-          title={isAdmin ? 'Call guest' : 'Call host'}
+          onClick={onToggleBookingDetails}
+          aria-expanded={detailsOpen}
+          aria-label="Booking details"
+          className="btn-quiet btn-sm"
         >
-          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-          </svg>
-          <span>{isAdmin ? 'Call Guest' : 'Call Host'}</span>
-        </button>
-        <button
-          type="button"
-          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-card-surface text-forest-600 hover:bg-forest-50 transition-colors"
-          onClick={() => {
-            setShowDetails((prev) => !prev)
-            onToggleBookingDetails()
-          }}
-          aria-expanded={showDetails}
-          aria-label={showDetails ? 'Hide booking details' : 'Show booking details'}
-        >
-          <Lock size={16} />
+          <Calendar size={15} />
+          <span className="hidden sm:inline">Booking details</span>
         </button>
       </div>
     </header>

@@ -550,11 +550,17 @@ body[data-scroll-locked='true'] { overflow: hidden; }
   .messages-topics,
   .messages-topics.messages-mobile-visible {
     display: flex;
-    width: 17.5rem;
+    width: 18.5rem;
   }
   .messages-conversation,
   .messages-conversation.messages-mobile-visible {
     display: flex;
+  }
+}
+@media (min-width: 1024px) {
+  .messages-topics,
+  .messages-topics.messages-mobile-visible {
+    width: 20rem;
   }
 }
 

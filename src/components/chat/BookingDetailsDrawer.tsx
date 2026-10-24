@@ -1,146 +1,140 @@
-import type { Booking } from '../../lib/storage'
+import { Link } from 'react-router-dom'
+import { BUSINESS } from '../../config/site'
+import { effectiveStatus } from '../../lib/booking'
+import { sanitizeBookingReference } from '../../lib/chatCloud'
+import { Compass, MapPin, Phone } from '../../lib/icons'
+import { formatStayDuration, type Booking } from '../../lib/storage'
+import { accommodationName, peso, shortDate } from '../Account/stayFacts'
+import { Drawer, StatusBadge } from '../ui'
+
+export type BookingDetailsDrawerProps = {
+  open: boolean
+  onClose: () => void
+  booking: Booking | null | undefined
+  fallbackPropertyName?: string | null
+  fallbackReference?: string | null
+}
 
 /**
- * A toggleable booking summary drawer showing only information the current
- * user is authorized to see. Reuses existing booking data — no second source
- * of truth. On mobile it slides in from the bottom; on desktop it is a side
- * panel beside the message timeline.
+ * Accessible Booking Details Drawer layered over the unified conversation.
+ * Built on the shared `Drawer` (`useOverlay`: Escape key, backdrop click,
+ * focus trap & restore, scroll lock) and displays only verified booking &
+ * Hacienda facts — never raw document IDs or accommodation slugs.
  */
 export function BookingDetailsDrawer({
   open,
   onClose,
   booking,
-}: {
-  open: boolean
-  onClose: () => void
-  booking: Booking | null
-}) {
-  if (!open) return null
-
-  const formatDate = (value: string | undefined | null): string => {
-    if (!value) return 'Not recorded'
-    try {
-      return new Date(value).toLocaleDateString('en-PH', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    } catch {
-      return 'Not recorded'
-    }
-  }
+  fallbackPropertyName,
+  fallbackReference,
+}: BookingDetailsDrawerProps) {
+  const safeRef = sanitizeBookingReference(booking?.ref_id ?? fallbackReference)
+  const propertyLabel = booking
+    ? accommodationName(booking.accommodation)
+    : fallbackPropertyName || 'Hacienda de LuisAna'
+  const status = booking ? effectiveStatus(booking) : null
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex flex-col lg:flex-row"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Booking details"
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Booking details"
+      description={safeRef ? `Reservation ${safeRef}` : 'Your stay summary and verified resort details'}
     >
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-forest-950/60 backdrop-blur-sm lg:hidden"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Drawer panel */}
-      <aside
-        className="fixed inset-y-0 right-0 z-[61] flex w-full max-w-md flex-col bg-white shadow-2xl lg:static lg:w-80 lg:rounded-none lg:border-l border-card-surface lg:shadow-none"
-        aria-label="Booking summary"
-      >
-        <div className="flex items-center justify-between gap-4 border-b border-card-surface px-5 py-4">
-          <h2 className="text-sm font-semibold text-forest-900">
-            Booking Details
-          </h2>
-          <button
-            type="button"
-            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-forest-600 hover:bg-forest-50 transition-colors"
-            onClick={onClose}
-            aria-label="Close booking details"
-          >
-            <span className="sr-only">Close</span>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {!booking ? (
-            <div className="text-center py-10">
-              <p className="text-sm text-forest-500">Booking details unavailable.</p>
-            </div>
-          ) : (
-            <>
-              {booking.ref_id && (
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-semibold text-forest-400 uppercase tracking-wider">
-                    Reference
-                  </span>
-                  <p className="text-sm text-forest-900 font-medium truncate">
-                    Ref #{booking.ref_id}
+      <div className="space-y-5">
+        {booking ? (
+          <>
+            <div className="guest-inset p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <span className="guest-label">Accommodation</span>
+                  <p className="mt-1 font-serif text-xl font-medium text-forest-900 dark:text-cream-50">
+                    {propertyLabel}
+                  </p>
+                  <p className="mt-0.5 text-xs text-forest-600 dark:text-sage-400">
+                    {safeRef ? `Reference ${safeRef}` : 'Reference assigned upon confirmation'}
                   </p>
                 </div>
-              )}
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-semibold text-forest-400 uppercase tracking-wider">
-                  Property
-                </span>
-                <p className="text-sm text-forest-900 truncate">
-                  {booking.accommodation ? booking.accommodation : 'Not recorded'}
-                </p>
+                {status && <StatusBadge status={status} />}
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-semibold text-forest-400 uppercase tracking-wider">
-                  Check-in
-                </span>
-                <p className="text-sm text-forest-900">{formatDate(booking.check_in)}</p>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-semibold text-forest-400 uppercase tracking-wider">
-                  Check-out
-                </span>
-                <p className="text-sm text-forest-900">{formatDate(booking.check_out)}</p>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-semibold text-forest-400 uppercase tracking-wider">
-                  Status
-                </span>
-                <p className="text-sm text-forest-900 font-medium capitalize">
-                  {booking.status || 'Not recorded'}
-                </p>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-semibold text-forest-400 uppercase tracking-wider">
-                  Guests
-                </span>
-                <p className="text-sm text-forest-900">
-                  {booking.guests != null ? String(booking.guests) : 'Not recorded'}
-                </p>
-              </div>
+
+              <dl className="guest-ledger guest-rule mt-4 grid-cols-2 pt-3 text-sm">
+                <div className="py-2">
+                  <dt className="guest-label">Check-in</dt>
+                  <dd className="guest-value">{shortDate(booking.check_in)}</dd>
+                </div>
+                <div className="py-2">
+                  <dt className="guest-label">Check-out</dt>
+                  <dd className="guest-value">{shortDate(booking.check_out)}</dd>
+                </div>
+                <div className="guest-rule py-2">
+                  <dt className="guest-label">Duration</dt>
+                  <dd className="guest-value">
+                    {formatStayDuration(booking.check_in, booking.check_out)}
+                  </dd>
+                </div>
+                <div className="guest-rule py-2">
+                  <dt className="guest-label">Guests</dt>
+                  <dd className="guest-value">
+                    {booking.guests} {booking.guests === 1 ? 'guest' : 'guests'}
+                  </dd>
+                </div>
+                {typeof booking.stay_total === 'number' && booking.stay_total > 0 && (
+                  <div className="guest-rule col-span-2 py-2">
+                    <dt className="guest-label">Stay total</dt>
+                    <dd className="guest-value guest-num text-base">{peso(booking.stay_total)}</dd>
+                  </div>
+                )}
+              </dl>
+
               {booking.special_requests && booking.special_requests.trim() && (
-                <div>
-                  <span className="block text-xs font-semibold text-forest-400 uppercase tracking-wider mb-1">
-                    Notes
-                  </span>
-                  <p className="text-sm text-forest-700/90 leading-relaxed">
+                <div className="guest-rule mt-2 pt-3">
+                  <span className="guest-label">Recorded stay notes</span>
+                  <p className="mt-1 text-xs leading-relaxed text-forest-800 dark:text-cream-100/85">
                     {booking.special_requests}
                   </p>
                 </div>
               )}
-            </>
-          )}
-        </div>
+            </div>
 
-        <div className="border-t border-card-surface p-4">
-          <button
-            type="button"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-forest-600 border border-transparent rounded-lg hover:bg-forest-50 transition-colors"
-            onClick={onClose}
-          >
-            Close &rarr;
-          </button>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/account" onClick={onClose} className="btn-quiet btn-sm">
+                View full reservation
+              </Link>
+            </div>
+          </>
+        ) : (
+          <div className="guest-inset p-4 text-xs leading-relaxed text-forest-700 dark:text-cream-100/80">
+            This thread is an earlier inquiry without a linked reservation record. Any new stay you
+            book will open its own booking conversation automatically.
+          </div>
+        )}
+
+        <div className="guest-inset space-y-3 p-4">
+          <span className="guest-label">Verified Hacienda contact & arrival</span>
+          <div className="flex items-start gap-2.5 text-xs text-forest-800 dark:text-cream-100/85">
+            <MapPin size={15} className="mt-0.5 shrink-0 text-forest-600" />
+            <span>{BUSINESS.address.formatted}</span>
+          </div>
+          <div className="flex items-center gap-2.5 text-xs text-forest-800 dark:text-cream-100/85">
+            <Phone size={15} className="shrink-0 text-forest-600" />
+            <a href="tel:+639258507707" className="text-link">
+              {BUSINESS.contact.phoneDisplay}
+            </a>
+          </div>
+          <div className="pt-1">
+            <a
+              href={BUSINESS.contact.directions}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost btn-sm"
+            >
+              <Compass size={14} />
+              <span>Open Google Maps Directions</span>
+            </a>
+          </div>
         </div>
-      </aside>
-    </div>
+      </div>
+    </Drawer>
   )
 }

@@ -1,202 +1,291 @@
-import { parseDate, formatDateTime } from '../../lib/formatDate'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage } from '../../lib/chatCloud'
-import { MessageBubble } from './MessageBubble'
+import { ArrowDown } from '../../lib/icons'
+import { EmptyState, LoadingPanel } from '../ui'
+import { MessageBubble, type DeliveryStatus } from './MessageBubble'
+import { TypingIndicator } from './TypingIndicator'
 
-const MESSAGE_GROUP_GAP_MS = 5 * 60_000
-
-type MessageGroup = {
-  id: string
-  mine: boolean
-  messages: ChatMessage[]
+export type MessageTimelineProps = {
+  messages: readonly ChatMessage[]
+  loading?: boolean
+  hasMore?: boolean
+  loadingOlder?: boolean
+  onLoadOlder?: () => void
+  typing?: boolean
+  typingLabel?: string
+  /** True when running in local offline demo mode (honest delivery state). */
+  isLocalDemo?: boolean
+  /** Cloud unread_admin counter & admin_last_read_at watermark for genuine read status. */
+  unreadAdminCount?: number
+  adminLastReadAt?: string | null
+  emptyTitle?: string
+  emptyDescription?: string
 }
 
-type MessageDay = {
-  id: string
-  label: string
-  groups: MessageGroup[]
+type DayBucket = {
+  dayKey: string
+  dayLabel: string
+  items: ChatMessage[]
 }
 
-function dayKey(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
+function formatDayHeading(iso: string): { key: string; label: string } {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return { key: 'unknown', label: 'Recent' }
+  }
+  const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`
 
-function dayLabel(date: Date | null): string {
-  if (!date) return 'Date unavailable'
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (dayKey(date) === dayKey(today)) return 'Today'
-  if (dayKey(date) === dayKey(yesterday)) return 'Yesterday'
-  try {
-    return date.toLocaleDateString('en-PH', {
-      weekday: 'long',
-      month: 'long',
+  const now = new Date()
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate(),
+  ).padStart(2, '0')}`
+  if (key === todayKey) return { key, label: 'Today' }
+
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(
+    2,
+    '0',
+  )}-${String(yesterday.getDate()).padStart(2, '0')}`
+  if (key === yesterdayKey) return { key, label: 'Yesterday' }
+
+  return {
+    key,
+    label: date.toLocaleDateString('en-PH', {
+      weekday: 'short',
+      month: 'short',
       day: 'numeric',
-      year: 'numeric',
-    })
-  } catch {
-    return 'Date unavailable'
+      ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+    }),
   }
-}
-
-function messageTime(value: unknown): string {
-  const date = parseDate(value)
-  if (!date) return 'Time unavailable'
-  try {
-    return date.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
-  } catch {
-    return 'Time unavailable'
-  }
-}
-
-function buildTimeline(messages: readonly ChatMessage[]): MessageDay[] {
-  const days: MessageDay[] = []
-
-  for (const message of messages) {
-    const date = parseDate(message.at)
-    const id = date ? dayKey(date) : 'date-unavailable'
-    let day = days[days.length - 1]
-    if (!day || day.id !== id) {
-      day = { id, label: dayLabel(date), groups: [] }
-      days.push(day)
-    }
-
-    let group = day.groups[day.groups.length - 1]
-    const previous = group?.messages[group.messages.length - 1]
-    const previousDate = previous ? parseDate(previous.at) : null
-    const separatedByTime =
-      !date || !previousDate || date.getTime() - previousDate.getTime() > MESSAGE_GROUP_GAP_MS
-
-    if (!group || group.mine !== message.mine || separatedByTime) {
-      group = { id: message.id, mine: message.mine, messages: [] }
-      day.groups.push(group)
-    }
-    group.messages.push(message)
-  }
-
-  return days
-}
-
-type MessageTimelineProps = {
-  messages: ChatMessage[]
-  hasMore: boolean
-  loadingOlder: boolean
-  onLoadOlder: () => void
-  onScrollToLatest: () => void
-  atLatest: boolean
-  typingUsers: Set<string>
-  isAdmin: boolean
-  ariaLabel: string
-  emptyTitle: string
-  emptyBody: string
 }
 
 export function MessageTimeline({
   messages,
-  hasMore,
-  loadingOlder,
+  loading = false,
+  hasMore = false,
+  loadingOlder = false,
   onLoadOlder,
-  onScrollToLatest,
-  atLatest,
-  typingUsers,
-  isAdmin,
-  ariaLabel,
-  emptyTitle,
-  emptyBody,
+  typing = false,
+  typingLabel,
+  isLocalDemo = false,
+  unreadAdminCount = 0,
+  adminLastReadAt = null,
+  emptyTitle = 'Start your conversation',
+  emptyDescription = 'Ask about arrival times, gate access, stay requests, or directions — everything for this booking stays in one thread.',
 }: MessageTimelineProps) {
-  const timeline = buildTimeline(messages)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const nearBottomRef = useRef(true)
+  const prevSnapshotRef = useRef<{
+    firstId: string | null
+    lastId: string | null
+    scrollHeight: number
+    scrollTop: number
+  }>({ firstId: null, lastId: null, scrollHeight: 0, scrollTop: 0 })
+  const [hasUnseenBelow, setHasUnseenBelow] = useState(false)
 
-  if (messages.length === 0) {
-    return null // handled by parent EmptyState
+  const buckets = useMemo<DayBucket[]>(() => {
+    const out: DayBucket[] = []
+    for (const msg of messages) {
+      const { key, label } = formatDayHeading(msg.at)
+      const current = out[out.length - 1]
+      if (!current || current.dayKey !== key) {
+        out.push({ dayKey: key, dayLabel: label, items: [msg] })
+      } else {
+        current.items.push(msg)
+      }
+    }
+    return out
+  }, [messages])
+
+  const scrollToLatest = useCallback((smooth = false) => {
+    const el = scrollRef.current
+    if (!el) return
+    if (typeof el.scrollTo === 'function') {
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+    } else {
+      el.scrollTop = el.scrollHeight
+    }
+    nearBottomRef.current = true
+    setHasUnseenBelow(false)
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const isNear = distanceFromBottom <= 96
+    nearBottomRef.current = isNear
+    if (isNear) setHasUnseenBelow(false)
+    prevSnapshotRef.current.scrollTop = el.scrollTop
+    prevSnapshotRef.current.scrollHeight = el.scrollHeight
+  }, [])
+
+  // Preserve scroll offset when older messages are prepended, and auto-scroll
+  // when opening a thread or sending/receiving while near the bottom.
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const firstId = messages[0]?.id ?? null
+    const lastId = messages[messages.length - 1]?.id ?? null
+    const prev = prevSnapshotRef.current
+
+    if (prev.firstId === null && messages.length > 0) {
+      // Initial page render: jump straight to latest message.
+      el.scrollTop = el.scrollHeight
+      nearBottomRef.current = true
+      setHasUnseenBelow(false)
+    } else if (
+      prev.firstId !== null &&
+      firstId !== prev.firstId &&
+      lastId === prev.lastId
+    ) {
+      // Older page prepended above: keep the user's exact reading position.
+      const heightAdded = el.scrollHeight - prev.scrollHeight
+      el.scrollTop = prev.scrollTop + Math.max(0, heightAdded)
+    } else if (lastId !== prev.lastId && messages.length > 0) {
+      const newest = messages[messages.length - 1]
+      if (nearBottomRef.current || newest?.mine) {
+        el.scrollTop = el.scrollHeight
+        nearBottomRef.current = true
+        setHasUnseenBelow(false)
+      } else {
+        setHasUnseenBelow(true)
+      }
+    }
+
+    prevSnapshotRef.current = {
+      firstId,
+      lastId,
+      scrollHeight: el.scrollHeight,
+      scrollTop: el.scrollTop,
+    }
+  }, [messages])
+
+  useEffect(() => {
+    if (typing && nearBottomRef.current) {
+      scrollToLatest(false)
+    }
+  }, [scrollToLatest, typing])
+
+  // Determine the latest Admin reply timestamp so outgoing Guest messages
+  // before an Admin reply (or before `adminLastReadAt` when `unreadAdminCount === 0`)
+  // show genuine `Seen` status without ever fabricating read receipts.
+  const latestAdminMessageAt = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (!messages[i].mine) return messages[i].at
+    }
+    return null
+  }, [messages])
+
+  const lastOwnMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].mine) return messages[i].id
+    }
+    return null
+  }, [messages])
+
+  const statusForMessage = (msg: ChatMessage): DeliveryStatus => {
+    if (!msg.mine || msg.id !== lastOwnMessageId) return null
+    if (isLocalDemo) return 'local'
+    if (latestAdminMessageAt && latestAdminMessageAt >= msg.at) return 'seen'
+    if (unreadAdminCount === 0 && adminLastReadAt && adminLastReadAt >= msg.at) {
+      return 'seen'
+    }
+    return 'sent'
   }
 
   return (
-    <>
-      {hasMore && (
-        <div className="mb-5 flex justify-center">
-          <button
-            type="button"
-            className="btn-quiet btn-sm"
-            disabled={loadingOlder}
-            onClick={onLoadOlder}
-            data-tour="load-older"
-            aria-controls="message-timeline"
-            aria-busy={loadingOlder}
-          >
-            {loadingOlder && <span className="flex h-13 w-13 rounded-full border-2 border-current border-t-transparent animate-spin" />}
-            {loadingOlder ? 'Loading earlier messages…' : 'Load earlier messages'}
-          </button>
-        </div>
-      )}
+    <div className="messages-thread-wrap">
       <div
-        id="message-timeline"
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="messages-thread"
         role="log"
         aria-live="polite"
-        aria-relevant="additions"
-        aria-label={ariaLabel}
+        aria-label="Conversation message history"
       >
-        {timeline.map((day) => (
-          <div key={day.id} className="messages-day">
-            <div className="messages-day-label" role="separator" aria-label={day.label}>
-              <time dateTime={day.id === 'date-unavailable' ? undefined : day.id}>{day.label}</time>
-            </div>
-            <div className="space-y-4">
-              {day.groups.map((group) => {
-                const last = group.messages[group.messages.length - 1]
-                return (
-                  <div key={group.id} className={`messages-group ${group.mine ? 'messages-group-mine' : ''}`}>
-                    {group.messages.map((message, index) => (
-                      <li
-                        key={message.id}
-                        className={`${group.mine ? 'flex justify-end' : 'flex justify-start'} ${index === 0 ? 'mt-1' : ''} ${index === group.messages.length - 1 ? 'mb-1' : ''}`}
-                      >
-                        <MessageBubble
-                          id={message.id}
-                          text={message.text}
-                          at={message.at}
-                          mine={group.mine}
-                          isFirst={index === 0}
-                          isLast={index === group.messages.length - 1}
-                          attachment={message.attachment ?? null}
-                        />
-                      </li>
-                    ))}
-                    <time className="messages-time guest-num" dateTime={last.at} title={formatDateTime(last.at, 'Time unavailable')}>
-                      {messageTime(last.at)}
-                    </time>
-                  </div>
-                )
-              })}
-            </div>
+        {loading ? (
+          <div className="messages-thread-state">
+            <LoadingPanel label="Loading messages…" bare />
           </div>
-        ))}
+        ) : messages.length === 0 ? (
+          <div className="messages-thread-state messages-empty">
+            <EmptyState compact title={emptyTitle} body={emptyDescription} />
+          </div>
+        ) : (
+          <>
+            {hasMore && onLoadOlder && (
+              <div className="mb-5 flex justify-center">
+                <button
+                  type="button"
+                  className="btn-quiet btn-sm"
+                  disabled={loadingOlder}
+                  onClick={() => {
+                    if (scrollRef.current) {
+                      prevSnapshotRef.current.scrollHeight = scrollRef.current.scrollHeight
+                      prevSnapshotRef.current.scrollTop = scrollRef.current.scrollTop
+                    }
+                    onLoadOlder()
+                  }}
+                >
+                  {loadingOlder ? 'Loading earlier messages…' : 'Load earlier messages'}
+                </button>
+              </div>
+            )}
+
+            {buckets.map((bucket) => (
+              <div key={bucket.dayKey} className="messages-day">
+                <div className="messages-day-label">
+                  <time>{bucket.dayLabel}</time>
+                </div>
+                <ul className="space-y-2.5">
+                  {bucket.items.map((msg, idx) => {
+                    const prev = idx > 0 ? bucket.items[idx - 1] : null
+                    const next = idx + 1 < bucket.items.length ? bucket.items[idx + 1] : null
+                    const showSenderLabel = !prev || prev.mine !== msg.mine
+                    const showTimestamp =
+                      !next ||
+                      next.mine !== msg.mine ||
+                      msg.id === lastOwnMessageId ||
+                      Math.abs(Date.parse(next.at) - Date.parse(msg.at)) > 5 * 60_000
+
+                    return (
+                      <MessageBubble
+                        key={msg.id}
+                        message={msg}
+                        showSenderLabel={showSenderLabel}
+                        showTimestamp={showTimestamp}
+                        deliveryStatus={statusForMessage(msg)}
+                      />
+                    )
+                  })}
+                </ul>
+              </div>
+            ))}
+
+            {typing && (
+              <div className="mt-3">
+                <TypingIndicator senderLabel={typingLabel} />
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      {!atLatest && (
-        <button type="button" className="messages-latest" onClick={() => onScrollToLatest(true)}>
-          Latest messages
-          <span className="flex h-15 w-15" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14" />
-              <path d="M5 13l7 7 7-7" />
-            </svg>
-          </span>
+      {hasUnseenBelow && (
+        <button
+          type="button"
+          className="messages-latest"
+          onClick={() => scrollToLatest(true)}
+        >
+          <ArrowDown size={14} />
+          <span>New message below</span>
         </button>
       )}
-
-      {typingUsers.size > 0 && (
-        <div className="px-4 pt-2 pb-1">
-          <span className="flex items-center gap-1.5 text-sm text-forest-500">
-            <span className="flex h-2.5 w-2.5">
-              <span className="h-[3px] w-[3px] rounded-full bg-forest-500 animate-bounce" />
-            </span>
-            <span>typing…</span>
-          </span>
-        </div>
-      )}
-    </>
+    </div>
   )
 }

@@ -1,49 +1,68 @@
-import { User } from '../../lib/icons'
+import { useState } from 'react'
 
-/**
- * Guest avatar: a profile image when available, otherwise a circular
- * initials avatar. Never falls back to a raw identifier.
- */
+export type GuestAvatarProps = {
+  name: string
+  avatarUrl?: string | null
+  size?: 'sm' | 'md' | 'lg'
+  /** 'hacienda' renders the Hacienda de LuisAna crest mark in deep forest & brass. */
+  variant?: 'guest' | 'hacienda'
+}
+
+const SIZE_CLASSES: Record<NonNullable<GuestAvatarProps['size']>, string> = {
+  sm: 'h-9 w-9 text-xs',
+  md: 'h-10 w-10 text-sm',
+  lg: 'h-12 w-12 text-base',
+}
+
+export function initialsFromName(name: string): string {
+  const parts = name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+  if (parts.length === 0) return 'G'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
+
 export function GuestAvatar({
   name,
-  imageUrl,
-  size = 40,
-  className = '',
-}: {
-  name?: string | null
-  imageUrl?: string | null
-  size?: number
-  className?: string
-}) {
-  const initials = name ? name
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase())
-    .slice(0, 2)
-    .join('') : 'G'
+  avatarUrl,
+  size = 'md',
+  variant = 'guest',
+}: GuestAvatarProps) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const sizeCls = SIZE_CLASSES[size]
+
+  if (variant === 'hacienda') {
+    return (
+      <div
+        className={`${sizeCls} flex shrink-0 items-center justify-center rounded-full border border-brass-400/50 bg-forest-800 font-serif font-semibold tracking-wider text-cream-50 shadow-sm`}
+        aria-hidden="true"
+      >
+        HDL
+      </div>
+    )
+  }
+
+  const initials = initialsFromName(name)
+
+  if (avatarUrl && !imgFailed) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name || 'Guest'}
+        onError={() => setImgFailed(true)}
+        className={`${sizeCls} shrink-0 rounded-full border border-forest-900/12 object-cover`}
+      />
+    )
+  }
 
   return (
     <div
-      className={`flex-shrink-0 ${className}`}
-      style={{ width: size, height: size }}
-      aria-label={name ? `Profile image for ${name}` : 'Guest profile image'}
+      className={`${sizeCls} flex shrink-0 items-center justify-center rounded-full border border-forest-900/12 bg-cream-100 font-serif font-semibold tracking-wide text-forest-800 dark:border-cream-100/15 dark:bg-forest-800 dark:text-cream-50`}
+      aria-hidden="true"
     >
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt=""
-          className="w-full h-full object-cover rounded-full bg-forest-100"
-          loading="lazy"
-          decoding="async"
-        />
-      ) : (
-        <div className="w-full h-full rounded-full bg-forest-100 flex items-center justify-center text-forest-800 font-semibold">
-          <User size={Math.round(size * 0.45)} className="text-forest-700" />
-          <span className="absolute text-xs font-semibold text-forest-700">
-            {initials || 'G'}
-          </span>
-        </div>
-      )}
+      {initials}
     </div>
   )
 }

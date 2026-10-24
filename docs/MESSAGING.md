@@ -8,16 +8,23 @@ Application validation is the courtesy; `firestore.rules`, `storage.rules`, and 
 
 ## 1. The data model
 
+One continuous conversation exists per booking (`convoId = booking-${bookingId}`), shared identically by the React Guest website (`src/pages/MessagesPage.tsx`, `src/lib/chatCloud.ts`) and the Flutter Admin application (`lib/views/inbox/inbox_screen.dart`, `lib/services/guest_conversation_lookup.dart`). Earlier topic-based threads (`inquiry-${uid}-${category}`) remain readable and replyable in place without destructive migration.
+
 ```
-conversations/{convoId}                    Firestore
+conversations/{convoId}                    Firestore (`booking-${bookingId}`, or legacy `inquiry-${uid}-${category}`)
+  booking_id     string   OPTIONAL — the linked Booking id (for booking-scoped threads)
   guest_uid      string   the Guest who owns it
-  category       string   an active inquiry category (src/lib/categories.ts)
+  guest_name     string   OPTIONAL — human-readable Guest display name
+  booking_reference string OPTIONAL — human-readable `HDL-…` reference (never raw doc IDs)
+  property_name  string   OPTIONAL — human-readable accommodation display name
+  category       string   'booking' for unified booking threads (required by create rule)
   created_at     ts
   updated_at     ts       bumped on every message
-  last_message   string   ≤140 chars, the Admin inbox preview
-  unread_admin   int      0 | 1
-  unread_guest   int      0 | 1
-  messages_expires_at  ts  OPTIONAL — the retention stamp. Admin-writable only.
+  last_message   string   ≤140 chars, the inbox 1-line preview
+  unread_admin   int      unread count for Admin (reset to 0 when Admin opens thread)
+  unread_guest   int      unread count for Guest (reset to 0 when Guest opens thread)
+  admin_last_read_at   ts OPTIONAL — Admin read watermark (Admin-writable)
+  messages_expires_at  ts OPTIONAL — the retention stamp (Admin-writable only)
 
 conversations/{convoId}/messages/{messageId}    Firestore, append-only
   sender_uid     string   the writer's own uid

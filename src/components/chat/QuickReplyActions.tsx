@@ -1,61 +1,68 @@
-/**
- * Quick reply chips shown above the message input. All quick replies use the
- * same unified conversation thread — they are ordinary messages sent to the
- * current conversation.
- */
-export type QuickReply = {
-  id: string
+import { BUSINESS } from '../../config/site'
+import { Compass, MapPin, Navigation } from '../../lib/icons'
+
+export type QuickReplyOption = {
+  id: 'on-the-way' | 'arrived-gate' | 'send-directions'
   label: string
   text: string
-  sendImmediately: boolean
+  autoSend?: boolean
 }
 
-export const QUICK_REPLIES: QuickReply[] = [
+/**
+ * Verified quick replies using official Hacienda de LuisAna address & coordinates
+ * from `src/config/site.ts` — zero placeholder URLs or coordinates.
+ */
+export const DEFAULT_QUICK_REPLIES: readonly QuickReplyOption[] = [
   {
     id: 'on-the-way',
     label: 'On the way',
-    text: 'On the way.',
-    sendImmediately: true,
+    text: `We are on the way to ${BUSINESS.name}.`,
   },
   {
-    id: 'arrived-at-gate',
+    id: 'arrived-gate',
     label: 'Arrived at gate',
-    text: 'Arrived at the gate.',
-    sendImmediately: true,
+    text: `We have arrived at the ${BUSINESS.name} gate.`,
   },
   {
     id: 'send-directions',
     label: 'Send Directions',
-    text: 'Please share directions to the property.',
-    sendImmediately: false,
+    text: `Verified directions to ${BUSINESS.name} (${BUSINESS.address.formatted}): ${BUSINESS.contact.directions}`,
   },
-]
+] as const
 
 export type QuickReplyActionsProps = {
-  onSelect: (reply: QuickReply) => void
   disabled?: boolean
+  onSelect: (reply: QuickReplyOption) => void
 }
 
-export function QuickReplyActions({
-  onSelect,
-  disabled = false,
-}: QuickReplyActionsProps) {
+export function QuickReplyActions({ disabled = false, onSelect }: QuickReplyActionsProps) {
+  const iconFor = (id: QuickReplyOption['id']) => {
+    switch (id) {
+      case 'on-the-way':
+        return <Navigation size={13} />
+      case 'arrived-gate':
+        return <MapPin size={13} />
+      case 'send-directions':
+        return <Compass size={13} />
+    }
+  }
+
   return (
-    <div className="flex flex-wrap gap-2 px-4 pb-1.5 pt-1">
-      {QUICK_REPLIES.map((reply) => (
+    <div
+      className="mb-2.5 flex items-center gap-2 overflow-x-auto pb-0.5"
+      role="group"
+      aria-label="Quick message templates"
+    >
+      {DEFAULT_QUICK_REPLIES.map((reply) => (
         <button
           key={reply.id}
           type="button"
-          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border
-            ${disabled
-              ? 'bg-forest-50 border-transparent text-forest-400 cursor-not-allowed'
-              : 'bg-white border-card-surface text-forest-700 hover:bg-forest-50 hover:text-forest-900'}
-          `}
           disabled={disabled}
           onClick={() => onSelect(reply)}
-          aria-label={reply.label}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-forest-900/12 bg-cream-100/75 px-3 py-1.5 text-xs font-medium text-forest-800 transition-colors hover:border-brass-500/50 hover:bg-cream-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400 disabled:cursor-not-allowed disabled:opacity-45 dark:border-cream-100/15 dark:bg-forest-950/45 dark:text-cream-100 dark:hover:bg-forest-950/70"
         >
-          {reply.label}
+          {iconFor(reply.id)}
+          <span>{reply.label}</span>
         </button>
       ))}
     </div>
