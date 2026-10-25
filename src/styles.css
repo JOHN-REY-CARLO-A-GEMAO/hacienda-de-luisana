@@ -391,57 +391,13 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 .guest-panel {
   @apply bg-white dark:bg-forest-900/80 rounded-[14px] border border-forest-900/10 dark:border-cream-100/12 shadow-[0_1px_2px_rgba(21,36,27,0.04),0_10px_28px_-22px_rgba(21,36,27,0.28)];
 }
-/* A recessed block inside a panel — the ledger, a summary, a nested form. */
+/* A recessed block inside a panel — a summary, a nested form, a drawer section. */
 .guest-inset {
   @apply rounded-[10px] border border-forest-900/8 dark:border-cream-100/10 bg-cream-100/70 dark:bg-forest-950/40;
 }
 /* A single hairline rule. Used instead of a border when the rule is doing
    structural work between two facts rather than boxing something in. */
 .guest-rule { @apply border-t border-forest-900/10 dark:border-cream-100/10; }
-
-/* ------------------------------------------------------------------ */
-/* The masthead — the one bold element on a signed-in page            */
-/* ------------------------------------------------------------------ */
-
-/* Squared at the top so it reads as a photograph held under the fixed bar,
-   soft at the foot where it meets the page. */
-.guest-masthead {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border-radius: 0 0 20px 20px;
-  background-color: #15241B;
-  color: #F5F1E8;
-}
-.guest-masthead-media {
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-}
-.guest-masthead-media > img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-/* Two overlays, both for legibility rather than for effect: one lifts the
-   type off the brightest part of the photograph, one holds the foot. */
-.guest-masthead-scrim {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(100deg, rgba(11, 26, 18, 0.93) 0%, rgba(11, 26, 18, 0.72) 42%, rgba(11, 26, 18, 0.3) 78%),
-    linear-gradient(to top, rgba(11, 26, 18, 0.85), rgba(11, 26, 18, 0) 62%);
-}
-/* A guest page with no photograph to show still gets the same band, in the
-   Hacienda's own forest, so the page never changes shape when it is empty. */
-.guest-masthead-plain {
-  background-image: linear-gradient(115deg, #243D2E 0%, #1B3024 52%, #15241B 100%);
-}
-/* The brass hairline under the masthead's own eyebrow: one accent, used once. */
-.guest-masthead-rule {
-  @apply h-px w-10 bg-brass-400/70;
-}
 
 /* ------------------------------------------------------------------ */
 /* Ledger — a fact is a label over a value, on a hairline             */
@@ -462,7 +418,9 @@ body[data-scroll-locked='true'] { overflow: hidden; }
   @apply font-serif tabular-nums;
   font-feature-settings: 'tnum' 1, 'lnum' 1;
 }
-/* The grid a booking's facts sit in: hairlines between rows, never boxes. */
+/* The grid a booking's facts sit in on the status page and in the chat
+   drawer: hairlines between rows, never boxes. (An /account entry no longer
+   uses it — the entry is prose, not a grid of tiles.) */
 .guest-ledger {
   @apply grid gap-x-6 gap-y-0;
 }
@@ -498,56 +456,560 @@ body[data-scroll-locked='true'] { overflow: hidden; }
   box-shadow: 0 0 0 3px rgba(184, 154, 100, 0.18);
 }
 
-/* ------------------------------------------------------------------ */
-/* Status spine — where a booking is in its life                      */
-/* ------------------------------------------------------------------ */
-
-.guest-track { @apply flex items-center gap-0; }
-.guest-track-step {
-  @apply flex min-w-0 flex-1 flex-col gap-1.5;
+/* The one strip that says this build has no Firebase. It sits above the page
+   itself, so it has to clear the fixed bar on its own — otherwise the bar's
+   floating pill lands on top of it and only the "Why?" link is reachable. */
+.local-mode-strip {
+  margin-top: 4.6rem;
 }
-.guest-track-bar {
-  @apply h-[3px] w-full rounded-full;
-  background: rgba(36, 61, 46, 0.12);
-}
-.dark .guest-track-bar { background: rgba(245, 241, 232, 0.14); }
-.guest-track-bar[data-done='true'] { background: #243D2E; }
-.dark .guest-track-bar[data-done='true'] { background: #B89A64; }
-/* The step the booking is sitting on: brass, and slightly taller so the eye
-   finds it without a label having to say "here". */
-.guest-track-bar[data-now='true'] {
-  background: #B89A64;
-  height: 5px;
-  margin-top: -1px;
-}
-.guest-track-name {
-  @apply text-[11px] leading-tight text-forest-600 dark:text-sage-400;
-}
-.guest-track-step[data-now='true'] .guest-track-name {
-  @apply font-semibold text-forest-900 dark:text-cream-50;
-}
-.guest-track-step[data-done='true'] .guest-track-name {
-  @apply text-forest-800 dark:text-cream-100/85;
+/* The page under the strip pads its own top to clear the fixed bar. The strip
+   has already done that job, so that padding would only be an empty band. */
+.local-mode-strip + div { padding-top: 1.25rem; }
+@media (min-width: 1024px) {
+  .local-mode-strip { margin-top: 5.2rem; }
 }
 
 /* ------------------------------------------------------------------ */
-/* Rail, toolbar, and the folio's photograph strip                    */
+/* The guest book — /account                                          */
+/*                                                                    */
+/* /account is not a dashboard and not a stack of cards: it is a page  */
+/* of the Hacienda's guest book. One sheet, one brass-ruled date       */
+/* margin, one entry per stay, the Guest's name on the flyleaf. The    */
+/* long note that argues for this direction is docs/ACCOUNT.md.        */
+/*                                                                    */
+/* Every colour below is a variable scoped to `.ledger-ground`, so the */
+/* whole book turns over in one place. Brass is spent three times and  */
+/* no more: the margin rule, the night marks of a live stay, and the   */
+/* selected tab.                                                       */
 /* ------------------------------------------------------------------ */
 
-.guest-rail { @apply flex flex-col gap-3 lg:sticky lg:top-24 lg:self-start; }
+.ledger-ground {
+  --ledger-ink: #15241b;
+  --ledger-soft: #4e5e4f;
+  --ledger-meta: #6f7b65;
+  --ledger-rule: rgba(21, 36, 27, 0.12);
+  --ledger-rule-soft: rgba(21, 36, 27, 0.08);
+  --ledger-leaf: #fffdf8;
+  --ledger-desk: #f5f1e8;
+  --ledger-brass: #b89a64;
+  --ledger-brass-rule: rgba(184, 154, 100, 0.42);
+  --ledger-brass-soft: rgba(184, 154, 100, 0.5);
+  --ledger-plate: rgba(255, 253, 248, 0.72);
+  background-color: var(--ledger-desk);
+}
+.dark .ledger-ground {
+  --ledger-ink: #f5f1e8;
+  --ledger-soft: rgba(245, 241, 232, 0.78);
+  --ledger-meta: rgba(245, 241, 232, 0.58);
+  --ledger-rule: rgba(245, 241, 232, 0.14);
+  --ledger-rule-soft: rgba(245, 241, 232, 0.09);
+  --ledger-leaf: #16241b;
+  --ledger-desk: #0d1711;
+  --ledger-brass: #ddc497;
+  --ledger-brass-rule: rgba(221, 196, 151, 0.38);
+  --ledger-brass-soft: rgba(221, 196, 151, 0.45);
+  --ledger-plate: rgba(22, 36, 27, 0.6);
+}
 
-/* The folio's photograph strip: the actual accommodation, so a booking is
-   never an abstract row. Clipped to the panel's left edge. */
-.guest-photo {
-  @apply relative overflow-hidden bg-forest-900;
+/* ------------------------------------------------------------------ */
+/* The page opener — the photograph and the dates                     */
+/* ------------------------------------------------------------------ */
+
+.ledger-opener {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 18px;
+  background-color: #15241b;
+  color: #f5f1e8;
 }
-.guest-photo > img {
-  @apply h-full w-full object-cover;
+.ledger-opener-media { position: absolute; inset: 0; z-index: -2; }
+.ledger-opener-media > img { width: 100%; height: 100%; object-fit: cover; }
+/* Two overlays, both for legibility rather than effect: one lifts the type off
+   the brightest part of the photograph, one holds the foot. */
+.ledger-opener-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(100deg, rgba(11, 26, 18, 0.92) 0%, rgba(11, 26, 18, 0.66) 46%, rgba(11, 26, 18, 0.22) 86%),
+    linear-gradient(to top, rgba(11, 26, 18, 0.82), rgba(11, 26, 18, 0) 58%);
 }
-/* The band a booking's actions sit in. It is the foot of the document, so it
-   is tinted — not a third card floating under the other two. */
-.guest-actionbar {
-  @apply border-t border-forest-900/8 bg-cream-100/55 px-5 py-4 dark:border-cream-100/10 dark:bg-forest-950/30;
+/* An account with no photograph to show still gets the same band, in the
+   Hacienda's own forest, so the page never changes shape when it is empty. */
+.ledger-opener-plain { background-image: linear-gradient(115deg, #243d2e 0%, #1b3024 52%, #15241b 100%); }
+
+.ledger-opener-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding: 1.85rem 1.25rem 1.6rem;
+}
+@media (min-width: 640px) {
+  .ledger-opener-inner { padding: 2.6rem 2rem 2.15rem; }
+}
+@media (min-width: 1024px) {
+  .ledger-opener-inner {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 2.9rem 2.5rem 2.4rem;
+  }
+}
+
+.ledger-opener-kicker {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: rgba(245, 241, 232, 0.72);
+}
+.ledger-opener-place {
+  margin-top: 0.65rem;
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-size: 1.4rem;
+  line-height: 1.2;
+  color: #faf7f2;
+}
+/* The loud line on the page, and the reason it is the dates rather than the
+   property's name: a returning Guest already knows the place and came back to
+   check when. */
+.ledger-opener-dates {
+  margin-top: 0.2rem;
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-weight: 500;
+  font-size: 2.15rem;
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+  color: #faf7f2;
+  font-variant-numeric: tabular-nums;
+}
+@media (min-width: 640px) { .ledger-opener-dates { font-size: 2.85rem; } }
+@media (min-width: 1024px) { .ledger-opener-dates { font-size: 3.35rem; } }
+
+.ledger-opener-meta {
+  margin-top: 0.8rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: rgba(245, 241, 232, 0.82);
+}
+.ledger-opener-status {
+  margin-top: 1.2rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.15rem;
+  font-size: 0.8125rem;
+  color: rgba(245, 241, 232, 0.8);
+}
+.ledger-opener-countdown { font-weight: 500; color: #f5f1e8; }
+.ledger-opener-reference { color: rgba(245, 241, 232, 0.66); }
+.ledger-opener-reference .guest-num { color: rgba(250, 247, 242, 0.95); }
+.ledger-opener-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+
+.ledger-opener-headline {
+  margin-top: 0.55rem;
+  max-width: 28ch;
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-weight: 400;
+  font-style: italic;
+  font-size: 2.2rem;
+  line-height: 1.12;
+  color: #faf7f2;
+}
+@media (min-width: 640px) { .ledger-opener-headline { font-size: 2.5rem; } }
+.ledger-opener-headline::after {
+  content: '';
+  display: block;
+  width: 2.75rem;
+  height: 1px;
+  margin-top: 1.15rem;
+  background: rgba(184, 154, 100, 0.75);
+}
+.ledger-opener-copy {
+  margin-top: 0.8rem;
+  max-width: 42rem;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: rgba(245, 241, 232, 0.8);
+}
+/* The unread count on the masthead's own button. */
+.ledger-unread {
+  display: inline-flex;
+  min-width: 1.4rem;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(250, 247, 242, 0.24);
+  padding: 0.1rem 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #faf7f2;
+}
+
+/* ------------------------------------------------------------------ */
+/* The sheet, its index tabs, and the two leaves                      */
+/* ------------------------------------------------------------------ */
+
+.ledger-grid { display: grid; gap: 1.75rem; align-items: start; }
+@media (min-width: 1024px) {
+  .ledger-grid { grid-template-columns: minmax(0, 1fr) 19rem; gap: 2rem; }
+}
+
+.ledger-sheet {
+  background: var(--ledger-leaf);
+  border: 1px solid var(--ledger-rule);
+  border-radius: 18px;
+  box-shadow:
+    0 1px 2px rgba(21, 36, 27, 0.04),
+    0 30px 64px -56px rgba(21, 36, 27, 0.6);
+  min-width: 0;
+}
+
+.ledger-sheet-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem 0;
+  border-bottom: 1px solid var(--ledger-rule);
+}
+@media (min-width: 640px) {
+  .ledger-sheet-head { padding: 1rem 1.75rem 0; }
+}
+
+/* Index tabs: the active one is underlined in brass, sitting exactly on the
+   sheet's own rule, the way a tab sits on the edge of a page. */
+.ledger-tabs { display: flex; gap: 1.25rem; margin-bottom: -1px; overflow-x: auto; scrollbar-width: none; }
+.ledger-tabs::-webkit-scrollbar { display: none; }
+@media (min-width: 640px) { .ledger-tabs { gap: 1.75rem; } }
+.ledger-tab {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.55rem 0 0.85rem;
+  border-bottom: 2px solid transparent;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ledger-soft);
+  transition: color 160ms ease, border-color 160ms ease;
+}
+.ledger-tab:hover { color: var(--ledger-ink); }
+.ledger-tab[aria-selected='true'] { color: var(--ledger-ink); border-bottom-color: var(--ledger-brass); }
+.ledger-tab:focus-visible { outline: 2px solid var(--ledger-brass); outline-offset: 2px; border-radius: 3px; }
+.ledger-tab-count { font-size: 0.8125rem; font-style: normal; color: var(--ledger-meta); }
+.ledger-tab[aria-selected='true'] .ledger-tab-count { color: var(--ledger-soft); }
+
+.ledger-page { padding: 1.25rem 1.25rem 1.85rem; }
+@media (min-width: 640px) {
+  .ledger-page { padding: 1.4rem 1.75rem 2.1rem; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Finding an entry: search, status, order                            */
+/* ------------------------------------------------------------------ */
+
+.ledger-tools { display: grid; gap: 0.5rem; }
+@media (min-width: 640px) {
+  .ledger-tools { grid-template-columns: minmax(0, 1fr) minmax(0, 0.62fr) minmax(0, 0.74fr); }
+}
+.ledger-tool { min-width: 0; }
+
+/* ------------------------------------------------------------------ */
+/* An entry: the date in the margin, the stay in the body              */
+/* ------------------------------------------------------------------ */
+
+.ledger-entries { margin-top: 1.5rem; }
+
+.ledger-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.85rem;
+  padding: 1.15rem 0 1.4rem;
+}
+.ledger-entry + .ledger-entry {
+  border-top: 1px solid var(--ledger-rule);
+  padding-top: 1.5rem;
+}
+@media (min-width: 1024px) {
+  .ledger-entry { grid-template-columns: 7rem minmax(0, 1fr); gap: 0; padding: 1.35rem 0 1.6rem; }
+  /* The one vertical rule on the page: the ledger's margin, drawn between the
+     date and the entry. It runs the full height of the entry, so it reads as a
+     single line down the book rather than as a border on a card. */
+  .ledger-entry::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 7rem;
+    border-left: 1px solid var(--ledger-brass-rule);
+  }
+  .ledger-date { padding-right: 1.15rem; }
+  .ledger-body { padding-left: 1.85rem; }
+}
+
+.ledger-date {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.4rem;
+  min-width: 0;
+}
+.ledger-month {
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-style: italic;
+  font-size: 1rem;
+  color: var(--ledger-soft);
+}
+.ledger-days {
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-size: 1.45rem;
+  line-height: 1;
+  letter-spacing: 0.005em;
+  color: var(--ledger-ink);
+  font-variant-numeric: tabular-nums;
+}
+.ledger-year { font-size: 0.6875rem; letter-spacing: 0.04em; color: var(--ledger-meta); }
+@media (max-width: 1023px) {
+  .ledger-year { flex-basis: 100%; margin-top: 0.1rem; }
+}
+
+/* One mark per night, so the length of a stay is seen before it is read. A long
+   stay is capped and counted rather than ruled off the edge of the margin. */
+.ledger-ticks { display: flex; align-items: flex-end; gap: 4px; width: 100%; margin-top: 0.5rem; }
+.ledger-tick { width: 2px; height: 16px; border-radius: 1px; background: var(--ledger-rule); }
+/* A stay still ahead of the Guest is marked in brass: the same ink the margin
+   rule and the selected tab use, and the only colour on the page. */
+.ledger-entry[data-live] .ledger-tick { width: 2.5px; height: 18px; background: var(--ledger-brass); }
+.ledger-tick-more { margin-left: 0.25rem; align-self: center; font-size: 0.6875rem; color: var(--ledger-meta); }
+
+@media (min-width: 1024px) {
+  .ledger-date { display: block; }
+  .ledger-days { display: block; margin-top: 0.2rem; font-size: 1.8rem; }
+  .ledger-year { display: block; margin-top: 0.25rem; }
+  .ledger-ticks { margin-top: 0.55rem; }
+}
+
+.ledger-body { min-width: 0; }
+.ledger-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.ledger-place {
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+  color: var(--ledger-ink);
+}
+.ledger-reference { margin-top: 0.25rem; font-size: 0.75rem; color: var(--ledger-meta); }
+.ledger-reference .guest-num { color: var(--ledger-soft); font-size: 0.8125rem; }
+.ledger-facts { margin-top: 0.8rem; font-size: 0.875rem; color: var(--ledger-soft); }
+.ledger-meaning {
+  margin-top: 0.45rem;
+  max-width: 62ch;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--ledger-ink);
+}
+
+/* Money, as a receipt writes it: labels down one edge, figures down the other. */
+.ledger-money { margin-top: 1rem; max-width: 24rem; }
+.ledger-money-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--ledger-rule-soft);
+  padding: 0.4rem 0;
+}
+.ledger-money-row:first-child { border-top: 0; }
+.ledger-money-row dt { font-size: 0.8125rem; color: var(--ledger-soft); }
+.ledger-money-row dd { font-size: 0.9375rem; color: var(--ledger-ink); text-align: right; }
+
+.ledger-forms { margin-top: 1.15rem; display: flex; flex-direction: column; gap: 0.75rem; }
+/* A payment form, a countdown or a late-checkout request rendered inside an
+   entry is a section of the document, not another box in a sheet that is
+   already bordered: one hairline above it and no fill. The same components keep
+   their recessed block on the status page and in the chat drawer, where they
+   are grouped rather than read as prose. */
+.ledger-forms > .guest-inset,
+.ledger-record-body > .guest-inset {
+  border: 0;
+  border-top: 1px solid var(--ledger-rule-soft);
+  border-radius: 0;
+  background: transparent;
+  padding-left: 0;
+  padding-right: 0;
+}
+.ledger-actions { margin-top: 1.25rem; }
+.ledger-actions-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--ledger-meta);
+}
+.ledger-review { margin-top: 1.25rem; }
+.ledger-review-prompt { margin-bottom: 0.6rem; font-size: 0.875rem; color: var(--ledger-ink); }
+
+/* The folded record: the stage track and the activity log. A native
+   `<details>`, so it opens with a keyboard, is announced as a disclosure, and
+   still works if the script that drew the page never runs. */
+.ledger-record { margin-top: 1.25rem; border-top: 1px solid var(--ledger-rule); }
+.ledger-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0 0.2rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ledger-soft);
+  cursor: pointer;
+  list-style: none;
+}
+.ledger-fold::-webkit-details-marker { display: none; }
+.ledger-fold:hover { color: var(--ledger-ink); }
+.ledger-fold:focus-visible { outline: 2px solid var(--ledger-brass); outline-offset: 3px; border-radius: 3px; }
+.ledger-fold-mark {
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.2rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 180ms ease;
+}
+.ledger-record[open] > .ledger-fold .ledger-fold-mark { transform: rotate(-135deg); }
+.ledger-record-body { display: flex; flex-direction: column; gap: 1rem; padding-top: 1rem; }
+
+/* The five stages, inside the folded record. A real sequence, so it is drawn as
+   one — but quietly, and only where somebody opened it to look. */
+.ledger-track { display: flex; align-items: flex-start; }
+.ledger-track-step { display: flex; min-width: 0; flex: 1 1 0; flex-direction: column; gap: 0.4rem; }
+.ledger-track-bar { width: 100%; height: 3px; border-radius: 999px; background: var(--ledger-rule); }
+.ledger-track-bar[data-done] { background: var(--ledger-ink); opacity: 0.75; }
+.ledger-track-bar[data-now] { height: 5px; margin-top: -1px; background: var(--ledger-brass); }
+.ledger-track-name { font-size: 0.6875rem; line-height: 1.3; color: var(--ledger-meta); }
+.ledger-track-step[data-done] .ledger-track-name { color: var(--ledger-soft); }
+.ledger-track-step[data-now] .ledger-track-name { color: var(--ledger-ink); font-weight: 600; }
+
+/* ------------------------------------------------------------------ */
+/* An empty page, and the note at the foot of the book                */
+/* ------------------------------------------------------------------ */
+
+.ledger-empty { max-width: 40rem; padding: 1.75rem 0 0.75rem; }
+.ledger-empty-title {
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-size: 1.6rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ledger-ink);
+}
+.ledger-empty-copy { margin-top: 0.55rem; font-size: 0.9375rem; line-height: 1.7; color: var(--ledger-soft); }
+.ledger-empty-actions { margin-top: 1.3rem; display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.ledger-loading { padding: 0.5rem 0 0.25rem; }
+
+/* The counts, as one sentence in the margin voice rather than three tiles. */
+.ledger-summary {
+  margin-top: 1.75rem;
+  border-top: 1px solid var(--ledger-rule);
+  padding-top: 0.9rem;
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-style: italic;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--ledger-soft);
+}
+.ledger-summary .guest-num { font-style: normal; color: var(--ledger-ink); }
+
+/* ------------------------------------------------------------------ */
+/* The particulars leaf                                               */
+/* ------------------------------------------------------------------ */
+
+.ledger-lede { max-width: 56ch; font-size: 0.9375rem; line-height: 1.7; color: var(--ledger-soft); }
+/* A fieldset's default border is the shape of a browser control; here the rule
+   above each group is the only line, and the legend is set as marginalia. */
+.ledger-group {
+  margin: 0;
+  min-width: 0;
+  border: 0;
+  border-top: 1px solid var(--ledger-rule);
+  padding: 1.05rem 0 0;
+}
+.ledger-group-title {
+  padding: 0;
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-size: 1.25rem;
+  color: var(--ledger-ink);
+}
+.ledger-formfoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid var(--ledger-rule);
+  padding-top: 1.3rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* The flyleaf: the bookplate and the way to a person                 */
+/* ------------------------------------------------------------------ */
+
+.flyleaf { display: flex; flex-direction: column; gap: 1.75rem; min-width: 0; }
+@media (min-width: 1024px) {
+  .flyleaf { position: sticky; top: 6rem; align-self: start; }
+}
+
+.bookplate {
+  background: var(--ledger-plate);
+  border: 1px solid var(--ledger-brass-soft);
+  border-radius: 6px;
+  padding: 1.1rem 1.1rem 1.2rem;
+}
+.bookplate-seal {
+  display: block;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: 0.85rem;
+  border-radius: 999px;
+  object-fit: cover;
+  box-shadow: 0 1px 3px rgba(21, 36, 27, 0.22);
+}
+.bookplate-label {
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-style: italic;
+  font-size: 0.9375rem;
+  color: var(--ledger-meta);
+}
+.bookplate-name {
+  margin-top: 0.25rem;
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  color: var(--ledger-ink);
+}
+.bookplate-meta { margin-top: 0.3rem; font-size: 0.75rem; line-height: 1.5; color: var(--ledger-meta); }
+
+.flyleaf-block { border-top: 1px solid var(--ledger-rule); padding-top: 1.15rem; }
+/* The support line is a footnote to the contact block, not a fifth button. */
+.flyleaf-support .text-link { text-decoration-color: var(--ledger-brass); }
+.ledger-aside-title {
+  font-family: 'Cormorant Garamond', Georgia, ui-serif, serif;
+  font-style: italic;
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--ledger-ink);
+}
+.ledger-aside-copy { margin-top: 0.45rem; font-size: 0.8125rem; line-height: 1.7; color: var(--ledger-soft); }
+.flyleaf-support {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--ledger-meta);
 }
 
 /* ------------------------------------------------------------------ */
@@ -850,7 +1312,7 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 }
 
 /* ------------------------------------------------------------------ */
-/* One entrance, on the masthead only, and only when motion is welcome */
+/* One entrance, on the page opener only, and only when motion is welcome */
 /* ------------------------------------------------------------------ */
 
 .guest-rise {
@@ -862,5 +1324,5 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
   .guest-rise { animation: none; }
-  .guest-masthead-media > img { animation: none !important; transform: none !important; }
+  .ledger-opener-media > img { animation: none !important; transform: none !important; }
 }

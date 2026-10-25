@@ -7,16 +7,18 @@
  * surfaces they already have, and the Guest's pages get surfaces built for a
  * document about a real stay.
  *
- * Colour, radius and type for these surfaces live in the "Signed-in (Guest)
- * surfaces" block of `src/styles.css` — the `guest-*` tokens. A component here
- * should not re-spell one of them.
+ * The page is drawn as the Hacienda's guest book — one sheet, a brass-ruled date
+ * margin, one entry per stay, the Guest's name on the flyleaf. Colour, radius
+ * and type for that page live in the "guest book" block of `src/styles.css`
+ * (the `ledger-*` tokens); a component here should not re-spell one of them.
+ * The direction itself is argued in `docs/ACCOUNT.md`.
  *
- * Only what a page actually mounts is exported. The helpers in `stayFacts` that
- * just these components share stay internal to the folder, so the barrel cannot
- * accumulate exports nobody renders.
+ * Only what a page actually mounts is exported. `StatusTrack` and the helpers
+ * that just these components share stay internal to the folder, so the barrel
+ * cannot accumulate exports nobody renders.
  */
-export { AccountRail, HelpPanel, RailFacts, RailPanel } from './AccountRail'
-export { BookingFolio } from './BookingFolio'
-export { StatusTrack } from './StatusTrack'
+export { Flyleaf } from './Flyleaf'
+export { LedgerTabs, type LedgerTab } from './LedgerTabs'
+export { StayEntry } from './StayEntry'
 export { StayMasthead } from './StayMasthead'
-export { accommodationName, bookingReference, daysUntil, peso } from './stayFacts'
+export { accommodationName, bookingReference, daysUntil, staySpan } from './stayFacts'

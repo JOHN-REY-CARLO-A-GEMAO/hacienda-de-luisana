@@ -162,8 +162,8 @@ function ReviewComposer({
   }
 
   return (
-    <form className="rounded-2xl border border-forest-900/10 p-4" onSubmit={submit} data-testid="review-form">
-      <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
+    <form className="border-t border-forest-900/10 pt-4" onSubmit={submit} data-testid="review-form">
+      <div className="font-serif text-[18px] font-medium leading-snug text-forest-900">
         {review ? 'Change your review' : 'How was your stay?'}
       </div>
 
@@ -239,7 +239,7 @@ function ReviewComposer({
       </div>
 
       <div className="mt-4">
-        <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
+        <div className="font-serif text-[18px] font-medium leading-snug text-forest-900">
           More detail, if you have it
         </div>
         <p className="mt-1 text-[11px] text-forest-600">Every one of these is optional.</p>
@@ -344,7 +344,7 @@ function SubmittedReview({
 export function ReviewSummary({ review }: { review: ReviewRecord }) {
   return (
     <div className="rounded-2xl border border-forest-900/10 p-4" data-testid="review-summary">
-      <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">Your review</div>
+      <div className="font-serif text-[18px] font-medium leading-snug text-forest-900">Your review</div>
       <p className="mt-1.5 text-sm text-forest-800">
         {review.status === 'pending' ? 'Thank you — your review is with the Admin.' : 'Thank you for your feedback!'}
       </p>
@@ -359,7 +359,7 @@ export function ReviewSummary({ review }: { review: ReviewRecord }) {
       {review.text && <p className="mt-2 text-sm text-forest-800 whitespace-pre-line">{review.text}</p>}
       {review.admin_response && (
         <div className="mt-3 border-l-2 border-forest-600/40 pl-3">
-          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">Reply from the Admin</div>
+          <div className="font-serif text-[18px] font-medium leading-snug text-forest-900">Reply from the Admin</div>
           <p className="mt-1 text-sm text-forest-800 whitespace-pre-line">{review.admin_response}</p>
         </div>
       )}

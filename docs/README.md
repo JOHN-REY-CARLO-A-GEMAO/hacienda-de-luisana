@@ -69,7 +69,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 
 - Responsive landing (Hero, Accommodations, Experience, Gallery, Location, Reviews, FAQ)
 - `/book` — Guests book at least **30 days before check-in** (calendar dates in **Asia/Manila**, configurable via `site_config/booking`). The inline color-coded calendar reads a privacy-safe server projection; the regional `submitBooking` callable transaction is the authoritative lead-time, price and availability boundary. The 24-hour Date hold, downpayment proof and Pending → Admin review remain intact. See [BOOKING_POLICY.md](./BOOKING_POLICY.md) for configuration, enforcement, verification and deployment.
-- `/account` — the Guest's own Bookings: status timeline, Date hold countdown, Payment plan choice from the published rates, Payment proof upload, withdraw, Activity log
+- `/account` — the Guest's own Bookings, drawn as the Hacienda's guest book: the next stay and its dates on the page opener, one dated entry per stay (status, money, Date hold countdown, Payment plan choice from the published rates, Payment proof upload, withdraw, late checkout, review), the stage track and Activity log behind one disclosure per entry, and the Guest's particulars on the flyleaf. The direction and its tokens are [ACCOUNT.md](./ACCOUNT.md)
 - `/login`, `/guest/auth` — Guest sign-in / sign-up, email + password and Google, password reset, session kept across reloads
 - `/admin/*`, `/app/*` — a notice: the Admin dashboard moved to the Admin mobile app
 - Interactive guided tutorial (first visit + "Replay tutorial") — drives the real UI instead of slides; see [TUTORIAL.md](./TUTORIAL.md)

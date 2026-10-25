@@ -92,7 +92,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return (
     <>
       {!isConfigured && (
-        <div className="mx-3 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[10px] border border-amber-300/70 bg-amber-100/80 px-4 py-2 text-xs text-amber-900 sm:mx-auto sm:max-w-5xl lg:max-w-7xl">
+        <div className="local-mode-strip mx-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[10px] border border-amber-300/70 bg-amber-100/80 px-4 py-2 text-xs text-amber-900 sm:mx-auto sm:max-w-5xl lg:max-w-7xl">
           <span className="text-[11px] font-semibold uppercase tracking-eyebrow">Local Mode Active</span>
           <span>Signed in as {role ? ROLE_LABELS[role] : 'Guest'} · bookings are stored in this browser only.</span>
           <Link to="/status" className="ml-auto whitespace-nowrap underline underline-offset-2">

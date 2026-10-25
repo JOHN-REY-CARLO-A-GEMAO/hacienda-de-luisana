@@ -3,8 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ROLE_LABELS } from '../lib/auth'
 import { effectiveStatus } from '../lib/booking'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
-import { formatStayDuration, type Booking } from '../lib/storage'
-import { BookingHistory } from '../components/Booking/BookingHistory'
+import type { Booking } from '../lib/storage'
 import { BookingInvoice } from '../components/Booking/BookingInvoice'
 import { HoldCountdown } from '../components/Booking/HoldCountdown'
 import { LateCheckoutRequest } from '../components/Booking/LateCheckoutRequest'
@@ -16,20 +15,16 @@ import { validateSearch } from '../lib/validation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
-import { isReviewableStatus } from '../lib/reviewPolicy'
-import { Calendar, Sparkle, Bell, Clock, CreditCard, Home, LogOut, User } from '../lib/icons'
-import { Alert, Container, Drawer, EmptyState, Field, Input, Modal, Page, Select, SkeletonLines, StatCard, StatusBadge, Tabs } from '../components/ui'
+import { Bell, CreditCard, LogOut, Sparkle } from '../lib/icons'
+import { Alert, Container, Drawer, Field, Input, Modal, Page, Select, SkeletonLines } from '../components/ui'
 import {
-  AccountRail,
-  BookingFolio,
-  HelpPanel,
-  RailFacts,
-  RailPanel,
+  Flyleaf,
+  LedgerTabs,
+  StayEntry,
   StayMasthead,
   accommodationName,
   bookingReference,
   daysUntil,
-  peso,
 } from '../components/Account'
 import { useNotifications } from '../hooks/useNotifications'
 import { notifyAdmin } from '../lib/notifications'
@@ -87,10 +82,14 @@ function cancellationTerms(booking: Booking): string {
  * The two things a Guest can do here, paying for a request and withdrawing it,
  * both go through the Booking lifecycle with the session's own actor, which is
  * what makes the Activity log say a Guest did it.
+ *
+ * The page is drawn as the Hacienda's guest book: one sheet, one date margin,
+ * one entry per stay, and the Guest's name on the flyleaf. The design direction
+ * is documented in `docs/ACCOUNT.md`.
  */
 export function AccountPage() {
   const { user, profile, role, can, actor, logout, refresh } = useAuth()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const tabParam = params.get('tab')
   const [activeTab, setActiveTab] = useState<'bookings' | 'profile'>(tabParam === 'profile' ? 'profile' : 'bookings')
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -102,6 +101,19 @@ export function AccountPage() {
     if (tabParam === 'profile') setActiveTab('profile')
     else if (tabParam === 'notifications') setNotificationSidebarOpen(true)
   }, [tabParam])
+
+  /**
+   * Switching leaf writes `?tab=` back to the address, so Back and a shared link
+   * both land on the leaf the Guest was reading. `replace` because a tab is a
+   * view of one page, not a new entry in the history.
+   */
+  const chooseTab = (tab: 'bookings' | 'profile') => {
+    setActiveTab(tab)
+    const next = new URLSearchParams(params)
+    if (tab === 'bookings') next.delete('tab')
+    else next.set('tab', tab)
+    setParams(next, { replace: true })
+  }
 
   // Profile Form state
   const [firstName, setFirstName] = useState(profile?.first_name ?? '')
@@ -279,16 +291,17 @@ export function AccountPage() {
 
   const paged = paginate(filtered, { page, pageSize })
 
-  // Calculate stats
+  // The sentence at the foot of the book: how many stays, how many coming up,
+  // how many still waiting on the Hacienda. It replaces three identical tiles.
   const stats = useMemo(() => {
     const total = bookings.length
     const pending = bookings.filter((b) => effectiveStatus(b) === 'Pending').length
-    const upcoming = bookings.filter((b) => {
+    const future = bookings.filter((b) => {
       const status = effectiveStatus(b)
       const days = daysUntil(b.check_in)
-      return (status === 'Approved' || status === 'Reserved' || status === 'Pending') && days > 0 && days <= 30
+      return (status === 'Approved' || status === 'Reserved' || status === 'Pending') && days >= 0
     }).length
-    return { total, pending, upcoming }
+    return { total, pending, future }
   }, [bookings])
 
   // Get next upcoming stay
@@ -303,20 +316,26 @@ export function AccountPage() {
     return futureBookings[0] || null
   }, [bookings])
 
-  const greeting = profile?.display_name || user?.displayName || 'Your stay at the Hacienda'
+  const fullName = profile?.display_name || user?.displayName || user?.email || 'Guest'
+  // The band greets with the name a person is called by, not with the whole
+  // legal name the invoice needs.
+  const shortName =
+    profile?.first_name?.trim() ||
+    profile?.display_name?.trim().split(/\s+/)[0] ||
+    user?.displayName?.trim().split(/\s+/)[0] ||
+    null
 
   return (
-    <Page className="guest-ground">
+    <Page className="ledger-ground">
       {/* The one loud element on the page: the stay that is coming, on the
-          Hacienda's own photograph. Everything below it is a quiet document. */}
+          Hacienda's own photograph, under its dates. Everything below it is a
+          quiet document. */}
       <Container width="wide">
         <StayMasthead
           booking={nextStay}
-          greeting={greeting}
+          greeting={shortName}
           roleLabel={role ? ROLE_LABELS[role] : 'Guest'}
           hasBookings={bookings.length > 0}
-          email={user?.email}
-          memberSince={profile?.created_at}
           actions={
             <>
               <button
@@ -327,9 +346,7 @@ export function AccountPage() {
                 <Bell size={15} aria-hidden="true" />
                 Notifications
                 {unreadCount > 0 && (
-                  <span className="guest-num rounded-full bg-cream-50/25 px-1.5 py-0.5 text-[11px] font-bold leading-none text-cream-50">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
+                  <span className="ledger-unread guest-num">{unreadCount > 9 ? '9+' : unreadCount}</span>
                 )}
               </button>
               <Link to="/book" className="btn-on-dark btn-sm">
@@ -340,70 +357,51 @@ export function AccountPage() {
         />
       </Container>
 
-      <Container width="wide" className="mt-8">
-        <Tabs
-          label="Account sections"
-          value={activeTab}
-          onChange={setActiveTab}
-          items={[
-            { key: 'bookings', label: 'My bookings', meta: String(bookings.length) },
-            { key: 'profile', label: 'My profile' },
-          ]}
-        />
+      <Container width="wide" className="mt-6 lg:mt-8">
+        <div className="ledger-grid">
+          <section className="ledger-sheet" aria-label={activeTab === 'bookings' ? 'My bookings' : 'My profile'}>
+            <div className="ledger-sheet-head">
+              <LedgerTabs
+                label="Account sections"
+                value={activeTab}
+                onChange={chooseTab}
+                idPrefix="account"
+                panelId="account-panel"
+                items={[
+                  { key: 'bookings', label: 'My bookings', meta: String(bookings.length) },
+                  { key: 'profile', label: 'My profile' },
+                ]}
+              />
+            </div>
 
-        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          {/* ---------------------------------------------------------- */}
-          {/* Bookings                                                    */}
-          {/* ---------------------------------------------------------- */}
-          {activeTab === 'bookings' ? (
-            <div className="min-w-0">
-              {notice && (
-                <Alert tone={notice.tone === 'good' ? 'success' : 'danger'} className="mb-5">
-                  {notice.text}
-                </Alert>
-              )}
+            {activeTab === 'bookings' ? (
+              <div
+                className="ledger-page"
+                id="account-panel"
+                role="tabpanel"
+                aria-labelledby={`account-tab-${activeTab}`}
+              >
+                {notice && (
+                  <Alert tone={notice.tone === 'good' ? 'success' : 'danger'} className="mb-5">
+                    {notice.text}
+                  </Alert>
+                )}
 
-              {loading && (
-                <div className="guest-panel p-6" role="status" aria-live="polite">
-                  <span className="sr-only">Reading your bookings…</span>
-                  <SkeletonLines rows={4} />
-                </div>
-              )}
-
-              {!loading && bookings.length === 0 && (
-                <EmptyState
-                  icon={Home}
-                  title="No bookings on this account yet"
-                  body="A request only shows up here if it was made while you were signed in with this account. Requests made before you signed up stay with the browser that made them — ask the Admin and they will find it by name."
-                  actions={
-                    <>
-                      <Link to="/book" className="btn-primary">
-                        Book your first stay
-                      </Link>
-                      <Link to="/stay" className="btn-ghost">
-                        Browse accommodations
-                      </Link>
-                    </>
-                  }
-                />
-              )}
-
-              {!loading && bookings.length > 0 && (
-                <div className="guest-panel flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center" data-tour="account-tools">
-                  <Input
-                    className="text-sm sm:flex-1"
-                    placeholder="Search bookings"
-                    aria-label="Search bookings"
-                    value={q}
-                    maxLength={80}
-                    onChange={(e) => {
-                      setQ(e.target.value)
-                      setPage(1)
-                    }}
-                  />
-                  <div className="flex gap-2">
+                {!loading && bookings.length > 0 && (
+                  <div className="ledger-tools" data-tour="account-tools">
+                    <Input
+                      className="ledger-tool"
+                      placeholder="Search bookings"
+                      aria-label="Search bookings"
+                      value={q}
+                      maxLength={80}
+                      onChange={(e) => {
+                        setQ(e.target.value)
+                        setPage(1)
+                      }}
+                    />
                     <Select
-                      className="text-sm"
+                      className="ledger-tool"
                       aria-label="Filter by status"
                       value={statusFilter}
                       onChange={(e) => {
@@ -419,27 +417,53 @@ export function AccountPage() {
                       ))}
                     </Select>
                     <Select
-                      className="text-sm"
+                      className="ledger-tool"
                       aria-label="Sort bookings"
                       value={sortKey}
                       onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
                     >
-                      <option value="created_at">Newest first</option>
+                      <option value="created_at">Newest booked first</option>
                       <option value="check_in">By check-in date</option>
                       <option value="accommodation">By accommodation</option>
                     </Select>
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="mt-5 space-y-5">
+                {loading && (
+                  <div className="ledger-loading" role="status" aria-live="polite">
+                    <span className="sr-only">Reading your bookings…</span>
+                    <SkeletonLines rows={4} />
+                  </div>
+                )}
+
+                {!loading && bookings.length === 0 && (
+                  <div className="ledger-empty">
+                    <h2 className="ledger-empty-title">No bookings on this account yet</h2>
+                    <p className="ledger-empty-copy">
+                      A request only shows up here if it was made while you were signed in with this
+                      account. Requests made before you signed up stay with the browser that made
+                      them — ask the Admin and they will find it by name.
+                    </p>
+                    <div className="ledger-empty-actions">
+                      <Link to="/book" className="btn-primary">
+                        Book your first stay
+                      </Link>
+                      <Link to="/stay" className="btn-ghost">
+                        Browse accommodations
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
                 {!loading && bookings.length > 0 && filtered.length === 0 && (
-                  <EmptyState
-                    title="No bookings match those filters"
-                    body={`${bookings.length} booking${bookings.length === 1 ? '' : 's'} on this account, none matching${
-                      q.trim() ? ` “${q.trim()}”` : ' the selected status'
-                    }. Widen the search or choose All statuses.`}
-                    actions={
+                  <div className="ledger-empty">
+                    <h2 className="ledger-empty-title">No bookings match those filters</h2>
+                    <p className="ledger-empty-copy">
+                      {bookings.length} booking{bookings.length === 1 ? '' : 's'} on this account, none
+                      matching {q.trim() ? `“${q.trim()}”` : 'the selected status'}. Widen the search or
+                      choose All statuses.
+                    </p>
+                    <div className="ledger-empty-actions">
                       <button
                         type="button"
                         onClick={() => {
@@ -451,118 +475,133 @@ export function AccountPage() {
                       >
                         Clear search and filters
                       </button>
-                    }
+                    </div>
+                  </div>
+                )}
+
+                <div className="ledger-entries">
+                  {paged.items.map((booking) => {
+                    const status = effectiveStatus(booking)
+                    return (
+                      <StayEntry
+                        key={booking.id}
+                        booking={booking}
+                        actions={
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setViewingInvoice(booking)}
+                                className="btn-quiet btn-sm"
+                              >
+                                <CreditCard size={14} aria-hidden="true" />
+                                Invoice
+                              </button>
+
+                              {can('booking:update:own') && CANCELLABLE.includes(status) && (
+                                <button
+                                  onClick={() => setConfirmingCancel(booking)}
+                                  disabled={busy === booking.id}
+                                  className="btn-danger-quiet btn-sm"
+                                >
+                                  {busy === booking.id ? 'Cancelling…' : 'Cancel booking'}
+                                </button>
+                              )}
+
+                              {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
+                                <button
+                                  onClick={() => setConfirmingWithdraw(booking)}
+                                  disabled={busy === booking.id}
+                                  className="btn-danger-quiet btn-sm"
+                                >
+                                  {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
+                                </button>
+                              )}
+                            </div>
+
+                            {!WITHDRAWABLE.includes(status) &&
+                              !CANCELLABLE.includes(status) &&
+                              status !== 'Cancelled' &&
+                              status !== 'Rejected' && (
+                                <span className="ledger-actions-note">
+                                  <Sparkle size={12} aria-hidden="true" />
+                                  Contact the Admin to change dates
+                                </span>
+                              )}
+                          </div>
+                        }
+                        review={
+                          ['Checked-Out', 'Completed'].includes(status) && user?.uid ? (
+                            <div data-testid="review-entry">
+                              <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
+                            </div>
+                          ) : undefined
+                        }
+                      >
+                        <HoldCountdown booking={booking} />
+
+                        {/* Money and stay extensions are forms, not buttons: they
+                            belong in the entry's body, not in its action row. */}
+                        {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
+                          <PaymentStep booking={booking} />
+                        )}
+
+                        {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
+                          <LateCheckoutRequest booking={booking} />
+                        )}
+
+                        {booking.rejection_reason && (
+                          <Alert tone="danger" className="text-xs">
+                            <strong>Admin declined:</strong> &ldquo;{booking.rejection_reason}&rdquo;. Those
+                            dates are free again.
+                          </Alert>
+                        )}
+                      </StayEntry>
+                    )
+                  })}
+                </div>
+
+                {!loading && bookings.length > 0 && (
+                  <Pager
+                    page={paged}
+                    onPage={setPage}
+                    onPageSize={(n) => {
+                      setPageSize(n)
+                      setPage(1)
+                    }}
                   />
                 )}
 
-                {paged.items.map((booking) => {
-                  const status = effectiveStatus(booking)
-                  return (
-                    <BookingFolio
-                      key={booking.id}
-                      booking={booking}
-                      actions={
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setViewingInvoice(booking)}
-                              className="btn-quiet btn-sm"
-                            >
-                              <CreditCard size={14} aria-hidden="true" />
-                              Invoice
-                            </button>
-
-                            {can('booking:update:own') && CANCELLABLE.includes(status) && (
-                              <button
-                                onClick={() => setConfirmingCancel(booking)}
-                                disabled={busy === booking.id}
-                                className="btn-danger-quiet btn-sm"
-                              >
-                                {busy === booking.id ? 'Cancelling…' : 'Cancel booking'}
-                              </button>
-                            )}
-
-                            {can('booking:update:own') && WITHDRAWABLE.includes(status) && (
-                              <button
-                                onClick={() => setConfirmingWithdraw(booking)}
-                                disabled={busy === booking.id}
-                                className="btn-danger-quiet btn-sm"
-                              >
-                                {busy === booking.id ? 'Withdrawing…' : 'Withdraw this request'}
-                              </button>
-                            )}
-                          </div>
-
-                          {!WITHDRAWABLE.includes(status) && !CANCELLABLE.includes(status) && status !== 'Cancelled' && status !== 'Rejected' && (
-                            <span className="flex items-center gap-1.5 text-[11px] text-forest-600 dark:text-sage-400">
-                              <Sparkle size={12} aria-hidden="true" /> Contact the Admin to change dates
-                            </span>
-                          )}
-                        </div>
-                      }
-                      trailing={
-                        <>
-                          <BookingHistory bookingId={booking.id} />
-
-                          {['Checked-Out', 'Completed'].includes(status) && user?.uid && (
-                            <div data-testid="review-entry" className="mt-4">
-                              {isReviewableStatus(status) && (
-                                <p className="mb-2 text-sm text-forest-800 dark:text-cream-100">
-                                  <strong className="font-medium">Your stay is complete.</strong> How was it?
-                                </p>
-                              )}
-                              <ReviewForm bookingId={booking.id} uid={user.uid} bookingStatus={status} />
-                            </div>
-                          )}
-                        </>
-                      }
-                    >
-                      <HoldCountdown booking={booking} />
-
-                      {/* Money and stay extensions are forms, not buttons: they
-                          belong in the document's body, not in its action bar. */}
-                      {can('booking:update:own') && ['Payment Pending', 'Reserved'].includes(status) && (
-                        <PaymentStep booking={booking} />
-                      )}
-
-                      {['Approved', 'Reserved', 'Checked-In', 'Staying'].includes(status) && (
-                        <LateCheckoutRequest booking={booking} />
-                      )}
-
-                      {booking.rejection_reason && (
-                        <Alert tone="danger" className="text-xs">
-                          <strong>Admin declined:</strong> &ldquo;{booking.rejection_reason}&rdquo;. Those dates are
-                          free again.
-                        </Alert>
-                      )}
-                    </BookingFolio>
-                  )
-                })}
+                {!loading && bookings.length > 0 && (
+                  <p className="ledger-summary">
+                    <span className="guest-num">{stats.total}</span>{' '}
+                    {stats.total === 1 ? 'stay' : 'stays'} on this account
+                    {stats.future > 0 && (
+                      <>
+                        , <span className="guest-num">{stats.future}</span> coming up
+                      </>
+                    )}
+                    {stats.pending > 0 ? (
+                      <>
+                        , <span className="guest-num">{stats.pending}</span> waiting on the Hacienda.
+                      </>
+                    ) : (
+                      '.'
+                    )}
+                  </p>
+                )}
               </div>
-
-              {!loading && bookings.length > 0 && (
-                <Pager
-                  page={paged}
-                  onPage={setPage}
-                  onPageSize={(n) => {
-                    setPageSize(n)
-                    setPage(1)
-                  }}
-                />
-              )}
-            </div>
-          ) : (
-            /* -------------------------------------------------------- */
-            /* Profile                                                   */
-            /* -------------------------------------------------------- */
-            <div className="min-w-0">
-              <section className="guest-panel px-5 py-6 sm:px-7">
-                <h2 className="font-serif text-2xl text-forest-900 dark:text-cream-50">
-                  Personal information
-                </h2>
-                <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-forest-800/80 dark:text-cream-100/75">
-                  Keep your contact details current so the Admin can reach you about your stay.
+            ) : (
+              <div
+                className="ledger-page"
+                id="account-panel"
+                role="tabpanel"
+                aria-labelledby={`account-tab-${activeTab}`}
+              >
+                <h2 className="sr-only">My profile</h2>
+                <p className="ledger-lede">
+                  Keep these current so the Admin can reach you about a stay. Your name is the one the
+                  invoice and the Hacienda's own record use.
                 </p>
 
                 {profileMsg && (
@@ -571,57 +610,80 @@ export function AccountPage() {
                   </Alert>
                 )}
 
-                <form onSubmit={handleSaveProfile} className="mt-6 space-y-5">
-                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    <Field label="First name" required>
-                      <Input
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
+                <form onSubmit={handleSaveProfile} className="mt-7 space-y-8">
+                  <fieldset className="ledger-group">
+                    <legend className="ledger-group-title">Your name</legend>
+                    <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
+                      <Field label="First name" required>
+                        <Input
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          required
+                          placeholder="First name"
+                          autoComplete="given-name"
+                        />
+                      </Field>
+                      <Field label="Last name" required>
+                        <Input
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value)}
+                          required
+                          placeholder="Last name"
+                          autoComplete="family-name"
+                        />
+                      </Field>
+                    </div>
+                    <div className="mt-5">
+                      <Field label="Middle name" hint="Optional — an initial is enough.">
+                        <Input
+                          value={middleName}
+                          onChange={(e) => setMiddleName(e.target.value)}
+                          placeholder="Middle name"
+                          autoComplete="additional-name"
+                        />
+                      </Field>
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="ledger-group">
+                    <legend className="ledger-group-title">How the Hacienda reaches you</legend>
+                    <div className="mt-4 space-y-5">
+                      <Field
+                        label="Mobile phone number"
                         required
-                        placeholder="First name"
-                        autoComplete="given-name"
-                      />
-                    </Field>
-                    <Field label="Last name" required>
-                      <Input
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        required
-                        placeholder="Last name"
-                        autoComplete="family-name"
-                      />
-                    </Field>
-                  </div>
+                        hint="Philippine mobile format: 09XX XXX XXXX"
+                      >
+                        <Input
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          required
+                          placeholder="09171234567"
+                          inputMode="tel"
+                          autoComplete="tel"
+                        />
+                      </Field>
 
-                  <Field label="Middle name" hint="Optional — an initial is enough.">
-                    <Input
-                      value={middleName}
-                      onChange={(e) => setMiddleName(e.target.value)}
-                      placeholder="Middle name"
-                      autoComplete="additional-name"
-                    />
-                  </Field>
+                      <Field label="Email address" hint="The sign-in address cannot be changed here.">
+                        <Input value={user?.email ?? ''} disabled />
+                      </Field>
+                    </div>
+                  </fieldset>
 
-                  <Field label="Mobile phone number" required hint="Philippine mobile format: 09XX XXX XXXX">
-                    <Input
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      required
-                      placeholder="09171234567"
-                      inputMode="tel"
-                      autoComplete="tel"
-                    />
-                  </Field>
+                  <fieldset className="ledger-group">
+                    <legend className="ledger-group-title">About you</legend>
+                    <div className="mt-4">
+                      <Field label="Date of birth" hint="Optional.">
+                        <Input
+                          type="date"
+                          value={birthdate}
+                          onChange={(e) => setBirthdate(e.target.value)}
+                          autoComplete="bday"
+                        />
+                      </Field>
+                    </div>
+                  </fieldset>
 
-                  <Field label="Date of birth" hint="Optional.">
-                    <Input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
-                  </Field>
-
-                  <Field label="Email address" hint="The sign-in address cannot be changed here.">
-                    <Input value={user?.email ?? ''} disabled />
-                  </Field>
-
-                  <div className="guest-rule -mx-5 mt-6 flex flex-wrap items-center justify-between gap-3 px-5 pt-5 sm:-mx-7 sm:px-7">
+                  <div className="ledger-formfoot">
                     <button type="submit" disabled={profileSaving} className="btn-primary">
                       {profileSaving ? 'Saving…' : 'Save changes'}
                     </button>
@@ -631,79 +693,11 @@ export function AccountPage() {
                     </button>
                   </div>
                 </form>
-              </section>
-            </div>
-          )}
-
-          {/* ---------------------------------------------------------- */}
-          {/* The rail                                                    */}
-          {/* ---------------------------------------------------------- */}
-          <AccountRail>
-            <RailPanel title={activeTab === 'bookings' ? 'Your bookings' : 'Your account'}>
-              {activeTab === 'bookings' ? (
-                <>
-                  <StatCard label="Total bookings" value={stats.total} icon={Calendar} />
-                  <StatCard label="Waiting on the Hacienda" value={stats.pending} icon={Clock} tone="pending" />
-                  <StatCard label="Coming up in 30 days" value={stats.upcoming} icon={Home} tone="success" />
-                </>
-              ) : (
-                <RailFacts
-                  icon={User}
-                  rows={[
-                    { label: 'Name', value: profile?.display_name || user?.displayName || '—' },
-                    { label: 'Phone', value: profile?.phone || 'Not saved yet' },
-                    {
-                      label: 'Role',
-                      value: role ? ROLE_LABELS[role] : 'Guest',
-                    },
-                  ]}
-                />
-              )}
-            </RailPanel>
-
-            {nextStay && (
-              <RailPanel
-                title="Next stay"
-                footer={
-                  <button
-                    type="button"
-                    onClick={() => setViewingInvoice(nextStay)}
-                    className="btn-quiet btn-sm w-full"
-                  >
-                    <CreditCard size={14} aria-hidden="true" />
-                    View invoice
-                  </button>
-                }
-              >
-                <RailFacts
-                  rows={[
-                    { label: 'Accommodation', value: accommodationName(nextStay.accommodation) },
-                    {
-                      label: 'Dates',
-                      value: (
-                        <span className="guest-num">
-                          {nextStay.check_in} → {nextStay.check_out}
-                        </span>
-                      ),
-                    },
-                    { label: 'Length', value: formatStayDuration(nextStay.check_in, nextStay.check_out) },
-                    { label: 'Guests', value: <span className="guest-num">{nextStay.guests}</span> },
-                    ...(typeof nextStay.amount_claimed === 'number'
-                      ? [{ label: 'Downpayment', value: peso(nextStay.amount_claimed) }]
-                      : []),
-                  ]}
-                />
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <StatusBadge status={effectiveStatus(nextStay)} />
-                  <span className="text-[11px] text-forest-600 dark:text-sage-400">
-                    {daysUntil(nextStay.check_in)} day{daysUntil(nextStay.check_in) === 1 ? '' : 's'} away
-                  </span>
-                </div>
-              </RailPanel>
+              </div>
             )}
+          </section>
 
-            <HelpPanel />
-          </AccountRail>
+          <Flyleaf name={fullName} email={user?.email} memberSince={profile?.created_at} />
         </div>
       </Container>
 
@@ -721,7 +715,9 @@ export function AccountPage() {
         }
       >
         {notifications.length === 0 ? (
-          <EmptyState compact icon={Bell} title="No notifications yet" body="Decisions about your bookings appear here." />
+          <p className="px-1 py-8 text-sm leading-relaxed text-forest-700">
+            Nothing yet. Decisions about your bookings and messages from the Admin appear here.
+          </p>
         ) : (
           <ul className="space-y-3">
             {notifications.map((n) => (
@@ -729,7 +725,7 @@ export function AccountPage() {
                 <button
                   type="button"
                   onClick={() => void handleMarkRead(n.id)}
-                  className={`w-full rounded-[14px] border p-4 text-left text-xs transition hover:border-forest-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 dark:focus-visible:ring-brass-400 ${
+                  className={`w-full rounded-[12px] border p-4 text-left text-xs transition hover:border-forest-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 dark:focus-visible:ring-brass-400 ${
                     n.read
                       ? 'border-forest-900/10 bg-white text-forest-800 dark:border-cream-100/10 dark:bg-forest-900/60'
                       : 'border-emerald-200 bg-emerald-50/70 font-medium text-emerald-950'
@@ -776,7 +772,7 @@ export function AccountPage() {
         title="Cancel this booking?"
         body={
           confirmingCancel
-            ? `${bookingReference(confirmingCancel)} · ${accommodationName(confirmingCancel.accommodation)} (${confirmingCancel.check_in} → ${confirmingCancel.check_out}). The dates are released and this cannot be undone.\n\n${cancellationTerms(confirmingCancel)}`
+            ? `${bookingReference(confirmingCancel)} for ${accommodationName(confirmingCancel.accommodation)} (${confirmingCancel.check_in} → ${confirmingCancel.check_out}). The dates are released and this cannot be undone.\n\n${cancellationTerms(confirmingCancel)}`
             : ''
         }
         confirmLabel="Cancel booking"

@@ -38,13 +38,11 @@ export function BookingHistory({ bookingId }: { bookingId: string }) {
   }, [bookingId])
 
   return (
-    <section className="guest-inset px-4 py-4">
+    <section>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h4 className="text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
-          Activity
-        </h4>
+        <h4 className="font-serif text-[18px] font-medium leading-snug text-forest-900 dark:text-cream-50">Activity</h4>
         <p className="text-[11px] leading-tight text-forest-600/90 dark:text-sage-400">
-          Append-only — nobody can edit this, including the Hacienda
+          Append-only. Nobody can edit this, including the Hacienda.
         </p>
       </div>
 
