@@ -481,8 +481,31 @@ describe('signing out, and a session that ends by itself', () => {
     unsubscribe()
     await session.login('maria@example.com', 'bahay-kubo')
 
-    expect(seen).toEqual(['loading:none', 'signed-in:guest', 'signed-out:none'])
+    // The first entry is the state at the moment of subscribing, the way the
+    // provider's own `subscribe` reports it. Without it a component that
+    // subscribes *after* the Profile read has already finished — which is every
+    // page load in demo mode, where the read resolves in a microtask — would
+    // never be told anybody had signed in and would sit on its spinner.
+    expect(seen).toEqual(['signed-out:none', 'loading:none', 'signed-in:guest', 'signed-out:none'])
     expect(session.getState().role).toBe('guest')
+  })
+
+  it('tells a listener that arrives late who is already signed in', async () => {
+    const provider = createFakeProvider()
+    provider.seed({ user: user('uid-1', 'maria@example.com'), password: REGISTERED_WITH })
+    const first = createSession(provider.port, createFakeProfiles().port)
+    await first.login('maria@example.com', 'bahay-kubo')
+    first.destroy()
+
+    // A reload: the session is rebuilt over the same provider, and this listener
+    // subscribes only after the Profile has been read and the state settled.
+    const reloaded = createSession(provider.port, createFakeProfiles().port)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const seen: string[] = []
+    reloaded.subscribe((state) => seen.push(`${state.status}:${state.role ?? 'none'}`))
+
+    expect(seen).toEqual(['signed-in:guest'])
+    reloaded.destroy()
   })
 })
 

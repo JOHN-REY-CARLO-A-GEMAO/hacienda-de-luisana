@@ -17,7 +17,13 @@ export function accommodationOf(id: string) {
 }
 
 export function accommodationName(id: string): string {
-  return accommodationOf(id)?.name ?? id
+  const known = accommodationOf(id)
+  if (known) return known.name
+  // A Booking can name an Accommodation the catalogue has since retired. A Guest
+  // should read "House A Camping", not the raw key that happens to be stored.
+  return id
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 /**
@@ -53,6 +59,13 @@ export function shortDate(dateStr: string): string {
   return date.toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
+/** "6 Oct 2026" — a date as a document writes it: no weekday, year included. */
+export function calendarDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return dateStr
+  return date.toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 /** "December 2026" — for "member since" and other month-precision facts. */
 export function monthYear(dateStr: string): string {
   const date = new Date(dateStr)
@@ -63,6 +76,93 @@ export function monthYear(dateStr: string): string {
 /** Peso, no centavos: the amounts on a Guest page are whole pesos. */
 export function peso(amount: number): string {
   return `₱${amount.toLocaleString('en-PH')}`
+}
+
+/** `1 night` / `3 nights`, so no sentence has to spell the plural itself. */
+export function nightsPhrase(nights: number): string {
+  return `${nights} ${nights === 1 ? 'night' : 'nights'}`
+}
+
+/** `1 guest` / `9 guests`. */
+export function guestsPhrase(guests: number): string {
+  return `${guests} ${guests === 1 ? 'guest' : 'guests'}`
+}
+
+/**
+ * How many nights a Booking is for.
+ *
+ * A stay is counted in nights — that is what the rate is charged in and what a
+ * Guest plans around — so the page never asks anybody to subtract two dates.
+ */
+export function nightsBetween(checkIn: string, checkOut: string): number {
+  const from = new Date(checkIn)
+  const to = new Date(checkOut)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return 0
+  return Math.max(0, Math.round((to.getTime() - from.getTime()) / 86_400_000))
+}
+
+export type StaySpan = {
+  /** For the date margin: "Nov", or "Nov – Dec" when the stay crosses one. */
+  month: string
+  /** For the date margin: "20 – 22". */
+  days: string
+  /** For the date margin: "2026", or both years when it crosses one. */
+  year: string
+  /** The full range, written out: "20 – 22 November 2026". */
+  long: string
+  /** "Friday to Sunday" — the shape of the week the stay sits in. */
+  weekdays: string
+}
+
+/**
+ * The two readings of one date range: the margin's compact stamp and the
+ * sentence the masthead sets at display size.
+ *
+ * Written by hand rather than through `Intl.formatRange` because the range is
+ * the point: a Guest reads "20 – 22 November", not "November 20 – November 22",
+ * and a stay that crosses a month or a year says so instead of repeating the
+ * year twice.
+ */
+export function staySpan(checkIn: string, checkOut: string): StaySpan {
+  const from = new Date(checkIn)
+  const to = new Date(checkOut)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    return { month: '', days: checkIn, year: '', long: `${checkIn} → ${checkOut}`, weekdays: '' }
+  }
+
+  const month = (date: Date, style: 'short' | 'long') =>
+    date.toLocaleDateString('en-PH', { month: style })
+  const weekday = (date: Date) => date.toLocaleDateString('en-PH', { weekday: 'long' })
+
+  const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear()
+  const sameYear = from.getFullYear() === to.getFullYear()
+
+  const long = sameMonth
+    ? `${from.getDate()} – ${to.getDate()} ${month(from, 'long')} ${from.getFullYear()}`
+    : sameYear
+      ? `${from.getDate()} ${month(from, 'long')} – ${to.getDate()} ${month(to, 'long')} ${from.getFullYear()}`
+      : `${from.getDate()} ${month(from, 'long')} ${from.getFullYear()} – ${to.getDate()} ${month(to, 'long')} ${to.getFullYear()}`
+
+  return {
+    month: sameMonth ? month(from, 'short') : `${month(from, 'short')} – ${month(to, 'short')}`,
+    days: `${from.getDate()} – ${to.getDate()}`,
+    year: sameYear ? String(from.getFullYear()) : `${from.getFullYear()} – ${to.getFullYear()}`,
+    long,
+    weekdays: `${weekday(from)} to ${weekday(to)}`,
+  }
+}
+
+/**
+ * The line that says how far away a stay is, or `null` once it has no useful
+ * answer (a stay that ended, or a booking that never had dates).
+ */
+export function countdownLabel(checkIn: string, checkOut: string, now: Date = new Date()): string | null {
+  const days = daysUntil(checkIn, now)
+  if (days > 1) return `${days} days away`
+  if (days === 1) return 'Check-in tomorrow'
+  if (days === 0) return 'Check-in today'
+  if (daysUntil(checkOut, now) >= 0) return 'You are staying now'
+  return null
 }
 
 /**

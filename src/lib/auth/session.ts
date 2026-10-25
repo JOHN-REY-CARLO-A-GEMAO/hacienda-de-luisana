@@ -193,6 +193,13 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
 
     subscribe(listener) {
       listeners.add(listener)
+      // Report the state that is current at the moment of subscribing, the way
+      // the provider's own `subscribe` does. Without this, a page reload in
+      // demo mode hangs on "Checking authentication…" forever: the local
+      // Profile read resolves in a microtask — before React's effect can
+      // subscribe — so the one `emit()` that would have said "signed in" is
+      // broadcast to nobody and the spinner never leaves.
+      listener(state)
       return () => {
         listeners.delete(listener)
       }

@@ -79,7 +79,7 @@ export const LateCheckoutRequest: React.FC<LateCheckoutRequestProps> = ({ bookin
   return (
     <section className="guest-inset px-4 py-4 sm:px-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h4 className="text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
+        <h4 className="font-serif text-[18px] font-medium leading-snug text-forest-900 dark:text-cream-50">
           Late checkout
         </h4>
         <span className="guest-num text-[11px] text-forest-700 dark:text-cream-100/75">₱250 per hour</span>
