@@ -5,6 +5,7 @@ import { FlowSteps } from '../components/Booking/FlowSteps'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { SmartImage } from '../components/SmartImage'
 import { clearBookingDraft, loadBookingDraft, rememberBookingId, type BookingDraft } from '../lib/bookingDraft'
+import { formatStayDate } from '../lib/formatDate'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { ensureGuestUid } from '../lib/guestAuth'
 import { ArrowRight, Calendar, Sparkle, Users } from '../lib/icons'
@@ -50,6 +51,7 @@ export function DownpaymentPage() {
   const published = usePublishedRates()
   const paymentInformation = usePaymentInformation()
   const fileInput = useRef<HTMLInputElement>(null)
+  const submittingRef = useRef(false)
 
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -201,6 +203,10 @@ export function DownpaymentPage() {
   }
 
   const submit = async () => {
+    // The ref closes the small gap before React paints `disabled`; a second tap
+    // must not upload the same proof or create a second Booking.
+    if (submittingRef.current) return
+    submittingRef.current = true
     setBusy(true)
     setError('')
     try {
@@ -459,6 +465,7 @@ refund_policy_snapshot: published.refund ?? null,
       const message = guestFacingErrorMessage(err, 'The booking could not be submitted right now. Please try again.')
       setError(message)
     } finally {
+      submittingRef.current = false
       setBusy(false)
     }
   }
@@ -467,16 +474,17 @@ refund_policy_snapshot: published.refund ?? null,
     <Page className="relative">
       <Container width="wide" className="relative">
         <PageHeader
-          eyebrow="Step 2 of 3"
+          eyebrow="Hakbang 5–6 sa 7 · Bayad at pagsusumite"
           title="Downpayment proof"
           lead={
-            <p className="max-w-2xl">
-              Send the downpayment through the Hacienda’s official channels, then upload a screenshot. The
-              booking is submitted only after that screenshot is attached, and it stays <strong>Pending</strong>{' '}
-              until the Hacienda approves or rejects it. It is not confirmed yet.
+            <p className="max-w-3xl">
+              Magbayad lamang sa opisyal na account sa ibaba, pagkatapos ay i-upload ang screenshot ng resibo.
+              Maisusumite lamang ang booking kapag may patunay ng bayad. Mananatili itong{' '}
+              <strong>Pending — hinihintay ang approval</strong>, at <strong>hindi pa ito kumpirmado</strong>,
+              hangga’t hindi napagtitibay ng Hacienda.
             </p>
           }
-          aside={<FlowSteps current={1} />}
+          aside={<FlowSteps current={4} completedThrough={3} />}
         />
 
         <div className="mt-10 grid lg:grid-cols-3 gap-8 lg:gap-10">
@@ -484,10 +492,10 @@ refund_policy_snapshot: published.refund ?? null,
             {error && <Alert tone="danger">{error}</Alert>}
 
             <div className="card p-6 sm:p-8">
-              <h2 className="h2">How to pay</h2>
-              <p className="mt-3 text-sm text-forest-800/80 leading-relaxed">
-                Pay only through the Admin-published QR code or account below. Never send money to a third
-                party claiming to be staff, and never share a password, PIN, or one-time code.
+              <h2 className="h2">Paano Magbayad</h2>
+              <p className="mt-3 text-base text-forest-800 leading-relaxed">
+                Gamitin lamang ang QR code o account na inilathala ng Admin. Huwag magpadala sa ibang tao at
+                huwag ibahagi ang password, PIN, o one-time code.
               </p>
               <div className="mt-5">
                 <PaymentInformationPanel payment={paymentInformation} requiredAmount={dueNow ?? undefined} />
@@ -495,24 +503,50 @@ refund_policy_snapshot: published.refund ?? null,
               <div className="mt-5">
                 <OfficialChannelsNotice />
               </div>
-              <div className="mt-5 rounded-2xl bg-forest-900 text-cream-50 p-5">
-                <div className="text-[11px] uppercase tracking-eyebrow text-cream-100/60">Downpayment due now</div>
+              <div className="mt-5 rounded-2xl bg-forest-900 p-5 text-cream-50 sm:p-6">
+                <h3 className="font-serif text-2xl">Buod ng Bayad</h3>
+                <p className="mt-1 text-base text-cream-100/85">
+                  {selectedOption ? (paymentPlan === 'down-payment' ? '50% downpayment' : 'Full payment') : 'Presyo ay kumpirmahin'} · {nights} {nights === 1 ? 'night' : 'nights'}
+                </p>
+                <dl className="mt-5 space-y-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+                    <dt className="text-base text-cream-100/85">Kabuuan ng stay</dt>
+                    <dd className="guest-num text-xl font-semibold">{stayTotal === null ? 'Hindi pa available' : peso(stayTotal)}</dd>
+                  </div>
+                  <div className="border-t border-cream-100/20 pt-4">
+                    <dt className="text-base font-semibold text-cream-50">Babayaran Ngayon (Downpayment due now)</dt>
+                    <dd className="guest-num mt-1 text-4xl font-semibold sm:text-5xl">{dueNow === null ? 'Kumpirmahin sa Hacienda' : peso(dueNow)}</dd>
+                  </div>
+                  {stayTotal !== null && dueNow !== null && selectedOption && selectedOption.balance > 0 && (
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-t border-cream-100/20 pt-4">
+                      <dt className="text-base text-cream-100/85">Natitirang bayad sa check-in</dt>
+                      <dd className="guest-num text-xl font-semibold">{peso(selectedOption.balance)}</dd>
+                    </div>
+                  )}
+                  {deposit != null && (
+                    <div className="border-t border-cream-100/20 pt-4">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+                        <dt className="text-base text-cream-100/85">Refundable security deposit</dt>
+                        <dd className="guest-num text-xl font-semibold">{peso(deposit)}</dd>
+                      </div>
+                      <p className="mt-1 text-base leading-relaxed text-cream-100/85">
+                        Hiwalay ito sa “Babayaran Ngayon” at hindi idinadagdag nang kusa sa halagang ilalagay sa screenshot.
+                      </p>
+                    </div>
+                  )}
+                </dl>
                 {dueNow !== null ? (
-                  <>
-                    <div className="font-serif text-4xl mt-1">{peso(dueNow)}</div>
-                    <p className="mt-2 text-xs text-cream-100/75 leading-relaxed">
-                      50% of {peso(stayTotal!)} for your {nights}-night stay (each night a standard stay, 2:00 PM–12:00 noon). The {quoted?.classification === 'weekend_holiday' ? 'weekend/holiday rate (Friday or Saturday check-in, or an Admin-listed holiday)' : 'weekday rate (Sunday–Thursday check-in)'} of every night follows your check-in date
-                      {rate?.source ? ` · ${rate.source}` : ''}.
-                      {deposit ? ` The refundable security deposit (${peso(deposit)}) is shown separately.` : ''}
-                      {stayTotal !== null && dueNow < stayTotal
-                        ? ` The remaining 50% (${peso(stayTotal - dueNow)}) is due at check-in and is not part of this screenshot.`
-                        : ''}
-                    </p>
-                  </>
+                  <p className="mt-5 text-base leading-relaxed text-cream-100/90">
+                    {paymentPlan === 'down-payment'
+                      ? `Ang babayaran ngayon ay 50% ng kabuuan para sa ${nights}-night stay.`
+                      : 'Ang babayaran ngayon ay ang buong stay total.'}{' '}
+                    Ang bawat gabi ay standard stay (2:00 PM–12:00 noon), at ang rate ay batay sa petsa ng check-in.
+                    {rate?.source ? ` ${rate.source}.` : ''}
+                  </p>
                 ) : (
-                  <p className="mt-2 text-sm text-cream-100/80 leading-relaxed">
-                    Enter the downpayment amount you sent. No due-now figure is published for this stay,
-                    so the Hacienda confirms the amount from your screenshot.
+                  <p className="mt-5 text-base leading-relaxed text-cream-100/90">
+                    Walang published na exact amount para sa stay na ito. Huwag magpadala hangga’t hindi
+                    nakukumpirma ng Hacienda ang halaga sa opisyal na channel.
                   </p>
                 )}
               </div>
@@ -520,17 +554,18 @@ refund_policy_snapshot: published.refund ?? null,
 
             <div className="card p-6 sm:p-8" data-tour="payment-proof">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="h2">Screenshot</h2>
-                <RequestBadge status="required" label="Required" />
+                <h2 className="h2">Patunay ng Bayad</h2>
+                <RequestBadge status="required" label="Kailangan" />
               </div>
-              <p className="mt-2 text-sm text-forest-700/80">
-                A photo of the GCash, Maya, or bank receipt. JPG, PNG, or WEBP, under 5 MB.
+              <p className="mt-2 text-base leading-relaxed text-forest-700">
+                Larawan ng GCash, Maya, o bank receipt. JPG, PNG, o WEBP, at hindi lalampas sa 5 MB.
+                Dapat mabasa ang halaga at reference bago ipadala.
               </p>
 
               <label
                 className={`mt-5 flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-8 text-center ${
                   proofFile ? 'border-forest-700 bg-forest-50' : 'border-forest-900/20 bg-cream-50'
-                }`}
+                } focus-within:ring-4 focus-within:ring-forest-600/30`}
               >
                 <input
                   ref={fileInput}
@@ -544,15 +579,15 @@ refund_policy_snapshot: published.refund ?? null,
                 ) : (
                   <>
                     <Sparkle size={22} className="text-forest-600" />
-                    <span className="mt-3 text-sm text-forest-800">Choose a screenshot to attach</span>
-                    <span className="mt-1 text-xs text-forest-600">The booking cannot be submitted without this file.</span>
+                    <span className="mt-3 text-lg font-semibold text-forest-800">Pumili ng screenshot na ilakip</span>
+                    <span className="mt-2 text-base text-forest-700">Hindi maisusumite ang booking nang walang patunay na ito.</span>
                   </>
                 )}
               </label>
               {proofFile && (
                 <button
                   type="button"
-                  className="mt-3 text-xs text-forest-700 underline underline-offset-2"
+                  className="mt-3 inline-flex min-h-11 items-center px-2 text-base text-forest-700 underline underline-offset-2"
                   onClick={() => {
                     setProofFile(null)
                     setAmountCandidates([])
@@ -564,26 +599,27 @@ refund_policy_snapshot: published.refund ?? null,
                     if (fileInput.current) fileInput.current.value = ''
                   }}
                 >
-                  Remove screenshot
+                  Remove screenshot · Alisin
                 </button>
               )}
-              {ocrNote && <p className="mt-3 text-xs text-forest-700/70">{ocrNote}</p>}
+              {ocrNote && <p className="mt-3 text-base text-forest-700/70">{ocrNote}</p>}
 
               {/* Two or more figures on one screenshot is a question, not a detail.
                   A GCash Express Send prints `Amount` (what the recipient receives)
                   and `Total Amount Sent` (what left the sender), and they disagree
                   whenever a fee was charged. */}
               {amountCandidates.length > 1 && (
-                <Alert tone="warning" role="status" className="mt-4 text-xs">
+                <Alert tone="warning" role="status" className="mt-4 text-base">
                   <span className="block font-medium">
                     This screenshot shows {amountCandidates.length} different amounts. Which one did you send?
                   </span>
                   <div className="mt-2 space-y-1.5">
                     {amountCandidates.map((candidate) => (
-                      <label key={candidate.value} className="flex items-center gap-2 text-xs text-amber-900 cursor-pointer">
+                      <label key={candidate.value} className="flex min-h-11 cursor-pointer items-center gap-3 py-2 text-base text-amber-900">
                         <input
                           type="radio"
                           name="screenshot-amount"
+                          className="h-5 w-5 shrink-0"
                           checked={amount === candidate.value}
                           onChange={() => setAmount(candidate.value)}
                         />
@@ -601,7 +637,7 @@ refund_policy_snapshot: published.refund ?? null,
               )}
 
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
-                <Field label="Amount on the screenshot">
+                <Field label="Halagang Nakasaad sa Screenshot" required>
                   <Input
                     inputMode="decimal"
                     autoComplete="off"
@@ -611,7 +647,7 @@ refund_policy_snapshot: published.refund ?? null,
                     onChange={(event) => setAmount(event.target.value)}
                   />
                 </Field>
-                <Field label="Reference number" hint="Optional.">
+                <Field label="Reference Number" hint="Optional, pero mabilisang masusuri kung mayroon.">
                   <Input
                     value={reference}
                     autoComplete="off"
@@ -628,7 +664,7 @@ refund_policy_snapshot: published.refund ?? null,
                   engine read wrong, because OCR is a hint and the Admin is the one
                   who reads the screenshot. */}
               {amountCandidates.length > 0 && (offReceipt || claimOffReceipt) && (
-                <Alert tone={offReceipt ? 'danger' : 'warning'} role="status" className="mt-4 text-xs">
+                <Alert tone={offReceipt ? 'danger' : 'warning'} role="status" className="mt-4 text-base">
                   <span className="block font-medium">
                     {offReceipt ??
                       (belowDueNow
@@ -641,7 +677,7 @@ refund_policy_snapshot: published.refund ?? null,
                         <button
                           key={candidate.value}
                           type="button"
-                          className="text-xs text-red-700 underline underline-offset-2"
+                          className="text-base text-red-700 underline underline-offset-2"
                           onClick={() => setAmount(candidate.value)}
                         >
                           Use {peso(Number(candidate.value))} ({candidate.label})
@@ -649,11 +685,11 @@ refund_policy_snapshot: published.refund ?? null,
                       ))}
                     </div>
                   )}
-                  <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs">
+                  <label className="mt-2 flex min-h-11 cursor-pointer items-start gap-3 py-2 text-base">
                     <input
                       type="checkbox"
                       name="claim-off-receipt"
-                      className="mt-0.5"
+                      className="mt-1 h-5 w-5 shrink-0"
                       checked={claimOffReceipt}
                       onChange={(event) => setClaimOffReceipt(event.target.checked)}
                     />
@@ -669,7 +705,7 @@ refund_policy_snapshot: published.refund ?? null,
                   happen — and still says it when the claim clears the threshold,
                   because a claim above `dueNow` does reach a person. */}
               {amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' }) && (
-                <Alert tone="warning" role="status" className="mt-4 text-xs">
+                <Alert tone="warning" role="status" className="mt-4 text-base">
                   {amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' })}
                 </Alert>
               )}
@@ -681,16 +717,24 @@ refund_policy_snapshot: published.refund ?? null,
                   disabled={busy || !proofFile}
                   onClick={() => void submit()}
                 >
-                  {busy ? 'Submitting…' : 'Submit booking'}
-                  {!busy && <ArrowRight size={16} />}
+                  {busy ? 'Submitting… · Ipinapasa…' : 'Submit booking · Ipadala'}
+                  {!busy && <ArrowRight size={20} />}
                 </button>
-                <Link to={`/book?accommodation=${draft.accommodation}`} className="btn-ghost btn-sm">
-                  Back to details
+                <Link
+                  to={`/book?accommodation=${draft.accommodation}`}
+                  className={`btn-ghost ${busy ? 'pointer-events-none opacity-50' : ''}`}
+                  aria-disabled={busy || undefined}
+                  onClick={(event) => { if (busy) event.preventDefault() }}
+                >
+                  Back to details · Bumalik
                 </Link>
               </div>
-              <p className="mt-4 text-xs text-forest-700/60 max-w-lg leading-relaxed">
-                Submitting marks the booking <strong>Pending</strong>. It is not confirmed until an admin
-                accepts the screenshot. If they decline it, the status becomes <strong>Rejected</strong>.
+              <p className="mt-4 max-w-xl text-base leading-relaxed text-forest-700">
+                {busy ? (
+                  <strong>Ipinapasa na. Maghintay at huwag pindutin muli ang Submit.</strong>
+                ) : (
+                  <>Ang pagpasa ay gagawa ng <strong>Pending</strong> booking. Hindi pa ito kumpirmado hangga’t hindi ina-aprubahan ng Admin ang patunay at detalye. Kapag bumalik sa detalye, mananatili ang iyong isinulat.</>
+                )}
               </p>
             </div>
           </section>
@@ -722,13 +766,16 @@ function StaySummary({
           <SmartImage src={image || '/images/gmaps/img-07.jpg'} alt={accommodationName || 'Hacienda'} className="w-full h-44 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-forest-950/75 to-transparent" />
           <div className="absolute bottom-4 left-5 right-5 text-cream-50">
-            <div className="text-[10px] uppercase tracking-eyebrow opacity-80">Not submitted yet</div>
+            <div className="text-base font-semibold uppercase tracking-eyebrow text-cream-50">Buod ng iyong stay</div>
             <div className="font-serif text-2xl">{accommodationName || 'Your stay'}</div>
           </div>
         </div>
-        <div className="p-6 space-y-3 text-sm">
-          <Row icon={Calendar} label="Dates" value={`${draft.check_in} → ${draft.check_out}`} />
-          <Row icon={Users} label="Guests" value={`${draft.guests} · ${nights || '—'} night${nights === 1 ? '' : 's'}`} />
+        <div className="p-6 space-y-4 text-base">
+          <h3 className="font-serif text-2xl text-forest-900">Buod ng Booking</h3>
+          <p className="text-base font-semibold text-amber-800">Hindi pa naisusumite · Hindi pa kumpirmado</p>
+          <Row icon={Calendar} label="Pagdating" value={formatStayDate(draft.check_in)} />
+          <Row icon={Calendar} label="Pag-alis" value={formatStayDate(draft.check_out)} />
+          <Row icon={Users} label="Mga Bisita" value={`${draft.guests} · ${nights || '—'} night${nights === 1 ? '' : 's'}`} />
           {draft.event_purpose && (
             <Row
               icon={Sparkle}
@@ -739,15 +786,15 @@ function StaySummary({
             />
           )}
           <AddonFeeSummary lines={addonLines} />
-          <div className="pt-3 border-t border-forest-900/10 text-xs text-forest-700 leading-relaxed">
+          <div className="pt-3 border-t border-forest-900/10 text-base text-forest-700 leading-relaxed">
             <div className="font-medium text-forest-900">{draft.name}</div>
             <div>{draft.phone}</div>
             <div>{draft.email}</div>
           </div>
-          <p className="text-xs text-forest-600">
-            No account is required. Keep the reference you receive after submitting if you want to check the status later.
+          <p className="text-base leading-relaxed text-forest-600">
+            Hindi kailangan ng account. Itabi ang reference na matatanggap pagkatapos maipasa para matingnan ang status.
           </p>
-          <a href={`tel:${BUSINESS.contact.phone.replace(/\s+/g, '')}`} className="text-xs underline underline-offset-2 text-forest-800">
+          <a href={`tel:${BUSINESS.contact.phone.replace(/\s+/g, '')}`} className="inline-flex min-h-11 items-center text-base text-forest-800 underline underline-offset-2">
             {BUSINESS.contact.phoneDisplay}
           </a>
         </div>
@@ -758,11 +805,11 @@ function StaySummary({
 
 function Row({ icon: Icon, label, value }: { icon: typeof Calendar; label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="inline-flex items-center gap-2 text-forest-700">
-        <Icon size={15} /> {label}
+    <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-start gap-4">
+      <span className="inline-flex items-start gap-2 text-forest-700">
+        <Icon size={19} className="mt-0.5 shrink-0" aria-hidden="true" /> {label}
       </span>
-      <span className="text-forest-900 font-medium text-right">{value}</span>
+      <span className="font-semibold text-right text-forest-900">{value}</span>
     </div>
   )
 }

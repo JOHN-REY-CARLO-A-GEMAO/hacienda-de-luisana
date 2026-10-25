@@ -19,7 +19,7 @@ function FooterLink({ link }: { link: NavLink }) {
     <Link
       to={link.href}
       aria-current={ariaCurrent(state)}
-      className={`transition hover:text-white ${state ? 'text-white' : ''}`}
+      className={`inline-flex min-h-11 items-center rounded-sm transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brass-400 ${state ? 'text-white' : ''}`}
     >
       {link.label}
     </Link>
@@ -51,10 +51,10 @@ export function Footer() {
           <div className="font-serif text-3xl">Hacienda de LuisAna</div>
           <p className="mt-3 leading-relaxed text-cream-200/80">{BUSINESS.positioning}</p>
           <div className="mt-6 flex gap-3">
-            <a href={BUSINESS.contact.facebook} target="_blank" rel="noreferrer" className="rounded-full border border-cream-100/20 p-2.5 transition hover:bg-cream-100/10" aria-label="Facebook">
+            <a href={BUSINESS.contact.facebook} target="_blank" rel="noreferrer" className="flex h-11 w-11 items-center justify-center rounded-full border border-cream-100/20 transition hover:bg-cream-100/10" aria-label="Facebook">
               <Facebook size={18} />
             </a>
-            <a href={BUSINESS.contact.instagram} target="_blank" rel="noreferrer" className="rounded-full border border-cream-100/20 p-2.5 transition hover:bg-cream-100/10" aria-label="Instagram">
+            <a href={BUSINESS.contact.instagram} target="_blank" rel="noreferrer" className="flex h-11 w-11 items-center justify-center rounded-full border border-cream-100/20 transition hover:bg-cream-100/10" aria-label="Instagram">
               <Instagram size={18} />
             </a>
           </div>

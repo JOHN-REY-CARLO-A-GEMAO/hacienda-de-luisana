@@ -54,11 +54,33 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     );
   }
 
+  /// Serialize the whole interaction, not only the Firestore write. This
+  /// prevents duplicate dialogs, PIN prompts and submissions from rapid taps.
+  Future<void> _serialize(Future<void> Function() operation) async {
+    if (_busy || _openingProof) return;
+    setState(() => _busy = true);
+    try {
+      await operation();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: AppColors.statusAlert,
+        content: Text(ErrorUtils.toUserMessage(
+          error,
+          fallback: 'Hindi naisagawa ang aksyon. Suriin ang koneksyon at subukan muli.',
+        )),
+        duration: const Duration(seconds: 7),
+      ));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _run(BookingModel booking, AdminAction action,
       {ActionInput input = const ActionInput(),
       Actor? actor,
       SecurityTicket? ticket}) async {
-    setState(() => _busy = true);
+    if (!mounted) return;
     final service = ref.read(firestoreServiceProvider);
     final result = await service.applyBookingAction(
       booking,
@@ -68,12 +90,11 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       ticket: ticket,
     );
     if (!mounted) return;
-    setState(() => _busy = false);
     final messenger = ScaffoldMessenger.of(context);
     if (result.ok) {
+      final status = result.patch['status'] ?? booking.rawStatus;
       messenger.showSnackBar(SnackBar(
-        content: Text(
-            '${action.label}: ${result.patch['status']} — ${booking.guestName}'),
+        content: Text('${action.label}: $status — ${booking.guestName}'),
       ));
     } else {
       messenger.showSnackBar(SnackBar(
@@ -85,7 +106,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   }
 
   Future<String?> _askText(String title, String hint,
-      {String confirm = 'Save', bool optional = false}) async {
+      {String confirm = 'Kumpirmahin', bool optional = false}) async {
     final controller = TextEditingController();
     String? dialogError;
     final value = await showDialog<String>(
@@ -93,31 +114,34 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text(title,
-              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                maxLines: 3,
-                decoration: InputDecoration(
-                    hintText: hint, border: const OutlineInputBorder()),
-                onChanged: (_) {
-                  if (dialogError != null) setDialogState(() => dialogError = null);
-                },
-              ),
-              if (dialogError != null) ...[
-                const SizedBox(height: 6),
-                Text(dialogError!,
-                    style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
+              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 20)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  maxLines: 3,
+                  style: const TextStyle(fontSize: 18),
+                  decoration: InputDecoration(
+                      hintText: hint, border: const OutlineInputBorder()),
+                  onChanged: (_) {
+                    if (dialogError != null) setDialogState(() => dialogError = null);
+                  },
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 6),
+                  Text(dialogError!,
+                      style: const TextStyle(fontSize: 16, color: AppColors.alertDangerText)),
+                ],
               ],
-            ],
+            ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('Back')),
+                onPressed: () => Navigator.pop(ctx), child: const Text('Bumalik')),
             ElevatedButton(
               onPressed: () {
                 final text = controller.text.trim();
@@ -132,7 +156,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           ],
         ),
       ),
-    );
+    ).whenComplete(controller.dispose);
     return value;
   }
 
@@ -153,62 +177,65 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text(title,
-              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Select rejection reason:',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
-                initialValue: selectedReason,
-                isExpanded: true,
-                items: options
-                    .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
-                    .toList(),
-                onChanged: (val) {
-                  if (val != null) {
-                    setDialogState(() {
-                      selectedReason = val;
-                      dialogError = null;
-                    });
-                  }
-                },
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                selectedReason == 'Other'
-                    ? 'Remarks (Required for "Other"):'
-                    : 'Remarks (Optional):',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: remarksController,
-                maxLines: 2,
-                decoration: InputDecoration(
-                  hintText: selectedReason == 'Other'
-                      ? 'Specify reason...'
-                      : 'Additional notes for guest...',
-                  border: const OutlineInputBorder(),
-                ),
-                onChanged: (_) {
-                  if (dialogError != null) setDialogState(() => dialogError = null);
-                },
-              ),
-              if (dialogError != null) ...[
+              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 20)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Select rejection reason:',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                Text(dialogError!,
-                    style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedReason,
+                  isExpanded: true,
+                  items: options
+                      .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        selectedReason = val;
+                        dialogError = null;
+                      });
+                    }
+                  },
+                  decoration: const InputDecoration(border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  selectedReason == 'Other'
+                      ? 'Remarks (Required for "Other"):'
+                      : 'Remarks (Optional):',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: remarksController,
+                  maxLines: 2,
+                  style: const TextStyle(fontSize: 18),
+                  decoration: InputDecoration(
+                    hintText: selectedReason == 'Other'
+                        ? 'Specify reason...'
+                        : 'Additional notes for guest...',
+                    border: const OutlineInputBorder(),
+                  ),
+                  onChanged: (_) {
+                    if (dialogError != null) setDialogState(() => dialogError = null);
+                  },
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 6),
+                  Text(dialogError!,
+                      style: const TextStyle(fontSize: 16, color: AppColors.alertDangerText)),
+                ],
               ],
-            ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Back'),
+              child: const Text('Bumalik'),
             ),
             ElevatedButton(
               onPressed: () {
@@ -225,15 +252,16 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                     : (remarks.isNotEmpty ? '$selectedReason ($remarks)' : selectedReason);
                 Navigator.pop(ctx, finalReason);
               },
-              child: const Text('Reject'),
+              child: const Text('Tanggihan'),
             ),
           ],
         ),
       ),
-    );
+    ).whenComplete(remarksController.dispose);
   }
 
-  Future<double?> _askAmount(String title, String hint, double? initial) async {
+  Future<double?> _askAmount(String title, String hint, double? initial,
+      {double min = 0.0}) async {
     final controller =
         TextEditingController(text: initial == null ? '' : initial.toStringAsFixed(2));
     String? dialogError;
@@ -242,35 +270,38 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text(title,
-              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                    prefixText: '₱ ', hintText: hint, border: const OutlineInputBorder()),
-                onChanged: (_) {
-                  if (dialogError != null) setDialogState(() => dialogError = null);
-                },
-              ),
-              if (dialogError != null) ...[
-                const SizedBox(height: 6),
-                Text(dialogError!,
-                    style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
+              style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 20)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(fontSize: 18),
+                  decoration: InputDecoration(
+                      prefixText: '₱ ', hintText: hint, border: const OutlineInputBorder()),
+                  onChanged: (_) {
+                    if (dialogError != null) setDialogState(() => dialogError = null);
+                  },
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 6),
+                  Text(dialogError!,
+                      style: const TextStyle(fontSize: 16, color: AppColors.alertDangerText)),
+                ],
               ],
-            ],
+            ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('Back')),
+                onPressed: () => Navigator.pop(ctx), child: const Text('Bumalik')),
             ElevatedButton(
               onPressed: () {
                 final textVal = controller.text.replaceAll(',', '').trim();
-                final err = Validators.amount(textVal, min: 0.0);
+                final err = Validators.amount(textVal, min: min);
                 if (err != null) {
                   setDialogState(() => dialogError = err);
                   return;
@@ -282,12 +313,12 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 }
                 Navigator.pop(ctx, v);
               },
-              child: const Text('Confirm'),
+              child: const Text('Kumpirmahin'),
             ),
           ],
         ),
       ),
-    );
+    ).whenComplete(controller.dispose);
   }
 
   /// One line of consequence, in the sheet, before the Admin commits — the
@@ -297,32 +328,37 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         booking.checkInDate, booking.checkOutDate);
     switch (action) {
       case AdminAction.approve:
-        final amount = booking.amountClaimed ??
-            (booking.amountDue ?? 0) + (booking.securityDeposit ?? 0);
-        return 'This verifies ₱${amount.toStringAsFixed(0)} and firms the dates '
-            '$dates. The Booking becomes Approved, and it cannot be undone.';
+        final amount = booking.amountClaimed;
+        if (amount == null || amount <= 0) {
+          return 'Suriin ang payment proof at naitalang downpayment bago aprubahan ang booking.';
+        }
+        return 'Be-verify nito ang ₱${amount.toStringAsFixed(0)} at ifi-firm ang petsang '
+            '$dates. Magiging Approved ang booking at hindi ito maibabalik.';
       case AdminAction.verifyPayment:
-        return 'This says the money actually arrived, and moves the Booking '
-            'to the paid state that amount earns.';
+        return 'Itatala nitong aktwal nang natanggap ang bayad at ililipat ang booking '
+            'sa paid state na nararapat sa halaga.';
       case AdminAction.cancel:
-        return 'This frees the dates. A Reserved Booking is settled under the '
+        return 'Palalayain nito ang petsa. Ang Reserved booking ay susundin sa '
             'published refund policy.';
       case AdminAction.markRefunded:
-        return '₱${(booking.refundTotal ?? 0).toStringAsFixed(2)} is recorded as '
-            'returned to the Guest.';
+        final refund = booking.refundTotal;
+        return refund == null
+            ? 'Itatala ang refund bilang naisauli na sa Guest; walang halagang naitala sa booking.'
+            : 'Itatala ang ₱${refund.toStringAsFixed(2)} bilang naisauli na sa Guest.';
       case AdminAction.rejectPaymentProof:
-        return 'Refusing without a resend cancels the Booking outright. '
-            'There is no verified money, so there is nothing to refund.';
+        return 'Kapag tinanggihan nang walang resend, kakanselahin ang booking. '
+            'Walang verified money na kailangang i-refund.';
       case AdminAction.revokeKey:
-        return 'The Guest\'s door Credential stops working at the lock\'s '
-            'next touch. It cannot be undone from here.';
+        return 'Hindi na gagana ang door Credential sa susunod na gamit. '
+            'Hindi ito maibabalik mula rito.';
       default:
         return '';
     }
   }
 
   Future<SecurityTicket?> _ticket(
-      BookingModel booking, AdminAction action) {
+      BookingModel booking, AdminAction action) async {
+    if (!mounted) return null;
     return requirePinTicket(
       context,
       ref: ref,
@@ -331,23 +367,34 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     );
   }
 
-  Future<void> _onAction(BookingModel booking, AdminAction action) async {
+  Future<void> _onAction(BookingModel booking, AdminAction action) {
+    return _serialize(() => _handleAction(booking, action));
+  }
+
+  Future<void> _handleAction(BookingModel booking, AdminAction action) async {
     switch (action) {
       case AdminAction.approve:
         final ticket = await _ticket(booking, action);
         if (ticket != null) await _run(booking, action, ticket: ticket);
         return;
       case AdminAction.reject:
-        final reason = await _askRejectionReason(title: 'Reject Booking');
+        final reason = await _askRejectionReason(title: 'Tanggihan ang Booking');
         if (reason != null && reason.isNotEmpty) {
           await _run(booking, action, input: ActionInput(reason: reason));
         }
         return;
       case AdminAction.verifyPayment:
-        final owed = (booking.amountDue ?? 0) + (booking.securityDeposit ?? 0);
-        final amount = await _askAmount('Verify payment',
-            'Amount on the proof (₱${owed.toStringAsFixed(2)} due)',
-            booking.amountClaimed ?? (owed > 0 ? owed : null));
+        final owed = booking.amountDue == null
+            ? null
+            : booking.amountDue! + (booking.securityDeposit ?? 0);
+        final amount = await _askAmount(
+          'Beripikahin ang bayad',
+          owed != null
+              ? 'Halaga sa proof (₱${owed.toStringAsFixed(2)} ang naitalang due)'
+              : 'Ilagay ang eksaktong halagang nakasaad sa patunay',
+          booking.amountClaimed ?? (owed != null && owed > 0 ? owed : null),
+          min: 0.01,
+        );
         if (amount != null) {
           final ticket = await _ticket(booking, action);
           if (ticket != null) {
@@ -365,16 +412,22 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           builder: (ctx) => AlertDialog(
             title: Text('Let the Guest resend?',
                 style:
-                    GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
+                    GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 20)),
             content: const Text(
-                'Yes keeps the Booking in Payment Pending so the Guest can send another proof. No cancels the Booking (no verified money, so nothing to refund).'),
+                'Oo: mananatili sa Payment Pending para makapadala muli ang Guest. Hindi: kakanselahin ang booking (walang verified money na kailangang i-refund).'),
             actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('No — cancel Booking')),
-              ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Yes — let them resend')),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Hindi — kanselahin ang Booking')),
+                  ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Oo — hayaang magpadala muli')),
+                ],
+              ),
             ],
           ),
         );
@@ -392,7 +445,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         return;
       case AdminAction.cancel:
         final choice = await _askCancel(booking);
-        if (choice == null) return;
+        if (choice == null || !mounted) return;
         if (choice.reschedule) {
           await _onReschedule(booking);
           return;
@@ -485,9 +538,17 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
     if (!mounted) return;
     final reason = await _askText('Reschedule Reason', 'Why is this stay being rescheduled?', confirm: 'Reschedule');
-    if (reason == null || reason.isEmpty) return;
+    if (reason == null || reason.isEmpty || !mounted) return;
 
-    setState(() => _busy = true);
+    final confirmed = await showSecureConfirm(
+      context,
+      title: 'I-reschedule ang booking?',
+      body: 'Ililipat ang stay sa ${DateFormatter.formatStayRange(newCheckIn, newCheckOut)}. '
+          'Susuriin muli ang availability; hindi ito magpapatuloy kung may conflict.',
+      confirm: 'I-reschedule',
+    );
+    if (!confirmed || !mounted) return;
+
     final service = ref.read(firestoreServiceProvider);
     final result = await service.rescheduleBooking(
       booking: booking,
@@ -497,7 +558,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       actor: _actor(),
     );
     if (!mounted) return;
-    setState(() => _busy = false);
 
     final messenger = ScaffoldMessenger.of(context);
     if (result.ok) {
@@ -515,9 +575,18 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
   Future<void> _onRejectCancellation(BookingModel booking) async {
     final reason = await _askText('Reject Cancellation Request', 'Why is the cancellation request rejected? The Guest reads this.', confirm: 'Reject Cancellation');
-    if (reason == null || reason.isEmpty) return;
+    if (reason == null || reason.isEmpty || !mounted) return;
 
-    setState(() => _busy = true);
+    final confirmed = await showSecureConfirm(
+      context,
+      title: 'Tanggihan ang cancellation request?',
+      body: 'Mananatiling aktibo ang booking at ipababatid sa Guest ang dahilan. '
+          'Hindi ito magkakansela ng booking.',
+      confirm: 'Tanggihan ang Request',
+      danger: true,
+    );
+    if (!confirmed || !mounted) return;
+
     final service = ref.read(firestoreServiceProvider);
     final result = await service.rejectCancellationRequest(
       booking: booking,
@@ -525,7 +594,6 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       actor: _actor(),
     );
     if (!mounted) return;
-    setState(() => _busy = false);
 
     final messenger = ScaffoldMessenger.of(context);
     if (result.ok) {
@@ -588,7 +656,16 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     final hours = (req['hours'] is num) ? (req['hours'] as num).toInt() : 1;
     final fee = (req['fee'] is num) ? (req['fee'] as num).toDouble() : (hours * 250.0);
 
-    setState(() => _busy = true);
+    final confirmed = await showSecureConfirm(
+      context,
+      title: approve ? 'Aprubahan ang late checkout?' : 'Tanggihan ang late checkout?',
+      body: approve
+          ? 'Magdaragdag ito ng +$hours oras at ₱${fee.toStringAsFixed(2)} sa naitalang singil at balance ni ${booking.guestName}.'
+          : 'Tatanggihan ang +$hours oras na request. Walang dagdag na singil na ilalagay.',
+      confirm: approve ? 'Aprubahan ang Dagdag' : 'Tanggihan ang Request',
+      danger: !approve,
+    );
+    if (!confirmed || !mounted) return;
 
     final rawCharges = booking.raw['additional_charges'] is List
         ? List<Map<String, dynamic>>.from(booking.raw['additional_charges'] as List)
@@ -622,36 +699,54 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       'reason': approve ? 'Approved +$hours hrs late checkout (₱$fee)' : 'Late checkout request declined',
     };
 
-    _patchAndNotify(booking, patch, entry, approve ? 'Late checkout extension approved (+₱$fee)' : 'Late checkout extension declined');
+    await _patchAndNotify(
+      booking,
+      patch,
+      entry,
+      approve
+          ? 'Naaprubahan ang late checkout (+₱${fee.toStringAsFixed(2)}).'
+          : 'Tinanggihan ang late-checkout request. Walang dagdag na singil.',
+    );
   }
 
   Future<void> _patchAndNotify(BookingModel booking, Map<String, dynamic> patch, Map<String, dynamic> entry, String snackbarMsg) async {
+    if (!mounted) return;
     final service = ref.read(firestoreServiceProvider);
-    if (service.isCloud) {
-      try {
-        final refDoc = FirebaseFirestore.instance.collection(AppConstants.colBookings).doc(booking.id);
-        final log = refDoc.collection('activity');
-        final written = await log.get();
-        var seq = -1;
-        for (final d in written.docs) {
-          final v = d.data()['seq'];
-          if (v is num && v > seq) seq = v.toInt();
-        }
-        seq += 1;
-        final batch = FirebaseFirestore.instance.batch();
-        batch.update(refDoc, patch);
-        batch.set(log.doc('$seq'), {...entry, 'seq': seq});
-        await batch.commit();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-        }
-        setState(() => _busy = false);
-        return;
+    if (!service.isCloud) {
+      // This legacy direct-write flow has no local activity/transaction
+      // equivalent. Fail explicitly rather than claiming a demo-only success.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: AppColors.statusAlert,
+        content: Text('Hindi naisagawa ang late-checkout update. Walang aktibong cloud connection; walang binagong record.'),
+        duration: Duration(seconds: 7),
+      ));
+      return;
+    }
+    try {
+      final refDoc = FirebaseFirestore.instance.collection(AppConstants.colBookings).doc(booking.id);
+      final log = refDoc.collection('activity');
+      final written = await log.get();
+      var seq = -1;
+      for (final d in written.docs) {
+        final v = d.data()['seq'];
+        if (v is num && v > seq) seq = v.toInt();
       }
+      seq += 1;
+      final batch = FirebaseFirestore.instance.batch();
+      batch.update(refDoc, patch);
+      batch.set(log.doc('$seq'), {...entry, 'seq': seq});
+      await batch.commit();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: AppColors.statusAlert,
+          content: Text('Hindi naisagawa ang late-checkout update. ${ErrorUtils.toUserMessage(e)}'),
+          duration: const Duration(seconds: 7),
+        ));
+      }
+      return;
     }
     if (!mounted) return;
-    setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(snackbarMsg)));
   }
 
@@ -678,7 +773,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       backgroundColor: AppColors.surfaceLight,
       appBar: AppBar(
         title: Text(booking.refId ?? booking.guestName,
-            style: GoogleFonts.cinzel(fontSize: 16, fontWeight: FontWeight.bold)),
+            style: GoogleFonts.cinzel(fontSize: 20, fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             tooltip: 'Call Guest',
@@ -687,8 +782,10 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 _open('tel:${booking.guestPhone.replaceAll(' ', '')}'),
           ),
           PopupMenuButton<String>(
+            enabled: !_busy && !_openingProof,
+            tooltip: 'Iba pang aksyon',
             onSelected: (v) {
-              if (v == 'delete') _delete(booking);
+              if (v == 'delete') _serialize(() => _delete(booking));
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'delete', child: Text('Delete Booking…')),
@@ -714,7 +811,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                         'The 24-hour Date hold ran out before review. The dates are free again; record the expiry so every surface agrees.'),
                   ),
                   TextButton(
-                    onPressed: _busy
+                    onPressed: (_busy || _openingProof)
                         ? null
                         : () => _onAction(booking, AdminAction.expire),
                     child: const Text('Record'),
@@ -755,19 +852,19 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(booking.guestName,
-                    style: GoogleFonts.inter(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
+              Text(booking.guestName,
+                  style: GoogleFonts.inter(
+                      fontSize: 22, fontWeight: FontWeight.bold, height: 1.25)),
+              const SizedBox(height: 10),
               StatusPill(label: effective, color: _statusColor(effective)),
             ],
           ),
           const SizedBox(height: 4),
-          Text('${booking.guestPhone} · ${booking.guestEmail}',
-              style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
+          Text('${booking.guestPhone}\n${booking.guestEmail}',
+              style: GoogleFonts.inter(fontSize: 16, color: AppColors.textMuted, height: 1.4)),
           if (booking.refId != null || booking.source != null) ...[
             const SizedBox(height: 4),
             Text(
@@ -776,14 +873,23 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                   if (booking.source != null) 'via ${booking.source}',
                 ].join(' · '),
                 style:
-                    GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
+                    GoogleFonts.inter(fontSize: 16, color: AppColors.textMuted)),
           ],
           const SizedBox(height: 10),
-          Text(booking.nextStep,
-              style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primaryForest)),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.primaryForest.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text('Susunod na hakbang: ${booking.nextStep}',
+                style: GoogleFonts.inter(
+                    fontSize: 18,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryForest)),
+          ),
         ],
       ),
     );
@@ -801,8 +907,8 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       return HaciendaCard(
         key: TourKeys.detailActions,
         child: Text(
-          'Nothing to do — ${booking.rawStatus} is a final status.',
-          style: GoogleFonts.inter(color: AppColors.textMuted),
+          'Walang susunod na aksyon — final status na ang ${booking.rawStatus}.',
+          style: GoogleFonts.inter(fontSize: 17, color: AppColors.textMuted),
         ),
       );
     }
@@ -811,12 +917,11 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Actions',
+          Text('Mga Aksyon',
               style: GoogleFonts.inter(
-                  fontSize: 12,
+                  fontSize: 19,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 1.1,
-                  color: AppColors.textMuted)),
+                  color: AppColors.textDark)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -826,7 +931,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 final primary = _isPrimary(a);
                 final danger = _isDanger(a);
                 final blocked = adminActionBlockedReason(doc, a);
-                final onPressed = (_busy || expired || blocked != null)
+                final onPressed = (_busy || _openingProof || expired || blocked != null)
                     ? null
                     : () => _onAction(booking, a);
                 if (primary) {
@@ -854,12 +959,12 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               }),
               if (!['Cancelled', 'Rejected', 'Completed', 'Expired'].contains(booking.rawStatus)) ...[
                 OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _onReschedule(booking),
+                  onPressed: (_busy || _openingProof) ? null : () => _serialize(() => _onReschedule(booking)),
                   icon: const Icon(Icons.edit_calendar, size: 16),
                   label: const Text('Reschedule'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _onRejectCancellation(booking),
+                  onPressed: (_busy || _openingProof) ? null : () => _serialize(() => _onRejectCancellation(booking)),
                   icon: const Icon(Icons.cancel_schedule_send, size: 16),
                   label: const Text('Reject Cancellation'),
                 ),
@@ -870,11 +975,16 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             const SizedBox(height: 8),
             Text(blockedReasons.join(' '),
                 style: GoogleFonts.inter(
-                    fontSize: 11, color: AppColors.textMuted, height: 1.4)),
+                    fontSize: 16, color: AppColors.textMuted, height: 1.4)),
           ],
           if (_busy) ...[
-            const SizedBox(height: 10),
-            const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(minHeight: 4),
+            const SizedBox(height: 8),
+            const Text(
+              'Isinasagawa ang aksyon… huwag pindutin muli.',
+              style: TextStyle(fontSize: 16, color: AppColors.textMuted),
+            ),
           ],
         ],
       ),
@@ -944,17 +1054,17 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         builder: (context, setDialogState) => AlertDialog(
           title: Text('Cancel Booking',
               style:
-                  GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
+                  GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 20)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(refundLine, style: const TextStyle(fontSize: 12)),
+                Text(refundLine, style: const TextStyle(fontSize: 16)),
                 const SizedBox(height: 12),
                 const Text('Select cancellation reason:',
                     style:
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
                   initialValue: selected,
@@ -979,12 +1089,13 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                       ? 'Remarks (Required for "Other"):'
                       : 'Remarks (Optional):',
                   style:
-                      const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 6),
                 TextField(
                   controller: remarks,
                   maxLines: 2,
+                  style: const TextStyle(fontSize: 18),
                   decoration: const InputDecoration(
                       hintText: 'Notes the Guest will read...',
                       border: OutlineInputBorder()),
@@ -997,38 +1108,44 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 if (dialogError != null) ...[
                   const SizedBox(height: 6),
                   Text(dialogError!,
-                      style: const TextStyle(fontSize: 12, color: AppColors.alertDangerText)),
+                      style: const TextStyle(fontSize: 16, color: AppColors.alertDangerText)),
                 ],
               ],
             ),
           ),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Back')),
-            TextButton(
-                onPressed: () =>
-                    Navigator.pop(ctx, const _CancelChoice.reschedule()),
-                child: const Text('Reschedule instead')),
-            ElevatedButton(
-              onPressed: () {
-                final text = remarks.text.trim();
-                if (selected == 'Other' && text.isEmpty) {
-                  setDialogState(
-                      () => dialogError = 'Please say why, so the Guest knows.');
-                  return;
-                }
-                final reason = selected == 'Other'
-                    ? text
-                    : (text.isNotEmpty ? '$selected ($text)' : selected);
-                Navigator.pop(ctx, _CancelChoice(reason));
-              },
-              child: const Text('Cancel Booking'),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Bumalik')),
+                TextButton(
+                    onPressed: () =>
+                        Navigator.pop(ctx, const _CancelChoice.reschedule()),
+                    child: const Text('Mag-reschedule na lang')),
+                ElevatedButton(
+                  onPressed: () {
+                    final text = remarks.text.trim();
+                    if (selected == 'Other' && text.isEmpty) {
+                      setDialogState(
+                          () => dialogError = 'Please say why, so the Guest knows.');
+                      return;
+                    }
+                    final reason = selected == 'Other'
+                        ? text
+                        : (text.isNotEmpty ? '$selected ($text)' : selected);
+                    Navigator.pop(ctx, _CancelChoice(reason));
+                  },
+                  child: const Text('Kanselahin ang Booking'),
+                ),
+              ],
             ),
           ],
         ),
       ),
-    );
+    ).whenComplete(remarks.dispose);
   }
 
   Widget _stayCard(BookingModel booking, DateTime now,
@@ -1072,13 +1189,13 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text('Payment',
-                    style: GoogleFonts.inter(
-                        fontSize: 13, fontWeight: FontWeight.bold)),
-              ),
+              Text('Bayad at Patunay',
+                  style: GoogleFonts.inter(
+                      fontSize: 19, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
               StatusPill(
                   label: paymentStatus.toUpperCase(),
                   color: _paymentColor(paymentStatus)),
@@ -1121,7 +1238,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             child: OutlinedButton.icon(
               onPressed: () => _showInvoice(booking),
               icon: const Icon(Icons.receipt, size: 18),
-              label: const Text('View Official Invoice'),
+              label: const Text('Tingnan ang Opisyal na Invoice'),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: AppColors.primaryForest),
               ),
@@ -1144,44 +1261,38 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Late Checkout Extension Request',
-                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold),
-              ),
-              StatusPill(
-                label: status.toUpperCase(),
-                color: statusColor,
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
           Text(
-            'Guest requested +$hours hour${hours > 1 ? 's' : ''} extension (Fee: ₱$fee)',
-            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textDark),
+            'Late Checkout Request',
+            style: GoogleFonts.inter(fontSize: 19, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          StatusPill(
+            label: status.toUpperCase(),
+            color: statusColor,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Hiling ng Guest: +$hours oras · Fee: ₱$fee',
+            style: GoogleFonts.inter(fontSize: 18, color: AppColors.textDark, height: 1.4),
           ),
           if (status == 'pending') ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: (_busy || _openingProof) ? null : () => _serialize(() => _handleLateCheckoutRequest(booking, true)),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusSuccess),
+                child: Text('Aprubahan (+₱$fee)'),
+              ),
+            ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _busy ? null : () => _handleLateCheckoutRequest(booking, false),
-                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.statusAlert),
-                    child: const Text('Decline'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _busy ? null : () => _handleLateCheckoutRequest(booking, true),
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusSuccess),
-                    child: Text('Approve (+₱$fee)'),
-                  ),
-                ),
-              ],
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: (_busy || _openingProof) ? null : () => _serialize(() => _handleLateCheckoutRequest(booking, false)),
+                style: OutlinedButton.styleFrom(foregroundColor: AppColors.statusAlert),
+                child: const Text('Tanggihan ang Request'),
+              ),
             ),
           ],
         ],
@@ -1191,18 +1302,15 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
 
   Widget _kv(String k, String v) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 130,
-              child: Text(k,
-                  style: GoogleFonts.inter(
-                      fontSize: 12, color: AppColors.textMuted)),
-            ),
-            Expanded(
-              child: Text(v, style: GoogleFonts.inter(fontSize: 13)),
+            Text(k, style: GoogleFonts.inter(fontSize: 16, color: AppColors.textMuted)),
+            const SizedBox(height: 3),
+            Text(
+              v,
+              style: GoogleFonts.inter(fontSize: 18, height: 1.35, color: AppColors.textDark),
             ),
           ],
         ),
@@ -1214,26 +1322,35 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   /// is private, so there is nothing here to launch. The function signs a URL
   /// that lasts 60 seconds and the viewer opens on it.
   Future<void> _openProof(BookingModel booking) async {
+    if (_busy || _openingProof) return;
     final path = booking.paymentProofUrl;
     if (path == null || path.isEmpty) return;
 
     setState(() => _openingProof = true);
     final messenger = ScaffoldMessenger.of(context);
-    final result = await PaymentProofService.signedUrl(path);
-    if (!mounted) return;
-    setState(() => _openingProof = false);
-
-    final failure = result.error;
-    if (failure != null) {
+    try {
+      final result = await PaymentProofService.signedUrl(path);
+      if (!mounted) return;
+      final failure = result.error;
+      if (failure != null) {
+        messenger.showSnackBar(SnackBar(
+          content: Text(failure),
+          backgroundColor: AppColors.statusAlert,
+        ));
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => PaymentProofViewer(url: result.url!)),
+      );
+    } catch (error) {
+      if (!mounted) return;
       messenger.showSnackBar(SnackBar(
-        content: Text(failure),
         backgroundColor: AppColors.statusAlert,
+        content: Text('Hindi mabuksan ang proof. ${error.toString().split('\n').first}'),
       ));
-      return;
+    } finally {
+      if (mounted) setState(() => _openingProof = false);
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PaymentProofViewer(url: result.url!)),
-    );
   }
 
   /// A real button rather than a line of text that happens to be tappable:
@@ -1244,7 +1361,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         child: SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: _openingProof ? null : () => _openProof(booking),
+            onPressed: (_busy || _openingProof) ? null : () => _openProof(booking),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.accentGold,
               foregroundColor: Colors.black,
@@ -1258,7 +1375,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                         strokeWidth: 2, color: Colors.black))
                 : const Icon(Icons.receipt_long, size: 18),
             label: Text(
-              _openingProof ? 'Opening the proof...' : 'View payment proof',
+              _openingProof ? 'Binubuksan ang proof…' : 'Buksan at Suriin ang Payment Proof',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),

@@ -36,17 +36,17 @@ class EmptyState extends StatelessWidget {
               title,
               textAlign: TextAlign.center,
               style: GoogleFonts.cinzel(
-                fontSize: 16,
+                fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: AppColors.textDark,
               ),
             ),
             if (subtitle != null) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 10),
               Text(
                 subtitle!,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
+                style: GoogleFonts.inter(fontSize: 16, color: AppColors.textMuted, height: 1.4),
               ),
             ],
             if (action != null) ...[

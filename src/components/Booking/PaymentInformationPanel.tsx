@@ -44,7 +44,7 @@ export function PaymentInformationPanel({
 }) {
   if (!payment) {
     return (
-      <Alert tone="warning" className="text-xs" title="Payment account confirmation required">
+      <Alert tone="warning" title="Payment account confirmation required · Kailangang kumpirmahin">
         <>
           Payment details are not currently published. Before sending money, confirm the official
           receiving account at {BUSINESS.contact.phoneDisplay} or {BUSINESS.contact.email}. Never
@@ -62,11 +62,11 @@ export function PaymentInformationPanel({
   return (
     <section className="rounded-[10px] border border-forest-900/10 bg-white/70 dark:border-cream-100/12 dark:bg-forest-900/50">
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-forest-900/8 px-4 py-3 dark:border-cream-100/10">
-        <h5 className="text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
-          Send it here
+        <h5 className="text-sm font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
+          Dito Magpadala
         </h5>
         {requiredAmount !== undefined && (
-          <p className="guest-num text-lg leading-none text-forest-900 dark:text-cream-50">
+          <p className="guest-num text-xl leading-none text-forest-900 dark:text-cream-50">
             {peso(requiredAmount)}
           </p>
         )}
@@ -83,7 +83,7 @@ export function PaymentInformationPanel({
               <p className="text-sm font-semibold text-forest-900 dark:text-cream-50">
                 {method.method}
               </p>
-              <p className="mt-0.5 text-xs text-forest-700 dark:text-cream-100/75">
+              <p className="mt-0.5 text-sm text-forest-700 dark:text-cream-100/75">
                 Recipient: {method.recipient_name}
               </p>
               {/* A published QR code replaces the number: the Guest scans, so the
@@ -100,7 +100,7 @@ export function PaymentInformationPanel({
           )
         })}
 
-        <dl className="space-y-2 border-t border-forest-900/8 pt-3 text-xs leading-relaxed dark:border-cream-100/10">
+        <dl className="space-y-2 border-t border-forest-900/8 pt-3 text-sm leading-relaxed dark:border-cream-100/10">
           <Note label="Instructions">{payment.instructions}</Note>
           {payment.security_deposit_notes && (
             <Note label="Security deposit">{payment.security_deposit_notes}</Note>

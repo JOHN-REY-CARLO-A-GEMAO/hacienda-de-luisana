@@ -92,7 +92,9 @@ const href = (el: Element) => el.getAttribute('href') ?? ''
 const distinct = (values: string[]) => [...new Set(values)].sort()
 
 function marks(container: HTMLElement) {
-  const all = [...container.querySelectorAll<HTMLElement>('[aria-current]')]
+  // This audit is about destination links. The booking journey also uses the
+  // valid ARIA token `step` on a non-link list item; it is not a page marker.
+  const all = [...container.querySelectorAll<HTMLElement>('a[aria-current]')]
   return {
     pages: distinct(all.filter((el) => el.getAttribute('aria-current') === 'page').map(href)),
     sections: distinct(all.filter((el) => el.getAttribute('aria-current') === 'true').map(href)),

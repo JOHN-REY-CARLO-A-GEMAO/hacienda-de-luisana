@@ -98,8 +98,9 @@ class AppTheme {
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
+        toolbarHeight: 64,
         titleTextStyle: serif(
-          fontSize: 18,
+          fontSize: 20,
           fontWeight: FontWeight.bold,
           color: Colors.white,
           letterSpacing: 0.5,
@@ -118,19 +119,43 @@ class AppTheme {
           backgroundColor: AppColors.primaryForest,
           foregroundColor: Colors.white,
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          minimumSize: const Size(48, 52),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primaryForest,
           side: const BorderSide(color: AppColors.cardBorder),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          minimumSize: const Size(48, 52),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
         ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 52),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        labelStyle: baseInter(fontSize: 16, color: AppColors.textMuted),
+        hintStyle: baseInter(fontSize: 16, color: AppColors.textMuted),
       ),
       textTheme: baseTextTheme.copyWith(
         headlineLarge: GoogleFonts.cinzel(
@@ -143,18 +168,30 @@ class AppTheme {
           fontWeight: FontWeight.bold,
           color: AppColors.textDark,
         ),
+        titleLarge: GoogleFonts.inter(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textDark,
+        ),
         titleMedium: GoogleFonts.inter(
-          fontSize: 15,
+          fontSize: 18,
           fontWeight: FontWeight.w600,
           color: AppColors.textDark,
         ),
-        bodyMedium: GoogleFonts.inter(
-          fontSize: 13,
+        bodyLarge: GoogleFonts.inter(
+          fontSize: 18,
           color: AppColors.textDark,
+          height: 1.4,
+        ),
+        bodyMedium: GoogleFonts.inter(
+          fontSize: 16,
+          color: AppColors.textDark,
+          height: 1.4,
         ),
         bodySmall: GoogleFonts.inter(
-          fontSize: 11,
+          fontSize: 14,
           color: AppColors.textMuted,
+          height: 1.35,
         ),
       ),
 
@@ -163,9 +200,9 @@ class AppTheme {
         backgroundColor: Colors.white,
         selectedColor: AppColors.primaryForest,
         surfaceTintColor: Colors.transparent,
-        labelStyle: baseInter(fontSize: 12, color: AppColors.textDark),
-        secondaryLabelStyle: baseInter(fontSize: 12, color: Colors.white),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        labelStyle: baseInter(fontSize: 16, color: AppColors.textDark),
+        secondaryLabelStyle: baseInter(fontSize: 16, color: Colors.white),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         side: const BorderSide(color: AppColors.cardBorder),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         checkmarkColor: Colors.white,
@@ -175,6 +212,8 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.cardSurface,
         surfaceTintColor: Colors.transparent,
+        titleTextStyle: baseInter(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textDark),
+        contentTextStyle: baseInter(fontSize: 17, color: AppColors.textDark, height: 1.4),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
         insetPadding: const EdgeInsets.symmetric(horizontal: 28),
@@ -184,7 +223,7 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.primaryForest,
-        contentTextStyle: baseInter(fontSize: 13, color: Colors.white),
+        contentTextStyle: baseInter(fontSize: 16, color: Colors.white, height: 1.35),
         actionTextColor: AppColors.accentGoldLight,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
@@ -221,13 +260,14 @@ class AppTheme {
       // ---------- List tiles (More sheet, etc.) ----------
       listTileTheme: ListTileThemeData(
         titleTextStyle: baseInter(
-          fontSize: 14,
+          fontSize: 17,
           fontWeight: FontWeight.w600,
           color: AppColors.textDark,
         ),
-        subtitleTextStyle: baseInter(fontSize: 12, color: AppColors.textMuted),
+        subtitleTextStyle: baseInter(fontSize: 15, color: AppColors.textMuted, height: 1.35),
         iconColor: AppColors.primaryForest,
         horizontalTitleGap: 16,
+        minVerticalPadding: 14,
       ),
     );
   }

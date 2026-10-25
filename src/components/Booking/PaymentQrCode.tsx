@@ -51,14 +51,14 @@ export function PaymentQrCode({
         />
         <div className="text-center sm:text-left">
           <p className="font-medium text-forest-900">{instruction}</p>
-          <p className="mt-1 text-[11px] text-forest-700/70 leading-relaxed">
+          <p className="mt-1 text-sm text-forest-700/70 leading-relaxed">
             {scanGuidance}
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
             <button
               type="button"
               onClick={() => setEnlarged(true)}
-              className="rounded-lg border border-forest-900/20 px-3 py-1.5 text-[11px] font-medium text-forest-800 hover:bg-cream-100"
+              className="min-h-11 rounded-lg border border-forest-900/20 px-4 py-2 text-sm font-medium text-forest-800 hover:bg-cream-100"
             >
               Enlarge QR code
             </button>
@@ -66,7 +66,7 @@ export function PaymentQrCode({
               href={src}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[11px] underline underline-offset-2 text-forest-800 hover:text-forest-900"
+              className="inline-flex min-h-11 items-center text-sm underline underline-offset-2 text-forest-800 hover:text-forest-900"
             >
               Open image
             </a>
@@ -97,13 +97,13 @@ export function PaymentQrCode({
               height={281}
               className="mx-auto h-auto w-full max-w-[420px] rounded-lg bg-white [image-rendering:pixelated]"
             />
-            <p className="mt-3 text-center text-xs font-medium text-forest-900">{instruction}</p>
+            <p className="mt-3 text-center text-sm font-medium text-forest-900">{instruction}</p>
             <div className="mt-3 flex items-center justify-center gap-3">
               <a
                 href={src}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs underline underline-offset-2 text-forest-800"
+                className="inline-flex min-h-11 items-center text-sm underline underline-offset-2 text-forest-800"
               >
                 Open image in a new tab
               </a>
@@ -111,7 +111,7 @@ export function PaymentQrCode({
                 ref={closeButton}
                 type="button"
                 onClick={() => setEnlarged(false)}
-                className="rounded-lg bg-forest-800 px-3 py-1.5 text-xs font-medium text-cream-50 hover:bg-forest-900"
+                className="min-h-11 rounded-lg bg-forest-800 px-4 py-2 text-sm font-medium text-cream-50 hover:bg-forest-900"
               >
                 Close
               </button>

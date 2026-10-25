@@ -14,7 +14,7 @@ class StatusPill extends StatelessWidget {
     super.key,
     required this.label,
     required this.color,
-    this.fontSize = 11,
+    this.fontSize = 14,
     this.horizontalPadding = 10,
     this.radius = 16,
   });
@@ -26,7 +26,7 @@ class StatusPill extends StatelessWidget {
       container: true,
       child: Container(
         padding:
-            EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 4),
+            EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 6),
         decoration: BoxDecoration(
           color: color.withOpacity(0.12),
           borderRadius: BorderRadius.circular(radius),
@@ -34,7 +34,7 @@ class StatusPill extends StatelessWidget {
         ),
         child: Text(
           label,
-          maxLines: 1,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: fontSize,

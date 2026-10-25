@@ -122,7 +122,7 @@ export function Nav() {
           <Link
             to="/"
             aria-label="Hacienda de LuisAna home"
-            className={`min-w-0 ${FOCUS_RING}`}
+            className={`inline-flex min-h-11 min-w-0 items-center ${FOCUS_RING}`}
           >
             <Logo tone={transparent ? 'light' : 'dark'} />
           </Link>
@@ -139,7 +139,7 @@ export function Nav() {
                   key={l.href}
                   to={l.href}
                   aria-current={ariaCurrent(state)}
-                  className={`relative inline-flex items-center whitespace-nowrap py-2 text-[12.5px] 2xl:text-[13px] font-medium leading-none transition-colors ${FOCUS_RING} ${
+                  className={`relative inline-flex min-h-11 items-center whitespace-nowrap px-1 py-2 text-sm font-medium leading-none transition-colors ${FOCUS_RING} ${
                     transparent
                       ? current
                         ? 'text-white'
@@ -181,7 +181,7 @@ export function Nav() {
                       to="/account?tab=notifications"
                       aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
                       title="Notifications"
-                      className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition ${FOCUS_RING} ${
+                      className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition ${FOCUS_RING} ${
                         transparent
                           ? 'text-cream-100 hover:bg-white/10 hover:text-white'
                           : 'text-forest-700 hover:bg-forest-900/5 hover:text-forest-900 dark:text-cream-100 dark:hover:bg-cream-100/10 dark:hover:text-white'
@@ -204,7 +204,7 @@ export function Nav() {
                   <Link
                     to={homeForRole(role)}
                     aria-label={role === 'admin' ? 'Admin account' : 'My bookings and profile'}
-                    className={`inline-flex h-7 shrink-0 items-center gap-2 rounded-full px-1 pr-2.5 text-xs whitespace-nowrap transition ${FOCUS_RING} ${
+                    className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-full px-1 pr-2.5 text-sm whitespace-nowrap transition ${FOCUS_RING} ${
                       transparent
                         ? 'text-cream-100 hover:bg-cream-50/10'
                         : 'text-forest-700 hover:bg-forest-900/5 dark:text-cream-200 dark:hover:bg-cream-100/10'
@@ -231,7 +231,7 @@ export function Nav() {
                 </div>
                 <button
                   onClick={() => void logout()}
-                  className={`text-xs whitespace-nowrap shrink-0 ${FOCUS_RING} ${
+                  className={`inline-flex min-h-11 items-center px-1 text-sm whitespace-nowrap shrink-0 ${FOCUS_RING} ${
                     transparent
                       ? 'text-cream-200 hover:text-white'
                       : 'text-forest-600 dark:text-cream-200/70 hover:text-forest-900 dark:hover:text-white'
@@ -243,7 +243,7 @@ export function Nav() {
             ) : (
               <Link
                 to="/guest/auth"
-                className={`inline-flex items-center h-8 text-xs px-3 rounded-full border whitespace-nowrap transition shrink-0 ${FOCUS_RING} ${
+                className={`inline-flex min-h-11 items-center px-4 text-sm rounded-full border whitespace-nowrap transition shrink-0 ${FOCUS_RING} ${
                   transparent
                     ? 'border-cream-200/30 text-cream-100 hover:bg-cream-50/10'
                     : 'border-forest-900/10 dark:border-cream-100/15 text-forest-700 dark:text-cream-200 hover:bg-forest-50 dark:hover:bg-forest-800'
@@ -262,7 +262,7 @@ export function Nav() {
                   : 'btn btn-sm bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white shadow-soft whitespace-nowrap shrink-0'
               }
             >
-              Book Your Stay
+              Mag-book
             </Link>
           </div>
 
@@ -272,19 +272,20 @@ export function Nav() {
             <Link
               to="/book"
               aria-label="Book your stay"
-              className={`btn btn-sm h-10 whitespace-nowrap min-[360px]:px-3.5 sm:px-4 ${
+              title="Mag-book ng Matutuluyan"
+              className={`btn btn-sm min-h-11 whitespace-nowrap px-3 min-[360px]:px-3.5 sm:px-4 ${
                 transparent
                   ? 'bg-cream-50 text-forest-900 hover:bg-white'
                   : 'bg-forest-800 text-cream-50 hover:bg-forest-900 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white'
               }`}
             >
               <span className="sm:hidden">Book</span>
-              <span className="hidden sm:inline">Book Now</span>
+              <span className="hidden sm:inline">Mag-book</span>
             </Link>
             <button
               ref={menuButton}
               type="button"
-              className={`w-9 h-9 min-[360px]:w-10 min-[360px]:h-10 rounded-full transition flex items-center justify-center flex-shrink-0 ${FOCUS_RING} ${
+              className={`h-11 w-11 rounded-full transition flex items-center justify-center flex-shrink-0 ${FOCUS_RING} ${
                 transparent ? 'text-cream-50 hover:bg-white/10' : 'text-forest-900 dark:text-cream-50 hover:bg-forest-900/5 dark:hover:bg-cream-100/10'
               }`}
               aria-label={open ? 'Close menu' : 'Open menu'}
@@ -321,7 +322,7 @@ export function Nav() {
                   to={l.href}
                   onClick={() => setOpen(false)}
                   aria-current={ariaCurrent(state)}
-                  className={`${drawerRow} py-3 text-base font-serif ${
+                  className={`${drawerRow} flex min-h-12 items-center py-3 text-lg font-serif ${
                     current ? 'font-medium text-forest-950 dark:text-white' : 'text-forest-900 dark:text-cream-50'
                   }`}
                 >
@@ -341,7 +342,7 @@ export function Nav() {
                   to={l.href}
                   onClick={() => setOpen(false)}
                   aria-current={ariaCurrent(state)}
-                  className={`${drawerRow} py-2.5 text-sm ${
+                    className={`${drawerRow} flex min-h-11 items-center py-2.5 text-base ${
                     state ? 'font-medium text-forest-950 dark:text-white' : 'text-forest-800 dark:text-cream-100/80'
                   }`}
                 >
@@ -371,7 +372,7 @@ export function Nav() {
                     {profile?.display_name || profile?.first_name || 'Guest'}
                   </span>
                   <span
-                    className="block truncate text-[11px] text-forest-600 dark:text-sage-400"
+                    className="block truncate text-sm text-forest-600 dark:text-sage-400"
                     title={user.email ?? undefined}
                   >
                     {user.email}
@@ -382,7 +383,7 @@ export function Nav() {
                 <Link
                   to="/account"
                   onClick={() => setOpen(false)}
-                  className={`flex items-center justify-between gap-2 rounded-[10px] px-3 py-2.5 text-sm transition-colors ${FOCUS_RING} ${
+                  className={`flex items-center justify-between gap-2 rounded-[10px] min-h-11 px-3 py-2.5 text-base transition-colors ${FOCUS_RING} ${
                     location.pathname === '/account'
                       ? 'bg-forest-800 text-cream-50 dark:bg-brass-400 dark:text-forest-950'
                       : 'text-forest-800 hover:bg-cream-100 dark:text-cream-100 dark:hover:bg-forest-800/70'
@@ -394,7 +395,7 @@ export function Nav() {
                   <Link
                     to="/account?tab=notifications"
                     onClick={() => setOpen(false)}
-                    className={`flex items-center justify-between gap-2 rounded-[10px] px-3 py-2.5 text-sm transition-colors ${FOCUS_RING} ${
+                    className={`flex items-center justify-between gap-2 rounded-[10px] min-h-11 px-3 py-2.5 text-base transition-colors ${FOCUS_RING} ${
                       onNotifications
                         ? 'bg-forest-800 text-cream-50 dark:bg-brass-400 dark:text-forest-950'
                         : 'text-forest-800 hover:bg-cream-100 dark:text-cream-100 dark:hover:bg-forest-800/70'
@@ -412,7 +413,7 @@ export function Nav() {
                   <Link
                     to="/messages"
                     onClick={() => setOpen(false)}
-                    className={`rounded-[10px] px-3 py-2.5 text-sm transition-colors ${FOCUS_RING} ${
+                    className={`rounded-[10px] min-h-11 px-3 py-2.5 text-base transition-colors ${FOCUS_RING} ${
                       location.pathname === '/messages'
                         ? 'bg-forest-800 text-cream-50 dark:bg-brass-400 dark:text-forest-950'
                         : 'text-forest-800 hover:bg-cream-100 dark:text-cream-100 dark:hover:bg-forest-800/70'
@@ -444,7 +445,7 @@ export function Nav() {
                 setOpen(false)
                 void logout()
               }}
-              className={`text-xs text-forest-600 dark:text-cream-200/70 mt-3 text-center underline w-full ${FOCUS_RING}`}
+              className={`mt-3 inline-flex min-h-11 w-full items-center justify-center text-sm text-forest-700 dark:text-cream-200/80 text-center underline ${FOCUS_RING}`}
             >
               Sign out ({user.email})
             </button>

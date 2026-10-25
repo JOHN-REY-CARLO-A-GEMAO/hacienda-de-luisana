@@ -23,9 +23,9 @@ export function LocationPreview() {
       <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <SceneHeader index="09" eyebrow="Location" title="Find Your Way to the Hacienda">
-            <p className="dark:text-cream-200/80">
-              Along the Luisiana–Lucban Road in Brgy. San Isidro, with the waterfalls, lakes and
-              heritage towns of Laguna and Quezon within reach.
+            <p className="text-lg dark:text-cream-200/85">
+              Nasa Luisiana–Lucban Road sa Brgy. San Isidro. Buksan ang opisyal na direksyon para sa
+              madaling pagpunta sa Hacienda.
             </p>
           </SceneHeader>
           <Link to="/location" className="reveal btn-ghost shrink-0 group self-start lg:self-auto lg:mb-2">
@@ -40,8 +40,8 @@ export function LocationPreview() {
             <div className="mt-3 font-serif text-2xl lg:text-3xl leading-snug text-forest-900 dark:text-cream-50">
               {BUSINESS.address.formatted}
             </div>
-            <div className="mt-3 text-forest-700 dark:text-cream-200/70 text-sm">
-              Approx. {BUSINESS.coordinates.lat.toFixed(4)}, {BUSINESS.coordinates.lng.toFixed(4)}
+            <div className="mt-4 text-base leading-relaxed text-forest-700 dark:text-cream-200/80">
+              {BUSINESS.address.city}, {BUSINESS.address.region} · Gamitin ang opisyal na Maps link sa ibaba.
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
@@ -50,8 +50,8 @@ export function LocationPreview() {
                 rel="noreferrer"
                 className="btn-primary group"
               >
-                <MapPin size={16} /> Get Directions
-                <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+                <MapPin size={20} aria-hidden="true" /> Kunin ang Direksyon
+                <ArrowRight size={20} className="transition-transform group-hover:translate-x-1" />
               </a>
               <a
                 href={BUSINESS.contact.googleMaps}
@@ -59,7 +59,7 @@ export function LocationPreview() {
                 rel="noreferrer"
                 className="btn-ghost"
               >
-                <Navigation size={16} /> Open in Maps
+                <Navigation size={20} aria-hidden="true" /> Buksan sa Maps
               </a>
             </div>
           </div>

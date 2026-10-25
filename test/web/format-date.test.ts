@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dateToISOString, formatDate, formatDateTime, parseDate } from '../../src/lib/formatDate'
+import { dateToISOString, formatDate, formatDateTime, formatStayDate, parseDate } from '../../src/lib/formatDate'
 
 const INSTANT = new Date('2026-09-20T01:00:00.250Z')
 const SECONDS = Math.floor(INSTANT.getTime() / 1000)
@@ -24,6 +24,14 @@ describe('safe date formatting', () => {
     expect(dateToISOString(INSTANT.getTime())).toBe(INSTANT.toISOString())
     expect(dateToISOString(SECONDS)).toBe(new Date(SECONDS * 1000).toISOString())
     expect(dateToISOString(String(SECONDS))).toBe(new Date(SECONDS * 1000).toISOString())
+  })
+
+  it('formats stay-only ISO dates without a timezone shift or normalization', () => {
+    expect(formatStayDate('2026-10-31', 'missing')).toContain('October 31, 2026')
+    expect(formatStayDate('2026-02-29', 'missing')).toBe('missing')
+    expect(formatStayDate('2026-02-30', 'missing')).toBe('missing')
+    expect(formatStayDate('2026-13-01', 'missing')).toBe('missing')
+    expect(formatStayDate('2026-02-29T00:00:00Z', 'missing')).not.toBe('missing')
   })
 
   it('handles epoch zero instead of treating it as a missing value', () => {

@@ -9,16 +9,16 @@ import '../../core/constants/app_constants.dart';
 /// grant, room status and price overrides, payment-reference changes.
 ///
 /// This absorbs the Booking detail screen's private `_confirm`, so the
-/// wording, the Cinzel title and the `Back` / confirm pair are the same at
+/// wording, the Cinzel title and the `Bumalik` / confirm pair are the same at
 /// every call site. `danger` turns the confirm button statusAlert for the
 /// actions whose mistake is a deletion or a lockout.
 ///
-/// The cancel word is `Back`, as the rest of the app's dialogs.
+/// The actions stack so long labels remain readable at larger text sizes.
 Future<bool> showSecureConfirm(
   BuildContext context, {
   required String title,
   required String body,
-  String confirm = 'Confirm',
+  String confirm = 'Kumpirmahin',
   bool danger = false,
 }) async {
   final ok = await showDialog<bool>(
@@ -26,19 +26,25 @@ Future<bool> showSecureConfirm(
     builder: (ctx) => AlertDialog(
       title: Text(title,
           style: GoogleFonts.cinzel(
-              fontWeight: FontWeight.bold, fontSize: 16)),
+              fontWeight: FontWeight.bold, fontSize: 20, height: 1.25)),
       content: Text(body),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Back'),
-        ),
-        ElevatedButton(
-          style: danger
-              ? ElevatedButton.styleFrom(backgroundColor: AppColors.statusAlert)
-              : null,
-          onPressed: () => Navigator.pop(ctx, true),
-          child: Text(confirm),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Bumalik'),
+            ),
+            ElevatedButton(
+              style: danger
+                  ? ElevatedButton.styleFrom(backgroundColor: AppColors.statusAlert)
+                  : null,
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(confirm),
+            ),
+          ],
         ),
       ],
     ),

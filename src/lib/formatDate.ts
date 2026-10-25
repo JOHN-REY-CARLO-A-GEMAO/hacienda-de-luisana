@@ -125,6 +125,48 @@ export function formatDate(value: unknown, fallback = '', locale?: string): stri
   }
 }
 
+/**
+ * Format a guest stay date without shifting an ISO calendar day across timezones.
+ * Booking dates are calendar days in the Philippines, not midnight instants in
+ * the browser's local timezone.
+ */
+export function formatStayDate(value: unknown, fallback = '—'): string {
+  let date: Date | null = null
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim())
+    if (match) {
+      const year = Number(match[1])
+      const month = Number(match[2])
+      const day = Number(match[3])
+      const candidate = validDate(Date.UTC(year, month - 1, day, 12))
+      // Date.UTC normalizes impossible values (for example month 13); a
+      // malformed external date should use the fallback, not a different day.
+      if (candidate
+        && candidate.getUTCFullYear() === year
+        && candidate.getUTCMonth() === month - 1
+        && candidate.getUTCDate() === day) {
+        date = candidate
+      } else {
+        return fallback
+      }
+    }
+  }
+  date ??= parseDate(value)
+  if (!date) return fallback
+
+  try {
+    return new Intl.DateTimeFormat('en-PH', {
+      weekday: 'short',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(date)
+  } catch {
+    return fallback
+  }
+}
+
 /** Format a date and time for display, returning `fallback` for invalid input. */
 export function formatDateTime(value: unknown, fallback = '', locale = 'en-PH'): string {
   const date = parseDate(value)

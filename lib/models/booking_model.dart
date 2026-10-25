@@ -234,30 +234,32 @@ class BookingModel {
     switch (rawStatus) {
       case BookingStatuses.pending:
         return paymentProofUrl == null || paymentProofUrl!.isEmpty
-            ? 'Waiting for a downpayment screenshot before this can be approved.'
-            : 'Review the downpayment screenshot — approve or reject it.';
+            ? 'Naghihintay ng downpayment screenshot bago maaprubahan.'
+            : 'Suriin ang downpayment screenshot — aprubahan o tanggihan ito.';
       case BookingStatuses.approved:
-        return 'Approved — the downpayment was accepted. Check the Guest in on arrival.';
+        return 'Aprubado na — na-verify ang downpayment. I-check in ang Guest sa pagdating.';
       case BookingStatuses.paymentPending:
         if (paymentPlan == null || paymentPlan!.isEmpty) {
-          return 'Waiting for the Guest to choose a payment plan.';
+          return 'Waiting for the Guest to choose a payment plan (plano sa bayad).';
         }
         return paymentProofUrl == null || paymentProofUrl!.isEmpty
-            ? 'Waiting for the Guest to send payment proof.'
-            : 'Verify the payment proof.';
+            ? 'Naghihintay ng payment proof mula sa Guest.'
+            : 'Verify the payment proof · Beripikahin ang patunay ng bayad.';
       case BookingStatuses.paymentVerified:
       case BookingStatuses.reserved:
-        return 'Reserved — check the Guest in on arrival.';
+        return 'Reserved — i-check in ang Guest sa pagdating.';
       case BookingStatuses.checkedIn:
-        return 'Checked in — begin the stay.';
+        return 'Checked-In — simulan ang stay.';
       case BookingStatuses.staying:
-        return 'Staying — check out at the end of the stay.';
+        return 'Staying — i-check out sa pag-alis.';
       case BookingStatuses.checkedOut:
-        return 'Checked out — complete the Booking.';
+        return 'Checked-Out — markahang tapos ang booking.';
       case BookingStatuses.cancelled:
         return refundStatus == 'initiated'
-            ? 'Refund of ₱${(refundTotal ?? 0).toStringAsFixed(2)} to return.'
-            : 'Cancelled.';
+            ? (refundTotal == null
+                ? 'May refund na kailangang ayusin; hindi naitala ang halaga.'
+                : 'Refund na ₱${refundTotal!.toStringAsFixed(2)} ang kailangang isauli.')
+            : 'Kanselado.';
       default:
         return rawStatus;
     }
