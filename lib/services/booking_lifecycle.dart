@@ -812,29 +812,29 @@ extension AdminActionX on AdminAction {
   String get label {
     switch (this) {
       case AdminAction.approve:
-        return 'Approve';
+        return 'Aprubahan (Approve)';
       case AdminAction.reject:
-        return 'Reject';
+        return 'Tanggihan (Reject)';
       case AdminAction.verifyPayment:
-        return 'Verify payment';
+        return 'Beripikahin ang Bayad';
       case AdminAction.rejectPaymentProof:
-        return 'Reject proof';
+        return 'Tanggihan ang Patunay';
       case AdminAction.cancel:
-        return 'Cancel';
+        return 'Kanselahin (Cancel)';
       case AdminAction.markRefunded:
-        return 'Mark refunded';
+        return 'Markahang Naisauli';
       case AdminAction.revokeKey:
-        return 'Revoke key';
+        return 'I-revoke ang Susi';
       case AdminAction.expire:
-        return 'Expire';
+        return 'Itala ang Expiry';
       case AdminAction.checkIn:
-        return 'Check in';
+        return 'I-check In';
       case AdminAction.beginStay:
-        return 'Begin stay';
+        return 'Simulan ang Stay';
       case AdminAction.checkOut:
-        return 'Check out';
+        return 'I-check Out';
       case AdminAction.complete:
-        return 'Complete';
+        return 'Markahang Tapos';
     }
   }
 }

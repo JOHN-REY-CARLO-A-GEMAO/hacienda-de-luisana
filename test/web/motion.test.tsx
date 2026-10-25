@@ -152,7 +152,7 @@ describe('Hero', () => {
     const hero = container.querySelector('section.hero')!
     expect(hero.getAttribute('data-motion')).toBe('reduced')
     expect(container.querySelector('[data-tour="hero-cta"]')?.textContent).toContain('Book a room')
-    expect(container.textContent).toContain('Private countryside stay near Laguna attractions')
+    expect(container.textContent).toContain('Pribadong matutuluyan sa Luisiana, Laguna')
     expect(container.querySelector('[data-hero-layer="back"] img')?.className).not.toContain('animate-kenburns')
     // decorative foliage never intercepts taps
     const fore = container.querySelector('[data-hero-layer="fore"]')!

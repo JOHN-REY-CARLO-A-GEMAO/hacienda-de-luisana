@@ -41,13 +41,13 @@ export function RatesPreview() {
               </>
             }
           >
-            <p className="dark:text-cream-200/80">
-              The figure each Accommodation is quoted at today. The final amount is computed before
-              payment and confirmed by the Hacienda.
+            <p className="text-lg dark:text-cream-200/85">
+              Mga kasalukuyang presyo ng bawat matutuluyan. Makikita ang buong computation bago magbayad,
+              at kumpirmado lamang ang stay pagkatapos ng approval ng Hacienda.
             </p>
           </SceneHeader>
           <Link to="/rates" className="reveal btn-ghost shrink-0 group self-start lg:self-auto lg:mb-2">
-            Full rates &amp; fees
+            Lahat ng Rates &amp; Fees
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
           </Link>
         </div>
@@ -62,15 +62,15 @@ export function RatesPreview() {
                 style={{ transitionDelay: `${i * 60}ms` }}
                 data-testid={`rate-${a.id}`}
               >
-                <div className="text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-400 font-medium">{a.shortName}</div>
+                <div className="text-sm font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">{a.shortName}</div>
                 <h3 className="font-serif text-2xl text-forest-900 dark:text-cream-50 mt-1">{a.name}</h3>
                 <div className="mt-5 font-serif text-3xl text-forest-900 dark:text-cream-50">{rate.label}</div>
-                {rate.source && <div className="mt-1 text-[11px] text-forest-700/70 dark:text-cream-200/60">{rate.source}</div>}
-                <div className="mt-4 text-sm text-forest-800 dark:text-cream-100/80">{a.capacityLabel}</div>
+                {rate.source && <div className="mt-1 text-sm text-forest-700 dark:text-cream-200/70">{rate.source}</div>}
+                <div className="mt-4 text-base text-forest-800 dark:text-cream-100/85">{a.capacityLabel}</div>
                 <div className="mt-auto pt-6">
                   <Link
                     to={`/book?accommodation=${a.id}`}
-                    className="btn-ghost btn-sm group w-full"
+                    className="btn-ghost group w-full"
                   >
                     Check availability
                     <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
@@ -83,7 +83,7 @@ export function RatesPreview() {
 
         <div className="mt-8 bg-white dark:bg-forest-900 rounded-[28px] border border-forest-900/5 dark:border-cream-100/10 shadow-card p-7 lg:p-8 reveal">
           <div className="eyebrow">Included in every stay</div>
-          <ul className="mt-4 grid sm:grid-cols-2 gap-x-8 gap-y-2.5 text-sm text-forest-800 dark:text-cream-100/80">
+          <ul className="mt-4 grid gap-x-8 gap-y-3 text-base text-forest-800 dark:text-cream-100/85 sm:grid-cols-2">
             {FEES.included.slice(0, INCLUDED_PREVIEW).map((item) => (
               <li key={item} className="flex items-start gap-2.5">
                 <Check size={15} className="mt-0.5 text-forest-600 dark:text-sage-400 shrink-0" />
@@ -91,7 +91,7 @@ export function RatesPreview() {
               </li>
             ))}
           </ul>
-          <Link to="/rates" className="mt-5 inline-flex items-center gap-1.5 text-sm text-forest-800 dark:text-cream-100 underline underline-offset-4 hover:text-forest-950 dark:hover:text-white">
+          <Link to="/rates" className="mt-5 inline-flex min-h-11 items-center gap-2 text-base text-forest-800 underline underline-offset-4 hover:text-forest-950 dark:text-cream-100 dark:hover:text-white">
             Everything included, plus fees and the deposit
             <ArrowRight size={13} />
           </Link>

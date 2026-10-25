@@ -134,49 +134,59 @@ class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
   Future<void> _submit(String pin) async {
     if (_busy || _locked) return;
     setState(() => _busy = true);
-    final result =
-        await ref.read(pinGateProvider).verify(_uid, pin);
-    if (!mounted) return;
-    if (result.outcome == PinVerifyOutcome.verified && result.ticket != null) {
-      HapticFeedback.mediumImpact();
-      Navigator.of(context).pop(result.ticket);
-      return;
-    }
-    setState(() => _busy = false);
-    switch (result.outcome) {
-      case PinVerifyOutcome.verified:
-        // Reached only when the store reports a correct PIN but mints no
-        // ticket — the shape the pad above cannot act on. Fail closed rather
-        // than pop a null ticket the call site would treat as "cancelled".
-        _pad.currentState?.reset();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          backgroundColor: AppColors.statusAlert,
-          content: Text(
-              'The Security PIN was accepted but no session ticket was issued. Run the action again.'),
-          duration: Duration(seconds: 6),
-        ));
+    try {
+      final result = await ref.read(pinGateProvider).verify(_uid, pin);
+      if (!mounted) return;
+      if (result.outcome == PinVerifyOutcome.verified && result.ticket != null) {
+        HapticFeedback.mediumImpact();
+        Navigator.of(context).pop(result.ticket);
         return;
-      case PinVerifyOutcome.wrongPin:
-        HapticFeedback.heavyImpact();
-        _pad.currentState?.reset();
-        final lockedUntil = result.lockedUntil;
-        if (lockedUntil != null) _lock(lockedUntil);
-        return;
-      case PinVerifyOutcome.locked:
-        if (result.lockedUntil != null) _lock(result.lockedUntil!);
-        return;
-      case PinVerifyOutcome.notSetUp:
-      case PinVerifyOutcome.unavailable:
-        // Offline with no cached record: refuse loudly rather than fail
-        // open. The Admin reconnects and tries again.
-        _pad.currentState?.reset();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          backgroundColor: AppColors.statusAlert,
-          content: Text(
-              'The Security PIN could not be checked — you appear to be offline. Reconnect and try again.'),
-          duration: Duration(seconds: 6),
-        ));
-        return;
+      }
+      setState(() => _busy = false);
+      switch (result.outcome) {
+        case PinVerifyOutcome.verified:
+          // Reached only when the store reports a correct PIN but mints no
+          // ticket — the shape the pad above cannot act on. Fail closed rather
+          // than pop a null ticket the call site would treat as "cancelled".
+          _pad.currentState?.reset();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: AppColors.statusAlert,
+            content: Text(
+                'The Security PIN was accepted but no session ticket was issued. Run the action again.'),
+            duration: Duration(seconds: 6),
+          ));
+          return;
+        case PinVerifyOutcome.wrongPin:
+          HapticFeedback.heavyImpact();
+          _pad.currentState?.reset();
+          final lockedUntil = result.lockedUntil;
+          if (lockedUntil != null) _lock(lockedUntil);
+          return;
+        case PinVerifyOutcome.locked:
+          if (result.lockedUntil != null) _lock(result.lockedUntil!);
+          return;
+        case PinVerifyOutcome.notSetUp:
+        case PinVerifyOutcome.unavailable:
+          // Offline with no cached record: refuse loudly rather than fail
+          // open. The Admin reconnects and tries again.
+          _pad.currentState?.reset();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: AppColors.statusAlert,
+            content: Text(
+                'The Security PIN could not be checked — you appear to be offline. Reconnect and try again.'),
+            duration: Duration(seconds: 6),
+          ));
+          return;
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _pad.currentState?.reset();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: AppColors.statusAlert,
+        content: Text('Hindi nasuri ang Security PIN. Suriin ang koneksyon at subukan muli; walang aksyong isinagawa.'),
+        duration: Duration(seconds: 7),
+      ));
     }
   }
 
@@ -185,7 +195,7 @@ class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
     if (until == null) return '';
     final remaining = until.difference(DateTime.now());
     final seconds = remaining.inSeconds <= 0 ? 0 : remaining.inSeconds;
-    return 'Too many wrong entries. Try again in ${seconds}s.';
+    return 'Masyadong maling PIN. Try again in ${seconds}s.';
   }
 
   @override
@@ -211,7 +221,7 @@ class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
                 onChanged: _onKeyboardChanged,
               ),
             ),
-            Padding(
+            SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -238,7 +248,7 @@ class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
                           widget.title,
                           textAlign: TextAlign.center,
                           style: GoogleFonts.cinzel(
-                            fontSize: 16,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textDark,
                           ),
@@ -251,7 +261,7 @@ class _SecurityPinSheetBodyState extends ConsumerState<_SecurityPinSheetBody> {
                     widget.consequence,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.inter(
-                      fontSize: 12,
+                      fontSize: 16,
                       height: 1.5,
                       color: AppColors.textMuted,
                     ),
@@ -595,7 +605,7 @@ class PinEntryPadState extends State<PinEntryPad>
               widget.message!,
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
-                fontSize: 12,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: widget.messageColor ?? AppColors.textMuted,
               ),

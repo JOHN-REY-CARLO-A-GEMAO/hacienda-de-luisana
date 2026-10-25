@@ -152,7 +152,10 @@ describe('the existing booking date picker', () => {
     checkIn.value = '2026-10-31'
     expect(checkIn.validity.valid).toBe(true)
     expect(container.textContent).toContain('Book at least 30 days before check-in.')
-    expect(container.textContent).toContain('Earliest check-in: 2026-10-31 (Philippine time).')
+    // The native value stays ISO for the date rule; the visible explanation is
+    // intentionally a readable long date for Guests.
+    expect(container.textContent).toContain('Pinakamaagang check-in:')
+    expect(container.textContent).toContain('October 31, 2026')
   })
 
   it('uses the same configurable policy as creation', () => {
@@ -203,6 +206,31 @@ describe('the existing booking date picker', () => {
     expect(localStorage.getItem('hdl:payment-proofs')).toBeNull()
   })
 
+  it('restores the same stay and guest details when returning from payment', async () => {
+    open()
+    fillDetails('2026-10-31')
+    act(() => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    await until(() => Boolean(container.querySelector('[type="file"]')))
+
+    expect(container.querySelectorAll('.flow-steps__step')).toHaveLength(7)
+    expect(container.textContent).toContain('Downpayment due now')
+    expect(container.textContent).toContain('October 31, 2026')
+    expect(container.textContent).toContain('November 1, 2026')
+
+    const back = [...container.querySelectorAll<HTMLAnchorElement>('a')]
+      .find((item) => item.textContent?.includes('Back to details'))!
+    click(back)
+    await until(() => Boolean(container.querySelector('[data-tour-field="guest-name"]')))
+
+    expect(input('[data-tour-field="check-in"]').value).toBe('2026-10-31')
+    expect(input('[data-tour-field="check-out"]').value).toBe('2026-11-01')
+    expect(input('[data-tour-field="guest-name"]').value).toBe('Ana Reyes')
+    expect(input('[autocomplete="tel"]').value).toBe('09171234567')
+    expect(input('[type="email"]').value).toBe('ana@example.com')
+    expect(container.textContent).toContain('Naibalik ang iyong booking details')
+    expect(container.querySelectorAll('.flow-steps__step')).toHaveLength(7)
+  })
+
   it('still submits exactly day 30 through details, proof upload, Pending and status', async () => {
     open()
     fillDetails('2026-10-31')
@@ -211,6 +239,9 @@ describe('the existing booking date picker', () => {
     await attachScreenshot()
     submitProof()
     await until(() => Boolean(container.textContent?.includes('Booking submitted')))
+    expect(container.querySelectorAll('.flow-steps__step')).toHaveLength(7)
+    expect(container.querySelector('.flow-steps [aria-current="step"]')?.textContent).toContain('Approval at susunod na hakbang')
+    expect(container.textContent).toContain('Susunod na Hakbang')
     const created = bookingsDB.list().find((booking) => booking.guest_name === 'Ana Reyes')
     expect(created).toMatchObject({ check_in: '2026-10-31', check_out: '2026-11-01', status: 'Pending', payment_status: 'pending', amount_claimed: 3000, stay_total: 6000, amount_due: 3000, rate_classification: 'weekend_holiday', policy_version: 'test-v2', policy_effective_date: '2026-10-01', refund_policy_snapshot: null })
     expect(created?.payment_proof_url).toMatch(/^payments\/.+\/HDL-\d+\/proof-1.png$/)

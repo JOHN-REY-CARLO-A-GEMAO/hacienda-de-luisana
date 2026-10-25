@@ -86,7 +86,7 @@ body {
 /* Typographic helpers */
 @layer components {
   .eyebrow {
-    @apply text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400;
+    @apply text-xs sm:text-sm font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400;
   }
   .card-surface {
     @apply bg-white dark:bg-forest-900/80 rounded-[28px] border border-forest-900/5 dark:border-cream-100/10 shadow-card transition-all duration-300;
@@ -100,7 +100,7 @@ body {
 .h1 { @apply display text-4xl sm:text-5xl text-forest-900 dark:text-cream-50; }
 .h2 { @apply font-serif text-2xl lg:text-3xl text-forest-900 dark:text-cream-50; }
 .h3 { @apply font-serif text-xl text-forest-900 dark:text-cream-50; }
-.prose-lead { @apply mt-4 text-sm lg:text-base text-forest-800/80 dark:text-cream-100/80 leading-relaxed; }
+.prose-lead { @apply mt-4 text-base lg:text-lg text-forest-800 dark:text-cream-100/85 leading-relaxed; }
 
 /* Inline link — underlined, offset, inherits colour */
 .text-link {
@@ -123,7 +123,7 @@ body {
    `btn-sm` is the compact form used in headers and card footers; the default
    is the page-level action. Passing `text-xs` on a `.btn` is no longer needed. */
 .btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-all duration-300 ease-out-expo focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-forest-600 focus-visible:ring-offset-cream-50 dark:focus-visible:ring-brass-400 dark:focus-visible:ring-offset-forest-950 disabled:opacity-50 disabled:pointer-events-none;
+  @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 py-3 text-base font-medium transition-all duration-300 ease-out-expo focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-forest-600 focus-visible:ring-offset-cream-50 dark:focus-visible:ring-brass-400 dark:focus-visible:ring-offset-forest-950 disabled:opacity-50 disabled:pointer-events-none;
 }
 .btn-primary {
   @apply btn bg-forest-700 text-cream-50 hover:bg-forest-800 dark:bg-cream-100 dark:text-forest-950 dark:hover:bg-white shadow-soft;
@@ -147,45 +147,71 @@ body {
 .btn-danger-quiet {
   @apply btn bg-transparent text-red-700 border border-red-700/25 hover:bg-red-50 dark:text-red-300 dark:border-red-300/30 dark:hover:bg-red-950/40;
 }
-/* Compact size — declared after the variants on purpose: each variant re-applies
-   the `btn` base (and therefore its 48px padding), so the size modifier has to
-   come last to win. A `btn-sm` without a variant still needs `btn`. */
-.btn-sm { @apply px-4 py-2 text-xs; }
-/* Large: a page's single hero action, and nothing else. */
-.btn-lg { @apply px-8 py-4 text-base; }
 /* On a dark photograph or a forest band: cream fill, forest ink. */
 .btn-on-dark { @apply btn bg-cream-50 text-forest-950 hover:bg-white shadow-soft; }
+/* Compact and large sizes come after every variant because each variant
+   re-applies the shared `btn` base. */
+.btn-sm { @apply min-h-11 px-4 py-2 text-sm; }
+/* Large: a page's single hero action, and nothing else. */
+.btn-lg { @apply min-h-14 px-8 py-4 text-lg; }
 
 /* Icon-only control */
 .icon-btn {
-  @apply inline-flex items-center justify-center w-9 h-9 rounded-full text-forest-700 transition hover:bg-forest-900/5 dark:text-cream-100 dark:hover:bg-cream-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 dark:focus-visible:ring-brass-400 disabled:opacity-50;
+  @apply inline-flex items-center justify-center w-11 h-11 rounded-full text-forest-700 transition hover:bg-forest-900/5 dark:text-cream-100 dark:hover:bg-cream-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 dark:focus-visible:ring-brass-400 disabled:opacity-50;
 }
 
 /* Inputs */
 .field {
-  @apply w-full rounded-xl border border-forest-200 bg-white/80 px-4 py-3 text-forest-900 placeholder:text-forest-500/60 focus:border-forest-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest-600/20 dark:bg-forest-900/60 dark:border-forest-700 dark:text-cream-50 dark:placeholder:text-cream-200/40 dark:focus:border-brass-400 dark:focus:bg-forest-900/90 dark:focus:ring-brass-400/20 transition;
+  @apply w-full min-h-12 rounded-xl border border-forest-200 bg-white/80 px-4 py-3 text-base text-forest-900 placeholder:text-forest-600 focus:border-forest-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest-600/20 dark:bg-forest-900/60 dark:border-forest-700 dark:text-cream-50 dark:placeholder:text-cream-200/60 dark:focus:border-brass-400 dark:focus:bg-forest-900/90 dark:focus:ring-brass-400/20 transition;
 }
 .field[aria-invalid='true'] { @apply border-red-500 focus:border-red-600 focus:ring-red-500/20; }
 .field:disabled { @apply bg-cream-50/70 text-forest-600 cursor-not-allowed dark:bg-forest-900/40; }
 .label {
-  @apply block text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-300 mb-2 font-medium;
+  @apply mb-2 block text-sm font-semibold leading-snug text-forest-700 dark:text-sage-300;
 }
-.field-hint { @apply mt-1.5 block text-[11px] text-forest-600 dark:text-cream-200/60; }
-.field-error { @apply mt-1.5 block text-xs text-red-600 dark:text-red-400; }
+.field-hint { @apply mt-2 block text-sm leading-relaxed text-forest-600 dark:text-cream-200/70; }
+.field-error { @apply mt-2 block text-sm font-medium leading-relaxed text-red-700 dark:text-red-300; }
 
 /* Status badges — colour pairs live in StatusBadge.tsx, never inline */
 .badge {
-  @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap;
+  @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs sm:text-sm font-semibold;
 }
 
 /* Alerts — one shape for every inline message */
 .alert {
-  @apply rounded-2xl border px-4 py-3 text-sm leading-relaxed;
+  @apply rounded-2xl border px-4 py-3 text-base leading-relaxed;
 }
 .alert-info { @apply bg-cream-100/70 border-forest-900/10 text-forest-800 dark:bg-forest-900/60 dark:border-cream-100/15 dark:text-cream-100; }
 .alert-success { @apply bg-emerald-50 border-emerald-200 text-emerald-900; }
 .alert-warning { @apply bg-amber-50 border-amber-200 text-amber-900; }
 .alert-danger { @apply bg-red-50 border-red-200 text-red-800; }
+
+/* Seven-part booking guidance. The whole journey stays visible; only the
+   current step is highlighted, and a check is never the sole status cue. */
+@layer components {
+  .flow-steps { @apply mt-6 w-full; }
+  .flow-steps__summary { @apply text-base sm:text-lg font-semibold leading-relaxed text-forest-800 dark:text-cream-100; }
+  .flow-steps__list { @apply mt-4 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4; }
+  .flow-steps__step {
+    @apply flex min-w-0 items-start gap-2.5 rounded-2xl border border-forest-900/10 bg-white p-3 text-forest-800 dark:border-cream-100/15 dark:bg-forest-900/60 dark:text-cream-100;
+  }
+  .flow-steps__step.is-complete { @apply border-emerald-300 bg-emerald-50 text-emerald-900; }
+  .flow-steps__step.is-current { @apply border-forest-800 bg-forest-800 text-cream-50 shadow-soft; }
+  .flow-steps__number {
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cream-100 font-serif text-base font-semibold text-forest-800;
+  }
+  .flow-steps__step.is-complete .flow-steps__number { @apply bg-emerald-200 text-emerald-950; }
+  .flow-steps__step.is-current .flow-steps__number { @apply bg-cream-50 text-forest-900; }
+  .flow-steps__copy { @apply min-w-0; }
+  .flow-steps__title { @apply block text-sm sm:text-base font-semibold leading-snug; }
+  .flow-steps__english { @apply mt-0.5 block text-xs leading-snug opacity-80; }
+  @media (max-width: 639px) {
+    .flow-steps__step:last-child { grid-column: 1 / -1; }
+  }
+  @media (min-width: 1200px) {
+    .flow-steps__list { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  }
+}
 
 /* Tables — the only two tables in the site (settings report, invoice) share this */
 .data-table { @apply w-full text-left text-xs; }
@@ -424,10 +450,10 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 /* Sentence case on purpose. The tracked ALL-CAPS `.eyebrow` belongs to the
    page; inside the data it made every row shout at the same volume. */
 .guest-label {
-  @apply block text-[11px] font-medium leading-tight text-forest-600 dark:text-sage-400;
+  @apply block text-sm font-medium leading-snug text-forest-600 dark:text-sage-400;
 }
 .guest-value {
-  @apply mt-1 block text-sm font-medium leading-snug text-forest-900 dark:text-cream-50;
+  @apply mt-1 block text-base sm:text-lg font-medium leading-snug text-forest-900 dark:text-cream-50;
 }
 /* Numerals that matter — dates, pesos, a countdown — are set in the display
    face with lining figures, so columns of them line up and read as amounts

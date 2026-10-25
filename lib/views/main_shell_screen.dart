@@ -112,8 +112,10 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           backgroundColor: AppColors.primaryDark,
           selectedItemColor: AppColors.accentGoldLight,
           unselectedItemColor: Colors.white.withOpacity(0.5),
-          selectedLabelStyle: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold),
-          unselectedLabelStyle: GoogleFonts.inter(fontSize: 10),
+          selectedLabelStyle: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+          unselectedLabelStyle: GoogleFonts.inter(fontSize: 12),
+          selectedIconTheme: const IconThemeData(size: 28),
+          unselectedIconTheme: const IconThemeData(size: 28),
           type: BottomNavigationBarType.fixed,
           elevation: 0,
           onTap: (index) {
@@ -229,7 +231,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                 ),
                 const SizedBox(height: 16),
                 const SectionHeader(
-                  title: 'Resort operations & tools',
+                  title: 'Mga Tool sa Operasyon',
                   padding: EdgeInsets.symmetric(horizontal: 8),
                 ),
                 const SizedBox(height: 4),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../core/constants/app_constants.dart';
 
-/// Uppercase letter-spaced section label with an optional trailing text
+/// Readable section label with an optional trailing text
 /// action ("View All Logs →"). Replaces the hand-rolled header rows in
 /// the Dashboard and Smart Lock screens.
 class SectionHeader extends StatelessWidget {
@@ -28,17 +28,19 @@ class SectionHeader extends StatelessWidget {
           padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Flexible(
             child: Text(
-              title.toUpperCase(),
-              maxLines: 1,
+              title,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.inter(
-                fontSize: 11,
+                fontSize: 17,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 0.8,
+                letterSpacing: 0.1,
                 color: AppColors.textMuted,
+                height: 1.3,
               ),
             ),
           ),
@@ -47,9 +49,8 @@ class SectionHeader extends StatelessWidget {
             TextButton(
               onPressed: onAction,
               style: TextButton.styleFrom(
-                minimumSize: const Size(0, 32),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(48, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
               ),
               child: Semantics(
                 button: true,
@@ -57,7 +58,7 @@ class SectionHeader extends StatelessWidget {
                 child: Text(
                   actionLabel!,
                   style: GoogleFonts.inter(
-                    fontSize: 12,
+                    fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: AppColors.primaryForest,
                   ),

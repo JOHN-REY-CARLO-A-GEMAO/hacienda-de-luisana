@@ -344,10 +344,10 @@ export function AvailabilityCalendar({
       key={value}
       data-month={value}
       data-month-label={monthLabel(value)}
-      className={index === 1 ? 'hidden md:block' : ''}
+      className={`overflow-x-auto ${index === 1 ? 'hidden md:block' : ''}`}
     >
       <div
-        className="grid grid-cols-7"
+        className="grid min-w-[308px] grid-cols-7"
         role="grid"
         aria-label={`${monthLabel(value)} availability`}
         aria-busy={loadState === 'loading'}
@@ -356,7 +356,7 @@ export function AvailabilityCalendar({
           <div
             key={weekday}
             role="columnheader"
-            className="pb-2 text-center text-[10px] font-semibold uppercase tracking-wide text-forest-600"
+            className="pb-2 text-center text-sm font-semibold uppercase tracking-wide text-forest-600"
           >
             {weekday}
           </div>
@@ -439,11 +439,11 @@ export function AvailabilityCalendar({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 id="availability-calendar-heading" className="font-serif text-xl text-forest-900">
-              Select your stay
+              Piliin ang Petsa ng Stay
             </h3>
-            <p className="mt-1 text-xs leading-relaxed text-forest-700">
-              Live availability for <strong>{accommodationName}</strong> · Philippine time.
-              Choose an available check-in, then a checkout.
+            <p className="mt-1 text-base leading-relaxed text-forest-700">
+              Live availability para sa <strong>{accommodationName}</strong> · Philippine time.
+              Pumili muna ng available na check-in, pagkatapos ay checkout.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -451,7 +451,7 @@ export function AvailabilityCalendar({
               type="button"
               onClick={clearDates}
               disabled={!checkIn && !checkOut}
-              className="rounded-full px-2 py-1 text-xs font-semibold text-forest-800 underline decoration-forest-300 underline-offset-4 hover:decoration-forest-700 disabled:cursor-not-allowed disabled:text-forest-700/40 disabled:no-underline"
+              className="min-h-11 rounded-full px-3 py-2 text-sm font-semibold text-forest-800 underline decoration-forest-300 underline-offset-4 hover:decoration-forest-700 disabled:cursor-not-allowed disabled:text-forest-700/40 disabled:no-underline"
             >
               Clear dates
             </button>
@@ -460,7 +460,7 @@ export function AvailabilityCalendar({
               onClick={() => setCalendarOpen((open) => !open)}
               aria-expanded={calendarOpen}
               aria-controls="availability-calendar-body"
-              className="flex h-9 items-center justify-center rounded-full border border-forest-900/15 bg-white px-3 text-xs font-semibold text-forest-900 hover:border-forest-600"
+              className="flex min-h-11 items-center justify-center rounded-full border border-forest-900/15 bg-white px-4 py-2 text-sm font-semibold text-forest-900 hover:border-forest-600"
             >
               {calendarOpen ? 'Close' : 'Edit dates'}
             </button>
@@ -497,12 +497,12 @@ export function AvailabilityCalendar({
             bordered
           />
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-forest-700/75">
+        <p className="mt-2 text-sm leading-relaxed text-forest-700/75">
           Stays are 1 to {MAX_STAY_NIGHTS} nights
           {checkIn ? ` — for a ${shortDate(checkIn)} check-in the latest checkout is ${shortDate(maximumCheckoutDate(checkIn) ?? checkIn)}` : ''}.
         </p>
 
-        <div className="min-h-6 pt-2 text-xs" aria-live="polite">
+        <div className="min-h-6 pt-2 text-sm" aria-live="polite">
           {checkIn && !checkOut && loadState === 'ready' && (
             <p className="text-forest-700">
               Check-in <strong>{shortDate(checkIn)}</strong> selected. Now choose a checkout date.
@@ -521,7 +521,7 @@ export function AvailabilityCalendar({
                 aria-label="Previous month"
                 disabled={month <= minimumMonth || loadState === 'loading'}
                 onClick={() => setMonth((current) => moveMonth(current, -1))}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-forest-900/10 bg-white text-lg text-forest-900 transition hover:border-forest-500 disabled:cursor-not-allowed disabled:opacity-30"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-forest-900/10 bg-white text-lg text-forest-900 transition hover:border-forest-500 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 ‹
               </button>
@@ -541,7 +541,7 @@ export function AvailabilityCalendar({
                 aria-label="Next month"
                 disabled={loadState === 'loading'}
                 onClick={() => setMonth((current) => moveMonth(current, 1))}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-forest-900/10 bg-white text-lg text-forest-900 transition hover:border-forest-500 disabled:cursor-not-allowed disabled:opacity-30"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-forest-900/10 bg-white text-lg text-forest-900 transition hover:border-forest-500 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 ›
               </button>
@@ -553,17 +553,17 @@ export function AvailabilityCalendar({
 
             <div className="min-h-10" aria-live="polite">
               {loadState === 'loading' && (
-                <p className="mt-4 rounded-xl border border-forest-900/10 bg-cream-50 px-3 py-2 text-xs text-forest-700">
+                <p className="mt-4 rounded-xl border border-forest-900/10 bg-cream-50 px-3 py-2 text-sm text-forest-700">
                   Checking {accommodationName} availability… Dates stay disabled until the Hacienda confirms them.
                 </p>
               )}
               {loadState === 'error' && (
                 <Alert
                   tone="danger"
-                  className="mt-4 text-xs"
+                  className="mt-4 text-sm"
                   title="Availability unknown."
                   actions={
-                    <button type="button" onClick={() => void load(true)} className="text-xs font-semibold underline underline-offset-2">
+                    <button type="button" onClick={() => void load(true)} className="inline-flex min-h-11 items-center px-2 text-base font-semibold underline underline-offset-2">
                       Try again
                     </button>
                   }
@@ -572,7 +572,7 @@ export function AvailabilityCalendar({
                 </Alert>
               )}
               {loadState === 'ready' && checkIn && checkOut && (
-                <Alert tone="success" className="mt-4 text-xs" title="Selected stay:">
+                <Alert tone="success" className="mt-4 text-sm" title="Selected stay:">
                   {fullDate(checkIn)} check-in → {fullDate(checkOut)} checkout
                   {nights > 0 ? ` (${nights} ${nights === 1 ? 'night' : 'nights'})` : ''}.
                   Checkout is a boundary, so another Guest may check in on {fullDate(checkOut)}.
@@ -585,8 +585,8 @@ export function AvailabilityCalendar({
 
             <div className="mt-4 flex flex-wrap items-start justify-between gap-3 border-t border-forest-900/10 pt-3">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-eyebrow text-forest-600">Calendar key</div>
-                <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] text-forest-800 sm:grid-cols-5">
+                <div className="text-sm font-semibold uppercase tracking-eyebrow text-forest-600">Calendar key</div>
+                <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-forest-800 sm:grid-cols-5">
                   <Legend swatch="bg-forest-900" symbol="✓" label="Selected" />
                   <Legend swatch="border-emerald-300 bg-emerald-50" symbol="" label="Available" />
                   <Legend swatch="border-red-300 bg-red-50 text-red-600" symbol="•" label="Booked" />
@@ -598,13 +598,13 @@ export function AvailabilityCalendar({
                 type="button"
                 onClick={() => void load(true)}
                 disabled={loadState === 'loading'}
-                className="rounded-full border border-forest-900/15 bg-white px-3 py-1.5 text-xs font-medium text-forest-800 hover:border-forest-600 disabled:opacity-50"
+                className="min-h-11 rounded-full border border-forest-900/15 bg-white px-4 py-2 text-sm font-medium text-forest-800 hover:border-forest-600 disabled:opacity-50"
                 aria-label="Refresh availability"
               >
                 ↻ Refresh
               </button>
             </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-forest-700/75">
+            <p className="mt-3 text-sm leading-relaxed text-forest-700/75">
               Colors mark overnight stays, not checkout occupancy. Checkout dates are limited to the stay length the
               Hacienda currently publishes online. Pending dates are held for up to 24 hours under the current Booking policy.
             </p>
@@ -621,7 +621,7 @@ function dayClass(input: {
   selected: boolean
   selectable: boolean
 }): string {
-  const base = 'relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest-700'
+  const base = 'relative z-10 flex h-11 w-11 items-center justify-center rounded-full text-base font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest-700'
   if (input.selected) {
     const unconfirmed = !input.invalid && input.state !== 'available'
     return `${base} bg-forest-900 text-white shadow-sm ring-2 ring-white${unconfirmed ? ' ring-offset-1 ring-offset-red-300' : ''}`
@@ -667,12 +667,12 @@ function DateField({
     >
       <label
         htmlFor={id}
-        className="pointer-events-none block text-[10px] font-semibold uppercase tracking-eyebrow text-forest-600"
+        className="pointer-events-none block text-sm font-semibold uppercase tracking-eyebrow text-forest-600"
       >
         {label}
       </label>
       <span
-        className={`pointer-events-none mt-0.5 block truncate text-sm font-medium ${value ? 'text-forest-900' : 'text-forest-700/45'}`}
+        className={`pointer-events-none mt-0.5 block truncate text-base font-medium ${value ? 'text-forest-900' : 'text-forest-700/45'}`}
       >
         {value ? shortDate(value) : 'Add date'}
       </span>
@@ -686,11 +686,12 @@ function DateField({
         aria-label={label}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
+        required
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
         className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
       />
-      {error && <p className="relative z-0 mt-0.5 text-[11px] text-red-600">{error}</p>}
+      {error && <p className="relative z-0 mt-0.5 text-sm text-red-600">{error}</p>}
     </div>
   )
 }

@@ -1,16 +1,18 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import {
+  cloneElement,
+  forwardRef,
+  isValidElement,
+  useId,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from 'react'
 
 /**
- * Form field — the label, the control, the hint and the error, in that order.
- *
- * The site had four ways to draw the same field: a local `Field` in the booking
- * form, hand-written `<label><span class="label">` blocks in the account page,
- * another in the status lookup, and unlabelled inputs in Support. They now all
- * come through here, which is what makes the label style, the error placement
- * and the disabled/readonly look the same everywhere.
- *
- * The control is wrapped in its `<label>`, so clicking the label focuses the
- * input without every call site needing a matching `id`/`htmlFor` pair.
+ * Form field — the visible label, control, hint and error in one reading order.
+ * The wrapping label gives every control a name; the generated ids also connect
+ * its hint/error for screen-reader users without requiring call-site ids.
  */
 export function Field({
   label,
@@ -30,20 +32,44 @@ export function Field({
   tour?: string
   children: ReactNode
 }) {
+  const id = useId()
+  const messageId = `${id}-message`
+  const control = isValidElement<{
+    'aria-describedby'?: string
+    'aria-invalid'?: boolean | 'false' | 'true'
+    'aria-required'?: boolean | 'false' | 'true'
+  }>(children) ? children : null
+  const describedBy = [
+    control?.props['aria-describedby'],
+    error || hint ? messageId : null,
+  ].filter(Boolean).join(' ') || undefined
+  const enhancedControl = control
+    ? cloneElement(control, {
+        'aria-describedby': describedBy,
+        ...(required ? { 'aria-required': true as const } : {}),
+        ...(error ? { 'aria-invalid': true as const } : {}),
+      })
+    : children
+
   return (
     <label className={`block ${className}`}>
       <span className="label">
         {label}
-        {required && <span className="text-forest-500"> *</span>}
+        {required && (
+          <>
+            <span className="text-forest-500" aria-hidden="true"> *</span>
+            <span className="sr-only"> (kailangan)</span>
+          </>
+        )}
         {tour && <span data-tour={tour} className="hidden" aria-hidden="true" />}
       </span>
-      {children}
+      {enhancedControl}
       {error ? (
-        <span className="field-error" role="alert">
+        <span id={messageId} className="field-error" role="alert">
           {error}
         </span>
       ) : (
-        hint && <span className="field-hint">{hint}</span>
+        hint && <span id={messageId} className="field-hint">{hint}</span>
       )}
     </label>
   )
@@ -67,7 +93,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   },
 )
 
-/** A labelled checkbox row: the control, then the sentence that explains it. */
+/** A labelled checkbox row with a full-width, at-least-44px tap area. */
 export function CheckboxRow({
   checked,
   onChange,
@@ -82,10 +108,10 @@ export function CheckboxRow({
   tour?: string
 }) {
   return (
-    <label className={`flex items-start gap-2.5 text-xs text-forest-800 ${className}`} data-tour={tour}>
+    <label className={`flex min-h-11 items-start gap-3 py-2 text-base text-forest-800 ${className}`} data-tour={tour}>
       <input
         type="checkbox"
-        className="mt-0.5 h-4 w-4 shrink-0 rounded border-forest-300 text-forest-700 focus:ring-forest-600"
+        className="mt-1 h-5 w-5 shrink-0 rounded border-forest-300 text-forest-700 focus:ring-forest-600"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
       />

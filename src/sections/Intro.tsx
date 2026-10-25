@@ -70,16 +70,16 @@ export function Intro() {
             }
           />
 
-          <div className="reveal mt-6 text-forest-800/85 dark:text-cream-100/80 leading-relaxed max-w-lg">
+          <div className="reveal mt-6 max-w-lg text-lg leading-relaxed text-forest-800 dark:text-cream-100/85">
             <p>
-              Hacienda de LuisAna offers exclusive private stays in Luisiana, Laguna — featuring a spacious
-              Main House for groups and families, and charming A-frame camping units on open grounds.
-              Enjoy starry nights, a crackling campfire, and serene countryside scenery away from city crowds.
+              Isang pribadong pahingahan sa Luisiana, Laguna. May malaking Main House para sa pamilya at
+              mga A-frame camping unit sa bukas na hardin. Maaari kayong mag-relax, mag-campfire, at mag-enjoy
+              sa tahimik na tanawin.
             </p>
           </div>
 
           <a href="#stay" className="btn-ghost mt-8 group reveal">
-            See the accommodations
+            Tingnan ang mga Matutuluyan
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
           </a>
         </div>

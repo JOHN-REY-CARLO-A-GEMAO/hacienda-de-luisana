@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
-import { saveBookingDraft } from '../lib/bookingDraft'
+import { loadBookingDraft, saveBookingDraft } from '../lib/bookingDraft'
+import { formatStayDate } from '../lib/formatDate'
 import { FlowSteps } from '../components/Booking/FlowSteps'
 import { AvailabilityCalendar } from '../components/Booking/AvailabilityCalendar'
 import { isFirebaseConfigured } from '../lib/firebase'
@@ -67,22 +68,33 @@ export function BookingPage() {
   const { minimumBookingLeadTimeDays, earliestCheckIn } = useBookingPolicy()
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const initialAccommodation = params.get('accommodation') || ACCOMMODATIONS[0].id
+  // Returning from payment must not erase the stay or contact details. The
+  // draft remains session-only and is still submitted through the same fresh
+  // availability, rate and server checks below.
+  const restoredDraft = useMemo(() => loadBookingDraft(), [])
+  const requestedAccommodation = params.get('accommodation')
+  // A link for a different property starts that property's stay rather than
+  // silently combining it with an older draft. The payment page's Back link
+  // requests the same property, so all of its details are restored.
+  const draftToRestore = restoredDraft && (!requestedAccommodation || requestedAccommodation === restoredDraft.accommodation)
+    ? restoredDraft
+    : null
+  const initialAccommodation = requestedAccommodation || draftToRestore?.accommodation || ACCOMMODATIONS[0].id
 
   const [form, setForm] = useState<FormState>({
-    check_in: '',
-    check_out: '',
-    guests: 2,
+    check_in: draftToRestore?.check_in ?? '',
+    check_out: draftToRestore?.check_out ?? '',
+    guests: draftToRestore?.guests ?? 2,
     accommodation: initialAccommodation,
-    name: '',
-    phone: '',
-    email: '',
-    special_requests: '',
-    pet_count: 0,
-    bonfire_wood_sets: 0,
-    late_checkout_hours: 0,
-    event_purpose: '',
-    event_purpose_detail: '',
+    name: draftToRestore?.name ?? '',
+    phone: draftToRestore?.phone ?? '',
+    email: draftToRestore?.email ?? '',
+    special_requests: draftToRestore?.special_requests ?? '',
+    pet_count: draftToRestore?.pet_count ?? 0,
+    bonfire_wood_sets: draftToRestore?.bonfire_wood_sets ?? 0,
+    late_checkout_hours: draftToRestore?.late_checkout_hours ?? 0,
+    event_purpose: draftToRestore?.event_purpose ?? '',
+    event_purpose_detail: draftToRestore?.event_purpose_detail ?? '',
   })
   const [errors, setErrors] = useState<Errors>({})
   const [status, setStatus] = useState<'idle' | 'submitting' | 'error'>('idle')
@@ -153,10 +165,20 @@ export function BookingPage() {
       label: published?.accommodations[a.id]?.property_name?.trim() || a.name,
     })), [published])
 
+  const restoredSelectionPending = useRef(Boolean(draftToRestore))
   useEffect(() => {
-    if (options.length > 0 && !options.some((o) => o.id === form.accommodation)) {
-      setForm((f) => ({ ...f, accommodation: options[0].id }))
+    if (!form.accommodation || options.length === 0 || options.some((o) => o.id === form.accommodation)) return
+    if (restoredSelectionPending.current) {
+      // Never silently substitute a different room for a restored stay.
+      restoredSelectionPending.current = false
+      setForm((current) => ({ ...current, accommodation: '' }))
+      setErrors((current) => ({
+        ...current,
+        accommodation: 'Hindi na available ang dating matutuluyan. Pumili muli; mananatili ang iba mong detalye.',
+      }))
+      return
     }
+    setForm((current) => ({ ...current, accommodation: options[0].id }))
   }, [options, form.accommodation])
   const authoritativeQuote = useMemo(() => {
     if (!published) return undefined
@@ -458,20 +480,31 @@ export function BookingPage() {
       />
       <Container width="wide" className="relative">
         <PageHeader
-          eyebrow="Book a room · no account needed"
+          eyebrow="Mag-book ng Matutuluyan · Hindi kailangan ng account"
           title="Plan Your Stay"
           lead={
-            <p className="max-w-2xl">
-              Browse every room, then book it here — no login and no account. After these details you will
-              upload a screenshot of your downpayment. The booking is not submitted, and not confirmed,
-              until that proof is in and the Hacienda approves it.
+            <p className="max-w-3xl">
+              Sundan ang pitong hakbang sa ibaba. Pagkatapos ng detalye, mag-a-upload ka ng patunay ng
+              downpayment. <strong>Hindi pa kumpirmado ang booking</strong> hangga’t hindi ito naisusumite
+              at ina-aprubahan ng Hacienda. Maaari kang bumalik upang ayusin ang detalye nang hindi nawawala
+              ang iyong isinulat.
             </p>
           }
         />
-        <div className="mt-6 max-w-2xl">
-          <FlowSteps current={0} />
+        <div className="mt-6 max-w-6xl">
+          <FlowSteps
+            current={0}
+            completedThrough={-1}
+            summary="Hakbang 1–4 sa 7: piliin ang matutuluyan at petsa, tingnan ang availability at presyo, at suriin ang detalye."
+          />
+          {draftToRestore && (
+            <Alert tone="info" className="mt-4">
+              <strong>Naibalik ang iyong booking details.</strong> Suriin ang petsa, presyo at availability
+              bago magpatuloy sa bayad.
+            </Alert>
+          )}
           {!isFirebaseConfigured && (
-            <Alert tone="warning" className="mt-4 text-xs">
+            <Alert tone="warning" className="mt-4 text-base">
               <strong>Demo mode:</strong> Firebase is not configured in this build. A submitted booking is
               stored in this browser, and you can approve or reject it from the review desk.{' '}
               <Link to="/status" className="text-link">
@@ -480,7 +513,7 @@ export function BookingPage() {
             </Alert>
           )}
           {cloudBookingsDB.isCloud && (
-            <Alert tone="success" className="mt-4 text-xs">
+            <Alert tone="success" className="mt-4 text-base">
               Secured by Firebase — your request will be saved to the cloud and the Admin will see it in
               the Hacienda app.
             </Alert>
@@ -497,14 +530,15 @@ export function BookingPage() {
             {status === 'error' && <Alert tone="danger">{errorMsg}</Alert>}
 
             <div>
-              <h2 className="h2">Stay details</h2>
-              <p id="booking-lead-time" className="mt-2 text-sm text-forest-700">
-                Book at least {minimumBookingLeadTimeDays} days before check-in.
-                Earliest check-in: {earliestCheckIn} (Philippine time).
+              <h2 className="h2">Detalye ng Stay</h2>
+              <p id="booking-lead-time" className="mt-2 text-base leading-relaxed text-forest-700">
+                Book at least {minimumBookingLeadTimeDays} days before check-in. Mag-book nang hindi bababa sa{' '}
+                {minimumBookingLeadTimeDays} araw bago ang pagdating.<br />
+                Pinakamaagang check-in: <strong>{formatStayDate(earliestCheckIn)}</strong> (Philippine time).
               </p>
               <div className="mt-6" data-tour="stay-details">
                 <div className="grid sm:grid-cols-2 gap-5">
-                  <Field label="Accommodation" error={errors.accommodation} tour="accommodation-field">
+                  <Field label="Matutuluyan (Accommodation)" error={errors.accommodation} tour="accommodation-field" required>
                     <Select
                       value={form.accommodation}
                       onChange={(e) => {
@@ -513,12 +547,13 @@ export function BookingPage() {
                       }}
                       onBlur={() => handleBlur('accommodation')}
                     >
+                      {!form.accommodation && <option value="" disabled>Pumili ng matutuluyan</option>}
                       {options.map((o) => (
                         <option key={o.id} value={o.id}>{o.label}</option>
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Number of guests" error={errors.guests}>
+                  <Field label="Bilang ng Bisita (Number of guests)" error={errors.guests} required>
                     <Input
                       type="number"
                       min={1}
@@ -555,11 +590,11 @@ export function BookingPage() {
                     setAvailability(null)
                   }}
                 />
-                <p className="mt-2 text-[11px] leading-relaxed text-forest-700/70">
-                  You may type the dates in either field; the same live availability and current stay-length rules are still checked before payment.
+                <p className="mt-3 text-base leading-relaxed text-forest-700">
+                  Maaaring i-type ang petsa o pumili sa calendar. Sinusuri muli ang availability at haba ng stay bago ang bayad.
                 </p>
                 {nights > 1 && (
-                  <Alert tone="info" className="mt-4 text-xs" title={`${nights}-night range selected.`}>
+                  <Alert tone="info" className="mt-4 text-base" title={`${nights}-night range selected.`}>
                     Every night of this stay is a standard stay (2:00 PM–12:00 noon) priced at the rate of the
                     check-in night, so the total below covers all {nights} nights. The down payment, balance
                     and security deposit follow from that total and are re-checked before payment.
@@ -569,20 +604,20 @@ export function BookingPage() {
             </div>
 
             <div className="pt-2 border-t border-forest-900/5">
-              <h2 className="h2 mt-8">Your details</h2>
+              <h2 className="h2 mt-8">Detalye ng Bisita</h2>
               {usedAccount ? (
-                <p className="mt-2 text-xs text-emerald-800">
+                <p className="mt-2 text-base text-emerald-800">
                   Filled in from your account. You can change any of it for this booking, and update your
                   profile any time from <Link to="/account?tab=profile" className="underline">My Profile</Link>.
                 </p>
               ) : !user ? (
-                <p className="mt-2 text-xs text-forest-700">
+                <p className="mt-2 text-base text-forest-700">
                   Have an account? <Link to="/guest/auth" className="underline">Sign in</Link> and these fields fill themselves.
                 </p>
               ) : null}
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
                 <div className="sm:col-span-2" data-tour="guest-details">
-                  <Field label="Full name (First Middle Last)" error={errors.name}>
+                  <Field label="Buong Pangalan (First Middle Last)" error={errors.name} required>
                     <Input
                       placeholder="Juan Dela Cruz"
                       value={form.name}
@@ -593,7 +628,7 @@ export function BookingPage() {
                     />
                   </Field>
                 </div>
-                <Field label="Mobile number" error={errors.phone}>
+                <Field label="Numero ng Cellphone (Mobile number)" error={errors.phone} required>
                   <Input
                     placeholder="09XX XXX XXXX"
                     type="tel"
@@ -604,7 +639,7 @@ export function BookingPage() {
                     autoComplete="tel"
                   />
                 </Field>
-                <Field label="Email" error={errors.email}>
+                <Field label="Email" error={errors.email} required>
                   <Input
                     placeholder="you@email.com"
                     type="email"
@@ -644,19 +679,19 @@ export function BookingPage() {
             />
 
             {availability?.status === 'checking' && (
-              <Alert tone="info" className="text-xs">
+              <Alert tone="info" className="text-base">
                 <strong>Confirming the selected stay…</strong> Continue stays disabled until a fresh
                 availability check finishes.
               </Alert>
             )}
             {availability?.status === 'unknown' && (
-              <Alert tone="danger" className="text-xs">
+              <Alert tone="danger" className="text-base">
                 <strong>Availability is unknown.</strong> The Hacienda’s Booking data could not be checked.
                 Refresh the calendar or try again; these dates are not being treated as available.
               </Alert>
             )}
             {availability?.status === 'unavailable' && (
-              <Alert tone="warning" className="text-xs">
+              <Alert tone="warning" className="text-base">
                 <strong>
                   {availability.blockingState === 'booked' ? 'That overnight date is booked.' : 'Those dates are already held.'}
                 </strong>{' '}
@@ -671,7 +706,7 @@ export function BookingPage() {
               </Alert>
             )}
             {availability?.status === 'available' && form.check_in && form.check_out && (
-              <Alert tone="success" className="text-xs">
+              <Alert tone="success" className="text-base">
                 <strong>Selected stay is available.</strong> Availability will be checked again when you
                 continue and atomically when the Pending Booking is created.
               </Alert>
@@ -685,7 +720,7 @@ export function BookingPage() {
               (version {LEGAL_VERSION}). This is not accepted for me.
             </CheckboxRow>
             {errors.special_requests && (
-              <p className="text-xs text-red-600" role="alert">{errors.special_requests}</p>
+              <p className="text-base text-red-600" role="alert">{errors.special_requests}</p>
             )}
 
             <div className="pt-2">
@@ -696,13 +731,14 @@ export function BookingPage() {
                   || (Boolean(form.check_in && form.check_out) && availability?.status !== 'available')}
                 className="btn-primary w-full sm:w-auto disabled:opacity-70 disabled:cursor-not-allowed"
                 data-tour="submit-booking"
+                aria-busy={status === 'submitting'}
               >
-                Continue to downpayment
-                <ArrowRight size={16} />
+                {status === 'submitting' ? 'Sinusuri ang Detalye…' : 'Continue to downpayment · Magpatuloy sa Bayad'}
+                {status !== 'submitting' && <ArrowRight size={20} aria-hidden="true" />}
               </button>
-              <p className="text-xs text-forest-700/60 mt-4 max-w-md">
-                This step does not create a booking. The next page asks for a downpayment screenshot,
-                which is required before the booking can be submitted as Pending.
+              <p className="text-base leading-relaxed text-forest-700 mt-4 max-w-xl">
+                Hindi pa nagkakaroon ng booking sa hakbang na ito. Sa susunod na pahina, kailangan ang
+                screenshot ng downpayment bago maipasa ang booking bilang <strong>Pending — hinihintay ang approval</strong>.
               </p>
             </div>
           </form>
@@ -717,39 +753,39 @@ export function BookingPage() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-forest-950/75 via-forest-950/20 to-transparent" />
                 <div className="absolute bottom-4 left-5 right-5 text-cream-50">
-                  <div className="text-[10px] uppercase tracking-eyebrow opacity-80">Your stay at a glance</div>
+                  <div className="text-base uppercase tracking-eyebrow opacity-80">Your stay at a glance</div>
                   <div className="font-serif text-2xl leading-tight">{selectedAcc?.name || '—'}</div>
-                  <div className="mt-1 text-[11px] text-cream-100/80">{BUSINESS.address.city}, {BUSINESS.address.region}</div>
+                  <div className="mt-1 text-base text-cream-100/80">{BUSINESS.address.city}, {BUSINESS.address.region}</div>
                 </div>
               </div>
               <div className="p-6 space-y-4">
-                <SummaryRow icon={Calendar} label="Check-in" value={form.check_in || '—'} />
-                <SummaryRow icon={Calendar} label="Check-out" value={form.check_out || '—'} />
-                <SummaryRow icon={Users} label="Guests" value={String(form.guests)} />
-                <SummaryRow icon={Bed} label="Accommodation" value={options.find((o) => o.id === form.accommodation)?.label || '—'} />
+                <SummaryRow icon={Calendar} label="Pagdating (Check-in)" value={formatStayDate(form.check_in)} />
+                <SummaryRow icon={Calendar} label="Pag-alis (Check-out)" value={formatStayDate(form.check_out)} />
+                <SummaryRow icon={Users} label="Mga Bisita" value={String(form.guests)} />
+                <SummaryRow icon={Bed} label="Matutuluyan" value={options.find((o) => o.id === form.accommodation)?.label || '—'} />
 
                 <div className="pt-4 border-t border-forest-900/10">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Estimated Total</div>
-                    <div className="text-right">
+                  <div className="space-y-2">
+                    <div className="text-base font-semibold text-forest-700">Tinatayang Kabuuan (Estimated Total)</div>
+                    <div>
                       {estimatedTotal ? (
                         <>
-                          <div className="font-serif text-2xl text-forest-900">₱{estimatedTotal.toLocaleString('en-PH')}</div>
-                          <div className="text-[11px] text-forest-700/60">
+                          <div className="font-serif text-3xl font-semibold text-forest-900">₱{estimatedTotal.toLocaleString('en-PH')}</div>
+                          <div className="mt-1 text-base leading-relaxed text-forest-700">
                             {authoritativeQuote
                               ? `${authoritativeQuote.classification === 'weekend_holiday' ? 'Weekend / Admin holiday (Friday/Saturday check-in night)' : 'Weekday (Sunday–Thursday check-in night)'} · ${authoritativeQuote.bracket} · 2:00 PM–12:00 noon`
                               : 'Uses the published schedule for the selected dates and guest count'}
                           </div>
                         </>
                       ) : (
-                        <div className="text-sm text-forest-800/70">Quoted by the Hacienda</div>
+                        <div className="text-base text-forest-800/70">Quoted by the Hacienda</div>
                       )}
                     </div>
                   </div>
                   <AddonFeeSummary lines={addonLines} />
                 </div>
 
-                <div className="mt-4 rounded-2xl bg-cream-100/70 p-4 text-xs text-forest-700 leading-relaxed space-y-2">
+                <div className="mt-4 rounded-2xl bg-cream-100/70 p-4 text-base text-forest-800 leading-relaxed space-y-2">
                   <div>
                     <Sparkle size={14} className="inline mr-1 -mt-1 text-forest-600" />
                     {estimatedTotal
@@ -771,12 +807,12 @@ export function BookingPage() {
 
             <div className="mt-6 bg-forest-900 text-cream-100 rounded-[28px] p-6">
               <div className="eyebrow text-cream-100/60">Prefer to Chat?</div>
-              <div className="mt-3 space-y-3 text-sm">
-                <a href={`tel:${BUSINESS.contact.phone.replace(/\s+/g,'')}`} className="flex items-center gap-3 hover:underline">
-                  <Phone size={16} /> {BUSINESS.contact.phoneDisplay}
+              <div className="mt-3 space-y-3 text-base">
+                <a href={`tel:${BUSINESS.contact.phone.replace(/\s+/g,'')}`} className="flex min-h-11 items-center gap-3 hover:underline">
+                  <Phone size={20} aria-hidden="true" /> {BUSINESS.contact.phoneDisplay}
                 </a>
-                <a href={BUSINESS.contact.directions} target="_blank" rel="noreferrer" className="flex items-center gap-3 hover:underline">
-                  <MapPin size={16} /> Get directions
+                <a href={BUSINESS.contact.directions} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-3 hover:underline">
+                  <MapPin size={20} aria-hidden="true" /> Kunin ang Direksyon
                 </a>
               </div>
             </div>
@@ -789,11 +825,11 @@ export function BookingPage() {
 
 function SummaryRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="inline-flex items-center gap-2 text-forest-700">
-        <Icon size={15} className="text-forest-600" /> {label}
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] items-start gap-4 text-base">
+      <span className="inline-flex items-start gap-2 text-forest-700">
+        <Icon size={19} className="mt-0.5 shrink-0 text-forest-600" aria-hidden="true" /> {label}
       </span>
-      <span className="text-forest-900 font-medium text-right">{value}</span>
+      <span className="text-forest-900 font-semibold text-right">{value}</span>
     </div>
   )
 }

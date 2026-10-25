@@ -16,7 +16,7 @@ export function OfficialChannelsNotice({ tone = 'light', compact = false }: { to
 
   return (
     <aside
-      className={`rounded-2xl border px-5 py-4 text-xs leading-relaxed ${
+      className={`rounded-2xl border px-5 py-4 ${compact ? 'text-sm' : 'text-base'} leading-relaxed ${
         dark
           ? 'bg-forest-800/60 border-cream-100/15 text-cream-100/85'
           : 'bg-amber-50 border-amber-200 text-amber-950'
@@ -25,7 +25,7 @@ export function OfficialChannelsNotice({ tone = 'light', compact = false }: { to
       data-testid="official-channels"
     >
       <div className={`flex items-center gap-2 font-medium ${dark ? 'text-cream-50' : 'text-amber-900'}`}>
-        <AlertCircle size={15} className="shrink-0" />
+        <AlertCircle size={19} className="shrink-0" aria-hidden="true" />
         {OFFICIAL_CHANNELS.headline}
       </div>
       <p className="mt-1.5">{OFFICIAL_CHANNELS.body}</p>
@@ -33,32 +33,32 @@ export function OfficialChannelsNotice({ tone = 'light', compact = false }: { to
       {!compact && (
         <ul className={`mt-3 grid sm:grid-cols-2 gap-x-6 gap-y-1 ${dark ? 'text-cream-50' : 'text-amber-950'}`}>
           <li>
-            Phone: <a href={`tel:${tel}`} className="underline underline-offset-2">{BUSINESS.contact.phoneDisplay}</a>
+            Phone: <a href={`tel:${tel}`} className="inline-flex min-h-11 items-center underline underline-offset-2">{BUSINESS.contact.phoneDisplay}</a>
           </li>
           <li>
-            Email: <a href={`mailto:${BUSINESS.contact.email}`} className="underline underline-offset-2 break-all">{BUSINESS.contact.email}</a>
+            Email: <a href={`mailto:${BUSINESS.contact.email}`} className="inline-flex min-h-11 items-center break-all underline underline-offset-2">{BUSINESS.contact.email}</a>
           </li>
           <li>
             Facebook:{' '}
-            <a href={BUSINESS.contact.facebook} target="_blank" rel="noreferrer" className="underline underline-offset-2 break-words">
+            <a href={BUSINESS.contact.facebook} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center break-words underline underline-offset-2">
               facebook.com/haciendadeluisiana
             </a>
           </li>
           <li>
             Listings:{' '}
-            <a href={LISTINGS.airbnb.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">{LISTINGS.airbnb.label}</a>
+            <a href={LISTINGS.airbnb.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center underline underline-offset-2">{LISTINGS.airbnb.label}</a>
             {' · '}
-            <a href={LISTINGS.agoda.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">{LISTINGS.agoda.label}</a>
+            <a href={LISTINGS.agoda.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center underline underline-offset-2">{LISTINGS.agoda.label}</a>
           </li>
         </ul>
       )}
 
       {compact && (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-          <a href={LISTINGS.airbnb.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-2">
+          <a href={LISTINGS.airbnb.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 underline underline-offset-2">
             Our Airbnb listing <ArrowRight size={11} />
           </a>
-          <a href={LISTINGS.agoda.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-2">
+          <a href={LISTINGS.agoda.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 underline underline-offset-2">
             Our Agoda listing <ArrowRight size={11} />
           </a>
         </div>

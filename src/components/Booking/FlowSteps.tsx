@@ -1,30 +1,65 @@
-const STEPS = ['Stay details', 'Downpayment', 'Pending review'] as const
+interface FlowStepsProps {
+  /** Zero-based active step. The journey is guidance; it does not change booking rules. */
+  current: number
+  /** Highest zero-based step that is genuinely complete. */
+  completedThrough?: number
+  /** A short explanation for pages that cover more than one planning step. */
+  summary?: string
+}
 
-/** Where the Guest is in the booking flow. Booking is not confirmed at any of these. */
-export function FlowSteps({ current }: { current: 0 | 1 | 2 }) {
+export const BOOKING_JOURNEY_STEPS = [
+  { title: 'Piliin ang matutuluyan', english: 'Accommodation' },
+  { title: 'Piliin ang petsa', english: 'Dates' },
+  { title: 'Availability at presyo', english: 'Availability and price' },
+  { title: 'Suriin ang detalye', english: 'Review' },
+  { title: 'Bayad at patunay', english: 'Payment instructions' },
+  { title: 'Ipadala ang booking', english: 'Submission' },
+  { title: 'Approval at susunod na hakbang', english: 'Status and next steps' },
+] as const
+
+/**
+ * The complete seven-part guest journey, shared by details, payment and status.
+ * It is deliberately a list rather than a clickable stepper: guests cannot skip
+ * required payment proof, submission or administrator approval.
+ */
+export function FlowSteps({
+  current,
+  completedThrough = current - 1,
+  summary,
+}: FlowStepsProps) {
+  const safeCurrent = Math.min(Math.max(current, 0), BOOKING_JOURNEY_STEPS.length - 1)
+  const active = BOOKING_JOURNEY_STEPS[safeCurrent]
+
   return (
-    <ol className="mt-8 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-eyebrow" aria-label="Booking steps">
-      {STEPS.map((label, index) => {
-        const done = index < current
-        const active = index === current
-        return (
-          <li key={label} className="flex items-center gap-2">
-            {index > 0 && <span className="h-px w-6 bg-forest-900/15" aria-hidden="true" />}
-            <span
-              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 ${
-                active
-                  ? 'bg-forest-800 text-cream-50'
-                  : done
-                    ? 'bg-forest-100 text-forest-800'
-                    : 'bg-white text-forest-600 border border-forest-900/10'
-              }`}
+    <nav className="flow-steps" aria-label="Mga hakbang sa booking">
+      <p className="flow-steps__summary" aria-live="polite">
+        {summary ?? `Hakbang ${safeCurrent + 1} sa 7: ${active.title}.`}
+      </p>
+      <ol className="flow-steps__list">
+        {BOOKING_JOURNEY_STEPS.map((step, index) => {
+          const isCurrent = index === safeCurrent
+          const isComplete = index <= completedThrough
+          return (
+            <li
+              key={step.title}
+              className={`flow-steps__step${isCurrent ? ' is-current' : ''}${isComplete ? ' is-complete' : ''}`}
+              aria-current={isCurrent ? 'step' : undefined}
             >
-              <span className="font-mono">{index + 1}</span>
-              {label}
-            </span>
-          </li>
-        )
-      })}
-    </ol>
+              <span className="flow-steps__number" aria-hidden="true">
+                {isComplete ? '✓' : index + 1}
+              </span>
+              <span className="flow-steps__copy">
+                <span className="flow-steps__title">{step.title}</span>
+                <span className="flow-steps__english">{step.english}</span>
+                <span className="sr-only">
+                  {isComplete ? 'Kumpleto na. ' : isCurrent ? 'Kasalukuyang hakbang. ' : 'Susunod na hakbang. '}
+                  Hakbang {index + 1} sa 7.
+                </span>
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+    </nav>
   )
 }

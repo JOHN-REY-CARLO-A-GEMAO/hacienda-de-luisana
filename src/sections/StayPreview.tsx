@@ -48,9 +48,9 @@ export function StayPreview() {
           ))}
         </div>
 
-        <p className="mt-6 text-xs text-forest-700/70 dark:text-cream-200/70 max-w-2xl reveal">
-          No account is required to book. A stay is confirmed only after the Hacienda approves your
-          downpayment screenshot.
+        <p className="reveal mt-6 max-w-3xl text-base leading-relaxed text-forest-800 dark:text-cream-200/80">
+          Hindi kailangan ng account. Pagkatapos pumili at magpadala ng patunay ng downpayment, ang booking ay
+          magiging <strong>Pending</strong>. Kumpirmado lamang ito kapag naaprubahan na ng Hacienda.
         </p>
       </Container>
     </section>
@@ -82,11 +82,11 @@ function StayPreviewCard({
           className="h-52 w-full object-cover"
         />
         <div className="absolute top-4 left-4 flex gap-2">
-          <span className="rounded-full bg-cream-50/95 dark:bg-forest-950/90 text-forest-900 dark:text-cream-50 text-[11px] uppercase tracking-eyebrow px-3 py-1.5 backdrop-blur font-medium">
+          <span className="rounded-full bg-cream-50/95 dark:bg-forest-950/90 text-forest-900 dark:text-cream-50 text-xs uppercase tracking-eyebrow px-3 py-1.5 backdrop-blur font-medium">
             {a.shortName}
           </span>
           {a.availableUnits && (
-            <span className="rounded-full bg-forest-800/90 dark:bg-brass-500 text-cream-50 dark:text-forest-950 text-[11px] uppercase tracking-eyebrow px-3 py-1.5 font-medium">
+            <span className="rounded-full bg-forest-800/90 dark:bg-brass-500 text-cream-50 dark:text-forest-950 text-xs uppercase tracking-eyebrow px-3 py-1.5 font-medium">
               {a.availableUnits} units available
             </span>
           )}
@@ -96,15 +96,15 @@ function StayPreviewCard({
       <div className="p-6 flex-1 flex flex-col">
         <h3 className="font-serif text-2xl text-forest-900 dark:text-cream-50">{propertyName}</h3>
 
-        <div className="mt-3 inline-flex items-center gap-2 text-sm text-forest-800 dark:text-cream-100/80">
-          <Users size={15} className="text-forest-600 dark:text-sage-400 shrink-0" />
+        <div className="mt-3 inline-flex items-center gap-2 text-base text-forest-800 dark:text-cream-100/85">
+          <Users size={19} className="shrink-0 text-forest-600 dark:text-sage-400" aria-hidden="true" />
           {a.capacityLabel}
         </div>
 
         <div className="mt-5 pt-5 border-t border-forest-900/5 dark:border-cream-100/10">
-          <div className="text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">Rate</div>
-          <div className="font-serif text-xl text-forest-900 dark:text-cream-50 mt-1">{rate.label}</div>
-          {rate.source && <div className="text-[11px] text-forest-700/70 dark:text-cream-200/60 mt-1">{rate.source}</div>}
+          <div className="text-sm font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">Presyo (Rate)</div>
+          <div className="mt-1 font-serif text-2xl text-forest-900 dark:text-cream-50">{rate.label}</div>
+          {rate.source && <div className="mt-1 text-sm text-forest-700 dark:text-cream-200/70">{rate.source}</div>}
         </div>
 
         <div className="mt-auto pt-6">
@@ -113,8 +113,8 @@ function StayPreviewCard({
             data-tour="accommodation-cta"
             className="btn-primary w-full group/btn"
           >
-            Book this room
-            <ArrowRight size={16} className="transition-transform group-hover/btn:translate-x-1" />
+            Book this room · Piliin Ito
+            <ArrowRight size={20} className="transition-transform group-hover/btn:translate-x-1" />
           </Link>
         </div>
       </div>

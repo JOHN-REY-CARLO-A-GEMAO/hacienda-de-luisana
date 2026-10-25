@@ -71,7 +71,7 @@ export function Hero() {
         <div className="flex-1 flex items-start lg:items-center pt-[86px] pb-10 lg:py-0">
           <Container width="wide" className="w-full">
             <div ref={content} className="hero-layer max-w-2xl animate-fade-in" data-hero-layer="content">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cream-100/30 bg-forest-950/45 backdrop-blur-md px-3.5 py-1.5 text-xs text-cream-100 font-medium">
+              <div className="inline-flex items-center gap-2 rounded-full border border-cream-100/30 bg-forest-950/55 px-3.5 py-2 text-sm text-cream-100 font-medium backdrop-blur-md">
                 <MapPin size={13} className="text-brass-300" />
                 <span>{BUSINESS.address.city}, {BUSINESS.address.region}</span>
               </div>
@@ -80,18 +80,19 @@ export function Hero() {
                 Your Escape Starts Here.
               </h1>
 
-              <p className="mt-4 max-w-xl text-cream-100/90 text-base sm:text-lg leading-relaxed font-normal">
-                Private countryside stay near Laguna attractions — villa accommodations and peaceful lawn
-                camping in Luisiana, Laguna, made for relaxing family gatherings and quiet days in nature.
+              <p className="mt-4 max-w-xl text-lg leading-relaxed text-cream-100 sm:text-xl">
+                Pribadong matutuluyan sa Luisiana, Laguna—para sa pamilya at tahimik na pahinga.
+                Piliin ang matutuluyan at petsa, at susundan namin kayo sa bawat hakbang ng booking.
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <a href="#stay" className="btn-on-dark font-semibold">
-                  Explore Our Stays
-                </a>
-                <Link to="/book" data-tour="hero-cta" className="btn-secondary font-medium">
-                  Book a room · Check Availability
+                <Link to="/book" data-tour="hero-cta" className="btn-on-dark btn-lg flex-col gap-1 font-semibold">
+                  <span>Mag-book ng Matutuluyan</span>
+                  <span className="text-sm font-medium opacity-80">Book a room</span>
                 </Link>
+                <a href="#stay" className="btn-secondary btn-lg">
+                  Tingnan ang Matutuluyan
+                </a>
               </div>
 
               {/* Airbnb's rating of the listing — dated in config, refreshed rather than assumed */}
@@ -99,7 +100,7 @@ export function Hero() {
                 href={AIRBNB_RATING.url}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-6 inline-flex items-center gap-2 rounded-full border border-cream-100/25 bg-forest-950/45 backdrop-blur-md px-3.5 py-1.5 text-xs text-cream-100 hover:bg-forest-950/65 transition"
+                className="mt-6 inline-flex min-h-11 flex-wrap items-center gap-2 rounded-full border border-cream-100/25 bg-forest-950/55 px-3.5 py-2 text-sm text-cream-100 backdrop-blur-md transition hover:bg-forest-950/70"
                 aria-label={`Rated ${AIRBNB_RATING.rating.toFixed(1)} out of 5 on Airbnb from ${AIRBNB_RATING.reviewCount} reviews`}
               >
                 <Star size={13} className="text-brass-400" />
@@ -124,28 +125,28 @@ export function Hero() {
 
         {/* Bottom strip: scene marker, scroll cue, at-a-glance facts (all from config) */}
         <Container width="wide" className="flex items-end justify-between gap-6 pb-10 lg:pb-9">
-          <div className="hidden sm:block text-[11px] uppercase tracking-eyebrow text-cream-100/60">
+          <div className="hidden sm:block text-xs uppercase tracking-eyebrow text-cream-100/60">
             <span className="font-serif text-2xl text-cream-50/90 not-italic tracking-normal mr-3">01</span>
             {BUSINESS.tagline}
           </div>
           <a
             href="#intro"
-            className="flex flex-col items-center gap-2 text-cream-100/70 hover:text-cream-100 transition group mx-auto lg:mx-0"
+            className="mx-auto flex min-h-11 flex-col items-center justify-center gap-1 px-3 text-cream-100/80 transition hover:text-cream-100 lg:mx-0"
           >
-            <span className="text-[10px] uppercase tracking-eyebrow">Discover the Hacienda</span>
+            <span className="text-xs uppercase tracking-eyebrow">Discover the Hacienda</span>
             <ArrowDown size={18} className={reducedMotion ? '' : 'animate-bounce'} />
           </a>
           <dl className="hidden lg:grid grid-cols-3 gap-6 rounded-2xl border border-cream-50/15 bg-forest-950/35 backdrop-blur-md px-6 py-4 text-cream-50 lg:mr-28">
             <div>
-              <dt className="text-[10px] uppercase tracking-eyebrow text-cream-100/60">Main House base rate</dt>
+              <dt className="text-xs uppercase tracking-eyebrow text-cream-100/60">Main House capacity</dt>
               <dd className="font-serif text-2xl leading-tight mt-1">{BUSINESS.policies.mainHouseIncludedGuests} guests included</dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-eyebrow text-cream-100/60">Check-in</dt>
+              <dt className="text-xs uppercase tracking-eyebrow text-cream-100/60">Check-in</dt>
               <dd className="font-serif text-2xl leading-tight mt-1">{BUSINESS.policies.checkIn}</dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-eyebrow text-cream-100/60">Check-out</dt>
+              <dt className="text-xs uppercase tracking-eyebrow text-cream-100/60">Check-out</dt>
               <dd className="font-serif text-2xl leading-tight mt-1">{BUSINESS.policies.checkOut}</dd>
             </div>
           </dl>

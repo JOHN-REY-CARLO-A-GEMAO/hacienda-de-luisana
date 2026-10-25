@@ -10,11 +10,14 @@ import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
+import '../../services/booking_queue.dart';
 import '../../services/payment_proof_service.dart';
 import '../../services/pin_store.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
+import '../../widgets/loading_state.dart';
 import '../../widgets/status_pill.dart';
+import '../../utils/validators.dart';
 import '../security/security_pin_sheet.dart';
 import 'payment_proof_viewer.dart';
 
@@ -39,169 +42,295 @@ class _PaymentVerificationQueueScreenState
   }
 
   Future<void> _approvePayment(BookingModel booking) async {
-    final owed = (booking.amountDue ?? 0) + (booking.securityDeposit ?? 0);
-    final suggestedAmount = booking.amountClaimed ?? (owed > 0 ? owed : booking.totalAmount * 0.5);
-
-    final amount = await _askAmount(
-      'Approve & Verify Payment',
-      'Verify amount received on receipt (₱${suggestedAmount.toStringAsFixed(2)})',
-      suggestedAmount,
-    );
-    if (amount == null) return;
-
-    final action = booking.rawStatus == BookingStatuses.pending
-        ? AdminAction.approve
-        : AdminAction.verifyPayment;
-
-    final ticket = await requirePinTicket(
-      context,
-      ref: ref,
-      title: 'Approve Payment — ${booking.guestName}',
-      consequence:
-          'Verifies ₱${amount.toStringAsFixed(2)} for ${booking.guestName}. Moves booking to Reserved/Approved and notifies guest.',
-    );
-    if (ticket == null) return;
-
+    if (_busy) return;
     setState(() => _busy = true);
-    final service = ref.read(firestoreServiceProvider);
-    final result = await service.applyBookingAction(
-      booking,
-      action,
-      _actor(),
-      input: ActionInput(amountVerified: amount),
-      ticket: ticket,
-    );
-    if (!mounted) return;
-    setState(() => _busy = false);
+    try {
+      final action = booking.rawStatus == BookingStatuses.pending
+          ? AdminAction.approve
+          : AdminAction.verifyPayment;
+      final double amount;
+      if (action == AdminAction.approve) {
+        // Approval records the Guest's claimed downpayment. The lifecycle
+        // deliberately ignores amountVerified for this transition, so do not
+        // ask for a second number that could disagree with the actual write.
+        final claimed = booking.amountClaimed;
+        if (claimed == null || claimed <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: AppColors.statusAlert,
+            content: Text('Hindi maaprubahan: walang wastong halaga ng downpayment sa proof. Humingi ng bagong patunay.'),
+            duration: Duration(seconds: 7),
+          ));
+          return;
+        }
+        amount = claimed;
+      } else {
+        final owed = booking.amountDue == null
+            ? null
+            : booking.amountDue! + (booking.securityDeposit ?? 0);
+        // Never invent a due-now figure when the Booking has no snapshot.
+        final suggestedAmount = booking.amountClaimed ??
+            (owed != null && owed > 0 ? owed : null);
+        final entered = await _askAmount(
+          'Aprubahan at Beripikahin ang Bayad',
+          owed != null
+              ? 'Halagang aktwal na natanggap (₱${owed.toStringAsFixed(2)} ang naitalang due)'
+              : 'Ilagay ang eksaktong halagang nakasaad sa patunay',
+          suggestedAmount,
+        );
+        if (entered == null || !mounted) return;
+        amount = entered;
+      }
 
-    final messenger = ScaffoldMessenger.of(context);
-    if (result.ok) {
+      final ticket = await requirePinTicket(
+        context,
+        ref: ref,
+        title: 'Beripikahin ang Bayad — ${booking.guestName}',
+        consequence:
+            'Be-verify nito ang ₱${amount.toStringAsFixed(2)} para kay ${booking.guestName}. '
+            'Suriin muna ang patunay; hindi ito awtomatikong approval.',
+      );
+      if (ticket == null || !mounted) return;
+
+      final result = await ref.read(firestoreServiceProvider).applyBookingAction(
+        booking,
+        action,
+        _actor(),
+        input: ActionInput(
+          amountVerified: action == AdminAction.verifyPayment ? amount : null,
+        ),
+        ticket: ticket,
+      );
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
       messenger.showSnackBar(SnackBar(
-        content: Text('Payment verified for ${booking.guestName}. Status: ${result.patch['status']}'),
+        backgroundColor: result.ok ? null : AppColors.statusAlert,
+        content: Text(result.ok
+            ? 'Nabe-verify ang bayad ni ${booking.guestName}. Status: ${result.patch['status']}'
+            : 'Hindi nabe-verify: ${result.reason ?? 'Tinanggihan ng serbisyo.'}'),
+        duration: Duration(seconds: result.ok ? 4 : 7),
       ));
-    } else {
-      messenger.showSnackBar(SnackBar(
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: AppColors.statusAlert,
-        content: Text(result.reason ?? 'Verification failed.'),
+        content: Text('Hindi naisagawa ang verification. ${error.toString().split('\n').first}'),
+        duration: const Duration(seconds: 7),
       ));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _rejectPayment(BookingModel booking, {required bool allowResubmission}) async {
-    final title = allowResubmission ? 'Request Proof Resubmission' : 'Reject Payment & Cancel';
-    final hint = allowResubmission
-        ? 'Specify why proof was rejected (e.g. unreadable image, incorrect amount). Guest will be prompted to re-upload.'
-        : 'Specify why proof was rejected. This will cancel the booking.';
-
-    final reason = await _askText(title, hint, confirm: allowResubmission ? 'Request Resubmit' : 'Reject & Cancel');
-    if (reason == null || reason.isEmpty) return;
-
-    SecurityTicket? ticket;
-    if (!allowResubmission) {
-      ticket = await requirePinTicket(
-        context,
-        ref: ref,
-        title: 'Cancel Booking — ${booking.guestName}',
-        consequence: 'Rejecting proof without resubmission will cancel the booking outright.',
-      );
-      if (ticket == null) return;
-    }
-
+    if (_busy) return;
     setState(() => _busy = true);
-    final service = ref.read(firestoreServiceProvider);
-    final result = await service.applyBookingAction(
-      booking,
-      AdminAction.rejectPaymentProof,
-      _actor(),
-      input: ActionInput(reason: reason, guestResubmits: allowResubmission),
-      ticket: ticket,
-    );
-    if (!mounted) return;
-    setState(() => _busy = false);
+    try {
+      final title = allowResubmission
+          ? 'Humingi ng Bagong Patunay'
+          : 'Tanggihan ang Bayad at Kanselahin';
+      final hint = allowResubmission
+          ? 'Ipaliwanag kung bakit (hal. malabong larawan o maling halaga). Makapagpapadala muli ang Guest.'
+          : 'Ipaliwanag kung bakit. Kanselahin ang booking at hindi na ito maibabalik dito.';
+      final reason = await _askText(
+        title,
+        hint,
+        confirm: allowResubmission ? 'Humingi ng Resubmit' : 'Tanggihan at Kanselahin',
+      );
+      if (reason == null || reason.isEmpty || !mounted) return;
 
-    final messenger = ScaffoldMessenger.of(context);
-    if (result.ok) {
-      messenger.showSnackBar(SnackBar(
-        content: Text(allowResubmission
-            ? 'Requested payment resubmission from ${booking.guestName}.'
-            : 'Payment rejected and booking cancelled.'),
+      SecurityTicket? ticket;
+      if (!allowResubmission) {
+        ticket = await requirePinTicket(
+          context,
+          ref: ref,
+          title: 'Kanselahin ang Booking — ${booking.guestName}',
+          consequence:
+              'Kakanselahin nito ang booking kapag tinanggihan ang patunay nang walang resubmission.',
+        );
+        if (ticket == null || !mounted) return;
+      }
+      if (!mounted) return;
+
+      final result = await ref.read(firestoreServiceProvider).applyBookingAction(
+        booking,
+        AdminAction.rejectPaymentProof,
+        _actor(),
+        input: ActionInput(reason: reason, guestResubmits: allowResubmission),
+        ticket: ticket,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: result.ok ? null : AppColors.statusAlert,
+        content: Text(result.ok
+            ? (allowResubmission
+                ? 'Naipadala ang resubmission request kay ${booking.guestName}.'
+                : 'Tinanggihan ang bayad at nakansela ang booking.')
+            : 'Hindi naisagawa: ${result.reason ?? 'Tinanggihan ng serbisyo.'}'),
+        duration: Duration(seconds: result.ok ? 4 : 7),
       ));
-    } else {
-      messenger.showSnackBar(SnackBar(
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: AppColors.statusAlert,
-        content: Text(result.reason ?? 'Rejection failed.'),
+        content: Text('Hindi naisagawa ang rejection. ${error.toString().split('\n').first}'),
+        duration: const Duration(seconds: 7),
       ));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<String?> _askText(String title, String hint, {required String confirm}) async {
     final controller = TextEditingController();
+    String? dialogError;
     return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title, style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 3,
-          decoration: InputDecoration(hintText: hint, border: const OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              final txt = controller.text.trim();
-              if (txt.isNotEmpty) Navigator.pop(ctx, txt);
-            },
-            child: Text(confirm),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 20)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  maxLines: 4,
+                  style: const TextStyle(fontSize: 18),
+                  decoration: InputDecoration(hintText: hint, border: const OutlineInputBorder()),
+                  onChanged: (_) {
+                    if (dialogError != null) setDialogState(() => dialogError = null);
+                  },
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    dialogError!,
+                    style: const TextStyle(fontSize: 16, color: AppColors.statusAlert),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ],
+          actions: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Bumalik')),
+                ElevatedButton(
+                  onPressed: () {
+                    final txt = controller.text.trim();
+                    if (txt.isEmpty) {
+                      setDialogState(() => dialogError = 'Kailangan ang dahilan bago magpatuloy.');
+                      return;
+                    }
+                    Navigator.pop(ctx, txt);
+                  },
+                  child: Text(confirm),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    );
+    ).whenComplete(controller.dispose);
   }
 
-  Future<double?> _askAmount(String title, String hint, double initial) async {
-    final controller = TextEditingController(text: initial.toStringAsFixed(2));
+  Future<double?> _askAmount(String title, String hint, double? initial) async {
+    final controller = TextEditingController(text: initial?.toStringAsFixed(2) ?? '');
+    String? dialogError;
     return showDialog<double>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title, style: GoogleFonts.cinzel(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(prefixText: '₱ ', hintText: hint, border: const OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              final v = double.tryParse(controller.text.replaceAll(',', ''));
-              if (v != null) Navigator.pop(ctx, v);
-            },
-            child: const Text('Confirm'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(title, style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 20)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(fontSize: 20),
+                  decoration: InputDecoration(
+                    prefixText: '₱ ',
+                    hintText: hint,
+                    border: const OutlineInputBorder(),
+                  ),
+                  onChanged: (_) {
+                    if (dialogError != null) setDialogState(() => dialogError = null);
+                  },
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    dialogError!,
+                    style: const TextStyle(fontSize: 16, color: AppColors.statusAlert),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ],
+          actions: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Bumalik')),
+                ElevatedButton(
+                  onPressed: () {
+                    final value = controller.text.replaceAll(',', '').trim();
+                    final error = Validators.amount(value, min: 0.01);
+                    if (error != null) {
+                      setDialogState(() => dialogError = error);
+                      return;
+                    }
+                    final amount = double.tryParse(value);
+                    if (amount == null) {
+                      setDialogState(() => dialogError = 'Maglagay ng wastong halaga.');
+                      return;
+                    }
+                    Navigator.pop(ctx, amount);
+                  },
+                  child: const Text('Kumpirmahin'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    );
+    ).whenComplete(controller.dispose);
   }
 
   Future<void> _openProof(BookingModel booking) async {
+    if (_busy) return;
     final path = booking.paymentProofUrl;
     if (path == null || path.isEmpty) return;
-
-    final result = await PaymentProofService.signedUrl(path);
-    if (!mounted) return;
-    if (result.error != null) {
+    setState(() => _busy = true);
+    try {
+      final result = await PaymentProofService.signedUrl(path);
+      if (!mounted) return;
+      if (result.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(result.error!),
+          backgroundColor: AppColors.statusAlert,
+        ));
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => PaymentProofViewer(url: result.url!)),
+      );
+    } catch (error) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.error!),
         backgroundColor: AppColors.statusAlert,
+        content: Text('Hindi mabuksan ang proof. ${error.toString().split('\n').first}'),
       ));
-      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PaymentProofViewer(url: result.url!)),
-    );
   }
 
   @override
@@ -212,27 +341,27 @@ class _PaymentVerificationQueueScreenState
       backgroundColor: AppColors.surfaceLight,
       appBar: AppBar(
         title: Text(
-          'Payment Verification Queue',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
+          'Mga Bayad na Susuriin',
+          style: GoogleFonts.cinzel(fontSize: 20, fontWeight: FontWeight.bold),
         ),
+        bottom: _busy
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(4),
+                child: LinearProgressIndicator(minHeight: 4),
+              )
+            : null,
       ),
       body: bookingsAsync.when(
         data: (allBookings) {
-          final queue = allBookings.where((b) {
-            final hasProof = b.paymentProofUrl != null && b.paymentProofUrl!.isNotEmpty;
-            final unverified = b.paymentStatus != 'verified';
-            final pendingReview = b.rawStatus == BookingStatuses.pending ||
-                b.rawStatus == BookingStatuses.paymentPending;
-            return hasProof && unverified && pendingReview;
-          }).toList();
+          final queue = allBookings.where(bookingNeedsPaymentReview).toList();
 
           queue.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
           if (queue.isEmpty) {
             return const EmptyState(
               icon: Icons.check_circle_outline,
-              title: 'Queue Clear',
-              subtitle: 'No payment verification requests waiting at this time.',
+              title: 'Wala nang bayad na susuriin',
+              subtitle: 'Walang payment proof na naghihintay ng verification. Hindi awtomatikong nabe-verify ang anumang bayad.',
             );
           }
 
@@ -254,13 +383,27 @@ class _PaymentVerificationQueueScreenState
                       const Icon(Icons.pending_actions, color: AppColors.primaryForest),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          '${queue.length} Pending Payment Verification${queue.length > 1 ? 's' : ''}',
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primaryForest,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${queue.length} bayad na susuriin',
+                              style: GoogleFonts.inter(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryForest,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Buksan at suriin ang proof bago magdesisyon. Ang OCR o claimed amount lamang ay hindi patunay na pumasok ang pera.',
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                height: 1.4,
+                                color: AppColors.primaryForest,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -273,16 +416,31 @@ class _PaymentVerificationQueueScreenState
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error loading queue: $err')),
+        loading: () => const LoadingState(
+          label: 'Binabasa ang mga payment proof…',
+          detail: 'Tinitiyak na ang aktwal na mga proof lamang ang nasa queue.',
+        ),
+        error: (err, _) => EmptyState(
+          icon: Icons.cloud_off_outlined,
+          title: 'Hindi mabasa ang payment queue',
+          subtitle: 'Walang bayad na minarkahang verified. Suriin ang koneksyon at subukan muli. ${err.toString().split('\n').first}',
+          action: ElevatedButton.icon(
+            onPressed: () => ref.invalidate(bookingsStreamProvider),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Subukan Muli'),
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildQueueCard(BookingModel booking) {
     final published = ref.watch(accommodationsProvider);
-    final requiredDownpayment = booking.amountDue ?? (booking.totalAmount * 0.5);
-    final claimed = booking.amountClaimed ?? requiredDownpayment;
+    final dueNow = booking.amountDue;
+    final claimed = booking.amountClaimed;
+    final total = booking.stayTotal ?? booking.totalAmount;
+
+    String peso(double? value) => value == null ? 'Hindi naitala' : '₱${value.toStringAsFixed(2)}';
 
     return HaciendaCard(
       borderColor: AppColors.accentGold,
@@ -290,87 +448,85 @@ class _PaymentVerificationQueueScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  booking.guestName,
-                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-              StatusPill(
-                label: 'PROOF SUBMITTED',
-                color: StatusStyle.payment('pending'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
           Text(
-            '${booking.guestPhone} · ${booking.guestEmail} · Ref: ${booking.refId ?? booking.id}',
-            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+            booking.guestName,
+            style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.bold),
           ),
-          const Divider(height: 20),
-          _infoRow('Accommodation', BookingModel.accommodationLabel(booking.accommodation, published)),
-          _infoRow(
-            'Stay Dates',
-            '${DateFormatter.formatStayRange(booking.checkInDate, booking.checkOutDate)} (${DateFormatter.formatStayDuration(booking.checkInDate, booking.checkOutDate)})',
-          ),
-          _infoRow('Stay Total', '₱${booking.totalAmount.toStringAsFixed(2)}'),
-          _infoRow('Required Downpayment (50%)', '₱${requiredDownpayment.toStringAsFixed(2)}'),
-          _infoRow(
-            'Claimed Amount Paid',
-            '₱${claimed.toStringAsFixed(2)}',
-            highlight: true,
-          ),
-          if (booking.paymentPlan != null) _infoRow('Payment Plan', booking.paymentPlan!),
           const SizedBox(height: 10),
+          StatusPill(
+            label: 'MAY PROOF NA NAIPADALA',
+            color: StatusStyle.payment('pending'),
+            fontSize: 14,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${booking.guestPhone}\n${booking.guestEmail}\nReference: ${booking.refId ?? booking.id}',
+            style: GoogleFonts.inter(fontSize: 16, color: AppColors.textMuted, height: 1.4),
+          ),
+          const Divider(height: 28),
+          _infoRow('Matutuluyan', BookingModel.accommodationLabel(booking.accommodation, published)),
+          _infoRow(
+            'Petsa ng stay',
+            '${DateFormatter.formatStayRange(booking.checkInDate, booking.checkOutDate)}\n'
+            '${DateFormatter.formatStayDuration(booking.checkInDate, booking.checkOutDate)}',
+          ),
+          _infoRow('Stay total', peso(total)),
+          _infoRow('Naitalang due now', peso(dueNow)),
+          if (booking.securityDeposit != null)
+            _infoRow('Security deposit', peso(booking.securityDeposit)),
+          _infoRow('Halagang sinabi ng Guest na naipadala', peso(claimed), highlight: true),
+          if (booking.paymentPlan != null) _infoRow('Payment plan', booking.paymentPlan!),
+          const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () => _openProof(booking),
-              icon: const Icon(Icons.receipt_long, size: 18),
-              label: const Text('View Payment Proof Image'),
+              onPressed: _busy ? null : () => _openProof(booking),
+              icon: const Icon(Icons.receipt_long, size: 22),
+              label: const Text('Buksan at Suriin ang Payment Proof'),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: AppColors.primaryForest),
               ),
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _busy ? null : () => _rejectPayment(booking, allowResubmission: true),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.statusWarning,
-                    side: const BorderSide(color: AppColors.statusWarning),
-                  ),
-                  child: const Text('Request Resubmit'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _busy ? null : () => _rejectPayment(booking, allowResubmission: false),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.statusAlert,
-                    side: const BorderSide(color: AppColors.statusAlert),
-                  ),
-                  child: const Text('Reject & Cancel'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _busy ? null : () => _approvePayment(booking),
-              icon: const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text('Approve & Confirm Payment'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.statusSuccess,
-                padding: const EdgeInsets.symmetric(vertical: 12),
+              icon: _busy
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.check_circle_outline, size: 22),
+              label: Text(_busy ? 'Isinasagawa… huwag pindutin muli' : 'Aprubahan at Beripikahin ang Bayad'),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusSuccess),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : () => _rejectPayment(booking, allowResubmission: true),
+              icon: const Icon(Icons.refresh, size: 22),
+              label: const Text('Humingi ng Bagong Patunay'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.statusWarning,
+                side: const BorderSide(color: AppColors.statusWarning),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : () => _rejectPayment(booking, allowResubmission: false),
+              icon: const Icon(Icons.cancel_outlined, size: 22),
+              label: const Text('Tanggihan ang Bayad at Kanselahin'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.statusAlert,
+                side: const BorderSide(color: AppColors.statusAlert),
               ),
             ),
           ),
@@ -381,15 +537,17 @@ class _PaymentVerificationQueueScreenState
 
   Widget _infoRow(String label, String value, {bool highlight = false}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
+          Text(label, style: GoogleFonts.inter(fontSize: 15, color: AppColors.textMuted)),
+          const SizedBox(height: 3),
           Text(
             value,
             style: GoogleFonts.inter(
-              fontSize: 12,
+              fontSize: 18,
+              height: 1.35,
               fontWeight: highlight ? FontWeight.bold : FontWeight.w500,
               color: highlight ? AppColors.primaryForest : AppColors.textDark,
             ),
