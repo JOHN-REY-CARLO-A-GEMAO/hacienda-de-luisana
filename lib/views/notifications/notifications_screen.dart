@@ -8,9 +8,11 @@ import '../../models/admin_notification_model.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
+import '../../widgets/loading_state.dart';
 import '../bookings/booking_detail_screen.dart';
 import '../bookings/payment_verification_queue_screen.dart';
 import '../bookings/refund_management_screen.dart';
+import '../../widgets/admin_ui.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -28,11 +30,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Admin Notification Center',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+      appBar: const AdminPageHeader(
+        title: 'Notifications',
+        subtitle: 'Operational requests waiting for a decision',
       ),
       body: bookingsAsync.when(
         data: (bookings) {
@@ -135,7 +135,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, i) {
               final item = items[i];
-              return InkWell(
+              return Semantics(
+                button: true,
+                label: '${item.title}. ${item.message}. Open record.',
+                child: InkWell(
                 onTap: () {
                   if (item.inboxId != null) {
                     ref
@@ -190,8 +193,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Tap to open record ➔',
-                              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: item.accentColor),
+                              'Open record',
+                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: item.accentColor),
                             ),
                           ],
                         ),
@@ -199,12 +202,26 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     ],
                   ),
                 ),
+                ),
               );
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error loading notifications: $err')),
+        loading: () => const LoadingState(
+              label: 'Reading notifications…',
+              detail: 'Checking bookings and the Admin inbox.',
+            ),
+        error: (err, _) => EmptyState(
+              icon: Icons.cloud_off_outlined,
+              title: 'Notifications could not be read',
+              subtitle:
+                  'Check the connection and try again. ${err.toString().split('\n').first}',
+              action: OutlinedButton.icon(
+                onPressed: () => ref.invalidate(bookingsStreamProvider),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Try again'),
+              ),
+            ),
       ),
     );
   }

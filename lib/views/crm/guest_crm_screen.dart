@@ -7,7 +7,9 @@ import '../../models/guest_crm_model.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
+import '../../widgets/loading_state.dart';
 import 'guest_crm_detail_dialog.dart';
+import '../../widgets/admin_ui.dart';
 
 class GuestCrmScreen extends ConsumerStatefulWidget {
   const GuestCrmScreen({super.key});
@@ -26,11 +28,9 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Guest CRM & History',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+      appBar: const AdminPageHeader(
+        title: 'Guest records',
+        subtitle: 'History, preferences and VIP notes',
       ),
       body: Column(
         children: [
@@ -92,10 +92,21 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(
-                  child: Text(
-                      'Could not load Guests: ${err.toString().split('\n').first}')),
+              loading: () => const LoadingState(
+                    label: 'Reading guest records…',
+                    detail: 'Loading profiles and past stay history.',
+                  ),
+              error: (err, _) => EmptyState(
+                    icon: Icons.cloud_off_outlined,
+                    title: 'Guest records could not be read',
+                    subtitle:
+                        'Check the connection and try again. ${err.toString().split('\n').first}',
+                    action: OutlinedButton.icon(
+                      onPressed: () => ref.invalidate(guestProfilesStreamProvider),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Try again'),
+                    ),
+                  ),
             ),
           ),
         ],
@@ -147,10 +158,10 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                               border: Border.all(color: AppColors.accentGold),
                             ),
                             child: Text(
-                              'VIP GUEST',
+                              'VIP guest',
                               style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
                                 color: AppColors.accentGoldDark,
                               ),
                             ),
@@ -159,8 +170,8 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                       ],
                     ),
                     Text(
-                      '${guest.phone} · ${guest.email}',
-                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+                      '${guest.phone}, ${guest.email}',
+                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -182,16 +193,16 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                     children: [
                       Column(
                         children: [
-                          Text('TOTAL VISITS', style: GoogleFonts.inter(fontSize: 9, color: AppColors.textMuted)),
-                          Text('${guest.totalBookings} Stays', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold)),
+                          Text('Total visits', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
+                          Text('${guest.totalBookings} stays', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700)),
                         ],
                       ),
                       Container(height: 20, width: 1, color: AppColors.cardBorder),
                       Column(
                         children: [
-                          Text('LIFETIME VALUE', style: GoogleFonts.inter(fontSize: 9, color: AppColors.textMuted)),
+                          Text('Lifetime value', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
                           Text(currencyFmt.format(guest.lifetimeRevenue),
-                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primaryForest)),
+                              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primaryForest)),
                         ],
                       ),
                     ],

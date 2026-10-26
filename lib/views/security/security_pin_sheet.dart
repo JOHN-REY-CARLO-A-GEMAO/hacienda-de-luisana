@@ -682,7 +682,7 @@ class PinEntryPadState extends State<PinEntryPad>
   }
 
   double _offset(double t) {
-    // Three sways, decaying: sin(3πt)·9·(1−t).
+    // Three sways, decaying: sin(3πt) × 9 × (1−t).
     final sway = 3 * 3.1415926535897932 * t;
     return math.sin(sway) * 9 * (1 - t);
   }

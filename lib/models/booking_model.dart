@@ -244,7 +244,7 @@ class BookingModel {
         }
         return paymentProofUrl == null || paymentProofUrl!.isEmpty
             ? 'Naghihintay ng payment proof mula sa Guest.'
-            : 'Verify the payment proof · Beripikahin ang patunay ng bayad.';
+            : 'Verify the payment proof. Beripikahin ang patunay ng bayad.';
       case BookingStatuses.paymentVerified:
       case BookingStatuses.reserved:
         return 'Reserved — i-check in ang Guest sa pagdating.';

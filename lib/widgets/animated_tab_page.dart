@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Wraps one tab of the [MainShellScreen]'s [IndexedStack].
+/// Wraps one tab of the shell's IndexedStack with a brief fade.
 ///
-/// The first time the tab becomes active (including the initial tab on
-/// app start) it fades in and slides up over 280 ms. The child element is
-/// passed as the [AnimatedBuilder] child, so during the animation the
-/// framework only re-paints the transform/opacity — the tab's widget
-/// subtree is not rebuilt per frame.
-///
-/// Inactive tabs that have never been visited are returned untouched
-/// (the [IndexedStack] does not paint them anyway), and everything
-/// collapses to a static swap when animations are disabled.
+/// The child element is passed as the [AnimatedBuilder] child, so the
+/// framework does not rebuild descendants per frame. Tabs that have never
+/// been visited stay untouched, and reduced-motion users get a static swap.
 class AnimatedTabPage extends StatefulWidget {
   final Widget child;
   final bool isActive;
@@ -35,7 +29,7 @@ class _AnimatedTabPageState extends State<AnimatedTabPage>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 160),
       value: 1.0,
     );
     if (widget.isActive) {
@@ -71,16 +65,10 @@ class _AnimatedTabPageState extends State<AnimatedTabPage>
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: _controller,
-        builder: (context, child) {
-          final v = Curves.easeOut.transform(_controller.value);
-          return Opacity(
-            opacity: v,
-            child: Transform.translate(
-              offset: Offset(0, 12 * (1 - v)),
-              child: child,
-            ),
-          );
-        },
+        builder: (context, child) => Opacity(
+          opacity: Curves.easeOut.transform(_controller.value),
+          child: child,
+        ),
         child: widget.child,
       ),
     );

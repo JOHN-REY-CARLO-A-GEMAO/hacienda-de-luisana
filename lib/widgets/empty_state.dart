@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../core/constants/app_constants.dart';
+import '../core/theme/app_theme.dart';
 
-/// Centered icon + title + subtitle used by every list screen when the
-/// stream is empty (Bookings, Stays, Chat, Smart Lock, Rooms, CRM).
+/// An empty or failed list is a direction, not a dead end.
+///
+/// The title says what is absent, the body says what to do next, and an
+/// optional action gives the user the shortest way forward.
 class EmptyState extends StatelessWidget {
   final IconData? icon;
   final String title;
   final String? subtitle;
   final Widget? action;
   final EdgeInsetsGeometry? padding;
+  final Color? accent;
 
   const EmptyState({
     super.key,
@@ -18,42 +21,59 @@ class EmptyState extends StatelessWidget {
     this.subtitle,
     this.action,
     this.padding,
+    this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
+    final tone = accent ?? AppColors.primaryForest;
     return Center(
-      child: Padding(
-        padding: padding ?? const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              Icon(icon!, size: 48, color: AppColors.textMuted.withOpacity(0.5)),
-              const SizedBox(height: 12),
-            ],
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.cinzel(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textDark,
-              ),
+      child: Semantics(
+        container: true,
+        liveRegion: true,
+        label: subtitle == null ? title : '$title. $subtitle',
+        child: SingleChildScrollView(
+          padding: padding ?? const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: tone.withValues(alpha: 0.10),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: tone.withValues(alpha: 0.24)),
+                    ),
+                    child: Icon(icon, size: 25, color: tone),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: AppTheme.display(fontSize: 19),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    subtitle!,
+                    textAlign: TextAlign.center,
+                    style: AppTheme.body(fontSize: 13, color: AppColors.textMuted),
+                  ),
+                ],
+                if (action != null) ...[
+                  const SizedBox(height: 18),
+                  action!,
+                ],
+              ],
             ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                subtitle!,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(fontSize: 16, color: AppColors.textMuted, height: 1.4),
-              ),
-            ],
-            if (action != null) ...[
-              const SizedBox(height: 16),
-              action!,
-            ],
-          ],
+          ),
         ),
       ),
     );

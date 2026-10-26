@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../core/constants/app_constants.dart';
+import '../core/theme/app_theme.dart';
 
-/// Readable section label with an optional trailing text
-/// action ("View All Logs →"). Replaces the hand-rolled header rows in
-/// the Dashboard and Smart Lock screens.
+/// Readable section label with an optional trailing text action.
+///
+/// Titles use sentence case; there are no decorative eyebrows or arrows.
 class SectionHeader extends StatelessWidget {
   final String title;
+  final String? caption;
   final String? actionLabel;
   final VoidCallback? onAction;
   final String? actionSemanticsLabel;
@@ -15,6 +16,7 @@ class SectionHeader extends StatelessWidget {
   const SectionHeader({
     super.key,
     required this.title,
+    this.caption,
     this.actionLabel,
     this.onAction,
     this.actionSemanticsLabel,
@@ -24,45 +26,37 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: padding ??
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Flexible(
-            child: Text(
-              title,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.1,
-                color: AppColors.textMuted,
-                height: 1.3,
-              ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.display(fontSize: 18),
+                ),
+                if (caption != null) ...[
+                  const SizedBox(height: 3),
+                  Text(caption!, style: AppTheme.body(fontSize: 12, color: AppColors.textMuted)),
+                ],
+              ],
             ),
           ),
-          if (actionLabel != null) ...[
+          if (actionLabel != null && onAction != null) ...[
             const SizedBox(width: 8),
-            TextButton(
-              onPressed: onAction,
-              style: TextButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-              ),
-              child: Semantics(
-                button: true,
-                label: actionSemanticsLabel ?? actionLabel,
-                child: Text(
-                  actionLabel!,
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryForest,
-                  ),
-                ),
+            Semantics(
+              button: true,
+              label: actionSemanticsLabel ?? actionLabel!,
+              child: TextButton(
+                onPressed: onAction,
+                child: Text(actionLabel!),
               ),
             ),
           ],

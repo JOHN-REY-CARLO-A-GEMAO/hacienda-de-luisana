@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../models/booking_model.dart';
 import '../../models/smart_lock_event_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/booking_queue.dart';
 import '../../tutorial/tutorial_keys.dart';
+import '../../widgets/admin_ui.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/hacienda_card.dart';
 import '../../widgets/loading_state.dart';
 import '../../widgets/section_header.dart';
 import '../bookings/bookings_screen.dart';
 import '../notifications/notifications_screen.dart';
 
+/// The Admin's daily work page.
+///
+/// Every number on this page is derived from the Booking and Access-log
+/// streams. The masthead states the day's real position; the ledger below is
+/// ordered by the decision the Admin has to make next.
 class DashboardScreen extends ConsumerWidget {
   final Function(int tabIndex) onNavigateTab;
 
@@ -34,38 +41,151 @@ class DashboardScreen extends ConsumerWidget {
     final bookingsAsync = ref.watch(bookingsStreamProvider);
     final smartLockLogsAsync = ref.watch(smartLockLogsStreamProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Hacienda de LuisAna',
-              style: GoogleFonts.cinzel(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.4,
-                color: Colors.white,
+    Widget queuesSection() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AdminSectionHeading(
+            title: 'Needs attention',
+            caption: 'Open a queue to work through the real bookings inside it.',
+          ),
+          const SizedBox(height: 8),
+          bookingsAsync.when(
+            data: (bookings) {
+              final queues = _operationalQueues(bookings);
+              return Column(
+                children: [
+                  for (var i = 0; i < queues.length; i++) ...[
+                    _QueueRow(
+                      queue: queues[i],
+                      onTap: () => _openQueue(context, queues[i].filter),
+                    ),
+                    if (i < queues.length - 1) const SizedBox(height: 8),
+                  ],
+                ],
+              );
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: LoadingState(
+                label: 'Building the queues…',
+                detail: 'Reading the current booking records.',
               ),
             ),
-            const Text(
-              'Admin · Mga Gagawin Ngayon',
-              style: TextStyle(fontSize: 14, color: AppColors.accentGoldLight),
+            error: (error, _) => AdminInlineNotice(
+              title: 'Bookings could not be read',
+              message:
+                  'No queue is shown as complete. Check the connection and try again. ${error.toString().split('\n').first}',
+              tone: AdminNoticeTone.danger,
+              action: OutlinedButton.icon(
+                onPressed: () => ref.invalidate(bookingsStreamProvider),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Try again'),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget quickActions() {
+      return HaciendaCard(
+        padding: const EdgeInsets.all(14),
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            SizedBox(
+              width: 210,
+              child: OutlinedButton.icon(
+                key: TourKeys.reviewBookings,
+                onPressed: () => onNavigateTab(1),
+                icon: const Icon(Icons.confirmation_number_outlined, size: 19),
+                label: const Text('All bookings'),
+              ),
+            ),
+            SizedBox(
+              width: 210,
+              child: ElevatedButton.icon(
+                onPressed: () => onNavigateTab(2),
+                icon: const Icon(Icons.chat_bubble_outline, size: 19),
+                label: const Text('Guest messages'),
+              ),
             ),
           ],
         ),
+      );
+    }
+
+    Widget activitySection() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SectionHeader(
+            title: 'Recent door activity',
+            caption: 'Latest events from the Access log',
+            padding: EdgeInsets.zero,
+            actionLabel: 'All logs',
+            actionSemanticsLabel: 'Open all smart lock logs',
+            onAction: () => onNavigateTab(5),
+          ),
+          const SizedBox(height: 8),
+          smartLockLogsAsync.when(
+            data: (logs) {
+              final recentLogs = logs.take(5).toList();
+              if (recentLogs.isEmpty) {
+                return const HaciendaCard(
+                  child: EmptyState(
+                    icon: Icons.lock_clock_outlined,
+                    title: 'No recent door activity',
+                    subtitle: 'Real smart lock events will appear here.',
+                  ),
+                );
+              }
+              return Column(
+                children: [
+                  for (var i = 0; i < recentLogs.length; i++) ...[
+                    _FeedTile(log: recentLogs[i]),
+                    if (i < recentLogs.length - 1) const SizedBox(height: 8),
+                  ],
+                ],
+              );
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: LoadingState(label: 'Reading door activity…'),
+            ),
+            error: (error, _) => AdminInlineNotice(
+              title: 'Door activity could not be read',
+              message: error.toString().split('\n').first,
+              tone: AdminNoticeTone.danger,
+              action: OutlinedButton.icon(
+                onPressed: () => ref.invalidate(smartLockLogsStreamProvider),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Try again'),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppColors.surfaceLight,
+      appBar: AdminPageHeader(
+        title: 'Hacienda de LuisAna',
+        subtitle: 'Admin operations, ${DateFormatter.formatOperationsDay(DateTime.now())}',
         actions: [
           Semantics(
             button: true,
             label: stats.pendingRequests > 0
-                ? 'Mga notification, ${stats.pendingRequests} booking ang naghihintay'
-                : 'Mga notification',
+                ? 'Notifications, ${stats.pendingRequests} bookings waiting'
+                : 'Notifications',
             child: Stack(
+              clipBehavior: Clip.none,
               children: [
                 IconButton(
-                  iconSize: 28,
-                  tooltip: 'Mga notification',
+                  tooltip: 'Notifications',
                   icon: const Icon(Icons.notifications_none, color: Colors.white),
                   onPressed: () {
                     Navigator.of(context).push(MaterialPageRoute(
@@ -79,15 +199,17 @@ class DashboardScreen extends ConsumerWidget {
                     right: 7,
                     child: IgnorePointer(
                       child: Container(
-                        padding: const EdgeInsets.all(5),
+                        constraints: const BoxConstraints(minWidth: 18),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                         decoration: const BoxDecoration(
                           color: AppColors.statusAlert,
                           shape: BoxShape.circle,
                         ),
                         child: Text(
                           '${stats.pendingRequests}',
+                          textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
@@ -98,137 +220,140 @@ class DashboardScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: RefreshIndicator(
+        color: AppColors.primaryForest,
         onRefresh: () async {
           ref.invalidate(bookingsStreamProvider);
           ref.invalidate(smartLockLogsStreamProvider);
         },
-        child: ListView(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 32),
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 22, 20, 6),
-              child: Text(
-                'Ano ang kailangang gawin?',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: AppTheme.pageMaxWidth),
+              child: Padding(
+                padding: const EdgeInsets.all(AppTheme.gutter),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _OperationsMasthead(stats: stats),
+                    const SizedBox(height: 20),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        if (constraints.maxWidth < AppTheme.compactBreakpoint) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              queuesSection(),
+                              const SizedBox(height: 18),
+                              quickActions(),
+                              const SizedBox(height: 18),
+                              activitySection(),
+                            ],
+                          );
+                        }
+                        return AdminResponsiveColumns(
+                          breakpoint: AppTheme.compactBreakpoint,
+                          primary: queuesSection(),
+                          secondary: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              quickActions(),
+                              const SizedBox(height: 16),
+                              activitySection(),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 14),
-              child: Text(
-                'Pumili ng queue upang buksan ang aktwal na mga booking. Ang bawat desisyon ay nasa loob pa rin ng booking at may kumpirmasyon.',
-                style: TextStyle(fontSize: 17, color: AppColors.textMuted, height: 1.45),
-              ),
-            ),
-            bookingsAsync.when(
-              data: (bookings) {
-                final queues = _operationalQueues(bookings);
-                return Column(
-                  children: [
-                    for (final queue in queues)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-                        child: _QueueCard(
-                          queue: queue,
-                          onTap: () => _openQueue(context, queue.filter),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OperationsMasthead extends StatelessWidget {
+  final DashboardStats stats;
+
+  const _OperationsMasthead({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      label: 'Today\'s operations. ${stats.pendingRequests} awaiting approval, '
+          '${stats.todayCheckIns} arrivals, ${stats.activeStayingGuests} guests in house.',
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+        decoration: BoxDecoration(
+          color: AppColors.primaryDark,
+          borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+          border: Border.all(color: AppColors.accentGold.withValues(alpha: 0.55)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: AppColors.accentGold,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Today at the estate',
+                        style: AppTheme.title(fontSize: 15, color: Colors.white),
+                      ),
+                      Text(
+                        'Luisiana, Laguna, ${DateFormatter.formatOperationsDay(DateTime.now())}',
+                        style: AppTheme.body(
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: 0.68),
                         ),
                       ),
-                  ],
-                );
-              },
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 36),
-                child: LoadingState(
-                  label: 'Binubuo ang mga queue…',
-                  detail: 'Binabasa ang aktwal na mga booking. Sandali lamang.',
-                ),
-              ),
-              error: (error, _) => EmptyState(
-                icon: Icons.cloud_off_outlined,
-                title: 'Hindi mabasa ang mga booking',
-                subtitle: 'Walang ipinapakitang gawaing tapos na. Suriin ang koneksyon at subukan muli. ${error.toString().split('\n').first}',
-                action: ElevatedButton.icon(
-                  onPressed: () => ref.invalidate(bookingsStreamProvider),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Subukan Muli'),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  OutlinedButton.icon(
-                    key: TourKeys.reviewBookings,
-                    onPressed: () => onNavigateTab(1),
-                    icon: const Icon(Icons.confirmation_number_outlined, size: 22),
-                    label: const Text('Buksan ang Lahat ng Booking'),
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: () => onNavigateTab(2),
-                    icon: const Icon(Icons.chat_bubble_outline, size: 22),
-                    label: const Text('Mensahe ng mga Bisita'),
-                  ),
-                ],
-              ),
-            ),
-            SectionHeader(
-              title: 'Kamakailang Aktibidad',
-              actionLabel: 'Lahat ng Log',
-              actionSemanticsLabel: 'Buksan ang lahat ng smart lock log',
-              onAction: () => onNavigateTab(5),
-            ),
-            smartLockLogsAsync.when(
-              data: (logs) {
-                final recentLogs = logs.take(5).toList();
-                if (recentLogs.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 6, 16, 24),
-                    child: EmptyState(
-                      icon: Icons.lock_clock_outlined,
-                      title: 'Walang kamakailang aktibidad',
-                      subtitle: 'Dito lalabas ang mga aktwal na smart lock event.',
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  itemCount: recentLogs.length,
-                  itemBuilder: (context, index) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _FeedTile(log: recentLogs[index]),
-                  ),
-                );
-              },
-              loading: () => const Padding(
-                padding: EdgeInsets.all(20),
-                child: LoadingState(label: 'Binabasa ang lock activity…'),
-              ),
-              error: (error, _) => Padding(
-                padding: const EdgeInsets.all(16),
-                child: EmptyState(
-                  icon: Icons.error_outline,
-                  title: 'Hindi mabasa ang lock activity',
-                  subtitle: error.toString().split('\n').first,
-                  action: OutlinedButton.icon(
-                    onPressed: () => ref.invalidate(smartLockLogsStreamProvider),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Subukan Muli'),
+                    ],
                   ),
                 ),
-              ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                AdminMastheadMetric(
+                  value: '${stats.pendingRequests}',
+                  label: 'Awaiting approval',
+                  icon: Icons.fact_check_outlined,
+                ),
+                const SizedBox(width: 12),
+                AdminMastheadMetric(
+                  value: '${stats.todayCheckIns}',
+                  label: 'Arrivals today',
+                  icon: Icons.login_outlined,
+                ),
+                const SizedBox(width: 12),
+                AdminMastheadMetric(
+                  value: '${stats.activeStayingGuests}',
+                  label: 'Guests in house',
+                  icon: Icons.king_bed_outlined,
+                ),
+              ],
             ),
           ],
         ),
@@ -267,16 +392,16 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
   final now = DateTime.now();
   return [
     _OperationalQueue(
-      title: 'Kailangang Aprubahan',
-      description: 'Mga bagong booking na naghihintay ng desisyon.',
+      title: 'Approvals',
+      description: 'New bookings waiting for a decision.',
       filter: BookingListFilter.pendingVerification,
       icon: Icons.fact_check_outlined,
       color: AppColors.statusWarning,
       bookings: _sorted(bookings.where(bookingNeedsApproval)),
     ),
     _OperationalQueue(
-      title: 'Mga Darating Ngayon',
-      description: 'Approved o Reserved na may check-in ngayong araw.',
+      title: 'Arrivals today',
+      description: 'Approved or reserved stays checking in today.',
       filter: BookingListFilter.arrivalsToday,
       icon: Icons.meeting_room_outlined,
       color: AppColors.primaryForest,
@@ -286,24 +411,24 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
       ),
     ),
     _OperationalQueue(
-      title: 'Mga Kasalukuyang Bisita',
-      description: 'Checked-In o Staying; tingnan ang susunod na hakbang.',
+      title: 'Current guests',
+      description: 'Checked-in or staying guests and their next step.',
       filter: BookingListFilter.activeStay,
       icon: Icons.king_bed_outlined,
       color: AppColors.statusSuccess,
       bookings: _sorted(bookings.where(bookingIsCurrentGuest)),
     ),
     _OperationalQueue(
-      title: 'Mga Bayad na Susuriin',
-      description: 'May naipadalang patunay na hindi pa nabe-verify.',
+      title: 'Payments to verify',
+      description: 'Submitted proofs awaiting an Admin decision.',
       filter: BookingListFilter.paymentQueue,
       icon: Icons.payments_outlined,
       color: AppColors.accentGoldDark,
       bookings: _sorted(bookings.where(bookingNeedsPaymentReview)),
     ),
     _OperationalQueue(
-      title: 'Mga Nangangailangan ng Aksyon',
-      description: 'Approval, completion, payment review o refund.',
+      title: 'Other admin actions',
+      description: 'Completion, payment review or refund work.',
       filter: BookingListFilter.needsAction,
       icon: Icons.assignment_late_outlined,
       color: AppColors.statusAlert,
@@ -312,93 +437,72 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
   ];
 }
 
-class _QueueCard extends StatelessWidget {
+class _QueueRow extends StatelessWidget {
   final _OperationalQueue queue;
   final VoidCallback onTap;
 
-  const _QueueCard({required this.queue, required this.onTap});
+  const _QueueRow({required this.queue, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final count = queue.bookings.length;
     final next = count == 0 ? null : queue.bookings.first;
+    final tone = count > 0 ? queue.color : AppColors.textMuted;
+
     return Semantics(
       button: true,
-      label: '${queue.title}, $count booking. Buksan ang queue.',
-      child: Card(
-        margin: EdgeInsets.zero,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: count > 0 ? queue.color.withOpacity(0.45) : AppColors.cardBorder),
-        ),
+      label: '${queue.title}, $count bookings. Open the queue.',
+      child: HaciendaCard(
+        padding: EdgeInsets.zero,
+        borderColor: count > 0
+            ? queue.color.withValues(alpha: 0.36)
+            : AppColors.cardBorder,
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppTheme.radiusCard),
           onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 132),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: queue.color.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(queue.icon, size: 28, color: queue.color),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: tone.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          queue.title,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textDark,
-                            height: 1.25,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          queue.description,
-                          style: const TextStyle(fontSize: 16, color: AppColors.textMuted, height: 1.35),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          next == null
-                              ? 'Walang nakapila sa grupong ito.'
-                              : 'Susunod: ${next.guestName} · ${next.nextStep}',
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 16,
-                            height: 1.35,
-                            fontWeight: next == null ? FontWeight.normal : FontWeight.w600,
-                            color: next == null ? AppColors.textMuted : AppColors.textDark,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
+                  child: Icon(queue.icon, size: 20, color: tone),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(queue.title, style: AppTheme.title(fontSize: 14)),
+                      const SizedBox(height: 3),
                       Text(
-                        '$count',
-                        style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: queue.color),
+                        next == null
+                            ? queue.description
+                            : '${next.guestName}, ${next.nextStep}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTheme.body(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
                       ),
-                      const Icon(Icons.chevron_right, size: 30, color: AppColors.textMuted),
                     ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('$count', style: AppTheme.metric(fontSize: 22, color: tone)),
+                    const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -422,52 +526,49 @@ class _FeedTile extends StatelessWidget {
         : isDenied
             ? AppColors.statusAlert
             : AppColors.primaryForest;
+    final icon = isUnlock
+        ? Icons.lock_open_rounded
+        : isDenied
+            ? Icons.gpp_bad_rounded
+            : Icons.lock_outline_rounded;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
+    return HaciendaCard(
+      padding: const EdgeInsets.all(13),
+      semanticLabel: '${log.doorName}, ${log.action.displayName}, ${DateFormatter.timeAgo(log.timestamp)}',
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
-            child: Icon(
-              isUnlock
-                  ? Icons.lock_open_rounded
-                  : isDenied
-                      ? Icons.gpp_bad_rounded
-                      : Icons.lock_outline_rounded,
-              size: 24,
-              color: color,
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
             ),
+            child: Icon(icon, size: 17, color: color),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   log.doorName,
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textDark,
-                  ),
+                  style: AppTheme.title(fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
-                  '${log.action.displayName} · ${log.triggeredBy} · ${log.method.displayName}',
-                  style: GoogleFonts.inter(fontSize: 16, color: AppColors.textMuted, height: 1.35),
+                  '${log.action.displayName}, ${log.triggeredBy}, ${log.method.displayName}',
+                  style: AppTheme.body(fontSize: 11, color: AppColors.textMuted),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 5),
                 Text(
                   DateFormatter.timeAgo(log.timestamp),
-                  style: GoogleFonts.inter(fontSize: 14, color: AppColors.textMuted),
+                  style: AppTheme.label(fontSize: 11),
                 ),
               ],
             ),

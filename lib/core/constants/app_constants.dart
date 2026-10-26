@@ -137,30 +137,43 @@ class AppConstants {
 }
 
 class AppColors {
-  // Luxurious Nature-Resort Palette
-  static const Color primaryDark = Color(0xFF0D2818);
-  static const Color primaryForest = Color(0xFF1E3A2F);
-  static const Color primaryForestLight = Color(0xFF2D5A46);
+  /// The Admin app's "field ledger" palette.
+  ///
+  /// Pine is structural, paper is the working surface, and brass is reserved
+  /// for the active place or the next decision. Status colours are dark enough
+  /// to remain readable as text on paper; their tinted fills are decorative
+  /// only and never the sole status signal.
+  static const Color primaryDark = Color(0xFF10271B);
+  static const Color primaryForest = Color(0xFF1E3A2B);
+  static const Color primaryForestLight = Color(0xFF3C6148);
 
-  static const Color accentGold = Color(0xFFD4AF37);
-  static const Color accentGoldLight = Color(0xFFF3E5AB);
-  static const Color accentGoldDark = Color(0xFFA67C00);
+  static const Color accentGold = Color(0xFFB88735);
+  static const Color accentGoldLight = Color(0xFFEBD6A6);
+  static const Color accentGoldDark = Color(0xFF7F5D1F);
 
-  static const Color surfaceLight = Color(0xFFF8F9FA);
-  static const Color cardSurface = Colors.white;
-  static const Color cardBorder = Color(0xFFE2E8F0);
+  static const Color surfaceLight = Color(0xFFF5F3EC);
+  static const Color surfaceSunken = Color(0xFFECEBE1);
+  static const Color cardSurface = Color(0xFFFFFEF9);
+  static const Color cardBorder = Color(0xFFD7DCD0);
 
-  static const Color textDark = Color(0xFF0F172A);
-  static const Color textMuted = Color(0xFF64748B);
+  static const Color textDark = Color(0xFF17251A);
+  static const Color textMuted = Color(0xFF5C6B5E);
 
-  static const Color statusSuccess = Color(0xFF2A9D8F);
-  static const Color statusWarning = Color(0xFFE76F51);
-  static const Color statusAlert = Color(0xFFE63946);
-  static const Color statusInfo = Color(0xFF264653);
+  static const Color statusSuccess = Color(0xFF2F6B4F);
+  static const Color statusWarning = Color(0xFF9A5F15);
+  static const Color statusAlert = Color(0xFFA43D31);
+  static const Color statusInfo = Color(0xFF315A69);
+  static const Color statusNeutral = Color(0xFF5B675C);
+
+  /// A pale botanical wash for quiet inner panels and selected rows.
+  static const Color sageMist = Color(0xFFE9EFE4);
+  static const Color goldMist = Color(0xFFF5EBD4);
+  static const Color dangerMist = Color(0xFFF8E8E3);
+  static const Color infoMist = Color(0xFFE4EEF1);
 
   // Inline alert surface — one shape for an error or a warning band, so a
   // screen cannot invent its own red (there were four different ones).
-  static const Color alertDangerSurface = Color(0xFFFFEBEE);
-  static const Color alertDangerBorder = Color(0xFFFFCDD2);
-  static const Color alertDangerText = statusAlert;
+  static const Color alertDangerSurface = Color(0xFFF8E8E3);
+  static const Color alertDangerBorder = Color(0xFFE7C1B8);
+  static const Color alertDangerText = Color(0xFF8C2F25);
 }

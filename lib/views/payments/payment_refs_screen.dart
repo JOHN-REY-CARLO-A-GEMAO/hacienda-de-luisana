@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_constants.dart';
 import '../../utils/validators.dart';
 import '../security/secure_action_sheet.dart';
+import '../../widgets/admin_ui.dart';
 
 /// Admin catalog of valid payment references. OCR never writes here.
 class PaymentRefsScreen extends StatefulWidget {
@@ -153,8 +154,9 @@ class _PaymentRefsScreenState extends State<PaymentRefsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text('Payment references', style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold)),
+      appBar: const AdminPageHeader(
+        title: 'Payment references',
+        subtitle: 'Verify references against real proof',
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -208,7 +210,7 @@ class _PaymentRefsScreenState extends State<PaymentRefsScreen> {
           ...filtered.map(
             (r) => ListTile(
               title: Text(r.reference),
-              subtitle: Text('₱${r.amount.toStringAsFixed(2)} · ${r.status}'),
+              subtitle: Text('₱${r.amount.toStringAsFixed(2)}, ${r.status}'),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () => _confirmDelete(r),

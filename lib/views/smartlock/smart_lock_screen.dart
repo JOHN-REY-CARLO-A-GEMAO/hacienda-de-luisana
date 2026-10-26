@@ -12,6 +12,9 @@ import '../security/secure_action_sheet.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/staggered_entrance.dart';
+import '../../widgets/admin_ui.dart';
+import '../../widgets/loading_state.dart';
+import '../../core/theme/app_theme.dart';
 
 class SmartLockScreen extends ConsumerStatefulWidget {
   const SmartLockScreen({super.key});
@@ -46,11 +49,9 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Smart Lock Security & Logs',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+      appBar: const AdminPageHeader(
+        title: 'Door access',
+        subtitle: 'Real-time smart lock audit trail',
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppColors.primaryForest,
@@ -61,13 +62,18 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
       ),
       body: lockLogsAsync.when(
         data: (logs) {
+          final doorOptions = _doorOptions(logs);
           final totalUnlocks = logs.where((l) => l.action == LockAction.unlock).length;
           final totalRelocks = logs.where((l) => l.action == LockAction.lock || l.action == LockAction.autoRelock).length;
           final totalDenied = logs.where((l) => l.action == LockAction.denied || !l.isSuccess).length;
 
-          final filteredLogs = _doorFilter == 'All Doors'
+          // A door can disappear when the stream changes. Fall back to the
+          // real "all" view rather than showing an unselected, empty filter.
+          final effectiveDoorFilter =
+              doorOptions.contains(_doorFilter) ? _doorFilter : 'All Doors';
+          final filteredLogs = effectiveDoorFilter == 'All Doors'
               ? logs
-              : logs.where((l) => l.doorName == _doorFilter).toList();
+              : logs.where((l) => l.doorName == effectiveDoorFilter).toList();
 
           return ListView(
             padding: const EdgeInsets.only(bottom: 84),
@@ -82,7 +88,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                       child: StaggeredEntrance(
                         index: 0,
                         child: _buildCounterTile(
-                          title: 'TOTAL UNLOCKS',
+                          title: 'Unlocks',
                           value: '$totalUnlocks',
                           color: AppColors.statusSuccess,
                           icon: Icons.lock_open_rounded,
@@ -94,7 +100,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                       child: StaggeredEntrance(
                         index: 1,
                         child: _buildCounterTile(
-                          title: 'AUTO-RELOCKS',
+                          title: 'Auto-relocks',
                           value: '$totalRelocks',
                           color: AppColors.primaryForest,
                           icon: Icons.lock_clock_rounded,
@@ -106,7 +112,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                       child: StaggeredEntrance(
                         index: 2,
                         child: _buildCounterTile(
-                          title: 'ACCESS DENIED',
+                          title: 'Access denied',
                           value: '$totalDenied',
                           color: AppColors.statusAlert,
                           icon: Icons.gpp_bad_rounded,
@@ -117,39 +123,25 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                 ),
               ),
 
-              // Filter Bar
+              // Door filters built from the doors the logs actually name.
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: _doorOptions(logs).map((d) {
-                      final isSelected = _doorFilter == d;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(
-                            d,
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: isSelected ? Colors.white : AppColors.textDark,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                          selected: isSelected,
-                          selectedColor: AppColors.primaryForest,
-                          backgroundColor: Colors.white,
-                          side: BorderSide(color: isSelected ? AppColors.primaryForest : AppColors.cardBorder),
-                          onSelected: (val) {
-                            if (val) setState(() => _doorFilter = d);
-                          },
-                        ),
-                      );
-                    }).toList(),
-                  ),
+                child: AdminFilterStrip(
+                  items: [
+                    for (final door in doorOptions)
+                      AdminFilterItem(
+                        label: door,
+                        count: door == 'All Doors'
+                            ? logs.length
+                            : logs.where((log) => log.doorName == door).length,
+                      ),
+                  ],
+                  selectedIndex: doorOptions.indexOf(effectiveDoorFilter),
+                  onSelected: (index) =>
+                      setState(() => _doorFilter = doorOptions[index]),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
 
               // 2. Audit Trail Header
               Padding(
@@ -158,13 +150,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'REAL-TIME AUDIT TRAIL (${filteredLogs.length})',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.8,
-                        color: AppColors.textMuted,
-                      ),
+                      'Audit trail (${filteredLogs.length})',
+                      style: AppTheme.title(fontSize: 14),
                     ),
                     Text(
                       'Down to the second',
@@ -205,8 +192,21 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
             ],
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error: $err')),
+        loading: () => const LoadingState(
+              label: 'Reading door activity…',
+              detail: 'Loading the real-time Access log.',
+            ),
+        error: (err, _) => EmptyState(
+              icon: Icons.cloud_off_outlined,
+              title: 'Door activity could not be read',
+              subtitle:
+                  'Check the connection and try again. ${err.toString().split('\n').first}',
+              action: OutlinedButton.icon(
+                onPressed: () => ref.invalidate(smartLockLogsStreamProvider),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Try again'),
+              ),
+            ),
       ),
     );
   }
@@ -235,7 +235,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
           const SizedBox(height: 2),
           Text(
             title,
-            style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textMuted),
+            style: AppTheme.label(fontSize: 11),
             textAlign: TextAlign.center,
           ),
         ],
@@ -312,7 +312,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                         border: Border.all(color: AppColors.textMuted.withOpacity(0.4)),
                       ),
                       child: Text(
-                        'SIMULATED',
+                        'Simulation',
                         style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted),
                       ),
                     ),
@@ -332,7 +332,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
           ),
           const SizedBox(height: 3),
           Text(
-            'Triggered by: ${log.triggeredBy} · ${log.method.displayName}${log.cardUid != null ? ' (${log.cardUid})' : ''}',
+            'Triggered by: ${log.triggeredBy}, ${log.method.displayName}${log.cardUid != null ? ' (${log.cardUid})' : ''}',
             style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
           ),
           if (log.notes != null && log.notes!.isNotEmpty) ...[
@@ -381,7 +381,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
       doorName: 'Simulated door',
       action: LockAction.unlock,
       method: LockMethod.rfidKeycard,
-      triggeredBy: 'Simulator · Demo Swipe',
+      triggeredBy: 'Simulator (demo swipe)',
       cardUid: 'RFID-A3-89-CF-12',
       timestamp: now,
       isSuccess: true,
@@ -404,7 +404,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('🟢 SIMULATED swipe recorded (marked as simulation). Auto-relock in 5s.'),
+        content: Text('Simulated swipe recorded and marked as a simulation. Auto-relock in 5 seconds.'),
         duration: Duration(seconds: 4),
       ),
     );
@@ -416,7 +416,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         doorName: 'Simulated door',
         action: LockAction.autoRelock,
         method: LockMethod.autoTimer,
-        triggeredBy: 'Simulator · Safety Timer',
+        triggeredBy: 'Simulator (safety timer)',
         timestamp: DateTime.now(),
         isSuccess: true,
         notes: 'Simulated auto-relock after 5-second interval',

@@ -11,6 +11,7 @@ import '../../services/review_policy.dart';
 import '../../services/review_service.dart';
 import '../../widgets/empty_state.dart';
 import 'review_detail_screen.dart';
+import '../../widgets/admin_ui.dart';
 
 /// What Guests wrote about stays they finished.
 ///
@@ -103,15 +104,16 @@ class _ReviewsScreenState extends ConsumerState<ReviewsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Guest Reviews',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+      appBar: AdminPageHeader(
+        title: 'Guest reviews',
+        subtitle: 'Post-stay feedback and publishing decisions',
         actions: [
           Tooltip(
             message: 'Refresh reviews',
-            child: IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+            child: IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: _load,
+            ),
           ),
         ],
       ),
@@ -254,13 +256,21 @@ class _Chip extends StatelessWidget {
   final Color tone;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: tone.withOpacity(0.35),
-          borderRadius: BorderRadius.circular(20),
+  Widget build(BuildContext context) => Semantics(
+        container: true,
+        label: label,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: tone.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+            border: Border.all(color: tone.withValues(alpha: 0.38)),
+          ),
+          child: Text(
+            label,
+            style: AppTheme.label(fontSize: 12, color: tone),
+          ),
         ),
-        child: Text(label, style: GoogleFonts.inter(fontSize: 11, color: Colors.white)),
       );
 }
 
@@ -287,8 +297,8 @@ class _FilterBarState extends State<_FilterBar> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      color: AppColors.cardSurface,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
       child: Column(
         children: [
           SingleChildScrollView(
@@ -345,12 +355,9 @@ class _FilterBarState extends State<_FilterBar> {
     );
   }
 
-  Widget _choice(String label, bool selected, VoidCallback onTap) => ChoiceChip(
-        label: Text(label, style: GoogleFonts.inter(fontSize: 12)),
+  Widget _choice(String label, bool selected, VoidCallback onTap) => AdminFilterChip(
+        label: label,
         selected: selected,
-        selectedColor: AppColors.primaryForest,
-        backgroundColor: AppColors.surfaceLight,
-        side: BorderSide(color: selected ? AppColors.primaryForest : AppColors.cardBorder),
         onSelected: (_) => onTap(),
       );
 }

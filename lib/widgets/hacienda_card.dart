@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import '../core/constants/app_constants.dart';
+import '../core/theme/app_theme.dart';
 
-/// Brand card surface for the Admin app.
+/// Paper surface for one Admin record or form section.
 ///
-/// White surface, hairline border and a soft, low-contrast shadow — the
-/// same recipe previously inlined in Dashboard, Bookings, Stays, Rooms,
-/// CRM and Smart Lock. Pass [borderColor: null] for a borderless inner
-/// panel, or a custom [border] for accent cards (pending, VIP).
+/// The ledger look comes from a hairline rule and generous internal spacing,
+/// not from the same soft shadow on every rectangle. Accent borders are used
+/// only when their colour encodes a real state. Pass [showBorder] `false` for
+/// a quiet inner panel.
 class HaciendaCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -16,6 +17,8 @@ class HaciendaCard extends StatelessWidget {
   final BorderRadiusGeometry? borderRadius;
   final List<BoxShadow>? shadows;
   final BoxBorder? border;
+  final bool showBorder;
+  final String? semanticLabel;
 
   const HaciendaCard({
     super.key,
@@ -27,33 +30,34 @@ class HaciendaCard extends StatelessWidget {
     this.borderRadius,
     this.shadows,
     this.border,
+    this.showBorder = true,
+    this.semanticLabel,
   });
 
   @override
   Widget build(BuildContext context) {
-    final BoxBorder? effectiveBorder =
-        border ??
-        (borderColor != null
-            ? Border.all(color: borderColor!, width: borderWidth)
-            : null);
+    final BoxBorder? effectiveBorder = !showBorder
+        ? null
+        : border ??
+            Border.all(
+              color: borderColor ?? AppColors.cardBorder,
+              width: borderWidth,
+            );
 
-    return Container(
+    final decorated = Container(
       decoration: BoxDecoration(
         color: color ?? AppColors.cardSurface,
-        borderRadius: borderRadius ?? BorderRadius.circular(20),
+        borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radiusCard),
         border: effectiveBorder,
-        boxShadow: shadows ?? const [
-          BoxShadow(
-            color: Color(0x050F1C11),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          ),
-        ],
+        boxShadow: shadows ?? const <BoxShadow>[],
       ),
       child: Padding(
         padding: padding ?? const EdgeInsets.all(16),
         child: child,
       ),
     );
+
+    if (semanticLabel == null) return decorated;
+    return Semantics(container: true, label: semanticLabel, child: decorated);
   }
 }

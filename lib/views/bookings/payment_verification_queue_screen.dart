@@ -20,6 +20,7 @@ import '../../widgets/status_pill.dart';
 import '../../utils/validators.dart';
 import '../security/security_pin_sheet.dart';
 import 'payment_proof_viewer.dart';
+import '../../widgets/admin_ui.dart';
 
 class PaymentVerificationQueueScreen extends ConsumerStatefulWidget {
   const PaymentVerificationQueueScreen({super.key});
@@ -339,11 +340,9 @@ class _PaymentVerificationQueueScreenState
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Mga Bayad na Susuriin',
-          style: GoogleFonts.cinzel(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
+      appBar: AdminPageHeader(
+        title: 'Payments to verify',
+        subtitle: 'Match the proof, reference and claimed amount',
         bottom: _busy
             ? const PreferredSize(
                 preferredSize: Size.fromHeight(4),
@@ -360,8 +359,9 @@ class _PaymentVerificationQueueScreenState
           if (queue.isEmpty) {
             return const EmptyState(
               icon: Icons.check_circle_outline,
-              title: 'Wala nang bayad na susuriin',
-              subtitle: 'Walang payment proof na naghihintay ng verification. Hindi awtomatikong nabe-verify ang anumang bayad.',
+              title: 'Payment queue is clear',
+              subtitle:
+                  'No proof is waiting for verification. No payment was verified automatically.',
             );
           }
 
@@ -371,43 +371,12 @@ class _PaymentVerificationQueueScreenState
             separatorBuilder: (_, __) => const SizedBox(height: 14),
             itemBuilder: (context, index) {
               if (index == 0) {
-                return Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.accentGold.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.accentGold),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.pending_actions, color: AppColors.primaryForest),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${queue.length} bayad na susuriin',
-                              style: GoogleFonts.inter(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primaryForest,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Buksan at suriin ang proof bago magdesisyon. Ang OCR o claimed amount lamang ay hindi patunay na pumasok ang pera.',
-                              style: GoogleFonts.inter(
-                                fontSize: 16,
-                                height: 1.4,
-                                color: AppColors.primaryForest,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                return AdminInlineNotice(
+                  title: '${queue.length} payments to verify',
+                  message:
+                      'Open and check each proof before deciding. OCR and the claimed amount alone are not evidence that money arrived.',
+                  tone: AdminNoticeTone.caution,
+                  icon: Icons.pending_actions_outlined,
                 );
               }
 
@@ -417,17 +386,18 @@ class _PaymentVerificationQueueScreenState
           );
         },
         loading: () => const LoadingState(
-          label: 'Binabasa ang mga payment proof…',
-          detail: 'Tinitiyak na ang aktwal na mga proof lamang ang nasa queue.',
+          label: 'Reading payment proofs…',
+          detail: 'Only proofs that are actually in the queue are shown.',
         ),
         error: (err, _) => EmptyState(
           icon: Icons.cloud_off_outlined,
-          title: 'Hindi mabasa ang payment queue',
-          subtitle: 'Walang bayad na minarkahang verified. Suriin ang koneksyon at subukan muli. ${err.toString().split('\n').first}',
+          title: 'Payment queue could not be read',
+          subtitle:
+              'No payment was marked verified. Check the connection and try again. ${err.toString().split('\n').first}',
           action: ElevatedButton.icon(
             onPressed: () => ref.invalidate(bookingsStreamProvider),
             icon: const Icon(Icons.refresh),
-            label: const Text('Subukan Muli'),
+            label: const Text('Try again'),
           ),
         ),
       ),
@@ -454,7 +424,7 @@ class _PaymentVerificationQueueScreenState
           ),
           const SizedBox(height: 10),
           StatusPill(
-            label: 'MAY PROOF NA NAIPADALA',
+            label: 'Proof submitted',
             color: StatusStyle.payment('pending'),
             fontSize: 14,
           ),

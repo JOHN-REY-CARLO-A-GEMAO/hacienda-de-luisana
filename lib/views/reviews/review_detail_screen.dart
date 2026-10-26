@@ -11,6 +11,7 @@ import '../../services/review_policy.dart';
 import '../../services/review_service.dart';
 import '../security/security_pin_sheet.dart';
 import 'reviews_screen.dart' show StarRow, StatusPillLike;
+import '../../widgets/admin_ui.dart';
 
 /// One Review, and the three things only the Admin may do about it.
 ///
@@ -151,11 +152,9 @@ class _ReviewDetailScreenState extends ConsumerState<ReviewDetailScreen> {
     final staysOnSite = _published != null;
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Review',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+      appBar: const AdminPageHeader(
+        title: 'Review',
+        subtitle: 'Read, respond and decide what becomes public',
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
@@ -379,7 +378,7 @@ class _ReviewDetailScreenState extends ConsumerState<ReviewDetailScreen> {
             Text('“${_published!.excerpt}”', style: GoogleFonts.inter(fontSize: 13, fontStyle: FontStyle.italic)),
             const SizedBox(height: 6),
             Text(
-              '— ${_published!.displayName} · ${_published!.month}',
+              '— ${_published!.displayName}, ${_published!.month}',
               style: GoogleFonts.inter(fontSize: 11, color: AppColors.accentGoldDark),
             ),
           ],
