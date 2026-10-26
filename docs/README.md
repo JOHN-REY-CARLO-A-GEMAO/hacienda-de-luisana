@@ -35,6 +35,7 @@ test/*_test.dart        # flutter test — lifecycle rules, published rates, boo
 CONTEXT.md              # Domain glossary (the vocabulary both apps use)
 docs/adr/               # Architecture decision records (0001–0010)
 docs/                   # Setup, flows, plans (this folder)
+scripts/quiz-deck/      # offline builder for Gemao_JohnReyCarlo.pptx (deliverable stays at root)
 ```
 
 Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitignored.
