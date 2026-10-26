@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Part 1: Title slide (S1) + Question 1 slides (S2, S3)."""
 import sys
-sys.path.insert(0, "/home/user/hacienda-de-luisana")
+from pathlib import Path
+
+# The master builder supplies an absolute script directory before it changes the
+# working directory. The fallback lets an individual part run from this folder.
+if "HDL_QUIZ_DECK_DIR" not in globals():
+    HDL_QUIZ_DECK_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(HDL_QUIZ_DECK_DIR))
 from quiz_deck_helpers import *
 
 # =========================================================================== #
