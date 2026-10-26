@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
@@ -9,8 +10,10 @@ import '../../core/theme/status_style.dart';
 import '../../services/booking_lifecycle.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
+import '../../widgets/loading_state.dart';
 import '../../widgets/luxe_progress.dart';
 import '../../widgets/status_pill.dart';
+import '../../widgets/admin_ui.dart';
 
 class StayDurationScreen extends ConsumerStatefulWidget {
   const StayDurationScreen({super.key});
@@ -30,49 +33,27 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Stay Duration & Guest Tracker',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+      appBar: const AdminPageHeader(
+        title: 'Stays & guest tracker',
+        subtitle: 'Follow the duration of every recorded stay',
       ),
       body: Column(
         children: [
-          // Filter Chips Row
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _filters.map((f) {
-                  final isSelected = _selectedDurationFilter == f;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(
-                        f,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: isSelected ? Colors.white : AppColors.textDark,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                        ),
-                      ),
-                      selected: isSelected,
-                      selectedColor: AppColors.primaryForest,
-                      backgroundColor: AppColors.surfaceLight,
-                      side: BorderSide(color: isSelected ? AppColors.primaryForest : AppColors.cardBorder),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      onSelected: (val) {
-                        if (val) setState(() => _selectedDurationFilter = f);
-                      },
-                    ),
-                  );
-                }).toList(),
-              ),
+          HaciendaCard(
+            borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(AppTheme.radiusPanel),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: AdminFilterStrip(
+              items: [
+                for (final filter in _filters)
+                  AdminFilterItem(label: filter),
+              ],
+              selectedIndex: _filters.indexOf(_selectedDurationFilter),
+              onSelected: (index) =>
+                  setState(() => _selectedDurationFilter = _filters[index]),
             ),
           ),
-          const Divider(height: 1, color: AppColors.cardBorder),
 
           // Stays List
           Expanded(
@@ -110,10 +91,21 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(
-                  child: Text(
-                      'Could not load stays: ${err.toString().split('\n').first}')),
+              loading: () => const LoadingState(
+                    label: 'Reading stays…',
+                    detail: 'Loading the current booking records.',
+                  ),
+              error: (err, _) => EmptyState(
+                    icon: Icons.cloud_off_outlined,
+                    title: 'Stays could not be read',
+                    subtitle:
+                        'Check the connection and try again. ${err.toString().split('\n').first}',
+                    action: OutlinedButton.icon(
+                      onPressed: () => ref.invalidate(bookingsStreamProvider),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Try again'),
+                    ),
+                  ),
             ),
           ),
         ],
@@ -168,7 +160,7 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
                 ),
               ),
               StatusPill(
-                label: isStayingNow ? 'IN RESORT NOW' : stay.status.displayName,
+                label: isStayingNow ? 'In resort now' : stay.status.displayName,
                 color: isStayingNow
                     ? StatusStyle.color(BookingStatuses.staying)
                     : AppColors.textMuted,
@@ -180,8 +172,8 @@ class _StayDurationScreenState extends ConsumerState<StayDurationScreen> {
 
           // Duration Badge & Check-out Countdown
           HaciendaCard(
-            color: AppColors.surfaceLight,
-            borderColor: null,
+            color: AppColors.surfaceSunken,
+            showBorder: false,
             shadows: const [],
             borderRadius: BorderRadius.circular(14),
             padding: const EdgeInsets.all(12),

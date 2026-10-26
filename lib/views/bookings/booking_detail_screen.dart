@@ -21,8 +21,11 @@ import '../security/security_pin_sheet.dart';
 import 'booking_invoice_dialog.dart';
 import 'payment_proof_viewer.dart';
 import '../../tutorial/tutorial_keys.dart';
+import '../../widgets/admin_ui.dart';
 import '../../widgets/booking_timeline_widget.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
+import '../../widgets/loading_state.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/status_pill.dart';
 
@@ -562,7 +565,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     final messenger = ScaffoldMessenger.of(context);
     if (result.ok) {
       messenger.showSnackBar(SnackBar(
-        content: Text('Rescheduled to ${DateFormatter.toIsoDate(newCheckIn)} → ${DateFormatter.toIsoDate(newCheckOut)}'),
+        content: Text('Rescheduled from ${DateFormatter.toIsoDate(newCheckIn)} to ${DateFormatter.toIsoDate(newCheckOut)}'),
       ));
     } else {
       messenger.showSnackBar(SnackBar(
@@ -756,9 +759,17 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     final activity = ref.watch(bookingActivityProvider(widget.bookingId));
 
     if (booking == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Booking')),
-        body: const Center(child: Text('This Booking is no longer listed.')),
+      return const Scaffold(
+        appBar: AdminPageHeader(
+          title: 'Booking',
+          subtitle: 'This record is no longer listed',
+        ),
+        body: EmptyState(
+          icon: Icons.event_busy_outlined,
+          title: 'Booking not found',
+          subtitle:
+              'This Booking is no longer in the live list. Go back and refresh the queue.',
+        ),
       );
     }
 
@@ -771,9 +782,9 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(booking.refId ?? booking.guestName,
-            style: GoogleFonts.cinzel(fontSize: 20, fontWeight: FontWeight.bold)),
+      appBar: AdminPageHeader(
+        title: booking.refId ?? booking.guestName,
+        subtitle: booking.guestName,
         actions: [
           IconButton(
             tooltip: 'Call Guest',
@@ -783,7 +794,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           ),
           PopupMenuButton<String>(
             enabled: !_busy && !_openingProof,
-            tooltip: 'Iba pang aksyon',
+            tooltip: 'More actions',
             onSelected: (v) {
               if (v == 'delete') _serialize(() => _delete(booking));
             },
@@ -835,11 +846,15 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           const SizedBox(height: 8),
           activity.when(
             data: (entries) => BookingTimelineWidget(activityEntries: entries),
-            loading: () => const Center(
-                child: Padding(
-                    padding: EdgeInsets.all(12),
-                    child: CircularProgressIndicator())),
-            error: (e, _) => Text('Could not load the log: $e'),
+            loading: () => const SizedBox(
+              height: 130,
+              child: LoadingState(label: 'Reading the activity log…'),
+            ),
+            error: (e, _) => AdminInlineNotice(
+              title: 'Activity log could not be read',
+              message: e.toString().split('\n').first,
+              tone: AdminNoticeTone.danger,
+            ),
           ),
           const SizedBox(height: 32),
         ],
@@ -871,7 +886,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 [
                   if (booking.refId != null) 'Ref ${booking.refId}',
                   if (booking.source != null) 'via ${booking.source}',
-                ].join(' · '),
+                ].join(', '),
                 style:
                     GoogleFonts.inter(fontSize: 16, color: AppColors.textMuted)),
           ],
@@ -1161,7 +1176,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               BookingModel.accommodationLabel(
                   booking.accommodation, ref.watch(accommodationsProvider))),
           _kv('Dates',
-              '${DateFormatter.formatStayRange(booking.checkInDate, booking.checkOutDate)} · ${DateFormatter.formatStayDuration(booking.checkInDate, booking.checkOutDate)}'),
+              '${DateFormatter.formatStayRange(booking.checkInDate, booking.checkOutDate)}, ${DateFormatter.formatStayDuration(booking.checkInDate, booking.checkOutDate)}'),
           _kv('Guests', '${booking.guestCount}'),
           if (booking.specialRequests != null &&
               booking.specialRequests!.isNotEmpty)
@@ -1227,7 +1242,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             _kv('Proof rejected because', booking.paymentRejectReason!),
           if (booking.refundStatus != null && booking.refundStatus != 'none') ...[
             const Divider(height: 20),
-            _kv('Refund', '${booking.refundStatus} · ${peso(booking.refundTotal)}'),
+            _kv('Refund', '${booking.refundStatus}, ${peso(booking.refundTotal)}'),
             if (booking.raw['refund_breakdown'] is Map)
               ...((booking.raw['refund_breakdown'] as Map).entries.map(
                   (e) => _kv('  ${e.key}', peso((e.value as num?)?.toDouble())))),
@@ -1272,7 +1287,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Hiling ng Guest: +$hours oras · Fee: ₱$fee',
+            'Hiling ng Guest: +$hours oras, Fee: ₱$fee',
             style: GoogleFonts.inter(fontSize: 18, color: AppColors.textDark, height: 1.4),
           ),
           if (status == 'pending') ...[

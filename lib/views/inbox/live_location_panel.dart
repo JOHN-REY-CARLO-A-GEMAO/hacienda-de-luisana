@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_constants.dart';
 import '../../services/live_location_service.dart';
 
-/// 📍 The Guest is sharing live location — what the Admin sees, inside the
+/// The Guest is sharing live location — what the Admin sees, inside the
 /// thread the Guest is writing in.
 ///
 /// The shape the Admin needs, all on one card: that a Guest *is* sharing, where
@@ -203,7 +203,7 @@ class _LiveLocationPanelState extends State<LiveLocationPanel> {
           _Map(fix: fix),
           const SizedBox(height: 8),
           Text(
-            '${fix.lat.toStringAsFixed(5)}, ${fix.lng.toStringAsFixed(5)}  ·  ±${fix.accuracyM.round()} m',
+            '${fix.lat.toStringAsFixed(5)}, ${fix.lng.toStringAsFixed(5)}, ±${fix.accuracyM.round()} m',
             style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
           const SizedBox(height: 4),

@@ -11,9 +11,11 @@ import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
+import '../../widgets/loading_state.dart';
 import '../../widgets/status_pill.dart';
 import '../../utils/validators.dart';
 import '../security/security_pin_sheet.dart';
+import '../../widgets/admin_ui.dart';
 
 class RefundManagementScreen extends ConsumerStatefulWidget {
   const RefundManagementScreen({super.key});
@@ -178,11 +180,9 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Refund Management',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+      appBar: const AdminPageHeader(
+        title: 'Refunds',
+        subtitle: 'Transfers awaiting manual settlement',
       ),
       body: bookingsAsync.when(
         data: (allBookings) {
@@ -211,8 +211,21 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error loading refunds: $err')),
+        loading: () => const LoadingState(
+              label: 'Reading refunds…',
+              detail: 'Loading bookings with a recorded refund state.',
+            ),
+        error: (err, _) => EmptyState(
+              icon: Icons.cloud_off_outlined,
+              title: 'Refunds could not be read',
+              subtitle:
+                  'Check the connection and try again. ${err.toString().split('\n').first}',
+              action: OutlinedButton.icon(
+                onPressed: () => ref.invalidate(bookingsStreamProvider),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Try again'),
+              ),
+            ),
       ),
     );
   }
@@ -244,7 +257,7 @@ class _RefundManagementScreenState extends ConsumerState<RefundManagementScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'Ref: ${booking.refId ?? booking.id} · ${booking.guestPhone} · ${booking.guestEmail}',
+            'Ref: ${booking.refId ?? booking.id}, ${booking.guestPhone}, ${booking.guestEmail}',
             style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
           ),
           const Divider(height: 20),

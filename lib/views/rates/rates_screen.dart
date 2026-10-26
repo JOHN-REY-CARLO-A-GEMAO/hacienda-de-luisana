@@ -9,8 +9,10 @@ import '../../services/accommodations.dart';
 import '../../services/booking_lifecycle.dart';
 import '../security/security_pin_sheet.dart';
 import '../../tutorial/tutorial_keys.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
-import '../../widgets/section_header.dart';
+import '../../widgets/loading_state.dart';
+import '../../widgets/admin_ui.dart';
 
 /// Rates & cancellation policy — the one document (`site_config/rates`) the
 /// website quotes every Guest from. Only the Admin publishes it; the website
@@ -518,36 +520,56 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text('Rates & Cancellation Policy',
-            style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold)),
+      appBar: const AdminPageHeader(
+        title: 'Rates & cancellation',
+        subtitle: 'Publish the figures the website quotes',
       ),
       body: ratesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Could not load rates: $e')),
+        loading: () => const LoadingState(
+              label: 'Reading published rates…',
+              detail: 'Loading the document the website quotes from.',
+            ),
+        error: (e, _) => EmptyState(
+              icon: Icons.cloud_off_outlined,
+              title: 'Published rates could not be read',
+              subtitle:
+                  'Check the connection and try again. ${e.toString().split('\n').first}',
+              action: OutlinedButton.icon(
+                onPressed: () => ref.invalidate(publishedRatesProvider),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Try again'),
+              ),
+            ),
         data: (current) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            const AdminSectionHeading(
+              title: 'Publishing details',
+              caption: 'A new version changes future quotes only. Existing bookings keep their policy.',
+            ),
+            const SizedBox(height: 8),
             HaciendaCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    current == null
-                        ? 'Nothing published yet — the website cannot quote a price or offer a payment plan until you publish.'
-                        : 'Live: version ${current['version']} since ${current['effective_date']}.',
-                    style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: current == null
-                            ? AppColors.statusWarning
-                            : AppColors.primaryForest),
+                  AdminInlineNotice(
+                    title: current == null
+                        ? 'Nothing published yet'
+                        : 'Live: version ${current['version']} since ${current['effective_date']}',
+                    message: current == null
+                        ? 'The website cannot quote a price or offer a payment plan until you publish.'
+                        : 'A publish creates a new version for future quotes.',
+                    tone: current == null
+                        ? AdminNoticeTone.caution
+                        : AdminNoticeTone.success,
                   ),
                   if (_legacyRatesNeedReview) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'The stored rates use a retired nightly, minimum-guest, flat reservation-fee, or old bracket format. A new guest-count schedule is prepared below; review it and publish under a new version. Nothing changes until you publish.',
-                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.statusWarning, height: 1.4),
+                    const SizedBox(height: 10),
+                    const AdminInlineNotice(
+                      title: 'Stored rates need review',
+                      message:
+                          'A retired pricing format was detected. A new guest-count schedule is prepared below; nothing changes until you publish.',
+                      tone: AdminNoticeTone.caution,
                     ),
                   ],
                   const SizedBox(height: 8),
@@ -592,18 +614,22 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            const SectionHeader(
-                title: 'Accommodations', padding: EdgeInsets.zero),
-            const SizedBox(height: 6),
+            const SizedBox(height: 20),
+            const AdminSectionHeading(
+              title: 'Accommodations',
+              caption: 'Each stay uses its own published occupancy and rate schedule.',
+            ),
+            const SizedBox(height: 8),
             for (final entry in _acc.entries) ...[
               _accommodationCard(entry.key, entry.value),
               const SizedBox(height: 10),
             ],
-            const SizedBox(height: 12),
-            const SectionHeader(
-                title: 'Guest payment information', padding: EdgeInsets.zero),
-            const SizedBox(height: 6),
+            const SizedBox(height: 20),
+            const AdminSectionHeading(
+              title: 'Guest payment information',
+              caption: 'Only publish account details guests are allowed to see.',
+            ),
+            const SizedBox(height: 8),
             HaciendaCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -681,10 +707,12 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            const SectionHeader(
-                title: 'Cancellation & refund', padding: EdgeInsets.zero),
-            const SizedBox(height: 6),
+            const SizedBox(height: 20),
+            const AdminSectionHeading(
+              title: 'Cancellation & refund',
+              caption: 'Set the flat fallback and any time-based refund tiers.',
+            ),
+            const SizedBox(height: 8),
             HaciendaCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -717,7 +745,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text('Tiers (days before check-in → refund %)',
+                  Text('Tiers (days before check-in, refund percentage)',
                       style: GoogleFonts.inter(
                           fontSize: 12, fontWeight: FontWeight.bold)),
                   for (var i = 0; i < _tiers.length; i++)
@@ -767,22 +795,10 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
             ),
             if (_problems.isNotEmpty) ...[
               const SizedBox(height: 12),
-              HaciendaCard(
-                borderColor: AppColors.statusAlert.withOpacity(0.5),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Not published — fix these first:',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.statusAlert)),
-                    const SizedBox(height: 6),
-                    for (final p in _problems)
-                      Text('• $p',
-                          style: GoogleFonts.inter(
-                              fontSize: 12, color: AppColors.textDark)),
-                  ],
-                ),
+              AdminInlineNotice(
+                title: 'Not published — fix these first',
+                message: _problems.join('; '),
+                tone: AdminNoticeTone.danger,
               ),
             ],
             const SizedBox(height: 16),
@@ -875,7 +891,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
             decoration: const InputDecoration(labelText: 'Security deposit', prefixText: '₱ '),
           ),
           const SizedBox(height: 8),
-          Text('50% down payment from computed total · remaining 50% due at check-in',
+          Text('50% down payment from computed total, remaining 50% due at check-in',
               style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
         ],
       ),

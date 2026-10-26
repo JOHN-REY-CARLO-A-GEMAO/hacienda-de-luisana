@@ -4,66 +4,47 @@ import '../constants/app_constants.dart';
 
 /// Hacienda de LuisAna — single design-system source of truth.
 ///
-/// Two token families live here on purpose:
-/// * the `AppColors`-based ops palette (deep pine + gold) used by the
-///   Dashboard/Bookings/Chat/Stays/Analytics/SmartLock/Rooms/CRM screens,
-/// * the quiet-luxury forest/cream/gold tokens (`forest900`, `cream50`, …)
-///   used by the Admin login and every Admin surface.
-///
-/// Admin surfaces live in `lib/views/admin/` and auth in `lib/views/auth/`.
+/// The visual direction is a working estate ledger: deep pine mastheads, warm
+/// paper surfaces, brass for the active place or the next decision, and ruled
+/// information rather than a wall of identical cards. Two typefaces carry the
+/// whole app: Cinzel for short titles and reference numerals, Inter for the
+/// dense operational copy and tabular figures.
 class AppTheme {
-  // ---- Quiet-luxury brand tokens (login + admin surfaces) ----
-  static const Color forest900 = Color(0xFF0F1C11); // deepest pine-ink
-  static const Color forest800 = Color(0xFF243B26); // rich evergreen
-  static const Color forest700 = Color(0xFF33522F); // softer leaf
-  static const Color olive = Color(0xFF8A9A5B); // sage-olive accent
-  static const Color oliveMist = Color(0xFFD8DFC4); // pale sage tint
-  static const Color cream50 = Color(0xFFFBF9F3); // warm paper
-  static const Color cream100 = Color(0xFFF3EFE0); // soft parchment
-  static const Color cream200 = Color(0xFFE7E0CB); // warmer sand
-  static const Color goldAccent = Color(0xFFC5A059); // aged gold
-  static const Color goldSoft = Color(0xFFE2C896); // champagne gold
+  // ---- Quiet-luxury brand tokens, unified with AppColors ----
+  static const Color forest900 = AppColors.primaryDark;
+  static const Color forest800 = AppColors.primaryForest;
+  static const Color forest700 = AppColors.primaryForestLight;
+  static const Color olive = Color(0xFF70845A);
+  static const Color oliveMist = AppColors.sageMist;
+  static const Color cream50 = AppColors.surfaceLight;
+  static const Color cream100 = AppColors.cardSurface;
+  static const Color cream200 = AppColors.surfaceSunken;
+  static const Color goldAccent = AppColors.accentGold;
+  static const Color goldSoft = AppColors.accentGoldLight;
 
   // ---- Semantic helpers ----
-  static const Color inkMuted = Color(0xCC0F1C11); // forest-ink at 80%
-  static const Color hairline = Color(0x1A0F1C11); // subtle forest hairlines
-  static const Color softShadow = Color(0x0F0F1C11); // faint depth shadow
+  static const Color ink = AppColors.textDark;
+  static const Color inkMuted = AppColors.textMuted;
+  static const Color hairline = AppColors.cardBorder;
+  static const Color softShadow = Color(0x0F10271B);
+  static const Color focusRing = Color(0x667F5D1F);
 
-  // ---- Radii ----
-  static const double radiusCard = 22;
-  static const double radiusPanel = 16;
-  static const double radiusField = 14;
+  // ---- Layout and radii ----
+  static const double pageMaxWidth = 1080;
+  static const double compactBreakpoint = 720;
+  static const double navigationBreakpoint = 900;
+  static const double gutter = 16;
+  static const double radiusCard = 18;
+  static const double radiusPanel = 14;
+  static const double radiusField = 12;
   static const double radiusPill = 999;
 
-  /// Brand gradient used on the deep-green hero surfaces.
-  static const LinearGradient forestDeep = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [forest800, forest900],
-  );
-
-  /// Signature "quiet-luxury" wash for imagery: transparent → deep pine.
-  static const LinearGradient heroShade = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [Colors.transparent, Color(0xD90F1C11)],
-  );
-
-  /// Warm gold wash for confirmation / celebratory surfaces.
-  static const LinearGradient goldShade = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [goldSoft, goldAccent],
-  );
-
-  /// The Admin app's display face. Two screens had reached for a serif of their
-  /// own (Cormorant on the login headline, Playfair on the reviews score) while
-  /// every other title used Cinzel, so they now ask for it here.
+  // ---- Typography helpers ----
   static TextStyle serif({
     double fontSize = 18,
     FontWeight fontWeight = FontWeight.w600,
     Color? color,
-    double letterSpacing = 0.2,
+    double letterSpacing = 0.1,
     double? height,
   }) =>
       GoogleFonts.cinzel(
@@ -74,200 +55,340 @@ class AppTheme {
         height: height,
       );
 
+  static TextStyle display({
+    double fontSize = 26,
+    Color color = ink,
+    FontWeight fontWeight = FontWeight.w700,
+  }) =>
+      serif(fontSize: fontSize, color: color, fontWeight: fontWeight);
+
+  static TextStyle title({
+    double fontSize = 18,
+    Color color = ink,
+    FontWeight fontWeight = FontWeight.w700,
+  }) =>
+      GoogleFonts.inter(
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        color: color,
+        height: 1.3,
+      );
+
+  static TextStyle body({
+    double fontSize = 14,
+    Color color = ink,
+    FontWeight fontWeight = FontWeight.normal,
+    double height = 1.42,
+  }) =>
+      GoogleFonts.inter(
+        fontSize: fontSize,
+        color: color,
+        fontWeight: fontWeight,
+        height: height,
+      );
+
+  static TextStyle label({
+    double fontSize = 12,
+    Color color = inkMuted,
+    FontWeight fontWeight = FontWeight.w600,
+  }) =>
+      GoogleFonts.inter(
+        fontSize: fontSize,
+        color: color,
+        fontWeight: fontWeight,
+        height: 1.3,
+      );
+
+  static TextStyle metric({
+    double fontSize = 28,
+    Color color = ink,
+  }) =>
+      GoogleFonts.cinzel(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w700,
+        color: color,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      );
+
   static ThemeData get lightTheme {
     final baseInter = GoogleFonts.inter;
     final baseTextTheme = GoogleFonts.interTextTheme();
+    final fieldRadius = BorderRadius.circular(radiusField);
 
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
       primaryColor: AppColors.primaryForest,
       scaffoldBackgroundColor: AppColors.surfaceLight,
-      colorScheme: ColorScheme.light(
+      canvasColor: AppColors.surfaceLight,
+      focusColor: focusRing,
+      hoverColor: AppColors.sageMist,
+      splashColor: AppColors.sageMist,
+      colorScheme: const ColorScheme.light(
         primary: AppColors.primaryForest,
         onPrimary: Colors.white,
         secondary: AppColors.accentGold,
-        onSecondary: AppColors.primaryDark,
+        onSecondary: Colors.white,
         surface: AppColors.cardSurface,
         onSurface: AppColors.textDark,
         error: AppColors.statusAlert,
         onError: Colors.white,
+        outline: AppColors.cardBorder,
+        surfaceTint: Colors.transparent,
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: AppColors.primaryDark,
         foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: false,
-        toolbarHeight: 64,
-        titleTextStyle: serif(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-          letterSpacing: 0.5,
+        toolbarHeight: 68,
+        titleSpacing: 20,
+        shape: const Border(
+          bottom: BorderSide(color: AppColors.accentGold, width: 0.8),
         ),
+        titleTextStyle: serif(
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+          letterSpacing: 0.2,
+        ),
+        actionsIconTheme: const IconThemeData(color: Colors.white, size: 22),
+        iconTheme: const IconThemeData(color: Colors.white, size: 22),
       ),
       cardTheme: CardThemeData(
         color: AppColors.cardSurface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: AppColors.cardBorder, width: 1),
+          borderRadius: BorderRadius.circular(radiusCard),
+          side: const BorderSide(color: AppColors.cardBorder),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primaryForest,
           foregroundColor: Colors.white,
+          disabledBackgroundColor: AppColors.cardBorder,
+          disabledForegroundColor: AppColors.textMuted,
+          overlayColor: Colors.white.withValues(alpha: 0.12),
           elevation: 0,
-          minimumSize: const Size(48, 52),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+          minimumSize: const Size(48, 50),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusField),
+          ),
+          textStyle: baseInter(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primaryForest,
+          disabledForegroundColor: AppColors.textMuted,
+          overlayColor: AppColors.sageMist,
           side: const BorderSide(color: AppColors.cardBorder),
-          minimumSize: const Size(48, 52),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+          minimumSize: const Size(48, 50),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusField),
+          ),
+          textStyle: baseInter(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(48, 52),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+          minimumSize: const Size(48, 50),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusField),
+          ),
+          textStyle: baseInter(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
+          foregroundColor: AppColors.primaryForest,
+          disabledForegroundColor: AppColors.textMuted,
+          overlayColor: AppColors.sageMist,
           minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: baseInter(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: AppColors.primaryForest,
+          disabledForegroundColor: AppColors.textMuted,
+          focusColor: focusRing,
+          hoverColor: AppColors.sageMist,
+          highlightColor: AppColors.sageMist,
+          minimumSize: const Size(48, 48),
+          tapTargetSize: MaterialTapTargetSize.padded,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        labelStyle: baseInter(fontSize: 16, color: AppColors.textMuted),
-        hintStyle: baseInter(fontSize: 16, color: AppColors.textMuted),
+        fillColor: AppColors.cardSurface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+        border: OutlineInputBorder(
+          borderRadius: fieldRadius,
+          borderSide: const BorderSide(color: AppColors.cardBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: fieldRadius,
+          borderSide: const BorderSide(color: AppColors.cardBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: fieldRadius,
+          borderSide: const BorderSide(color: AppColors.accentGoldDark, width: 1.6),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: fieldRadius,
+          borderSide: const BorderSide(color: AppColors.statusAlert),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: fieldRadius,
+          borderSide: const BorderSide(color: AppColors.statusAlert, width: 1.6),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: fieldRadius,
+          borderSide: const BorderSide(color: AppColors.cardBorder),
+        ),
+        labelStyle: baseInter(fontSize: 14, color: AppColors.textMuted),
+        floatingLabelStyle: baseInter(
+          fontSize: 13,
+          color: AppColors.accentGoldDark,
+          fontWeight: FontWeight.w700,
+        ),
+        hintStyle: baseInter(fontSize: 14, color: AppColors.textMuted),
+        helperStyle: baseInter(fontSize: 12, color: AppColors.textMuted, height: 1.35),
+        errorStyle: baseInter(fontSize: 12, color: AppColors.alertDangerText),
+        prefixIconColor: AppColors.primaryForest,
+        suffixIconColor: AppColors.textMuted,
       ),
       textTheme: baseTextTheme.copyWith(
-        headlineLarge: GoogleFonts.cinzel(
-          fontSize: 26,
-          fontWeight: FontWeight.bold,
-          color: AppColors.textDark,
-        ),
-        headlineMedium: GoogleFonts.cinzel(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: AppColors.textDark,
-        ),
-        titleLarge: GoogleFonts.inter(
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textDark,
-        ),
-        titleMedium: GoogleFonts.inter(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textDark,
-        ),
-        bodyLarge: GoogleFonts.inter(
-          fontSize: 18,
-          color: AppColors.textDark,
-          height: 1.4,
-        ),
-        bodyMedium: GoogleFonts.inter(
-          fontSize: 16,
-          color: AppColors.textDark,
-          height: 1.4,
-        ),
-        bodySmall: GoogleFonts.inter(
-          fontSize: 14,
-          color: AppColors.textMuted,
-          height: 1.35,
-        ),
+        displaySmall: display(fontSize: 30),
+        headlineLarge: display(fontSize: 26),
+        headlineMedium: display(fontSize: 22),
+        titleLarge: title(fontSize: 20),
+        titleMedium: title(fontSize: 17),
+        titleSmall: title(fontSize: 15),
+        bodyLarge: body(fontSize: 16),
+        bodyMedium: body(fontSize: 14),
+        bodySmall: body(fontSize: 12, color: AppColors.textMuted),
+        labelLarge: label(fontSize: 13, color: ink),
+        labelMedium: label(),
+        labelSmall: label(fontSize: 11),
       ),
-
-      // ---------- Chips (filter rows across the app) ----------
       chipTheme: ChipThemeData(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.cardSurface,
         selectedColor: AppColors.primaryForest,
         surfaceTintColor: Colors.transparent,
-        labelStyle: baseInter(fontSize: 16, color: AppColors.textDark),
-        secondaryLabelStyle: baseInter(fontSize: 16, color: Colors.white),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        labelStyle: baseInter(fontSize: 13, color: AppColors.textDark),
+        secondaryLabelStyle: baseInter(
+          fontSize: 13,
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         side: const BorderSide(color: AppColors.cardBorder),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusPill),
+        ),
         checkmarkColor: Colors.white,
       ),
-
-      // ---------- Dialogs ----------
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.cardSurface,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: baseInter(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textDark),
-        contentTextStyle: baseInter(fontSize: 17, color: AppColors.textDark, height: 1.4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        elevation: 0,
+        titleTextStyle: title(fontSize: 20),
+        contentTextStyle: body(fontSize: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusCard),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
       ),
-
-      // ---------- Snackbars ----------
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.primaryForest,
-        contentTextStyle: baseInter(fontSize: 16, color: Colors.white, height: 1.35),
+        backgroundColor: AppColors.primaryDark,
+        contentTextStyle: body(fontSize: 14, color: Colors.white),
         actionTextColor: AppColors.accentGoldLight,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusField),
+        ),
+        insetPadding: const EdgeInsets.all(16),
       ),
-
-      // ---------- Bottom sheets ----------
-      bottomSheetTheme: BottomSheetThemeData(
+      bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: AppColors.cardSurface,
         surfaceTintColor: Colors.transparent,
-        shape: const RoundedRectangleBorder(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
       ),
-
-      // ---------- Dividers ----------
       dividerTheme: const DividerThemeData(
         color: AppColors.cardBorder,
         thickness: 1,
         space: 1,
       ),
-
-      // ---------- Progress indicators ----------
-      progressIndicatorTheme: ProgressIndicatorThemeData(
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: AppColors.primaryForest,
+        linearTrackColor: AppColors.surfaceSunken,
+        circularTrackColor: AppColors.surfaceSunken,
       ),
-
-      // ---------- Floating action buttons ----------
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: AppColors.primaryForest,
         foregroundColor: Colors.white,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-
-      // ---------- List tiles (More sheet, etc.) ----------
-      listTileTheme: ListTileThemeData(
-        titleTextStyle: baseInter(
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textDark,
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusPanel),
         ),
-        subtitleTextStyle: baseInter(fontSize: 15, color: AppColors.textMuted, height: 1.35),
+      ),
+      listTileTheme: ListTileThemeData(
+        titleTextStyle: title(fontSize: 15),
+        subtitleTextStyle: body(fontSize: 12, color: AppColors.textMuted),
         iconColor: AppColors.primaryForest,
-        horizontalTitleGap: 16,
-        minVerticalPadding: 14,
+        horizontalTitleGap: 14,
+        minVerticalPadding: 12,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusPanel),
+        ),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: AppColors.primaryDark,
+        selectedItemColor: AppColors.accentGoldLight,
+        unselectedItemColor: Colors.white.withValues(alpha: 0.62),
+        selectedLabelStyle: baseInter(fontSize: 11, fontWeight: FontWeight.w700),
+        unselectedLabelStyle: baseInter(fontSize: 11),
+        selectedIconTheme: const IconThemeData(size: 23),
+        unselectedIconTheme: const IconThemeData(size: 23),
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+        showUnselectedLabels: true,
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: AppColors.primaryDark,
+        indicatorColor: AppColors.accentGold,
+        selectedIconTheme: const IconThemeData(color: Colors.white, size: 23),
+        unselectedIconTheme:
+            IconThemeData(color: Colors.white.withValues(alpha: 0.62), size: 23),
+        selectedLabelTextStyle:
+            baseInter(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700),
+        unselectedLabelTextStyle: baseInter(
+          fontSize: 12,
+          color: Colors.white.withValues(alpha: 0.62),
+        ),
+      ),
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: AppColors.primaryDark,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        textStyle: baseInter(fontSize: 12, color: Colors.white),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
     );
   }

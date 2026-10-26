@@ -140,7 +140,7 @@ class NotificationService {
     try {
       await _localNotifications.show(
         101,
-        '🔔 New Booking Request',
+        'New booking request',
         '$guestName requested to book $accommodation!',
         details,
       );
@@ -165,7 +165,7 @@ class NotificationService {
     try {
       await _localNotifications.show(
         102,
-        '💳 Payment Proof Submitted',
+        'Payment proof submitted',
         '$guestName uploaded payment proof for $refId',
         details,
       );
@@ -190,7 +190,7 @@ class NotificationService {
     try {
       await _localNotifications.show(
         104,
-        '❌ Cancellation Request',
+        'Cancellation request',
         '$guestName requested cancellation for $refId',
         details,
       );
@@ -215,7 +215,7 @@ class NotificationService {
     try {
       await _localNotifications.show(
         105,
-        '📅 Reschedule Request',
+        'Reschedule request',
         '$guestName requested to reschedule $refId',
         details,
       );
@@ -240,7 +240,7 @@ class NotificationService {
     try {
       await _localNotifications.show(
         103,
-        '⚠️ Smart Lock Security Alert',
+        'Smart lock security alert',
         'Access Denied at $doorName: $reason',
         details,
       );

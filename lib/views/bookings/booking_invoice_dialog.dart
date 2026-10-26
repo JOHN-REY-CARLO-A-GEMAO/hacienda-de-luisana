@@ -99,7 +99,7 @@ class BookingInvoiceDialog extends ConsumerWidget {
               // Booking Meta
               _metaRow('Reference Number:', booking.refId ?? booking.id.toUpperCase()),
               _metaRow('Guest Name:', booking.guestName),
-              _metaRow('Contact:', '${booking.guestPhone} · ${booking.guestEmail}'),
+              _metaRow('Contact:', '${booking.guestPhone}, ${booking.guestEmail}'),
               _metaRow('Accommodation:', accommodationName),
               _metaRow(
                 'Stay Dates:',

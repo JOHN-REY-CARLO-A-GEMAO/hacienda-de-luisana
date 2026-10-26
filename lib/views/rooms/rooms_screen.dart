@@ -10,7 +10,9 @@ import '../../services/firestore_service.dart';
 import '../security/secure_action_sheet.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
+import '../../widgets/loading_state.dart';
 import '../../widgets/status_pill.dart';
+import '../../widgets/admin_ui.dart';
 
 /// Operational status for each Accommodation.
 ///
@@ -38,11 +40,9 @@ class RoomsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
-      appBar: AppBar(
-        title: Text(
-          'Accommodation Status',
-          style: GoogleFonts.cinzel(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+      appBar: const AdminPageHeader(
+        title: 'Accommodation status',
+        subtitle: 'Operational state of published stays',
       ),
       body: accommodations.isEmpty
           ? const EmptyState(
@@ -91,10 +91,21 @@ class RoomsScreen extends ConsumerWidget {
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(
-                  child: Text(
-                      'Could not load rooms: ${err.toString().split('\n').first}')),
+              loading: () => const LoadingState(
+                    label: 'Reading accommodation status…',
+                    detail: 'Loading the published stays and their current records.',
+                  ),
+              error: (err, _) => EmptyState(
+                    icon: Icons.cloud_off_outlined,
+                    title: 'Accommodation status could not be read',
+                    subtitle:
+                        'Check the connection and try again. ${err.toString().split('\n').first}',
+                    action: OutlinedButton.icon(
+                      onPressed: () => ref.invalidate(roomsStreamProvider),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Try again'),
+                    ),
+                  ),
             ),
     );
   }
@@ -117,7 +128,7 @@ class RoomsScreen extends ConsumerWidget {
         ? 'Up to ${accommodation.maxGuests} guests per unit'
         : '${accommodation.includedGuests} guests included';
     final units = accommodation.availableUnits > 1
-        ? '${accommodation.availableUnits} units · ${accommodation.unitsPerBooking} unit per booking'
+        ? '${accommodation.availableUnits} units, ${accommodation.unitsPerBooking} unit per booking'
         : '1 unit';
 
     return HaciendaCard(
@@ -168,28 +179,28 @@ class RoomsScreen extends ConsumerWidget {
                 const SizedBox(height: 8),
                 // Which document these figures came from, so nobody reads them
                 // as something typed on this screen.
-                Text(
-                  'Accommodation, occupancy and rates are published on the Rates screen.',
-                  style: GoogleFonts.inter(
-                      fontSize: 11, color: AppColors.textMuted, fontStyle: FontStyle.italic),
+                const AdminInlineNotice(
+                  title: 'Published on the Rates screen',
+                  message:
+                      'Accommodation names, occupancy and prices come from the website rates document.',
+                  tone: AdminNoticeTone.info,
+                  icon: Icons.info_outline,
                 ),
                 const SizedBox(height: 10),
                 const Divider(height: 1, color: AppColors.cardBorder),
                 const SizedBox(height: 10),
 
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Text('Status Control:', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
-                    DropdownButton<RoomStatus>(
+                DropdownButtonFormField<RoomStatus>(
                       value: current,
-                      underline: const SizedBox.shrink(),
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Operational status',
+                        helperText: 'Every change is confirmed before it is written.',
+                      ),
                       items: RoomStatus.values.map((s) {
                         return DropdownMenuItem(
                           value: s,
-                          child: Text(s.displayName, style: GoogleFonts.inter(fontSize: 12)),
+                          child: Text(s.displayName),
                         );
                       }).toList(),
                       onChanged: (newStatus) async {
@@ -225,8 +236,6 @@ class RoomsScreen extends ConsumerWidget {
                         }
                       },
                     ),
-                  ],
-                ),
               ],
             ),
           ),

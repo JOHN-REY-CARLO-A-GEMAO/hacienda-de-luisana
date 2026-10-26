@@ -1,47 +1,69 @@
 import 'package:flutter/material.dart';
+import '../core/theme/app_theme.dart';
 
-/// Tinted status chip (12% fill, 40% border, bold label) used for booking
-/// status, room status and proximity states. Exposes its label to
-/// screen readers via [Semantics].
+/// Status in words, supported by a dot or icon and a tinted outline.
+///
+/// Colour is never the only signal, and the full label is exposed to
+/// assistive technology.
 class StatusPill extends StatelessWidget {
   final String label;
   final Color color;
   final double fontSize;
   final double horizontalPadding;
   final double radius;
+  final IconData? icon;
+  final String? semanticsLabel;
 
   const StatusPill({
     super.key,
     required this.label,
     required this.color,
-    this.fontSize = 14,
+    this.fontSize = 12.5,
     this.horizontalPadding = 10,
-    this.radius = 16,
+    this.radius = AppTheme.radiusPill,
+    this.icon,
+    this.semanticsLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: label,
+      label: semanticsLabel ?? label,
       container: true,
       child: Container(
-        padding:
-            EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.09),
           borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: color.withOpacity(0.4)),
+          border: Border.all(color: color.withValues(alpha: 0.38)),
         ),
-        child: Text(
-          label,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: FontWeight.bold,
-            color: color,
-            height: 1.3,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: fontSize + 1, color: color),
+              const SizedBox(width: 5),
+            ] else ...[
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+            ],
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 180),
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTheme.label(
+                  fontSize: fontSize,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

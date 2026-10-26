@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// Fades + slides its child up on first build.
+/// A short, single fade on first build.
 ///
-/// Siblings pass a rising [index] (0, 1, 2, …) to stagger by
-/// `index * [baseDelay]`. The effect runs once; once settled the widget
-/// returns to a plain passthrough so it adds zero per-frame cost.
-///
-/// Respects the system "reduce motion" setting
-/// ([MediaQueryData.disableAnimations]) by appearing instantly.
+/// Earlier versions staggered and slid many siblings; the skill's restraint
+/// pass replaces that with one quiet 180 ms reveal. The [index],
+/// [baseDelay] and [slideDistance] parameters remain for call-site
+/// compatibility, but their defaults produce no scattered motion. The whole
+/// effect collapses to an instant display when the system asks for reduced
+/// motion.
 class StaggeredEntrance extends StatefulWidget {
   final Widget child;
   final int index;
@@ -19,9 +19,9 @@ class StaggeredEntrance extends StatefulWidget {
     super.key,
     required this.child,
     this.index = 0,
-    this.baseDelay = const Duration(milliseconds: 60),
-    this.duration = const Duration(milliseconds: 450),
-    this.slideDistance = 14,
+    this.baseDelay = Duration.zero,
+    this.duration = const Duration(milliseconds: 180),
+    this.slideDistance = 0,
   });
 
   @override
@@ -37,8 +37,6 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: widget.duration);
-    // Rebuild once the effect settles so this element can drop back to a
-    // plain passthrough (no lingering Opacity/Transform wrappers).
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed && mounted) setState(() {});
     });
@@ -49,16 +47,20 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
-
     if (MediaQuery.of(context).disableAnimations) {
       _controller.value = 1.0;
       return;
     }
-    final delay =
-        Duration(milliseconds: widget.index * widget.baseDelay.inMilliseconds);
-    Future<void>.delayed(delay, () {
-      if (mounted) _controller.forward();
-    });
+    final delay = Duration(
+      milliseconds: widget.index * widget.baseDelay.inMilliseconds,
+    );
+    if (delay == Duration.zero) {
+      _controller.forward();
+    } else {
+      Future<void>.delayed(delay, () {
+        if (mounted) _controller.forward();
+      });
+    }
   }
 
   @override
@@ -69,22 +71,22 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
 
   @override
   Widget build(BuildContext context) {
-    // Settled: plain passthrough, no per-frame cost.
     if (_controller.value == 1.0) return widget.child;
-
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final v = Curves.easeOut.transform(_controller.value);
-        return Opacity(
-          opacity: v,
-          child: Transform.translate(
-            offset: Offset(0, widget.slideDistance * (1 - v)),
-            child: child,
-          ),
-        );
-      },
-      child: widget.child,
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final v = Curves.easeOut.transform(_controller.value);
+          return Opacity(
+            opacity: v,
+            child: Transform.translate(
+              offset: Offset(0, widget.slideDistance * (1 - v)),
+              child: child,
+            ),
+          );
+        },
+        child: widget.child,
+      ),
     );
   }
 }

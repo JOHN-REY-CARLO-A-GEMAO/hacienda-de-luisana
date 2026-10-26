@@ -3,8 +3,9 @@ import 'package:intl/intl.dart';
 class DateFormatter {
   static final DateFormat _shortDate = DateFormat('MMM dd, yyyy');
   static final DateFormat _timeWithSeconds = DateFormat('hh:mm:ss a');
-  static final DateFormat _fullDateTime = DateFormat('MMM dd, yyyy · hh:mm:ss a');
+  static final DateFormat _fullDateTime = DateFormat('MMM dd, yyyy, hh:mm:ss a');
   static final DateFormat _dayAndMonth = DateFormat('MMM dd');
+  static final DateFormat _weekdayAndDate = DateFormat('EEEE, MMM d');
 
   static String toIsoDate(DateTime dt) =>
       '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
@@ -13,6 +14,7 @@ class DateFormatter {
   static String formatTime(DateTime dt) => _timeWithSeconds.format(dt);
   static String formatFull(DateTime dt) => _fullDateTime.format(dt);
   static String formatDayMonth(DateTime dt) => _dayAndMonth.format(dt);
+  static String formatOperationsDay(DateTime dt) => _weekdayAndDate.format(dt);
 
   static String formatStayRange(DateTime checkIn, DateTime checkOut) {
     return '${_dayAndMonth.format(checkIn)} - ${_dayAndMonth.format(checkOut)}, ${checkOut.year}';
@@ -22,7 +24,7 @@ class DateFormatter {
     final difference = checkOut.difference(checkIn).inDays;
     final nights = difference <= 0 ? 1 : difference;
     final days = nights + 1;
-    return '$days Days · $nights Night${nights > 1 ? 's' : ''}';
+    return '$days days, $nights night${nights > 1 ? 's' : ''}';
   }
 
   static String timeAgo(DateTime dt) {

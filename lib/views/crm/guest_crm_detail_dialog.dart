@@ -108,7 +108,7 @@ class _GuestCrmDetailDialogState extends ConsumerState<GuestCrmDetailDialog> {
                         style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        '${widget.guest.phone} · ${widget.guest.email}',
+                        '${widget.guest.phone}, ${widget.guest.email}',
                         style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
                       ),
                     ],
@@ -178,10 +178,10 @@ class _GuestCrmDetailDialogState extends ConsumerState<GuestCrmDetailDialog> {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                                 children: [
-                                  _statCol('TOTAL STAYS', '${guestBookings.length}'),
-                                  _statCol('COMPLETED', '$completedCount'),
-                                  _statCol('LIFETIME VALUE', currencyFmt.format(lifetimeVal)),
-                                  _statCol('OUTSTANDING', currencyFmt.format(outstanding), isWarning: outstanding > 0),
+                                  _statCol('Total stays', '${guestBookings.length}'),
+                                  _statCol('Completed', '$completedCount'),
+                                  _statCol('Lifetime value', currencyFmt.format(lifetimeVal)),
+                                  _statCol('Outstanding', currencyFmt.format(outstanding), isWarning: outstanding > 0),
                                 ],
                               ),
                             ),
@@ -221,10 +221,10 @@ class _GuestCrmDetailDialogState extends ConsumerState<GuestCrmDetailDialog> {
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                '${b.accommodation} · ${DateFormatter.formatStayRange(b.checkInDate, b.checkOutDate)}',
+                                                '${b.accommodation}, ${DateFormatter.formatStayRange(b.checkInDate, b.checkOutDate)}',
                                                 style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
                                               ),
-                                              Text('Ref: ${b.refId ?? b.id} · Status: ${b.rawStatus}', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
+                                              Text('Ref: ${b.refId ?? b.id}, Status: ${b.rawStatus}', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
                                             ],
                                           ),
                                           Text('₱${b.totalAmount.toStringAsFixed(0)}', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -279,12 +279,12 @@ class _GuestCrmDetailDialogState extends ConsumerState<GuestCrmDetailDialog> {
   Widget _statCol(String title, String val, {bool isWarning = false}) {
     return Column(
       children: [
-        Text(title, style: GoogleFonts.inter(fontSize: 8, color: AppColors.textMuted)),
+        Text(title, style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
         Text(
           val,
           style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
             color: isWarning ? AppColors.statusAlert : AppColors.textDark,
           ),
         ),

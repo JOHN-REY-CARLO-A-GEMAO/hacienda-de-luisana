@@ -242,7 +242,7 @@ _ResolvedConversation _resolveConversation({
 
   final rawPreview = data['last_message']?.toString().trim() ?? '';
   final previewText =
-      rawPreview.isNotEmpty ? rawPreview : 'Conversation opened · No messages yet';
+      rawPreview.isNotEmpty ? rawPreview : 'Conversation opened, no messages yet';
 
   final unreadAdminRaw = data['unread_admin'];
   final unreadGuestRaw = data['unread_guest'];
@@ -762,7 +762,7 @@ class _ConversationInboxCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${item.propertyLabel} · ${item.referenceLabel}',
+                        '${item.propertyLabel}, ${item.referenceLabel}',
                         style: GoogleFonts.inter(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
@@ -1290,7 +1290,7 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                           color: AppColors.statusSuccess,
                         ),
                         label: Text(
-                          'Live Location Active · ${session.countdown}',
+                          'Live location active, ${session.countdown}',
                           style: GoogleFonts.inter(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1311,7 +1311,7 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
+                    color: AppColors.sageMist,
                     border: Border(
                       bottom: BorderSide(
                         color: AppColors.statusSuccess.withOpacity(0.3),
@@ -1320,11 +1320,15 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Text('📍', style: TextStyle(fontSize: 14)),
+                      const Icon(
+                        Icons.location_on_outlined,
+                        size: 16,
+                        color: AppColors.statusSuccess,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Live Location Active · ${session.countdown} remaining',
+                          'Live location active, ${session.countdown} remaining',
                           style: GoogleFonts.inter(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1426,7 +1430,7 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        '${resolved.propertyLabel} · ${resolved.referenceLabel}',
+                        '${resolved.propertyLabel}, ${resolved.referenceLabel}',
                         style: GoogleFonts.inter(
                           fontSize: 11,
                           color: AppColors.accentGoldLight.withOpacity(0.92),
@@ -1685,7 +1689,7 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                                 if (deliveryLabel != null) ...[
                                   const SizedBox(width: 6),
                                   Text(
-                                    '· $deliveryLabel',
+                                    deliveryLabel!,
                                     style: GoogleFonts.inter(
                                       fontSize: 10.5,
                                       fontWeight: FontWeight.w600,
@@ -1860,7 +1864,7 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                                 ? 'Uploading privately…'
                                 : _sendStage == 'sending'
                                     ? 'Sending message…'
-                                    : '${(selectedImage.bytes.length / 1024).ceil()} KB · ready to send',
+                                    : '${(selectedImage.bytes.length / 1024).ceil()} KB, ready to send',
                             style: GoogleFonts.inter(
                               fontSize: 11,
                               color: AppColors.textMuted,
@@ -2047,7 +2051,7 @@ class _EmbeddedThreadHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${resolved.propertyLabel} · ${resolved.referenceLabel} · $lastActiveLabel',
+                  '${resolved.propertyLabel}, ${resolved.referenceLabel}, $lastActiveLabel',
                   style: GoogleFonts.inter(
                     fontSize: 12,
                     color: AppColors.textMuted,
@@ -2124,7 +2128,7 @@ class _BookingContextCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Booking Details · ${resolved.referenceLabel}',
+                    'Booking details, ${resolved.referenceLabel}',
                     style: GoogleFonts.cinzel(
                       fontSize: 13.5,
                       fontWeight: FontWeight.bold,

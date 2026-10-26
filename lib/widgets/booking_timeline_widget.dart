@@ -140,7 +140,7 @@ class BookingTimelineWidget extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '$actor · ${at != null ? DateFormatter.formatFull(at.toLocal()) : ''}',
+                      '$actor, ${at != null ? DateFormatter.formatFull(at.toLocal()) : ''}',
                       style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
                     ),
                     if (fromStatus != null && toStatus != null && fromStatus != toStatus) ...[
@@ -152,9 +152,9 @@ class BookingTimelineWidget extends StatelessWidget {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          '$fromStatus ➔ $toStatus',
+                          'From $fromStatus to $toStatus',
                           style: GoogleFonts.inter(
-                            fontSize: 10,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: AppColors.primaryForest,
                           ),

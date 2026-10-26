@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart' as legacy;
 import '../core/constants/app_constants.dart';
+import '../core/theme/app_theme.dart';
 import '../services/auth_store.dart';
 import '../services/notification_service.dart';
 import '../providers/app_providers.dart';
@@ -10,10 +10,10 @@ import 'security/secure_action_sheet.dart';
 import 'security/setup_pin_sheet.dart';
 import '../tutorial/tutorial_controller.dart';
 import '../tutorial/tutorial_keys.dart';
+import '../widgets/admin_ui.dart';
 import '../widgets/animated_badge.dart';
 import '../widgets/animated_tab_page.dart';
-import '../widgets/pressable_card.dart';
-import '../widgets/section_header.dart';
+import '../widgets/hacienda_card.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'bookings/bookings_screen.dart';
 import 'inbox/inbox_screen.dart';
@@ -51,13 +51,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       if (!mounted) return;
       _tutorial = ref.read(tutorialControllerProvider);
       _tutorial?.attachTabNavigator(_navigateToTab);
-      // Sync the current tab so the tour knows where the app already is.
       TourBus.tab(_currentIndex);
-      // The Security PIN is already settled before this screen is ever built:
-      // `AuthGate` puts `PinGateScreen` in front of the shell (ADR-0015), and
-      // that screen creates the PIN on a first run and checks it on every
-      // return. Nothing is asked for here, so the guided tour no longer has to
-      // queue behind a setup sheet.
       _tutorial?.maybeOfferTutorial();
     });
   }
@@ -71,6 +65,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   @override
   Widget build(BuildContext context) {
     final stats = ref.watch(dashboardStatsProvider);
+    final wide = MediaQuery.sizeOf(context).width >= AppTheme.navigationBreakpoint;
 
     final List<Widget> screens = [
       AnimatedTabPage(
@@ -90,91 +85,143 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     ];
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: screens,
+      body: Row(
+        children: [
+          if (wide) _buildNavigationRail(stats),
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: screens,
+            ),
+          ),
+        ],
       ),
-      bottomNavigationBar: Container(
-        key: TourKeys.bottomNav,
-        decoration: BoxDecoration(
-          color: AppColors.primaryDark,
-          border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
+      bottomNavigationBar: wide ? null : _buildBottomNavigation(stats),
+    );
+  }
+
+  Widget _buildNavigationRail(DashboardStats stats) {
+    final selected = _currentIndex >= 5 ? 5 : _currentIndex;
+    return SizedBox(
+      key: TourKeys.bottomNav,
+      child: NavigationRail(
+        selectedIndex: selected,
+        minWidth: 82,
+        labelType: NavigationRailLabelType.all,
+        groupAlignment: -0.15,
+        onDestinationSelected: (index) {
+          if (index == 5) {
+            TourBus.event('more-opened');
+            _showMoreModal(context);
+          } else {
+            _navigateToTab(index);
+          }
+        },
+        destinations: [
+          const NavigationRailDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: Text('Dashboard'),
+          ),
+          NavigationRailDestination(
+            icon: Stack(
+              key: TourKeys.tabBookings,
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.confirmation_number_outlined),
+                Positioned(
+                  top: -5,
+                  right: -7,
+                  child: AnimatedBadge(count: stats.pendingRequests),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex >= 4 ? 4 : _currentIndex,
-          backgroundColor: AppColors.primaryDark,
-          selectedItemColor: AppColors.accentGoldLight,
-          unselectedItemColor: Colors.white.withOpacity(0.5),
-          selectedLabelStyle: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-          unselectedLabelStyle: GoogleFonts.inter(fontSize: 12),
-          selectedIconTheme: const IconThemeData(size: 28),
-          unselectedIconTheme: const IconThemeData(size: 28),
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          onTap: (index) {
-            if (index == 4) {
-              TourBus.event('more-opened');
-              _showMoreModal(context);
-            } else {
-              _navigateToTab(index);
-            }
-          },
-          items: [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Dashboard',
+            selectedIcon: const Icon(Icons.confirmation_number),
+            label: const Text('Bookings'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.chat_bubble_outline, key: TourKeys.tabChat),
+            selectedIcon: const Icon(Icons.chat_bubble),
+            label: const Text('Chat'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.hourglass_bottom_outlined, key: TourKeys.tabStays),
+            selectedIcon: const Icon(Icons.hourglass_bottom),
+            label: const Text('Stays'),
+          ),
+          const NavigationRailDestination(
+            icon: Icon(Icons.analytics_outlined),
+            selectedIcon: Icon(Icons.analytics),
+            label: Text('Analytics'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.grid_view_rounded, key: TourKeys.tabMore),
+            label: const Text('More'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigation(DashboardStats stats) {
+    return Container(
+      key: TourKeys.bottomNav,
+      decoration: const BoxDecoration(
+        color: AppColors.primaryDark,
+        border: Border(top: BorderSide(color: AppColors.accentGold, width: 0.8)),
+      ),
+      child: BottomNavigationBar(
+        currentIndex: _currentIndex >= 4 ? 4 : _currentIndex,
+        onTap: (index) {
+          if (index == 4) {
+            TourBus.event('more-opened');
+            _showMoreModal(context);
+          } else {
+            _navigateToTab(index);
+          }
+        },
+        items: [
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Stack(
+              key: TourKeys.tabBookings,
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.confirmation_number_outlined),
+                Positioned(
+                  top: -4,
+                  right: -6,
+                  child: AnimatedBadge(count: stats.pendingRequests),
+                ),
+              ],
             ),
-            BottomNavigationBarItem(
-              icon: Stack(
-                key: TourKeys.tabBookings,
-                clipBehavior: Clip.none,
-                children: [
-                  const Icon(Icons.confirmation_number_outlined),
-                  Positioned(
-                    top: -4,
-                    right: -6,
-                    child: AnimatedBadge(count: stats.pendingRequests),
-                  ),
-                ],
-              ),
-              activeIcon: const Icon(Icons.confirmation_number),
-              label: 'Bookings',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline, key: TourKeys.tabChat),
-              activeIcon: const Icon(Icons.chat_bubble),
-              label: 'Chat',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.hourglass_bottom_outlined, key: TourKeys.tabStays),
-              activeIcon: const Icon(Icons.hourglass_bottom),
-              label: 'Stays',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.grid_view_rounded, key: TourKeys.tabMore),
-              label: 'More',
-            ),
-          ],
-        ),
+            activeIcon: const Icon(Icons.confirmation_number),
+            label: 'Bookings',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat_bubble_outline, key: TourKeys.tabChat),
+            activeIcon: const Icon(Icons.chat_bubble),
+            label: 'Chat',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.hourglass_bottom_outlined, key: TourKeys.tabStays),
+            activeIcon: const Icon(Icons.hourglass_bottom),
+            label: 'Stays',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.grid_view_rounded, key: TourKeys.tabMore),
+            label: 'More',
+          ),
+        ],
       ),
     );
   }
 
   /// Ask Android for notifications, out loud, and then say what it decided.
-  ///
-  /// The request is made here rather than on first launch: the Admin opening a
-  /// sheet called "Booking & door alerts" is the moment the reason is obvious,
-  /// and asking earlier is how a permission gets refused for good. A refusal is
-  /// reported as a refusal rather than swallowed, so nobody sits waiting for an
-  /// alert that the system is going to drop.
   Future<void> _askForNotificationPermission(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final outcome = await NotificationService().requestPermission();
@@ -193,8 +240,8 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
         message = 'This platform does not ask for notification permission.';
     }
     messenger.showMaterialBanner(MaterialBanner(
-      content: Text(message),
-      backgroundColor: AppColors.surfaceLight,
+      content: Text(message, style: AppTheme.body(fontSize: 13)),
+      backgroundColor: AppColors.cardSurface,
       actions: [
         TextButton(
           onPressed: messenger.hideCurrentMaterialBanner,
@@ -203,173 +250,245 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       ],
     ));
   }
+
   void _showMoreModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    final auth = legacy.Provider.of<AuthStore>(context, listen: false);
+
+    final daily = <_MoreDestination>[
+      _MoreDestination(
+        title: 'Revenue & stays',
+        subtitle: 'Financial KPIs and occupancy breakdown',
+        icon: Icons.analytics_outlined,
+        tabIndex: 4,
       ),
-      builder: (ctx) {
-        final auth = legacy.Provider.of<AuthStore>(context, listen: false);
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBorder,
-                      borderRadius: BorderRadius.circular(10),
+      _MoreDestination(
+        title: 'Smart lock logs',
+        subtitle: 'Real-time door audit trail and simulator',
+        icon: Icons.lock_clock_outlined,
+        tabIndex: 5,
+        key: TourKeys.moreSmartLock,
+        tourEvent: 'open-smartlock',
+      ),
+      _MoreDestination(
+        title: 'Accommodation status',
+        subtitle: 'Record availability, occupancy or maintenance',
+        icon: Icons.hotel_outlined,
+        tabIndex: 6,
+      ),
+      _MoreDestination(
+        title: 'Guest CRM',
+        subtitle: 'Past guest history, VIP notes and preferences',
+        icon: Icons.people_outline,
+        tabIndex: 7,
+      ),
+      _MoreDestination(
+        title: 'Guest reviews',
+        subtitle: 'Respond, moderate and publish post-stay reviews',
+        icon: Icons.rate_review_outlined,
+        tabIndex: 10,
+      ),
+    ];
+
+    final publishing = <_MoreDestination>[
+      _MoreDestination(
+        title: 'Rates & cancellation policy',
+        subtitle: 'Publish the prices and refund terms the website quotes',
+        icon: Icons.payments_outlined,
+        tabIndex: 8,
+        key: TourKeys.moreRates,
+        tourEvent: 'open-rates',
+      ),
+      _MoreDestination(
+        title: 'Payment references',
+        subtitle: 'Verify valid references; never trust OCR alone',
+        icon: Icons.receipt_long_outlined,
+        tabIndex: 9,
+      ),
+    ];
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      constraints: BoxConstraints(
+        maxWidth: 560,
+        maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('More tools', style: AppTheme.display(fontSize: 22)),
+                    const SizedBox(height: 3),
+                    Text(
+                      auth.sessionEmail ?? 'Admin session',
+                      style: AppTheme.body(fontSize: 12, color: AppColors.textMuted),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                const SectionHeader(
-                  title: 'Mga Tool sa Operasyon',
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                ),
-                const SizedBox(height: 4),
-                PressableCard(
-                  key: TourKeys.moreRates,
+              ),
+              const SizedBox(height: 10),
+              const AdminSectionHeading(title: 'Daily operations'),
+              for (final destination in daily)
+                _MoreTile(
+                  destination: destination,
                   onTap: () {
-                    TourBus.event('open-rates');
-                    Navigator.pop(ctx);
-                    _navigateToTab(8); // Rates
+                    if (destination.tourEvent != null) {
+                      TourBus.event(destination.tourEvent!);
+                    }
+                    Navigator.pop(sheetContext);
+                    _navigateToTab(destination.tabIndex);
                   },
-                  child: const ListTile(
-                    leading: Icon(Icons.payments_outlined),
-                    title: Text('Rates & Cancellation Policy'),
-                    subtitle: Text('Publish the prices and refund terms the website quotes'),
-                  ),
                 ),
-                PressableCard(
+              const SizedBox(height: 12),
+              const AdminSectionHeading(title: 'Publishing & verification'),
+              for (final destination in publishing)
+                _MoreTile(
+                  destination: destination,
                   onTap: () {
-                    Navigator.pop(ctx);
-                    _navigateToTab(9);
-                  },
-                  child: const ListTile(
-                    leading: Icon(Icons.receipt_long_outlined),
-                    title: Text('Payment references'),
-                    subtitle: Text('Valid GCash/bank refs — verify, never trust OCR alone'),
-                  ),
-                ),
-                PressableCard(
-                  key: TourKeys.moreSmartLock,
-                  onTap: () {
-                    TourBus.event('open-smartlock');
-                    Navigator.pop(ctx);
-                    _navigateToTab(5); // Smart lock
-                  },
-                  child: const ListTile(
-                    leading: Icon(Icons.lock_clock_rounded),
-                    title: Text('Smart Lock Security Logs'),
-                    subtitle: Text('Real-time door access audit trail & simulator'),
-                  ),
-                ),
-                PressableCard(
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _navigateToTab(4); // Analytics
-                  },
-                  child: const ListTile(
-                    leading: Icon(Icons.analytics_outlined),
-                    title: Text('Revenue & Stay Analytics'),
-                    subtitle: Text('Financial charts, KPIs & occupancy breakdown'),
-                  ),
-                ),
-                PressableCard(
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _navigateToTab(6); // Rooms
-                  },
-                  child: const ListTile(
-                    leading: Icon(Icons.hotel_outlined),
-                    title: Text('Accommodation Status'),
-                    subtitle: Text('Manage status (Available/Occupied) & pricing'),
-                  ),
-                ),
-                PressableCard(
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _navigateToTab(10); // Guest reviews
-                  },
-                  child: const ListTile(
-                    leading: Icon(Icons.rate_review_outlined),
-                    title: Text('Guest Reviews'),
-                    subtitle: Text('What Guests wrote after their stay — answer, moderate, publish'),
-                  ),
-                ),
-                PressableCard(
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _navigateToTab(7); // CRM
-                  },
-                  child: const ListTile(
-                    leading: Icon(Icons.people_outline),
-                    title: Text('Guest CRM & History'),
-                    subtitle: Text('Past guest lookups, VIP badges & preferences'),
-                  ),
-                ),
-                const Divider(height: 20),
-                ListTile(
-                  leading: const Icon(Icons.school_outlined, color: AppColors.primaryForest),
-                  title: const Text('Replay the guided tour'),
-                  subtitle: const Text('An interactive walkthrough of the app’s screens'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    ref.read(tutorialControllerProvider).replay();
+                    if (destination.tourEvent != null) {
+                      TourBus.event(destination.tourEvent!);
+                    }
+                    Navigator.pop(sheetContext);
+                    _navigateToTab(destination.tabIndex);
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.shield_outlined, color: AppColors.primaryForest),
-                  title: const Text('Change Security PIN'),
-                  subtitle: const Text('Asked before approvals, publishes and deletes (ADR-0015)'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    showChangePinSheet(context);
-                  },
+              const SizedBox(height: 12),
+              const AdminSectionHeading(title: 'Account'),
+              HaciendaCard(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.school_outlined),
+                      title: const Text('Replay the guided tour'),
+                      subtitle: const Text('Walk through the Admin app again'),
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        ref.read(tutorialControllerProvider).replay();
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.shield_outlined),
+                      title: const Text('Change Security PIN'),
+                      subtitle: const Text('Required before approvals and publishes'),
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        showChangePinSheet(context);
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.notifications_active_outlined),
+                      title: const Text('Booking & door alerts'),
+                      subtitle: const Text('Choose whether Android interrupts you'),
+                      onTap: () async {
+                        Navigator.pop(sheetContext);
+                        await _askForNotificationPermission(context);
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.logout,
+                        color: AppColors.statusAlert,
+                      ),
+                      title: Text(
+                        'Sign out',
+                        style: AppTheme.title(
+                          fontSize: 15,
+                          color: AppColors.statusAlert,
+                        ),
+                      ),
+                      subtitle: Text(auth.sessionEmail ?? 'End this Admin session'),
+                      onTap: () async {
+                        Navigator.pop(sheetContext);
+                        final ok = await showSecureConfirm(
+                          context,
+                          title: 'Sign out?',
+                          body:
+                              'The session ends and the Security PIN is asked for again on return.',
+                          confirm: 'Sign out',
+                          danger: true,
+                        );
+                        if (!ok) return;
+                        await auth.signOut();
+                      },
+                    ),
+                  ],
                 ),
-                ListTile(
-                  leading: const Icon(Icons.notifications_active_outlined,
-                      color: AppColors.primaryForest),
-                  title: const Text('Booking & door alerts'),
-                  subtitle: const Text(
-                      'Tell Android to interrupt you for a new Booking or a refused door'),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _askForNotificationPermission(ctx);
-                  },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MoreDestination {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final int tabIndex;
+  final Key? key;
+  final String? tourEvent;
+
+  const _MoreDestination({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.tabIndex,
+    this.key,
+    this.tourEvent,
+  });
+}
+
+class _MoreTile extends StatelessWidget {
+  final _MoreDestination destination;
+  final VoidCallback onTap;
+
+  const _MoreTile({required this.destination, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Semantics(
+        button: true,
+        label: '${destination.title}. ${destination.subtitle}',
+        child: HaciendaCard(
+          key: destination.key,
+          padding: EdgeInsets.zero,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+            onTap: onTap,
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              leading: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.sageMist,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusPanel),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: AppColors.statusAlert),
-                  title: const Text('Sign out'),
-                  subtitle: Text(auth.sessionEmail ?? 'Admin session'),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    // Confirm-tier in the gate (ADR-0015): sign-out ends the
-                    // session, the PIN ticket with it.
-                    final ok = await showSecureConfirm(
-                      context,
-                      title: 'Sign out?',
-                      body: 'The session ends and the Security PIN is asked for again on return.',
-                      confirm: 'Sign out',
-                      danger: true,
-                    );
-                    if (!ok) return;
-                    await auth.signOut();
-                  },
-                ),
-              ],
+                child: Icon(destination.icon, size: 20, color: AppColors.primaryForest),
+              ),
+              title: Text(destination.title),
+              subtitle: Text(destination.subtitle),
+              trailing: const Icon(Icons.chevron_right, size: 19),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
