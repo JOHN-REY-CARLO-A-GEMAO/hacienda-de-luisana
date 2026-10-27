@@ -4,9 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/guest_crm_model.dart';
 import '../../providers/app_providers.dart';
+import '../../widgets/admin_ui.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/loading_state.dart';
@@ -283,7 +285,7 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                       ),
                     ],
                   )
-                : const Text(
+                : Text(
                     'No recorded stays yet.',
                     style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
                   ),
