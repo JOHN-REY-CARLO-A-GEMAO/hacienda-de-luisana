@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -259,7 +261,7 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
     if (!mounted) return;
     if (result.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.error),
+        content: Text(result.error!),
         backgroundColor: AppColors.statusAlert,
       ));
       return;
@@ -300,7 +302,6 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
     final senderLine = row.senderName != null ? ' · ${row.senderName!}' : '';
 
     return HaciendaCard(
-      margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         contentPadding: const EdgeInsets.all(14),
         leading: row.proofUrl != null
@@ -350,7 +351,7 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
           children: [
             if (row.canCorrect)
               IconButton(
-                icon: const Icon(Icons.edit_outline, size: 20),
+                icon: const Icon(Icons.edit_outlined, size: 20),
                 tooltip: 'Correct extraction',
                 onPressed: () => _correctRow(row),
               ),

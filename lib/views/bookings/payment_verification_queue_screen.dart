@@ -195,9 +195,9 @@ class _PaymentVerificationQueueScreenState
   ///
   /// Concurrency: the check-and-insert runs inside a Firestore transaction on
   /// a deterministic document id (`reference` + Booking id), so two concurrent
-  /// verifications of the same reference can never insert a second row.
-  /// `transaction.create()` fails hard if the row already exists, which the
-  /// idempotency read above turns into a no-op instead of a duplicate.
+  /// verifications of the same reference can never insert a second row. The
+  /// transaction reads the document first and writes only when it is absent;
+  /// contention retries the read, turning a duplicate insert into a no-op.
   Future<void> _recordPaymentReference(BookingModel booking, double verifiedAmount) async {
     final reference = booking.paymentReference?.trim();
     if (reference == null || reference.isEmpty) return;
@@ -213,7 +213,7 @@ class _PaymentVerificationQueueScreenState
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final existing = await transaction.get(docRef);
         if (existing.exists) return; // already filed — idempotent no-op
-        transaction.create(docRef, {
+        transaction.set(docRef, {
           'reference': reference,
           'amount': verifiedAmount,
           'status': 'verified',
