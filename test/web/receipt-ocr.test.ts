@@ -7,8 +7,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   claimAgainstReceipt,
+  extractPaymentDate,
   extractReceiptFields,
   extractReferenceNumber,
+  extractSenderName,
 } from '../../src/lib/payments/ocr'
 
 const GCASH_EXPRESS_SEND = `10:23 AM @ Tl ft.
@@ -182,5 +184,107 @@ describe('claimAgainstReceipt', () => {
       expect(out.ok).toBe(false)
       expect(out.ok ? '' : out.message).toContain('the Admin will read it off your screenshot')
     }
+  })
+})
+
+describe('extractSenderName', () => {
+  it('reads a sender name under a Sender label', () => {
+    expect(extractSenderName('GCash\nSender: Juan Dela Cruz\nAmount 1,000.00')).toBe(
+      'Juan Dela Cruz',
+    )
+  })
+
+  it('reads a bank remitter from the next line when the label stands alone', () => {
+    expect(
+      extractSenderName('BDO Online Transfer\nRemitter\nMaria Clara Santos\n₱5,000.00'),
+    ).toBe('Maria Clara Santos')
+  })
+
+  it('reads a From label', () => {
+    expect(extractSenderName('MAYA\nFrom: Jose Rizal\nRef No. 1234567890123')).toBe(
+      'Jose Rizal',
+    )
+  })
+
+  it('ignores a bare phone number without a sender label (GCash prints the number)', () => {
+    expect(extractSenderName('+63 930 485 7798\nSent via GCash\nAmount 1,020.00')).toBe(
+      '',
+    )
+  })
+
+  it('returns nothing when there is no sender label or plausible name', () => {
+    expect(extractSenderName('GCash\nAmount 1,000.00\nRef No. 1234567890123')).toBe('')
+    expect(
+      extractSenderName('1234567890123\nAug 26, 2026 10:23 AM'),
+    ).toBe('')
+  })
+
+  it('stops at a figure and keeps the name plausible', () => {
+    expect(
+      extractSenderName('Sender: Juan Dela Cruz Ref 1234567890123'),
+    ).toBe('Juan Dela Cruz')
+  })
+})
+
+describe('extractPaymentDate', () => {
+  it('normalizes an unambiguous month name date', () => {
+    const found = extractPaymentDate('Ref No. 7044 357 Aug 26, 2026 10:23')
+    expect(found).toEqual({ display: 'Aug 26, 2026', iso: '2026-08-26', ambiguous: false })
+  })
+
+  it('normalizes an ISO date', () => {
+    const found = extractPaymentDate('Date 2026-08-26')
+    expect(found).toEqual({ display: '2026-08-26', iso: '2026-08-26', ambiguous: false })
+  })
+
+  it('reads day-first slash dates', () => {
+    const found = extractPaymentDate('26/08/2026')
+    expect(found?.iso).toBe('2026-08-26')
+  })
+
+  it('flags ambiguous slash dates but still returns a day-first reading', () => {
+    const found = extractPaymentDate('08/05/2026')
+    expect(found).toEqual({
+      display: '08/05/2026',
+      iso: '2026-05-08',
+      ambiguous: true,
+    })
+  })
+
+  it('prefers an unambiguous date over an ambiguous one', () => {
+    const found = extractPaymentDate('08/05/2026 Aug 26, 2026')
+    expect(found).toEqual({ display: 'Aug 26, 2026', iso: '2026-08-26', ambiguous: false })
+  })
+
+  it('returns null when there is no date', () => {
+    expect(extractPaymentDate('GCash\nAmount 1,000.00')).toBeNull()
+  })
+
+  it('ignores references and amounts that look like numbers', () => {
+    expect(extractPaymentDate('Ref No. 1234567890123 Amount 1,000.00')).toBeNull()
+  })
+})
+
+describe('extractReceiptFields sender and date', () => {
+  it('returns sender name and normalized date from a GCash-style receipt', () => {
+    const out = extractReceiptFields(
+      `GCash Express Send
+      From: Juan Dela Cruz
+      Amount 1,020.00
+      Ref No. 7044 357 122304
+      Aug 26, 2026 10:23 AM`,
+    )
+    expect(out.senderName).toBe('Juan Dela Cruz')
+    expect(out.paymentDate).toBe('Aug 26, 2026')
+    expect(out.paymentDateIso).toBe('2026-08-26')
+    expect(out.reference).toBe('7044357122304')
+    expect(out.amount).toBe('1020.00')
+  })
+
+  it('keeps confidence none when only the date is readable (reference+amount decide)', () => {
+    const out = extractReceiptFields('Aug 26, 2026 10:23 AM')
+    expect(out.senderName).toBe('')
+    expect(out.paymentDate).toBe('Aug 26, 2026')
+    expect(out.confidence).toBe('none')
   })
 })

@@ -19,6 +19,11 @@ class AppConstants {
   static const String colSmartLockLogs = 'access_logs';
   static const String colRooms = 'rooms';
   static const String colGuestProfiles = 'guest_profiles';
+  /// Payment references: the Admin's catalog of verified reference numbers,
+  /// plus one row per Booking whose proof the Admin verified (reference,
+  /// amount, sender, date, proof path, booking link). Admin-only in
+  /// firestore.rules.
+  static const String colPaymentReferences = 'payment_references';
   /// Published rates + cancellation policy the website quotes from
   /// (`site_config/rates`).
   static const String colSiteConfig = 'site_config';

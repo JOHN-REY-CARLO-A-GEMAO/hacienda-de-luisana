@@ -59,6 +59,14 @@ export type BookingState = {
   payment_reference?: string
   ocr_reference?: string
   ocr_amount?: string
+  /** What OCR read as the sender (never verified). */
+  ocr_sender_name?: string | null
+  /** What OCR read as the payment date, normalized YYYY-MM-DD (never verified). */
+  ocr_payment_date?: string | null
+  /** Sender name the Guest confirmed from the receipt. */
+  payment_sender_name?: string | null
+  /** Payment date the Guest confirmed from the receipt. */
+  payment_date?: string | null
   payment_verified_at?: string | null
   payment_verified_by?: string | null
   /** Authoritative stay length and rate snapshot for new bookings; absent on legacy records. */
@@ -152,6 +160,14 @@ export type BookingAction =
       payment_reference?: string
       ocr_reference?: string
       ocr_amount?: string
+      /** OCR-extracted sender name (never verified). */
+      ocr_sender_name?: string
+      /** OCR-extracted payment date, normalized to YYYY-MM-DD (never verified). */
+      ocr_payment_date?: string
+      /** Sender name the Guest confirmed from the receipt. */
+      payment_sender_name?: string
+      /** Payment date the Guest confirmed from the receipt. */
+      payment_date?: string
     }
   | { type: 'VerifyPayment'; amount_verified: number }
   | { type: 'RejectPaymentProof'; reason: string; guestResubmits: boolean }
@@ -465,6 +481,10 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       patch.payment_reference = reference
       if (action.ocr_reference) patch.ocr_reference = action.ocr_reference
       if (action.ocr_amount) patch.ocr_amount = action.ocr_amount
+      if (action.ocr_sender_name) patch.ocr_sender_name = action.ocr_sender_name
+      if (action.ocr_payment_date) patch.ocr_payment_date = action.ocr_payment_date
+      if (action.payment_sender_name) patch.payment_sender_name = action.payment_sender_name
+      if (action.payment_date) patch.payment_date = action.payment_date
       if (booking.payment_reject_reason) patch.payment_reject_reason = null
       break
     }

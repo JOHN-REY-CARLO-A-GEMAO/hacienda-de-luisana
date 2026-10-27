@@ -88,16 +88,23 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   String _sort = 'date';
   int _page = 0;
   bool _quickActionInFlight = false;
+  /// Recomputes `now` so a hold that runs out while this screen is open flips
+  /// pending cards to `Expired` without the Admin having to pull to refresh.
+  Timer? _holdTicker;
 
   @override
   void initState() {
     super.initState();
     final requested = _filters.indexOf(widget.initialFilter ?? '');
     if (requested >= 0) _selectedFilterIndex = requested;
+    _holdTicker = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
+    _holdTicker?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -663,10 +670,19 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   }
 
   Widget _buildBookingCard(BookingModel booking, {Key? key}) {
+    final now = DateTime.now();
+    final doc = booking.toLifecycleDoc();
+    final effective = effectiveStatus(doc, now);
+    // A pending Booking whose 24-hour Date hold ran out reads as Expired on
+    // every surface, even though the document still says Pending until the
+    // Admin records the expiry.
+    final expiredPending =
+        booking.rawStatus == BookingStatuses.pending &&
+        effective == BookingStatuses.expired;
     final statusColor = StatusStyle.colorForEnum(booking.status);
     final needsAction = bookingNeedsAdminAction(booking);
     final quick = _quickAction(booking);
-    final hold = holdRemaining(booking.toLifecycleDoc(), DateTime.now());
+    final hold = holdRemaining(doc, now);
     final paymentStatus = (booking.paymentStatus ?? 'unpaid').toLowerCase();
     final total = booking.stayTotal ?? booking.totalAmount;
     final accommodations = ref.watch(accommodationsProvider);
@@ -736,8 +752,8 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
               runSpacing: 7,
               children: [
                 StatusPill(
-                  label: booking.rawStatus,
-                  color: statusColor,
+                  label: expiredPending ? 'Expired' : booking.rawStatus,
+                  color: expiredPending ? AppColors.statusNeutral : statusColor,
                   icon: Icons.schedule_outlined,
                 ),
                 StatusPill(
@@ -813,7 +829,9 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          booking.nextStep,
+                          expiredPending
+                              ? 'The Date hold ran out — the dates are free again. Record the expiry on this booking\u2019s detail screen.'
+                              : booking.nextStep,
                           style: AppTheme.body(fontSize: 13),
                         ),
                       ],
@@ -869,8 +887,9 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed:
-                      _quickActionInFlight ? null : () => _runQuick(booking, quick),
+                  onPressed: _quickActionInFlight || expiredPending
+                      ? null
+                      : () => _runQuick(booking, quick),
                   icon: _quickActionInFlight
                       ? const SizedBox(
                           width: 18,
@@ -882,12 +901,18 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                         )
                       : const Icon(Icons.check, size: 19),
                   label: Text(
-                    _quickActionInFlight ? 'Working… do not tap again' : quick.label,
+                    expiredPending
+                        ? 'Expired (Hold Timed Out)'
+                        : _quickActionInFlight
+                            ? 'Working… do not tap again'
+                            : quick.label,
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: quick == AdminAction.approve
-                        ? AppColors.statusSuccess
-                        : AppColors.statusInfo,
+                    backgroundColor: expiredPending
+                        ? AppColors.statusNeutral
+                        : (quick == AdminAction.approve
+                            ? AppColors.statusSuccess
+                            : AppColors.statusInfo),
                   ),
                 ),
               ),

@@ -101,8 +101,18 @@ class BookingModel {
   final String? paymentPlan;
   final String? paymentStatus;
   final String? paymentProofUrl;
+  /// The reference number the Guest claims on their proof (`payment_reference`).
+  final String? paymentReference;
   final String? paymentRejectReason;
   final double? amountClaimed;
+  /// The name the receipt names as the sender, as OCR read it (never verified).
+  final String? ocrSenderName;
+  /// The payment date OCR read off the receipt, normalized to YYYY-MM-DD (never verified).
+  final String? ocrPaymentDate;
+  /// The sender name the Guest confirmed from the receipt.
+  final String? paymentSenderName;
+  /// The payment date the Guest confirmed from the receipt.
+  final String? paymentDate;
   /// The rate schedule classification captured on new guest-created Bookings.
   final String? rateClassification;
   final double? stayTotal;
@@ -140,8 +150,13 @@ class BookingModel {
     this.paymentPlan,
     this.paymentStatus,
     this.paymentProofUrl,
+    this.paymentReference,
     this.paymentRejectReason,
     this.amountClaimed,
+    this.ocrSenderName,
+    this.ocrPaymentDate,
+    this.paymentSenderName,
+    this.paymentDate,
     this.rateClassification,
     this.stayTotal,
     this.amountDue,
@@ -365,8 +380,13 @@ class BookingModel {
       paymentPlan: _str(json['payment_plan']),
       paymentStatus: _str(json['payment_status']),
       paymentProofUrl: _str(json['payment_proof_url']),
+      paymentReference: _str(json['payment_reference']),
       paymentRejectReason: _str(json['payment_reject_reason']),
       amountClaimed: _dbl(json['amount_claimed']),
+      ocrSenderName: _str(json['ocr_sender_name']),
+      ocrPaymentDate: _str(json['ocr_payment_date']),
+      paymentSenderName: _str(json['payment_sender_name']),
+      paymentDate: _str(json['payment_date']),
       rateClassification: _str(json['rate_classification']),
       stayTotal: _dbl(json['stay_total']),
       amountDue: _dbl(json['amount_due']),

@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -110,6 +111,9 @@ class _PaymentVerificationQueueScreenState
             : 'Hindi nabe-verify: ${result.reason ?? 'Tinanggihan ng serbisyo.'}'),
         duration: Duration(seconds: result.ok ? 4 : 7),
       ));
+      if (result.ok && mounted) {
+        await _recordPaymentReference(booking, amount);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -178,6 +182,42 @@ class _PaymentVerificationQueueScreenState
       ));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Persists one payment reference row from a proof the Admin just verified.
+  ///
+  /// Idempotent: a row with the same reference number for the same Booking is
+  /// never written twice, and no row is invented when the Guest gave no
+  /// reference at all. The row carries the extraction evidence (sender, date,
+  /// proof path) so the Payment references screen can show it without asking
+  /// the Admin to re-type anything.
+  Future<void> _recordPaymentReference(BookingModel booking, double verifiedAmount) async {
+    final reference = booking.paymentReference?.trim();
+    if (reference == null || reference.isEmpty) return;
+    if (!mounted) return;
+    try {
+      final existing = await FirebaseFirestore.instance
+          .collection(AppConstants.colPaymentReferences)
+          .where('reference', isEqualTo: reference)
+          .where('booking_id', isEqualTo: booking.id)
+          .get();
+      if (existing.docs.isNotEmpty) return;
+
+      await FirebaseFirestore.instance.collection(AppConstants.colPaymentReferences).add({
+        'reference': reference,
+        'amount': verifiedAmount,
+        'status': 'verified',
+        'booking_id': booking.id,
+        'sender_name': booking.paymentSenderName,
+        'payment_date': booking.paymentDate,
+        'proof_url': booking.paymentProofUrl,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      // A failure to file the reference row must never hide a successful
+      // verification — the money decision stands, the row can be backfilled.
+      debugPrint('[PaymentRefs] could not record reference row: $e');
     }
   }
 
@@ -445,6 +485,14 @@ class _PaymentVerificationQueueScreenState
           if (booking.securityDeposit != null)
             _infoRow('Security deposit', peso(booking.securityDeposit)),
           _infoRow('Halagang sinabi ng Guest na naipadala', peso(claimed), highlight: true),
+          if (booking.paymentSenderName != null || booking.ocrSenderName != null)
+            _infoRow(
+                'Sender sa receipt',
+                '${booking.paymentSenderName ?? booking.ocrSenderName}${booking.paymentSenderName == null ? ' (OCR)' : ''}'),
+          if (booking.paymentDate != null || booking.ocrPaymentDate != null)
+            _infoRow(
+                'Petsa sa receipt',
+                '${booking.paymentDate ?? booking.ocrPaymentDate}${booking.paymentDate == null ? ' (OCR)' : ''}'),
           if (booking.paymentPlan != null) _infoRow('Payment plan', booking.paymentPlan!),
           const SizedBox(height: 8),
           SizedBox(

@@ -1099,6 +1099,8 @@ service cloud.firestore {
                       'refund_status', 'refund_total', 'refund_breakdown',
                       'policy_version', 'policy_effective_date', 'refund_policy_snapshot',
                       'payment_reference', 'ocr_reference', 'ocr_amount',
+                      'ocr_sender_name', 'ocr_payment_date',
+                      'payment_sender_name', 'payment_date',
                       'terms_version', 'terms_accepted_at'])
           // Choosing/changing a plan is permitted only when every financial
           // snapshot field is internally coherent under the Guest's own figures
@@ -1317,15 +1319,18 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAdmin()
         && request.resource.data.keys().hasAll(['reference', 'amount', 'status'])
-        && request.resource.data.status in ['available', 'used', 'void'];
-      // The two guards below are the whole point of the collection: the
-      // reference and the amount are what a proof is matched against, so an
-      // edit may never move them, and a spent reference may never be made
-      // available again — a `void` row that returned to `available` is the same
-      // reference sold to a second Booking.
+        && request.resource.data.status in ['available', 'used', 'void', 'verified', 'pending_review'];
+      // `verified` and `pending_review` rows record a Guest's actual payment on
+      // a Booking (reference, amount, sender, date, proof path, booking link).
+      // They are written when the Admin verifies a payment proof, never by a
+      // Guest, and OCR extraction alone never marks anything verified.
       allow update: if isAdmin()
         && request.resource.data.keys().hasAll(['reference', 'amount', 'status'])
-        && request.resource.data.status in ['available', 'used', 'void']
+        && request.resource.data.status in ['available', 'used', 'void', 'verified', 'pending_review']
+        && request.resource.data.reference == resource.data.reference
+        && request.resource.data.amount == resource.data.amount
+        && !(resource.data.get('status', '') in ['used', 'void']
+             && request.resource.data.status == 'available');
         && request.resource.data.reference == resource.data.reference
         && request.resource.data.amount == resource.data.amount
         && !(resource.data.get('status', '') in ['used', 'void']

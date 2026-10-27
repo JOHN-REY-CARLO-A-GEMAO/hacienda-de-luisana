@@ -25,6 +25,12 @@ export type OcrExtract = {
   amount: string
   /** Every distinct figure the receipt prints, in the order it prints them. */
   amounts: ReceiptAmount[]
+  /** Sender the receipt names (GCash phone/account name, bank remitter), when OCR can read one. */
+  senderName: string
+  /** Payment date as printed, e.g. `Aug 26, 2026`. */
+  paymentDate: string
+  /** Payment date normalized to `YYYY-MM-DD`, or '' when it could not be normalized. */
+  paymentDateIso: string
   confidence: 'high' | 'low' | 'none'
   notes: string[]
 }
@@ -134,6 +140,139 @@ export function extractReferenceNumber(text: string): string {
   }
   const bare = compact.match(/\b(\d{10,13})\b/)
   return bare?.[1] ?? ''
+}
+
+/**
+ * Labels that introduce the sender on the receipt formats the Hacienda sees.
+ * GCash prints the sender as a phone number (`+63 930 485 7798`), bank
+ * transfer receipts print a name under `Remitter`, `Account Name`, `Sender` or
+ * `From`, and Maya receipts print `From`. The label wins; a bare line that
+ * looks like a name is never enough on its own.
+ */
+const SENDER_LABEL_RE =
+  /(?:sender|from|remitter|payer|source\s*account|account\s*name|sender\s*name|sent\s*by)\s*[:#-]*/i
+
+/** Tokens that end a name candidate — money figures, references, dates, labels. */
+const NAME_STOP_RE =
+  /^(?:ref|reference|txn|transaction|amount|total|paid|date|time|gcash|maya|bank| ₱|php|\d{10,})/i
+
+/** What a sender name may contain: letters, spaces and the punctuation names use. */
+const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ'.\s-]{2,60}$/
+
+/** A line that carries a number the receipt prints is not a name line. */
+const NUMBER_LINE_RE = /\d{4,}/
+
+/**
+ * Pull the sender name a receipt prints under a sender label.
+ *
+ * GCash receipts print the sender as a phone number (`+63 930 485 7798`) right
+ * before `Sent via GCash`, so a phone number alone is not enough — a real name
+ * label is required. When the label stands alone on its line, the next line is
+ * the name; otherwise the rest of the label's own line is. Never guesses: no
+ * label and no plausible name returns ''.
+ */
+export function extractSenderName(text: string): string {
+  const lines = text.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i += 1) {
+    const label = SENDER_LABEL_RE.exec(lines[i])
+    if (!label) continue
+    let candidate = lines[i].slice(label.index + label[0].length).trim()
+    if (!candidate && lines[i + 1]) candidate = lines[i + 1].trim()
+    // One label line can carry several fields (`Sender: J. Dela Cruz Ref 123`),
+    // so keep words until a label word or a 4+ digit figure shows up, and never
+    // more than four words — a receipt name is short.
+    const kept: string[] = []
+    for (const word of candidate.split(/\s+/)) {
+      if (NAME_STOP_RE.test(word) || /^\d{4,}$/.test(word)) break
+      kept.push(word)
+      if (kept.length >= 4) break
+    }
+    const cleaned = kept.join(' ').replace(/[.,;:]+$/, '').trim()
+    if (NAME_RE.test(cleaned) && !NUMBER_LINE_RE.test(cleaned)) return cleaned
+  }
+  return ''
+}
+
+/** `Aug 26, 2026`, `26/08/2026`, `2026-08-26`, `08/26/2026`, `26-08-2026`. */
+const PRINTED_DATE_RE =
+  /(?:(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}))|((\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2}))|((\w{3,9})\s+(\d{1,2}),?\s+(\d{4}))/gi
+
+const MONTH_INDEX: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+}
+
+function monthOf(token: string): number | null {
+  const m = MONTH_INDEX[token.toLowerCase().slice(0, 3)]
+  return m === undefined ? null : m
+}
+
+/**
+ * Normalize one printed payment date to `YYYY-MM-DD`.
+ *
+ * Slash dates are ambiguous (`08/26/2026` is month-first, `26/08/2026` is
+ * day-first, and `08/05/2026` could be either). Philippine receipts are read
+ * day-first; when both readings fit and disagree, the caller is told the date
+ * is ambiguous and should ask rather than file a wrong date.
+ */
+export function extractPaymentDate(text: string): {
+  display: string
+  iso: string
+  ambiguous: boolean
+} | null {
+  let best: { display: string; iso: string; ambiguous: boolean } | null = null
+
+  // A fresh global regex each call: `matchAll` leaves `lastIndex` at the end of
+  // the string, so reusing one object would return nothing on the second call.
+  for (const m of text.matchAll(new RegExp(PRINTED_DATE_RE.source, 'gi'))) {
+    const raw = m[0]
+    let y: number | null = null
+    let mo: number | null = null
+    let d: number | null = null
+    let ambiguous = false
+
+    if (m[4] !== undefined) {
+      // ISO-ish `2026-08-26` — unambiguous.
+      y = Number(m[5])
+      mo = Number(m[6])
+      d = Number(m[7])
+    } else if (m[8] !== undefined) {
+      // `Aug 26, 2026` — unambiguous. Group 8 is the whole match; 9 is the
+      // month name, 10 the day, 11 the year.
+      y = Number(m[11])
+      mo = monthOf(m[9])
+      d = Number(m[10])
+      if (mo == null) continue
+    } else {
+      // `26/08/2026` or `08/26/2026` — both orders fit when each part ≤ 12.
+      const a = Number(m[1])
+      const b = Number(m[2])
+      y = Number(m[3])
+      if (a > 12 && b <= 12) {
+        d = a
+        mo = b
+      } else if (b > 12 && a <= 12) {
+        d = b
+        mo = a
+      } else if (a <= 12 && b <= 12) {
+        // Ambiguous as printed: read day-first for Philippine receipts, flag it.
+        d = a
+        mo = b
+        ambiguous = true
+      } else continue
+    }
+
+    if (y == null || mo == null || d == null) continue
+    if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) continue
+    const iso = `${String(y).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    const candidate = { display: raw.trim(), iso, ambiguous }
+    if (!best) best = candidate
+    // Prefer an unambiguous date over an ambiguous one; otherwise keep the
+    // first one printed rather than guessing which matters more.
+    else if (!candidate.ambiguous && best.ambiguous) best = candidate
+  }
+
+  return best
 }
 
 /**
@@ -279,6 +418,9 @@ export function extractReceiptFields(text: string): OcrExtract {
       reference: '',
       amount: '',
       amounts: [],
+      senderName: '',
+      paymentDate: '',
+      paymentDateIso: '',
       confidence: 'none',
       notes: ['No text found on the receipt. Enter the details yourself.'],
     }
@@ -309,6 +451,9 @@ export function extractReceiptFields(text: string): OcrExtract {
   // preference to the receiver's `Amount`.
   const amount = amounts[0]?.value ?? ''
 
+  const sender = extractSenderName(text)
+  const paidDate = extractPaymentDate(text)
+
   if (!reference) notes.push('Could not read a reference number. Please type it from the receipt.')
   if (!amount) notes.push('Could not read an amount. Please type it from the receipt.')
   // Two different figures is a question, not a detail: the receipt is describing
@@ -320,11 +465,25 @@ export function extractReceiptFields(text: string): OcrExtract {
         .join(', ')}). Choose the one you actually sent.`,
     )
   }
+  if (paidDate && paidDate.ambiguous) {
+    notes.push(
+      `The receipt date reads "${paidDate.display}" and could be more than one calendar date. Confirm it before sending.`,
+    )
+  }
 
   const confidence: OcrExtract['confidence'] =
     reference && amount ? 'high' : reference || amount ? 'low' : 'none'
 
-  return { reference, amount, amounts, confidence, notes }
+  return {
+    reference,
+    amount,
+    amounts,
+    senderName: sender,
+    paymentDate: paidDate?.display ?? '',
+    paymentDateIso: paidDate?.iso ?? '',
+    confidence,
+    notes,
+  }
 }
 
 /**
@@ -349,6 +508,9 @@ export async function runReceiptOcr(file: File): Promise<OcrExtract> {
       reference: '',
       amount: '',
       amounts: [],
+      senderName: '',
+      paymentDate: '',
+      paymentDateIso: '',
       confidence: 'none',
       notes: ['No text found on the receipt. Enter the details yourself.'],
     }
@@ -358,6 +520,9 @@ export async function runReceiptOcr(file: File): Promise<OcrExtract> {
       reference: '',
       amount: '',
       amounts: [],
+      senderName: '',
+      paymentDate: '',
+      paymentDateIso: '',
       confidence: 'none',
       notes: [
         'OCR could not read this image automatically. Enter the reference number and amount from your receipt, then submit for Admin verification.',

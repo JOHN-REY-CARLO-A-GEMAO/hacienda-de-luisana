@@ -10,7 +10,15 @@ import {
 } from '../../lib/booking'
 import { uploadPaymentProof } from '../../lib/payments'
 import type { Booking } from '../../lib/storage'
-import { extractReceiptFields, runReceiptOcr, suggestedAmount, amountMismatchNote, type ReceiptAmount } from '../../lib/payments/ocr'
+import {
+  extractReceiptFields,
+  runReceiptOcr,
+  suggestedAmount,
+  amountMismatchNote,
+  extractSenderName,
+  extractPaymentDate,
+  type ReceiptAmount,
+} from '../../lib/payments/ocr'
 import { nextProofAttempt } from '../../lib/payments'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import {
@@ -49,6 +57,14 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   /** Every distinct figure the receipt prints, when it prints more than one. */
   const [amountCandidates, setAmountCandidates] = useState<ReceiptAmount[]>([])
   const [reference, setReference] = useState('')
+  /** What OCR read as the sender, before the Guest corrects it. */
+  const [senderName, setSenderName] = useState('')
+  /** What OCR read as the sender — stored as-is so the Admin sees what the receipt said. */
+  const [ocrSenderName, setOcrSenderName] = useState('')
+  /** The payment date OCR normalized to `YYYY-MM-DD`, before the Guest corrects it. */
+  const [paymentDate, setPaymentDate] = useState('')
+  /** The date OCR normalized — stored as-is so the Admin sees what the receipt said. */
+  const [ocrPaymentDate, setOcrPaymentDate] = useState('')
   const [ocrNotes, setOcrNotes] = useState<string[]>([])
   const [ocrBusy, setOcrBusy] = useState(false)
   const [extractedRef, setExtractedRef] = useState('')
@@ -169,6 +185,10 @@ export function PaymentStep({ booking }: { booking: Booking }) {
           payment_reference: refCheck.value,
           ocr_reference: reference,
           ocr_amount: amtCheck.value,
+          ocr_sender_name: ocrSenderName,
+          ocr_payment_date: ocrPaymentDate,
+          payment_sender_name: senderName,
+          payment_date: paymentDate,
         },
         {
           actor: 'guest',
@@ -185,6 +205,10 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       setAmountClaimed('')
       setReference('')
       setExtractedRef('')
+      setSenderName('')
+      setOcrSenderName('')
+      setPaymentDate('')
+      setOcrPaymentDate('')
       setAmountCandidates([])
       setOcrNotes([])
       setSent(true)
@@ -317,10 +341,14 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   accept="image/*"
                   onChange={(e) => {
                     const file = e.target.files?.[0] ?? null
-                    setProofFile(file)
-                    setExtractedRef('')
-                    setAmountCandidates([])
-                    setOcrNotes([])
+                setProofFile(file)
+                setExtractedRef('')
+                setSenderName('')
+                setOcrSenderName('')
+                setPaymentDate('')
+                setOcrPaymentDate('')
+                setAmountCandidates([])
+                setOcrNotes([])
                     if (!file) return
                     const ocrLimit = checkRateLimit(`ocr:${booking.id}`, LIMITS.ocr)
                     if (!ocrLimit.ok) {
@@ -337,6 +365,14 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                         if (referenceGuess) {
                           setReference(referenceGuess)
                           setExtractedRef(referenceGuess)
+                        }
+                        if (extracted.senderName) {
+                          setOcrSenderName(extracted.senderName)
+                          setSenderName(extracted.senderName)
+                        }
+                        if (extracted.paymentDateIso) {
+                          setOcrPaymentDate(extracted.paymentDateIso)
+                          setPaymentDate(extracted.paymentDateIso)
                         }
                         // Every distinct figure the receipt prints, so a receipt
                         // whose `Amount` and `Total Amount Sent` disagree asks the
@@ -437,6 +473,42 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   spellCheck={false}
                   placeholder="e.g. 1234567890123"
                 />
+              </label>
+              <label className="block">
+                <span className="guest-label">Sender on the receipt</span>
+                <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
+                  Name or account the money came from — OCR fills this in, correct it if it misread
+                </span>
+                <Input
+                  value={senderName}
+                  onChange={(e) => setSenderName(e.target.value.trim())}
+                  maxLength={120}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="e.g. Juan Dela Cruz"
+                />
+              </label>
+              <label className="block">
+                <span className="guest-label">Date on the receipt</span>
+                <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
+                  When the payment was sent, as YYYY-MM-DD — OCR fills this in, confirm or correct it
+                </span>
+                <Input
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value.trim())}
+                  maxLength={10}
+                  inputMode="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="e.g. 2026-08-26"
+                />
+                {paymentDate.length > 0 &&
+                  paymentDate.length < 10 &&
+                  !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) && (
+                  <span className="mt-0.5 block text-[10px] text-amber-800 dark:text-amber-300">
+                    Use YYYY-MM-DD
+                  </span>
+                )}
               </label>
               <label className="block">
                 <span className="guest-label">Amount you sent (₱)</span>
