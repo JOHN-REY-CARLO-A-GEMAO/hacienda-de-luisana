@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -110,6 +111,9 @@ class _PaymentVerificationQueueScreenState
             : 'Hindi nabe-verify: ${result.reason ?? 'Tinanggihan ng serbisyo.'}'),
         duration: Duration(seconds: result.ok ? 4 : 7),
       ));
+      if (result.ok && mounted) {
+        await _recordPaymentReference(booking, amount);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -178,6 +182,52 @@ class _PaymentVerificationQueueScreenState
       ));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Persists one payment reference row from a proof the Admin just verified.
+  ///
+  /// Idempotent: a row with the same reference number for the same Booking is
+  /// never written twice, and no row is invented when the Guest gave no
+  /// reference at all. The row carries the extraction evidence (sender, date,
+  /// proof path) so the Payment references screen can show it without asking
+  /// the Admin to re-type anything.
+  ///
+  /// Concurrency: the check-and-insert runs inside a Firestore transaction on
+  /// a deterministic document id (`reference` + Booking id), so two concurrent
+  /// verifications of the same reference can never insert a second row.
+  /// `transaction.create()` fails hard if the row already exists, which the
+  /// idempotency read above turns into a no-op instead of a duplicate.
+  Future<void> _recordPaymentReference(BookingModel booking, double verifiedAmount) async {
+    final reference = booking.paymentReference?.trim();
+    if (reference == null || reference.isEmpty) return;
+    if (!mounted) return;
+    try {
+      // Firestore document ids may not contain '/'; references are already
+      // validated as [A-Z0-9-]{6,40}, but normalise defensively.
+      final safeRef = reference.replaceAll(RegExp(r'[/\s]+'), '_');
+      final docRef = FirebaseFirestore.instance
+          .collection(AppConstants.colPaymentReferences)
+          .doc('${safeRef}_${booking.id}');
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final existing = await transaction.get(docRef);
+        if (existing.exists) return; // already filed — idempotent no-op
+        transaction.create(docRef, {
+          'reference': reference,
+          'amount': verifiedAmount,
+          'status': 'verified',
+          'booking_id': booking.id,
+          'sender_name': booking.paymentSenderName,
+          'payment_date': booking.paymentDate,
+          'proof_url': booking.paymentProofUrl,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (e) {
+      // A failure to file the reference row must never hide a successful
+      // verification — the money decision stands, the row can be backfilled.
+      debugPrint('[PaymentRefs] could not record reference row: $e');
     }
   }
 
@@ -445,6 +495,14 @@ class _PaymentVerificationQueueScreenState
           if (booking.securityDeposit != null)
             _infoRow('Security deposit', peso(booking.securityDeposit)),
           _infoRow('Halagang sinabi ng Guest na naipadala', peso(claimed), highlight: true),
+          if (booking.paymentSenderName != null || booking.ocrSenderName != null)
+            _infoRow(
+                'Sender sa receipt',
+                '${booking.paymentSenderName ?? booking.ocrSenderName}${booking.paymentSenderName == null ? ' (OCR)' : ''}'),
+          if (booking.paymentDate != null || booking.ocrPaymentDate != null)
+            _infoRow(
+                'Petsa sa receipt',
+                '${booking.paymentDate ?? booking.ocrPaymentDate}${booking.paymentDate == null ? ' (OCR)' : ''}'),
           if (booking.paymentPlan != null) _infoRow('Payment plan', booking.paymentPlan!),
           const SizedBox(height: 8),
           SizedBox(

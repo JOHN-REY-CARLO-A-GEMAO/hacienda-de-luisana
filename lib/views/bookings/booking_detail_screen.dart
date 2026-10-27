@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,6 +50,23 @@ class BookingDetailScreen extends ConsumerStatefulWidget {
 class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   bool _busy = false;
   bool _openingProof = false;
+  /// Recomputes `now` so a hold that runs out while this screen is open flips
+  /// the Booking to `Expired` and blocks approval without a refresh.
+  Timer? _holdTicker;
+
+  @override
+  void initState() {
+    super.initState();
+    _holdTicker = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _holdTicker?.cancel();
+    super.dispose();
+  }
 
   Actor _actor() {
     final auth = legacy.Provider.of<AuthStore>(context, listen: false);

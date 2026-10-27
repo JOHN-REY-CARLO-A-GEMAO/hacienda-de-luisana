@@ -7,7 +7,9 @@ class GuestCrmModel {
   final double lifetimeRevenue;
   final bool isVip;
   final String notes;
-  final DateTime lastStayDate;
+  /// Most recent stay date — null when the profile has no recorded stay,
+  /// so the screen never invents a "recent" date for a Guest with none.
+  final DateTime? lastStayDate;
 
   GuestCrmModel({
     required this.id,
@@ -18,13 +20,23 @@ class GuestCrmModel {
     required this.lifetimeRevenue,
     required this.isVip,
     required this.notes,
-    required this.lastStayDate,
+    this.lastStayDate,
   });
 
   factory GuestCrmModel.fromJson(Map<String, dynamic> json, [String? docId]) {
     // Nothing here is invented. A Guest whose profile has no recorded spend has
     // none — the ₱15,000 this used to default to put a fabricated lifetime value
     // and a VIP-shaped total in front of the Admin on an empty document.
+    DateTime? parsedLastStay(Object? raw) {
+      if (raw == null) return null;
+      if (raw is String) return DateTime.tryParse(raw);
+      try {
+        return (raw as dynamic).toDate();
+      } catch (_) {
+        return null;
+      }
+    }
+
     return GuestCrmModel(
       id: docId ?? json['id'] ?? '',
       name: json['name'] ?? '',
@@ -34,9 +46,7 @@ class GuestCrmModel {
       lifetimeRevenue: _double(json['lifetimeRevenue']) ?? 0.0,
       isVip: json['isVip'] == true,
       notes: json['notes'] ?? '',
-      lastStayDate: json['lastStayDate'] != null
-          ? (json['lastStayDate'] is String ? DateTime.parse(json['lastStayDate']) : (json['lastStayDate'] as dynamic).toDate())
-          : DateTime.now(),
+      lastStayDate: parsedLastStay(json['lastStayDate']),
     );
   }
 
@@ -60,7 +70,7 @@ class GuestCrmModel {
       'lifetimeRevenue': lifetimeRevenue,
       'isVip': isVip,
       'notes': notes,
-      'lastStayDate': lastStayDate.toIso8601String(),
+      'lastStayDate': lastStayDate?.toIso8601String(),
     };
   }
 }
