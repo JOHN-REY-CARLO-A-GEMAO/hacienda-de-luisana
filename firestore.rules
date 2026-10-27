@@ -1331,10 +1331,6 @@ service cloud.firestore {
         && request.resource.data.amount == resource.data.amount
         && !(resource.data.get('status', '') in ['used', 'void']
              && request.resource.data.status == 'available');
-        && request.resource.data.reference == resource.data.reference
-        && request.resource.data.amount == resource.data.amount
-        && !(resource.data.get('status', '') in ['used', 'void']
-             && request.resource.data.status == 'available');
       // Only a reference nothing has ever paid with may be removed. A `used`
       // entry is evidence of which reference paid for which stay, and voiding
       // it does not stop that being evidence — so `void` is kept as well as
