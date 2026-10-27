@@ -1453,6 +1453,224 @@ describe('payment_references: the Admin catalogue', () => {
   })
 })
 
+// -------------------------------------------------------------------------
+// payment_references: payment rows written when the Admin verifies a proof
+// -------------------------------------------------------------------------
+
+describe('payment_references: payment rows and status transitions', () => {
+  const paymentRow = {
+    reference: 'GCASH-123456',
+    amount: 8500,
+    status: 'pending_review',
+    booking_id: BOOKING_ID,
+    sender_name: 'Juan Dela Cruz',
+    payment_date: '2026-08-26',
+    proof_url: `payments/${GUEST_UID}/${BOOKING_ID}/proof.jpg`,
+  }
+  const docId = `${BOOKING_ID}-GCASH-123456`
+
+  it('lets the Admin create a pending_review/verified payment row linked to a Booking', () => {
+    expect(
+      allow({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: allowlistedAdmin(),
+        requestData: paymentRow,
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: emailGuest(),
+        requestData: paymentRow,
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: null,
+        requestData: paymentRow,
+      }),
+    ).toBe(true)
+  })
+
+  it('lets the Admin create a verified row only with the verification-carrying shape', () => {
+    const verified = { ...paymentRow, status: 'verified' }
+    expect(
+      allow({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: allowlistedAdmin(),
+        requestData: verified,
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: allowlistedAdmin(),
+        requestData: { ...verified, status: 'maybe' },
+      }),
+    ).toBe(true)
+  })
+
+  it('requires reference, amount and status on create', () => {
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: allowlistedAdmin(),
+        requestData: { amount: 8500, status: 'pending_review' }, // no reference
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: allowlistedAdmin(),
+        requestData: { reference: 'GCASH-123456', status: 'pending_review' }, // no amount
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: allowlistedAdmin(),
+        requestData: { reference: 'GCASH-123456', amount: 8500 }, // no status
+      }),
+    ).toBe(true)
+  })
+
+  it('lets the Admin correct sender/date/status on a pending_review row, but never reference or amount', () => {
+    const stored = { ...paymentRow, status: 'pending_review' }
+    expect(
+      allow({
+        path: `payment_references/${docId}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: stored,
+        requestData: { ...stored, sender_name: 'Maria Clara', status: 'verified' },
+      }),
+    ).toBe(true)
+    // reference immutable
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: stored,
+        requestData: { ...stored, reference: 'GCASH-999999' },
+      }),
+    ).toBe(true)
+    // amount immutable
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: stored,
+        requestData: { ...stored, amount: 100 },
+      }),
+    ).toBe(true)
+  })
+
+  it('requires reference, amount and status on update', () => {
+    const stored = { ...paymentRow, status: 'pending_review' }
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: stored,
+        requestData: { sender_name: 'X' }, // missing reference, amount, status
+      }),
+    ).toBe(true)
+  })
+
+  it('refuses flipping used or void back to available', () => {
+    const used = { ...paymentRow, status: 'used', booking_id: null }
+    expect(
+      deny({
+        path: `payment_references/GCASH-123456`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: used,
+        requestData: { ...used, status: 'available' },
+      }),
+    ).toBe(true)
+    const voided = { ...paymentRow, status: 'void', booking_id: null }
+    expect(
+      deny({
+        path: `payment_references/GCASH-123456`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: voided,
+        requestData: { ...voided, status: 'available' },
+      }),
+    ).toBe(true)
+  })
+
+  it('lets the Admin delete only available catalog rows, never payment rows', () => {
+    const available = { ...paymentRow, status: 'available', booking_id: null }
+    expect(
+      allow({
+        path: `payment_references/GCASH-123456`,
+        method: 'delete',
+        auth: allowlistedAdmin(),
+        resourceData: available,
+      }),
+    ).toBe(true)
+    const verified = { ...paymentRow, status: 'verified' }
+    expect(
+      deny({
+        path: `payment_references/GCASH-123456`,
+        method: 'delete',
+        auth: allowlistedAdmin(),
+        resourceData: verified,
+      }),
+    ).toBe(true)
+    const pendingReview = { ...paymentRow, status: 'pending_review' }
+    expect(
+      deny({
+        path: `payment_references/GCASH-123456`,
+        method: 'delete',
+        auth: allowlistedAdmin(),
+        resourceData: pendingReview,
+      }),
+    ).toBe(true)
+  })
+
+  it('refuses every Guest write path on payment rows', () => {
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'create',
+        auth: emailGuest(),
+        requestData: paymentRow,
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'update',
+        auth: emailGuest(),
+        resourceData: paymentRow,
+        requestData: { ...paymentRow, sender_name: 'X' },
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `payment_references/${docId}`,
+        method: 'delete',
+        auth: emailGuest(),
+        resourceData: paymentRow,
+      }),
+    ).toBe(true)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Reviews
 // ---------------------------------------------------------------------------

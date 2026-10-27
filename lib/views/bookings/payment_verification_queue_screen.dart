@@ -192,27 +192,37 @@ class _PaymentVerificationQueueScreenState
   /// reference at all. The row carries the extraction evidence (sender, date,
   /// proof path) so the Payment references screen can show it without asking
   /// the Admin to re-type anything.
+  ///
+  /// Concurrency: the check-and-insert runs inside a Firestore transaction on
+  /// a deterministic document id (`reference` + Booking id), so two concurrent
+  /// verifications of the same reference can never insert a second row.
+  /// `transaction.create()` fails hard if the row already exists, which the
+  /// idempotency read above turns into a no-op instead of a duplicate.
   Future<void> _recordPaymentReference(BookingModel booking, double verifiedAmount) async {
     final reference = booking.paymentReference?.trim();
     if (reference == null || reference.isEmpty) return;
     if (!mounted) return;
     try {
-      final existing = await FirebaseFirestore.instance
+      // Firestore document ids may not contain '/'; references are already
+      // validated as [A-Z0-9-]{6,40}, but normalise defensively.
+      final safeRef = reference.replaceAll(RegExp(r'[/\s]+'), '_');
+      final docRef = FirebaseFirestore.instance
           .collection(AppConstants.colPaymentReferences)
-          .where('reference', isEqualTo: reference)
-          .where('booking_id', isEqualTo: booking.id)
-          .get();
-      if (existing.docs.isNotEmpty) return;
+          .doc('${safeRef}_${booking.id}');
 
-      await FirebaseFirestore.instance.collection(AppConstants.colPaymentReferences).add({
-        'reference': reference,
-        'amount': verifiedAmount,
-        'status': 'verified',
-        'booking_id': booking.id,
-        'sender_name': booking.paymentSenderName,
-        'payment_date': booking.paymentDate,
-        'proof_url': booking.paymentProofUrl,
-        'created_at': FieldValue.serverTimestamp(),
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final existing = await transaction.get(docRef);
+        if (existing.exists) return; // already filed — idempotent no-op
+        transaction.create(docRef, {
+          'reference': reference,
+          'amount': verifiedAmount,
+          'status': 'verified',
+          'booking_id': booking.id,
+          'sender_name': booking.paymentSenderName,
+          'payment_date': booking.paymentDate,
+          'proof_url': booking.paymentProofUrl,
+          'created_at': FieldValue.serverTimestamp(),
+        });
       });
     } catch (e) {
       // A failure to file the reference row must never hide a successful
