@@ -187,7 +187,7 @@ describe('local Profiles', () => {
   it('recognise the allowlisted Admin address, like the rules do', async () => {
     const { session } = startLocalSession()
 
-    await session.register(guestRegistration({ email: 'haciendadeluisiana@gmail.com', password: REGISTERED_WITH }))
+    await session.register(guestRegistration({ email: 'gemaojohnreyarguilles@gmail.com', password: REGISTERED_WITH }))
 
     // The Profile a sign-up writes is a Guest's, but the allowlist wins on
     // resolution — and an Admin holds none of a Guest's own-Booking permissions.

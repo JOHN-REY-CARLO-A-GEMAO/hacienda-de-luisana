@@ -317,55 +317,115 @@ class FirestoreService implements PinSecurityRemote {
       return ActionResult.refused(
           'This action needs a fresh Security PIN. Run it again and enter the PIN when the sheet asks.');
     }
-    final others = _latestBookings
-        .where((b) => b.id != booking.id)
-        .map((b) => b.toLifecycleDoc())
-        .toList();
     final merged = ActionInput(
       reason: input.reason,
       amountVerified: input.amountVerified,
       guestResubmits: input.guestResubmits,
-      otherBookings: input.otherBookings.isEmpty ? others : input.otherBookings,
+      otherBookings: input.otherBookings,
       publishedRates: input.publishedRates ?? _rates,
       damageDeduction: input.damageDeduction,
     );
-    final result = applyAdminAction(booking.toLifecycleDoc(), action, actor,
-        input: merged);
-    if (!result.ok) return result;
 
-    if (isCloud) {
-      try {
+    // Offline / demo path: apply against the in-memory booking and patch
+    // locally. There is no transaction available off-device, so the
+    // stale-cache race below can only occur on the cloud path, which is atomic.
+    if (!isCloud) {
+      final result = applyAdminAction(booking.toLifecycleDoc(), action, actor,
+          input: merged);
+      if (!result.ok) return result;
+      _patchLocal(booking.id, result.patch, result.entry!);
+      return result;
+    }
+
+    // Cloud path: the availability re-check and the write happen inside one
+    // Firestore transaction (ADR-0006 / G2). The target and every Booking
+    // that still holds its dates on the same Accommodation are re-read inside
+    // the transaction, so a rival approval that commits first aborts this one
+    // and the callback reruns on the changed world. Two Admins can therefore
+    // never both claim the last unit.
+    try {
+      return await _firestore!.runTransaction((tx) async {
         final ref =
             _firestore!.collection(AppConstants.colBookings).doc(booking.id);
+        final snap = await tx.get(ref);
+        if (!snap.exists) {
+          return ActionResult.refused('No Booking with that id.');
+        }
+        final fresh = BookingModel.fromJson(
+            snap.data() as Map<String, dynamic>, snap.id);
+
+        // Re-read the published rates inside the transaction so the approval
+        // prices against the same document version the rules enforce.
+        final ratesSnap = await tx.get(_firestore!
+            .collection(AppConstants.colSiteConfig)
+            .doc(AppConstants.docRates));
+        final publishedRates = ratesSnap.exists
+            ? (ratesSnap.data() as Map<String, dynamic>)
+            : null;
+
+        // Read every Booking for the same Accommodation inside the
+        // transaction so a rival concurrent commit aborts this one.
+        final others = await _readAccommodationBookings(tx, fresh.accommodation, fresh.id);
+
+        final freshMerged = ActionInput(
+          reason: merged.reason,
+          amountVerified: merged.amountVerified,
+          guestResubmits: merged.guestResubmits,
+          otherBookings: others,
+          publishedRates: publishedRates,
+          damageDeduction: merged.damageDeduction,
+        );
+
+        final result = applyAdminAction(fresh.toLifecycleDoc(), action, actor,
+            input: freshMerged);
+        if (!result.ok) return result;
+
+        // The Activity entry and the status patch commit atomically: the log
+        // sequence is taken inside the transaction, so a logged approval can
+        // never outlive an aborted write.
         final log = ref.collection('activity');
-        // The id is the sequence, so two appends that both think they are
-        // next collide instead of silently reordering the log (same rule as
-        // the website's activityLogDB.append).
-        final written = await log.get();
+        final written = await tx.get(log);
         var seq = -1;
         for (final d in written.docs) {
           final v = d.data()['seq'];
           if (v is num && v > seq) seq = v.toInt();
         }
         seq += 1;
-        final batch = _firestore.batch();
-        batch.update(ref, result.patch);
-        batch.set(log.doc('$seq'), {...result.entry!, 'seq': seq});
-        _addNotificationForAction(batch, booking, action, result.patch, merged);
-        await batch.commit();
-        return result;
-      } catch (e) {
-        return ActionResult.refused(
-            'Could not save to Firestore (${e.toString().split('\n').first}).');
-      }
-    }
 
-    _patchLocal(booking.id, result.patch, result.entry!);
-    return result;
+        tx.update(ref, result.patch);
+        tx.set(log.doc('$seq'), {...result.entry!, 'seq': seq});
+        _addNotificationForAction(tx, fresh, action, result.patch, freshMerged);
+        return result;
+      });
+    } catch (e) {
+      return ActionResult.refused(
+          'Could not save to Firestore (${e.toString().split('\n').first}).');
+    }
   }
 
+  /// Reads every Booking for one Accommodation inside a transaction, as
+  /// lifecycle documents the availability check can act on. Used by
+  /// [applyBookingAction] so concurrent approvals serialize on the same data
+  /// a rival just committed.
+  Future<List<Map<String, dynamic>>> _readAccommodationBookings(
+    Transaction tx,
+    String accommodation,
+    String excludeId,
+  ) async {
+    final snap = await tx.get(_firestore!.collection(AppConstants.colBookings)
+        .where('accommodation', isEqualTo: accommodation));
+    return snap.docs
+        .where((d) => d.id != excludeId)
+        .map((d) => BookingModel.fromJson(
+            d.data() as Map<String, dynamic>, d.id).toLifecycleDoc())
+        .toList();
+  }
+
+
+  // Both WriteBatch (offline path) and Transaction (cloud path) expose
+  // update()/set(), so this helper works for either writer.
   void _addNotificationForAction(
-    WriteBatch batch,
+    dynamic writer,
     BookingModel booking,
     AdminAction action,
     Map<String, dynamic> patch,
@@ -552,20 +612,56 @@ class FirestoreService implements PinSecurityRemote {
 
     if (isCloud) {
       try {
-        final ref = _firestore!.collection(AppConstants.colBookings).doc(booking.id);
-        final log = ref.collection('activity');
-        final written = await log.get();
-        var seq = -1;
-        for (final d in written.docs) {
-          final v = d.data()['seq'];
-          if (v is num && v > seq) seq = v.toInt();
-        }
-        seq += 1;
-        final batch = _firestore.batch();
-        batch.update(ref, patch);
-        batch.set(log.doc('$seq'), {...entry, 'seq': seq});
-        await batch.commit();
+        final result = await _firestore!.runTransaction((tx) async {
+          final ref =
+              _firestore!.collection(AppConstants.colBookings).doc(booking.id);
+          final snap = await tx.get(ref);
+          if (!snap.exists) {
+            return ActionResult.refused('No Booking with that id.');
+          }
+          final fresh = BookingModel.fromJson(
+              snap.data() as Map<String, dynamic>, snap.id);
 
+          // Re-check date conflicts inside the transaction against every
+          // other Booking on the same Accommodation, so a rival reschedule
+          // that commits first aborts this one and the callback reruns.
+          final others = await _readAccommodationBookings(
+              tx, fresh.accommodation, fresh.id);
+          final clash = others.any((b) {
+            final status = b['status'];
+            if (status == 'Cancelled' || status == 'Rejected' || status == 'Expired') {
+              return false;
+            }
+            final inStr = b['check_in'] as String?;
+            final outStr = b['check_out'] as String?;
+            if (inStr == null || outStr == null) return false;
+            final existingIn = DateTime.tryParse(inStr);
+            final existingOut = DateTime.tryParse(outStr);
+            if (existingIn == null || existingOut == null) return false;
+            return newCheckIn.isBefore(existingOut) &&
+                newCheckOut.isAfter(existingIn);
+          });
+          if (clash) {
+            return ActionResult.refused(
+                'Those dates are already held by another booking for this accommodation.');
+          }
+
+          final log = ref.collection('activity');
+          final written = await tx.get(log);
+          var seq = -1;
+          for (final d in written.docs) {
+            final v = d.data()['seq'];
+            if (v is num && v > seq) seq = v.toInt();
+          }
+          seq += 1;
+
+          tx.update(ref, patch);
+          tx.set(log.doc('$seq'), {...entry, 'seq': seq});
+          return ActionResult.accepted(patch, entry);
+        });
+
+        // Notification (best-effort, written after the status/log commit, as
+        // before the transaction refactor).
         if (booking.uid != null && booking.uid!.isNotEmpty) {
           await _firestore.collection('notifications').add({
             'user_id': booking.uid,
@@ -577,10 +673,10 @@ class FirestoreService implements PinSecurityRemote {
             'read': false,
           });
         }
-
-        return ActionResult.accepted(patch, entry);
+        return result;
       } catch (e) {
-        return ActionResult.refused('Could not reschedule in Firestore (${e.toString().split('\n').first}).');
+        return ActionResult.refused(
+            'Could not reschedule in Firestore (${e.toString().split('\n').first}).');
       }
     }
 

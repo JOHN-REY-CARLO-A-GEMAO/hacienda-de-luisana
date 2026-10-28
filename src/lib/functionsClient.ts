@@ -15,7 +15,8 @@ let emulatorConnected = false
 export function functionsClient(): Functions {
   if (!app) throw new Error('Cloud services are not configured in this build.')
   if (!client) client = getFunctions(app, 'asia-southeast1')
-  if (isUsingEmulators && !emulatorConnected) {
+  // Never point a production visitor at the developer's local emulator.
+  if (isUsingEmulators && !import.meta.env.PROD && !emulatorConnected) {
     connectFunctionsEmulator(client, window.location.hostname, 5001)
     emulatorConnected = true
   }

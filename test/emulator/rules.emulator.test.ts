@@ -28,7 +28,7 @@ import { conversationDocId } from '../../src/lib/chatCloud'
 
 /** `firebase emulators:exec` puts the project id in the environment. */
 const PROJECT = process.env.GCLOUD_PROJECT ?? process.env.FIREBASE_PROJECT ?? 'demo-hacienda'
-const ADMIN_EMAIL = 'haciendadeluisiana@gmail.com'
+const ADMIN_EMAIL = 'gemaojohnreyarguilles@gmail.com'
 const GUEST_UID = 'guest-uid-1'
 const OTHER_GUEST_UID = 'guest-uid-2'
 const BOOKING_ID = 'booking-1'

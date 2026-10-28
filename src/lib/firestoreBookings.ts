@@ -331,6 +331,19 @@ function patchClaimsADecision(patch: Partial<Booking>): boolean {
   return patch.payment_status === 'verified' || patch.amount_verified != null || Boolean(patch.payment_verified_by)
 }
 
+// Firestore rule refusals that must NOT be replayed into localStorage as if
+// the Hacienda accepted the write. Only transport/unavailable errors (the
+// service could not be reached) fall back to local; a refused write surfaces
+// to the caller instead.
+const CLOUD_WRITE_REFUSAL_CODES = new Set([
+  'permission-denied',
+  'invalid-argument',
+  'failed-precondition',
+  'unauthenticated',
+  'not-found',
+  'resource-exhausted',
+])
+
 /** Store a patch, in Firestore when it is configured and locally when it is not. */
 async function writePatch(id: string, patch: Partial<Booking>): Promise<void> {
   if (!isCloud || !db) {
@@ -343,11 +356,13 @@ async function writePatch(id: string, patch: Partial<Booking>): Promise<void> {
     await updateDoc(doc(db, COLLECTION, id), rest)
   } catch (e) {
     lastWriteFailure = describeFirestoreFailure(e)
+    const refused = CLOUD_WRITE_REFUSAL_CODES.has(lastWriteFailure.code)
     // A refused cloud write is not a local approval. Demo mode (no Firebase)
     // still writes above; a configured project that rejects the write must not
-    // leave this browser believing the Hacienda accepted it.
-    if (patchClaimsADecision(patch)) {
-      console.warn(`[Firestore] update() refused a decision. ${lastWriteFailure.advice}`, e)
+    // leave this browser believing the Hacienda accepted it. A patch that
+    // claims an Admin decision is always refused locally, whatever the code.
+    if (patchClaimsADecision(patch) || refused) {
+      console.warn(`[Firestore] update() refused. ${lastWriteFailure.advice}`, e)
       throw e
     }
     console.warn(`[Firestore] update() failed, falling back to local. ${lastWriteFailure.advice}`, e)

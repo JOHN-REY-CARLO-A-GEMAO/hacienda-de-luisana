@@ -101,18 +101,11 @@ create policy "guests upload payment proofs"
 -- `payment_reject_reason` only by attaching a *different* `payment_proof_url`,
 -- which a single fixed address could never satisfy. The rejected proof is kept
 -- as evidence rather than overwritten.
+-- Updates are intentionally NOT granted to `anon` (insert-only bucket). A Guest
+-- re-sending a proof writes a new object (`proof-2.ext`) via the attempt number
+-- in `proofObjectPath`; proofs are never overwritten in place. Keeping the
+-- drop above idempotent removes any previously deployed update policy.
 drop policy if exists "guests replace payment proofs" on storage.objects;
-
-create policy "guests replace payment proofs"
-  on storage.objects for update to anon
-  using (
-    bucket_id = 'payment-proofs'
-    and (storage.foldername(name))[1] = 'payments'
-  )
-  with check (
-    bucket_id = 'payment-proofs'
-    and (storage.foldername(name))[1] = 'payments'
-  );
 
 -- ----------------------------------------------------------------------------
 -- Admin reads — no policy on purpose

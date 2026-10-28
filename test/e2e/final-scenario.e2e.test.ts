@@ -106,7 +106,7 @@ const GUEST_EMAIL = 'juan.delacruz@example.com'
 // credential-shaped literal sits in the repository for a secret scanner (or a
 // reader) to mistake for one. It still has to clear `MIN_PASSWORD_LENGTH`.
 const GUEST_PASSWORD = ['hdl', 'e2e', 'fixture'].join('-')
-const ADMIN_EMAIL_FOR_TEST = 'haciendadeluisiana@gmail.com'
+const ADMIN_EMAIL_FOR_TEST = 'gemaojohnreyarguilles@gmail.com'
 // Keep the existing scenario dates and all assertions, but pin the creation
 // clock so its guest bookings satisfy the new policy on every test run.
 beforeAll(() => {

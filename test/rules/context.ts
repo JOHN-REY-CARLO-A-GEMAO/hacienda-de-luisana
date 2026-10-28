@@ -9,7 +9,7 @@
  */
 import { DEFAULT_REQUEST_TIME, ruleTimestamp, type DocData, type RuleRequest, type Store } from './engine'
 
-export const ADMIN_EMAIL = 'haciendadeluisiana@gmail.com'
+export const ADMIN_EMAIL = 'gemaojohnreyarguilles@gmail.com'
 export const GUEST_UID = 'guest-uid-1'
 export const OTHER_GUEST_UID = 'guest-uid-2'
 export const ADMIN_UID = 'admin-uid-1'

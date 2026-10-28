@@ -66,7 +66,6 @@ export type Profile = {
  * compares this list with the rules file.
  */
 export const BOOTSTRAP_ROLES: ReadonlyArray<{ email: string; role: Role }> = [
-  { email: 'haciendadeluisiana@gmail.com', role: 'admin' },
   { email: 'gemaojohnreyarguilles@gmail.com', role: 'admin' },
 ]
 

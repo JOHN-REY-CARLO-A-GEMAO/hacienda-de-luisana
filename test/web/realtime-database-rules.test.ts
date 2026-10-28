@@ -203,7 +203,7 @@ describe('the stream is a position, and nothing else', () => {
     expect(offenders).toEqual([])
     // The allowlist is written as explicit comparisons, which is the only way
     // to say "one of these addresses" in this rule language.
-    expect(raw).toContain("auth.token.email == 'haciendadeluisiana@gmail.com' || auth.token.email ==")
+    expect(raw).toContain("auth.token.email == 'gemaojohnreyarguilles@gmail.com'")
   })
 })
 

@@ -57,7 +57,7 @@ service cloud.firestore {
     // AuthStore.kAdminEmails in lib/services/auth_store.dart.
     // Anonymous uids carry no email claim, so a Guest can never satisfy it.
     function adminEmails() {
-      return ['haciendadeluisiana@gmail.com', 'gemaojohnreyarguilles@gmail.com'];
+      return ['gemaojohnreyarguilles@gmail.com'];
     }
 
     function profileOf(uid) {
@@ -96,17 +96,38 @@ service cloud.firestore {
         : null;
     }
 
+    // The email-verified claim. An allowlisted address only becomes an Admin
+    // once the inbox is proven (mirrors `isWriterAdmin` in
+    // `functions/src/quotes.ts`), so a password account registered at the
+    // Admin address but never verified cannot reach Admin-only data.
+    function tokenEmailVerified() {
+      return isSignedIn()
+        && 'email_verified' in request.auth.token
+        && request.auth.token.email_verified == true;
+    }
+
     // The role of this request, in the order src/lib/auth uses: the bootstrap
     // allowlist, then the Profile, then Guest. Somebody signed out is 'none',
     // which matches no role and therefore no rule below.
+    //
+    // The bootstrap allowlist requires both the authorized address AND a
+    // verified email: an unverified allowlisted account is not an Admin.
     function role() {
       return !isSignedIn() ? 'none'
-        : (tokenEmail() in adminEmails()) ? 'admin'
+        : (tokenEmail() in adminEmails() && tokenEmailVerified()) ? 'admin'
         : storedRole();
     }
 
     function isAdmin() {
       return role() == 'admin';
+    }
+
+    // Actions a Guest may file into their own Booking's activity log. Anything
+    // else — lifecycle decisions that change state or commit money — may only
+    // be recorded by the Admin, so a Guest cannot forge an approval,
+    // verification, refund or check-in in the audit trail.
+    function guestWritableActions() {
+      return ['Submit', 'UploadPaymentProof', 'ChoosePaymentPlan', 'Cancel'];
     }
 
     // Guest advance-booking policy, in the existing Admin-owned site_config.
@@ -202,6 +223,23 @@ service cloud.firestore {
     // Admin-created records never reach this function — `isAdmin()`
     // short-circuits the whole guest gate — so a manual longer stay is
     // unaffected by the one-night arithmetic below.
+    function capacityAllows(data) {
+      let rates = /databases/$(database)/documents/site_config/rates;
+      let ratesExists = exists(rates);
+      let node = ratesExists
+        ? get(rates).data.get('accommodations', {})
+        : {};
+      let units = node.get(data.accommodation, {}).get('available_units', null);
+      // Only a published Accommodation whose inventory is explicitly exhausted
+      // (available_units <= 0) is refused at the rules boundary. Absent or
+      // unknown inventory is not a reason to hold up a direct create — the
+      // callable's conflict read is the authoritative check.
+      return !ratesExists
+        || !(data.accommodation is string)
+        || units == null
+        || (units is number && units >= 1);
+    }
+
     function validGuestCreate(data) {
       return !callableBookingRequired()
         && isSignedIn()
@@ -213,6 +251,7 @@ service cloud.firestore {
         && data.check_out > data.check_in
         && meetsMinimumBookingLeadTime(data.check_in)
         && validBookingMoneyInvariants(data)
+        && capacityAllows(data)
         && validGuestQuote(data);
     }
 
@@ -1217,7 +1256,10 @@ service cloud.firestore {
                // …and into their own Booking only. Without this a Guest who knew
                // or guessed another Guest's booking id could add noise to that
                // Booking's audit trail, since nothing else here reads the parent.
-               && isOwnBooking())
+               && isOwnBooking()
+               // A Guest may only file the actions the lifecycle gives them;
+               // lifecycle decisions (Approve, VerifyPayment, …) require the Admin.
+               && request.resource.data.action in guestWritableActions())
               // An Admin-signed entry names the Admin writing it.
               || (request.resource.data.actor == 'admin' && isAdmin()
                   && request.resource.data.actor_id == request.auth.uid)

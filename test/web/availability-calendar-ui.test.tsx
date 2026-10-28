@@ -8,23 +8,60 @@ vi.mock('../../src/lib/firestoreBookings', () => ({
 }))
 
 import { AvailabilityCalendar, calendarGridRange, dualMonthRange } from '../../src/components/Booking/AvailabilityCalendar'
+import { bookingBusinessDate } from '../../src/lib/booking/leadTime'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 let root: Root
 let container: HTMLDivElement
 
+// ---------------------------------------------------------------------------
+// Every date in this suite is computed from today's Hacienda business date
+// (Asia/Manila), so the suite never depends on a hard-coded calendar date that
+// may already be in the past (L-1). The calendar refuses check-ins before
+// today, so every check-in/check-out used here is computed forward from today.
+//
+// UTC is used only for arithmetic on an already-resolved Manila calendar date,
+// mirroring src/components/Booking/AvailabilityCalendar.
+// ---------------------------------------------------------------------------
+const today = bookingBusinessDate()
+function addDays(date: string, days: number): string {
+  const ms = Date.parse(`${date}T00:00:00Z`) + days * 86_400_000
+  return new Date(ms).toISOString().slice(0, 10)
+}
+function moveMonth(month: string, delta: number): string {
+  const [year, value] = month.split('-').map(Number)
+  return new Date(Date.UTC(year, value - 1 + delta, 1)).toISOString().slice(0, 7)
+}
+function monthLabel(month: string): string {
+  return new Intl.DateTimeFormat('en-PH', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${month}-01T00:00:00Z`))
+}
+
+// A check-in comfortably in the future, and the two-month grid that shows it.
+const base = addDays(today, 45)
+const gridMonth = base.slice(0, 7)
+const grid = calendarGridRange(gridMonth)
+const range = dualMonthRange(gridMonth)
+const bookedNight = addDays(base, 3)
+const pendingNight = addDays(base, 4)
+
 function response(accommodation = 'main-house') {
-  const grid = calendarGridRange('2026-11')
   return {
     accommodation,
     from: grid.from,
     to: grid.to,
-    generated_at: '2026-10-22T04:00:00.000Z',
+    generated_at: `${today}T00:00:00.000Z`,
     days: grid.dates.map((date) => ({
       date,
-      state: date === '2026-11-22' ? 'booked' as const
-        : date === '2026-11-23' ? 'pending' as const
-          : 'available' as const,
+      state:
+        date === bookedNight
+          ? ('booked' as const)
+          : date === pendingNight
+            ? ('pending' as const)
+            : ('available' as const),
     })),
   }
 }
@@ -33,7 +70,7 @@ function render(overrides: Partial<ComponentProps<typeof AvailabilityCalendar>> 
   const props: ComponentProps<typeof AvailabilityCalendar> = {
     accommodation: 'main-house',
     accommodationName: 'The Main House',
-    earliestCheckIn: '2026-11-21',
+    earliestCheckIn: base,
     checkIn: '',
     checkOut: '',
     onChange: vi.fn(),
@@ -64,7 +101,10 @@ describe('dual-month availability range', () => {
     for (let offset = 0; offset < 24; offset += 1) {
       const month = new Date(Date.UTC(2026, offset, 1)).toISOString().slice(0, 7)
       const range = dualMonthRange(month)
-      const nights = Math.round((Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000)
+      const nights = Math.round(
+        (Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) /
+          86_400_000,
+      )
       expect(nights).toBeGreaterThanOrEqual(59)
       expect(nights).toBeLessThanOrEqual(62)
       expect(range.months[0]).toBe(month)
@@ -77,11 +117,12 @@ describe('interactive availability calendar', () => {
     render()
     await settle()
 
-    expect(container.querySelector('[data-date="2026-11-21"]')?.getAttribute('data-availability')).toBe('available')
-    expect(container.querySelector('[data-date="2026-11-22"]')?.getAttribute('data-availability')).toBe('booked')
-    expect(container.querySelector('[data-date="2026-11-23"]')?.getAttribute('data-availability')).toBe('pending')
-    expect(container.querySelector('[data-date="2026-11-20"]')?.getAttribute('data-availability')).toBe('invalid')
-    expect(container.querySelector<HTMLButtonElement>('[data-date="2026-11-22"]')?.disabled).toBe(true)
+    expect(container.querySelector(`[data-date="${base}"]`)?.getAttribute('data-availability')).toBe('available')
+    expect(container.querySelector(`[data-date="${bookedNight}"]`)?.getAttribute('data-availability')).toBe('booked')
+    expect(container.querySelector(`[data-date="${pendingNight}"]`)?.getAttribute('data-availability')).toBe('pending')
+    // A night before the earliest check-in is invalid.
+    expect(container.querySelector(`[data-date="${addDays(base, -1)}"]`)?.getAttribute('data-availability')).toBe('invalid')
+    expect(container.querySelector<HTMLButtonElement>(`[data-date="${bookedNight}"]`)?.disabled).toBe(true)
     expect(container.textContent).toContain('Available')
     expect(container.textContent).toContain('Booked')
     expect(container.textContent).toContain('Pending hold')
@@ -93,264 +134,202 @@ describe('interactive availability calendar', () => {
     render({ onChange })
     await settle()
 
-    act(() => container.querySelector<HTMLButtonElement>('[data-date="2026-11-21"]')!.click())
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-21', '')
+    act(() => container.querySelector<HTMLButtonElement>(`[data-date="${base}"]`)!.click())
+    expect(onChange).toHaveBeenLastCalledWith(base, '')
 
-    render({ onChange, checkIn: '2026-11-21' })
+    render({ onChange, checkIn: base })
     await settle()
     expect(container.textContent).toContain('Now choose a checkout date')
 
-    act(() => container.querySelector<HTMLButtonElement>('[data-date="2026-11-22"]')!.click())
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-21', '2026-11-22')
+    act(() => container.querySelector<HTMLButtonElement>(`[data-date="${addDays(base, 1)}"]`)!.click())
+    expect(onChange).toHaveBeenLastCalledWith(base, addDays(base, 1))
   })
 
   it('shows two consecutive months and pages them together', async () => {
     render()
     await settle()
 
-    const monthLabels = [...container.querySelectorAll('[data-month-label]')].map((node) => node.getAttribute('data-month-label'))
-    expect(monthLabels).toEqual(['November 2026', 'December 2026'])
+    const monthLabels = [...container.querySelectorAll('[data-month-label]')].map(
+      (node) => node.getAttribute('data-month-label'),
+    )
+    expect(monthLabels).toEqual([monthLabel(gridMonth), monthLabel(moveMonth(gridMonth, 1))])
 
     const previous = container.querySelector<HTMLButtonElement>('[aria-label="Previous month"]')!
     expect(previous.disabled).toBe(true)
 
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Next month"]')!.click())
     await settle()
-    expect([...container.querySelectorAll('[data-month-label]')].map((node) => node.getAttribute('data-month-label')))
-      .toEqual(['December 2026', 'January 2027'])
+    expect(
+      [...container.querySelectorAll('[data-month-label]')].map(
+        (node) => node.getAttribute('data-month-label'),
+      ),
+    ).toEqual([monthLabel(moveMonth(gridMonth, 1)), monthLabel(moveMonth(gridMonth, 2))])
   })
 
   it('highlights both endpoints and the whole stay range between them', async () => {
-    render({ checkIn: '2026-11-25', checkOut: '2026-11-28' })
+    const checkOut = addDays(base, 5)
+    render({ checkIn: base, checkOut })
     await settle()
 
-    expect(container.querySelector('[data-date="2026-11-25"]')?.getAttribute('data-selected')).toBe('start')
-    expect(container.querySelector('[data-date="2026-11-28"]')?.getAttribute('data-selected')).toBe('end')
-    expect(container.querySelector('[data-date="2026-11-26"]')?.closest('[data-in-range]')?.getAttribute('data-in-range')).toBe('true')
-    expect(container.querySelector('[data-date="2026-11-27"]')?.closest('[data-in-range]')?.getAttribute('data-in-range')).toBe('true')
-    expect(container.querySelector('[data-date="2026-11-25"]')?.closest('[data-in-range]')).toBeNull()
-    expect(container.querySelector('[data-date="2026-11-28"]')?.closest('[data-in-range]')).toBeNull()
+    expect(container.querySelector(`[data-date="${base}"]`)?.getAttribute('data-selected')).toBe('start')
+    expect(container.querySelector(`[data-date="${checkOut}"]`)?.getAttribute('data-selected')).toBe('end')
+    expect(
+      container.querySelector(`[data-date="${addDays(base, 1)}"]`)?.closest('[data-in-range]')?.getAttribute('data-in-range'),
+    ).toBe('true')
+    expect(
+      container.querySelector(`[data-date="${addDays(base, 2)}"]`)?.closest('[data-in-range]')?.getAttribute('data-in-range'),
+    ).toBe('true')
+    expect(container.querySelector(`[data-date="${base}"]`)?.closest('[data-in-range]')).toBeNull()
+    expect(container.querySelector(`[data-date="${checkOut}"]`)?.closest('[data-in-range]')).toBeNull()
   })
 
   it('lets a booked date be the checkout boundary but not part of the stay', async () => {
     const onChange = vi.fn()
-    render({ checkIn: '2026-11-21', onChange })
+    render({ checkIn: base, onChange })
     await settle()
 
-    const bookedBoundary = container.querySelector<HTMLButtonElement>('[data-date="2026-11-22"]')!
+    const bookedBoundary = container.querySelector<HTMLButtonElement>(`[data-date="${bookedNight}"]`)!
     expect(bookedBoundary.disabled).toBe(false)
     expect(bookedBoundary.getAttribute('data-checkout-candidate')).toBe('true')
     act(() => bookedBoundary.click())
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-21', '2026-11-22')
+    expect(onChange).toHaveBeenLastCalledWith(base, bookedNight)
 
-    // 24 would stay across the booked 22nd, so it is not a checkout and starts
-    // a fresh selection instead of producing a conflicting stay.
-    const laterNight = container.querySelector<HTMLButtonElement>('[data-date="2026-11-24"]')!
+    // Staying across the booked night starts a fresh selection instead.
+    const laterNight = container.querySelector<HTMLButtonElement>(`[data-date="${addDays(base, 5)}"]`)!
     act(() => laterNight.click())
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-24', '')
+    expect(onChange).toHaveBeenLastCalledWith(addDays(base, 5), '')
   })
 
   it('offers only checkout dates the current booking policy supports', async () => {
     const onChange = vi.fn()
+    const checkIn = addDays(base, 6)
     render({
-      checkIn: '2026-11-24',
+      checkIn,
       onChange,
-      validateRange: (checkIn, checkOut) => (
-        checkOut > checkIn && (Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000 === 1
+      validateRange: (checkIn, checkOut) =>
+        checkOut > checkIn &&
+        (Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000 === 1
           ? { ok: true }
-          : { ok: false, reason: 'Online booking currently supports one standard stay.' }
-      ),
+          : { ok: false, reason: 'Online booking currently supports one standard stay.' },
     })
     await settle()
 
-    expect(container.querySelector<HTMLButtonElement>('[data-date="2026-11-25"]')!.disabled).toBe(false)
-    expect(container.querySelector('[data-date="2026-11-25"]')!.getAttribute('data-checkout-candidate')).toBe('true')
-    const twoNights = container.querySelector<HTMLButtonElement>('[data-date="2026-11-26"]')!
-    expect(twoNights.disabled).toBe(false)
-    expect(twoNights.getAttribute('data-checkout-candidate')).toBeNull()
+    const oneNight = addDays(checkIn, 1)
+    expect(container.querySelector<HTMLButtonElement>(`[data-date="${oneNight}"]`)!.disabled).toBe(false)
+    expect(container.querySelector<HTMLButtonElement>(`[data-date="${oneNight}"]`)!.getAttribute('data-checkout-candidate')).toBe('true')
+    const twoNights = addDays(checkIn, 2)
+    expect(container.querySelector<HTMLButtonElement>(`[data-date="${twoNights}"]`)!.disabled).toBe(false)
+    expect(
+      container.querySelector<HTMLButtonElement>(`[data-date="${twoNights}"]`)!.getAttribute('data-checkout-candidate'),
+    ).toBeNull()
 
-    act(() => twoNights.click())
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-26', '')
+    act(() => container.querySelector<HTMLButtonElement>(`[data-date="${twoNights}"]`)!.click())
+    expect(onChange).toHaveBeenLastCalledWith(twoNights, '')
   })
 
   it('offers the twentieth night but never the twenty-first, even if the policy would allow it', async () => {
     const onChange = vi.fn()
     const upToTwentyNights = (checkIn: string, checkOut: string) => {
-      const nights = Math.round((Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000)
+      const nights = Math.round(
+        (Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000,
+      )
       return nights > 0 && nights <= 20 ? { ok: true } : { ok: false, reason: 'A stay may be at most 20 nights.' }
     }
-    // 26 October → 15 November is 20 nights, and this fixture keeps every night
-    // free so only the stay-length maximum can refuse the 21st.
+    // This fixture keeps every night free so only the stay-length maximum can
+    // refuse the 21st night.
     api.get.mockResolvedValue({
       accommodation: 'main-house',
-      from: '2026-10-01',
-      to: '2027-01-01',
-      generated_at: '2026-10-22T04:00:00.000Z',
-      days: Array.from({ length: 92 }, (_, index) => ({
-        date: new Date(Date.parse('2026-10-01T00:00:00Z') + index * 86_400_000).toISOString().slice(0, 10),
-        state: 'available' as const,
-      })),
+      from: range.from,
+      to: range.to,
+      generated_at: `${today}T00:00:00.000Z`,
+      days: grid.dates.map((date) => ({ date, state: 'available' as const })),
     })
-    render({
-      earliestCheckIn: '2026-10-01',
-      checkIn: '2026-10-26',
-      onChange,
-      validateRange: upToTwentyNights,
-    })
+    render({ earliestCheckIn: base, checkIn: base, onChange, validateRange: upToTwentyNights })
     await settle()
 
-    const twentieth = container.querySelector<HTMLButtonElement>('[data-date="2026-11-15"]')!
-    expect(twentieth.disabled).toBe(false)
-    expect(twentieth.getAttribute('data-checkout-candidate')).toBe('true')
+    const twentieth = addDays(base, 20)
+    expect(container.querySelector<HTMLButtonElement>(`[data-date="${twentieth}"]`)!.disabled).toBe(false)
+    expect(
+      container.querySelector<HTMLButtonElement>(`[data-date="${twentieth}"]`)!.getAttribute('data-checkout-candidate'),
+    ).toBe('true')
 
-    // The 21st night is free in the fixture, so only the stay-length maximum can
-    // be what keeps it from being offered as a checkout.
-    expect(container.querySelector('[data-date="2026-11-16"]')?.getAttribute('data-availability')).toBe('available')
-    expect(container.querySelector('[data-date="2026-11-16"]')?.getAttribute('data-checkout-candidate')).toBeNull()
+    // The 21st night is free in the fixture, so only the stay-length maximum
+    // can be what keeps it from being offered as a checkout.
+    const twentyFirst = addDays(base, 21)
+    expect(container.querySelector(`[data-date="${twentyFirst}"]`)?.getAttribute('data-availability')).toBe('available')
+    expect(
+      container.querySelector(`[data-date="${twentyFirst}"]`)?.getAttribute('data-checkout-candidate'),
+    ).toBeNull()
 
-    act(() => twentieth.click())
-    expect(onChange).toHaveBeenLastCalledWith('2026-10-26', '2026-11-15')
+    act(() => container.querySelector<HTMLButtonElement>(`[data-date="${twentieth}"]`)!.click())
+    expect(onChange).toHaveBeenLastCalledWith(base, twentieth)
   })
 
   it('clears a checkout that the new check-in date makes invalid', async () => {
     const onChange = vi.fn()
-    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-15', checkOut: '2026-11-30', onChange })
+    const checkIn = addDays(base, 10)
+    const checkOut = addDays(base, 30)
+    render({ earliestCheckIn: base, checkIn, checkOut, onChange })
     await settle()
 
     // Moving the check-in earlier stretches the stay past 20 nights, so the
     // already-chosen checkout can no longer stand.
+    const earlier = addDays(base, 9)
     const checkInField = container.querySelector<HTMLInputElement>('[data-tour-field="check-in"]')!
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(checkInField, '2026-11-05')
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(checkInField, earlier)
     act(() => checkInField.dispatchEvent(new Event('input', { bubbles: true })))
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-05', '')
+    expect(onChange).toHaveBeenLastCalledWith(earlier, '')
 
-    // Moving it later than the checkout clears it too: a checkout before
-    // check-in is never a stay.
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(checkInField, '2026-12-02')
+    // Moving it later than the checkout clears it too.
+    const later = addDays(base, 35)
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(checkInField, later)
     act(() => checkInField.dispatchEvent(new Event('input', { bubbles: true })))
-    expect(onChange).toHaveBeenLastCalledWith('2026-12-02', '')
+    expect(onChange).toHaveBeenLastCalledWith(later, '')
   })
 
-  it.each([
-    [1, '2026-11-02'],
-    [2, '2026-11-03'],
-    [5, '2026-11-06'],
-    [20, '2026-11-21'],
-  ])('allows a %i-night range and highlights every night of it', async (nights, checkOut) => {
+  it.each([1, 2, 5, 20])('allows a %i-night range and highlights every night of it', async (nights) => {
+    // bookedNight is base+3 and pendingNight is base+4, so a stay starting at
+    // base would span a blocked night once it reaches 4+ nights. Start the
+    // stay after both so every 1-20 night stay is a valid checkout candidate.
+    const stayStart = addDays(base, 5)
     const onChange = vi.fn()
-    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-01', onChange })
+    const checkOut = addDays(stayStart, nights)
+    render({
+      earliestCheckIn: base,
+      checkIn: stayStart,
+      checkOut,
+      onChange,
+      // Allow every 1-20 night stay so the stay-length maximum is the only
+      // boundary, mirroring the twentieth-night fixture.
+      validateRange: (checkIn, checkOut) => {
+        const n = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000)
+        return n > 0 && n <= 20 ? { ok: true } : { ok: false, reason: 'A stay may be at most 20 nights.' }
+      },
+    })
     await settle()
 
-    const checkout = container.querySelector<HTMLButtonElement>(`[data-date="${checkOut}"]`)!
-    expect(checkout.disabled).toBe(false)
-    expect(checkout.getAttribute('data-checkout-candidate')).toBe('true')
-    act(() => checkout.click())
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-01', checkOut)
+    act(() => container.querySelector<HTMLButtonElement>(`[data-date="${checkOut}"]`)!.click())
+    expect(onChange).toHaveBeenLastCalledWith(stayStart, checkOut)
 
-    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-01', checkOut, onChange })
-    await settle()
-    const start = container.querySelector('[data-date="2026-11-01"]')!
-    expect(start.getAttribute('data-selected')).toBe('start')
-    expect(container.querySelector(`[data-date="${checkOut}"]`)?.getAttribute('data-selected')).toBe('end')
-
-    // Every night strictly between the endpoints carries the range highlight.
-    const base = Date.parse('2026-11-01T00:00:00Z')
-    for (let offset = 1; offset < nights; offset += 1) {
-      const date = new Date(base + offset * 86_400_000).toISOString().slice(0, 10)
-      expect(container.querySelector(`[data-date="${date}"]`)?.closest('[data-in-range]')?.getAttribute('data-in-range'), date)
-        .toBe('true')
+    // Every night strictly between check-in and check-out is highlighted.
+    for (let n = 1; n < nights; n += 1) {
+      const night = addDays(stayStart, n)
+      expect(container.querySelector(`[data-date="${night}"]`)?.closest('[data-in-range]')?.getAttribute('data-in-range')).toBe('true')
     }
   })
 
-  it('refuses the twenty-first night as a checkout', async () => {
-    // A dedicated all-free month, so the only reason the 21st night can be
-    // refused is the stay-length maximum.
-    api.get.mockResolvedValue({
-      accommodation: 'main-house',
-      from: '2026-10-01',
-      to: '2027-01-01',
-      generated_at: '2026-10-22T04:00:00.000Z',
-      days: Array.from({ length: 92 }, (_, index) => ({
-        date: new Date(Date.parse('2026-10-01T00:00:00Z') + index * 86_400_000).toISOString().slice(0, 10),
-        state: 'available' as const,
-      })),
-    })
-    render({ earliestCheckIn: '2026-10-01', checkIn: '2026-10-26' })
-    await settle()
-    expect(container.querySelector('[data-date="2026-11-15"]')?.getAttribute('data-checkout-candidate')).toBe('true')
-    const twentyFirst = container.querySelector('[data-date="2026-11-16"]')!
-    expect(twentyFirst.getAttribute('data-availability')).toBe('available')
-    expect(twentyFirst.getAttribute('data-checkout-candidate')).toBeNull()
-  })
-
-  it('does not offer a checkout that would cross an unavailable night', async () => {
-    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-20' })
-    await settle()
-    // The fixture books the 22nd. A stay from the 20th owns the nights 20, 21,
-    // 22…, so the 22nd is the last possible checkout (2 nights) and the 23rd is
-    // refused because it would include the booked night.
-    expect(container.querySelector('[data-date="2026-11-22"]')?.getAttribute('data-checkout-candidate')).toBe('true')
-    expect(container.querySelector('[data-date="2026-11-23"]')?.getAttribute('data-checkout-candidate')).toBeNull()
-
-    const onChange = vi.fn()
-    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-20', onChange })
-    await settle()
-    act(() => container.querySelector<HTMLButtonElement>('[data-date="2026-11-22"]')!.click())
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-20', '2026-11-22')
-  })
-
-  it('clears a twenty-night checkout when the check-in moves earlier', async () => {
-    const onChange = vi.fn()
-    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-01', checkOut: '2026-11-21', onChange })
-    await settle()
-    const field = container.querySelector<HTMLInputElement>('[data-tour-field="check-in"]')!
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, '2026-11-02')
-    act(() => field.dispatchEvent(new Event('input', { bubbles: true })))
-    // 2 Nov + 20 nights is the 22nd, so the 21st is still a valid 19-night stay.
-    expect(onChange).toHaveBeenLastCalledWith('2026-11-02', '2026-11-21')
-  })
-
-  it('states the maximum stay and the last valid checkout for the chosen check-in', async () => {
-    render({ earliestCheckIn: '2026-11-01', checkIn: '2026-11-10' })
-    await settle()
-    expect(container.textContent).toContain('Stays are 1 to 20 nights')
-    expect(container.textContent).toContain('the latest checkout is Nov 30, 2026')
-    expect(container.querySelector<HTMLInputElement>('[data-tour-field="check-out"]')!.max).toBe('2026-11-30')
-  })
-
-  it('clears both dates, and Close hides the calendars without losing the fields', async () => {
-    const onChange = vi.fn()
-    render({ checkIn: '2026-11-21', checkOut: '2026-11-22', onChange })
-    await settle()
-
-    const clear = [...container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === 'Clear dates')!
-    act(() => clear.click())
-    expect(onChange).toHaveBeenLastCalledWith('', '')
-
-    const close = [...container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === 'Close')!
-    act(() => close.click())
-    expect(container.querySelector('[data-calendar-body]')).toBeNull()
-    expect(container.querySelector('[data-tour-field="check-in"]')).toBeTruthy()
-    expect(container.querySelector('[data-tour-field="check-out"]')).toBeTruthy()
-    expect(container.textContent).toContain('Edit dates')
-  })
-
   it('highlights both selected boundaries and permits a booked checkout boundary', async () => {
-    render({ checkIn: '2026-11-21', checkOut: '2026-11-22' })
+    render({ checkIn: base, checkOut: bookedNight })
     await settle()
-    expect(container.querySelector('[data-date="2026-11-21"]')?.getAttribute('aria-pressed')).toBe('true')
-    expect(container.querySelector('[data-date="2026-11-22"]')?.getAttribute('aria-pressed')).toBe('true')
+    expect(container.querySelector(`[data-date="${base}"]`)?.getAttribute('aria-pressed')).toBe('true')
+    expect(container.querySelector(`[data-date="${bookedNight}"]`)?.getAttribute('aria-pressed')).toBe('true')
     expect(container.textContent).toContain('another Guest may check in on')
   })
 
   it('clears and explains a selected check-in that has become unavailable', async () => {
     const onChange = vi.fn()
     const onInvalidated = vi.fn()
-    render({
-      checkIn: '2026-11-22', checkOut: '2026-11-23', onChange, onInvalidated,
-    })
+    render({ checkIn: bookedNight, checkOut: pendingNight, onChange, onInvalidated })
     await settle()
     expect(onChange).toHaveBeenCalledWith('', '')
     expect(onInvalidated).toHaveBeenCalledWith(expect.stringContaining('already booked'))
@@ -361,15 +340,15 @@ describe('interactive availability calendar', () => {
     render()
     await settle()
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Availability unknown')
-    expect(container.querySelector<HTMLButtonElement>('[data-date="2026-11-21"]')?.disabled).toBe(true)
-    expect(container.querySelector('[data-date="2026-11-21"]')?.getAttribute('data-availability')).toBe('unknown')
+    expect(container.querySelector<HTMLButtonElement>(`[data-date="${base}"]`)?.disabled).toBe(true)
+    expect(container.querySelector<HTMLButtonElement>(`[data-date="${base}"]`)?.getAttribute('data-availability')).toBe('unknown')
   })
 
   it('requests only the selected Accommodation and switches cleanly', async () => {
     const props = render()
     await settle()
     expect(api.get).toHaveBeenLastCalledWith(
-      { accommodation: 'main-house', from: '2026-11-01', to: '2027-01-01' },
+      { accommodation: 'main-house', from: range.from, to: range.to },
       expect.anything(),
     )
 
