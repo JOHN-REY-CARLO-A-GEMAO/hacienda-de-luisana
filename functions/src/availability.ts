@@ -21,7 +21,17 @@ import {
   type CalendarAvailabilityDay,
   type HoldBearingBooking,
 } from './booking/availability'
-import { deriveQuote, MinuteBudget, moneyMismatches, parseQuoteRequest, type QuoteRequest } from './pricing'
+import { deriveQuote, moneyMismatches, parseQuoteRequest, type QuoteRequest } from './pricing'
+import {
+  instanceRateLimiter,
+  RATE_LIMITS,
+  rateLimitedMessage,
+  rateLimitKey,
+  retryAfterSeconds,
+  sharedRateLimiter,
+  type LimitPolicy,
+  type RateLimitOutcome,
+} from './security/rateLimit'
 
 const options = {
   region: 'asia-southeast1',
@@ -39,23 +49,44 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_CALENDAR_DAYS = 62
 const CANONICAL_ACCOMMODATIONS = ['main-house', 'annex', 'house-a-camping'] as const
 
-/** Public availability is intentionally callable, but not an unbounded Firestore scraper. */
-const availabilityBudget = new MinuteBudget(40)
-/** A signed-in Guest should not be able to create an unbounded number of Pending rows. */
-const submitBudget = new MinuteBudget(8)
+/**
+ * Public availability is intentionally callable, but not an unbounded Firestore
+ * scraper. This one stays in the instance's memory on purpose: the calendar
+ * re-renders as a Guest moves through the form, and charging one Firestore
+ * document read *and* write per render to police a read-only projection costs
+ * more than the abuse it prevents. The window is still a sliding one; the only
+ * thing given up is the fleet-wide total.
+ */
+const availabilityPolicy: LimitPolicy = RATE_LIMITS.availabilityPerInstance
 
 function callableKey(request: CallableRequest): string {
   return request.auth?.uid || request.rawRequest?.ip || 'unknown-caller'
 }
 
-function spend(budget: MinuteBudget, request: CallableRequest, label: string): void {
-  const result = budget.take(callableKey(request))
-  if (!result.ok) {
-    throw new HttpsError(
-      'resource-exhausted',
-      `Too many ${label} requests. Wait ${Math.ceil(result.retryAfterMs / 1000)} seconds and try again.`,
-    )
-  }
+/** One refusal, in the shape every callable here returns. */
+function tooManyRequests(label: string, outcome: RateLimitOutcome): HttpsError {
+  return new HttpsError('resource-exhausted', rateLimitedMessage(label, outcome), {
+    cause: 'RATE_LIMITED',
+    retryAfterSeconds: retryAfterSeconds(outcome),
+    limit: outcome.limit,
+    reset_at: new Date(outcome.resetAt).toISOString(),
+    degraded: outcome.degraded,
+  })
+}
+
+async function spendAvailability(request: CallableRequest): Promise<void> {
+  const outcome = await instanceRateLimiter().check(rateLimitKey('availability:caller', callableKey(request)), availabilityPolicy)
+  if (!outcome.allowed) throw tooManyRequests('availability', outcome)
+}
+
+/**
+ * A signed-in Guest should not be able to create an unbounded number of Pending
+ * rows. Writes are charged to the shared window: a Booking is the most expensive
+ * thing an unverified identity can ask the estate to do.
+ */
+async function spendSubmit(request: CallableRequest): Promise<void> {
+  const outcome = await sharedRateLimiter().check(rateLimitKey('booking:submit', callableKey(request)), RATE_LIMITS.submitBooking)
+  if (!outcome.allowed) throw tooManyRequests('Booking', outcome)
 }
 
 function dateMs(value: unknown): number | null {
@@ -173,7 +204,7 @@ export type AvailabilityReply = {
 }
 
 export const bookingAvailability = onCall(options, async (request: CallableRequest): Promise<AvailabilityReply> => {
-  spend(availabilityBudget, request, 'availability')
+  await spendAvailability(request)
   const input = parseAvailabilityRequest(request.data)
   try {
     const [ratesDocument, bookings] = await Promise.all([
@@ -330,7 +361,7 @@ export type SubmitBookingReply = {
 export const submitBooking = onCall(options, async (request: CallableRequest): Promise<SubmitBookingReply> => {
   const authUid = request.auth?.uid
   if (!authUid) throw new HttpsError('unauthenticated', 'Reconnect your Guest session before submitting the Booking.')
-  spend(submitBudget, request, 'Booking')
+  await spendSubmit(request)
   const body = request.data && typeof request.data === 'object' && !Array.isArray(request.data)
     ? request.data as Record<string, unknown>
     : {}

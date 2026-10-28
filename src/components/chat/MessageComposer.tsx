@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { ArrowRight, Close, Paperclip, Refresh } from '../../lib/icons'
 import { MESSAGE_MAX } from '../../lib/validation'
+import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import { Alert } from '../ui'
 
 export type ComposerAttachmentDraft = {
@@ -43,6 +44,9 @@ export function MessageComposer({
   const inputId = useId()
   const counterId = useId()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  /** A cooldown refusal, kept separate from the parent's send error: one is
+   * "we did not try", the other is "the attempt failed". */
+  const [cooldownError, setCooldownError] = useState<string | null>(null)
 
   const trimmed = value.trim()
   const overLimit = value.length > MESSAGE_MAX
@@ -58,8 +62,21 @@ export function MessageComposer({
     el.style.height = `${next}px`
   }, [value])
 
+  // Editing the draft clears a cooldown message: the Guest is doing something,
+  // and leaving a stale countdown next to a new sentence is noise.
+  useEffect(() => {
+    if (cooldownError) setCooldownError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
   const submit = () => {
     if (!canSubmit) return
+    const cooldown = checkRateLimit('chat:send', LIMITS.chat)
+    if (!cooldown.ok) {
+      setCooldownError(cooldown.message)
+      return
+    }
+    setCooldownError(null)
     void onSend(value)
   }
 
@@ -74,7 +91,7 @@ export function MessageComposer({
     >
       {quickRepliesSlot}
 
-      {error && (
+      {(error || cooldownError) && (
         <Alert
           tone="danger"
           className="mb-3 text-xs"
@@ -92,7 +109,7 @@ export function MessageComposer({
             ) : undefined
           }
         >
-          {error}
+          {error ?? cooldownError}
         </Alert>
       )}
 

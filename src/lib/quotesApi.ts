@@ -110,7 +110,10 @@ export async function requestQuote(stay: QuoteableStay): Promise<AttestedQuote> 
     const message = typeof details.message === 'string' && details.message.trim() !== ''
       ? details.message
       : (failure.message ?? 'The price could not be confirmed. Please try again.')
-    throw new QuoteRefusedError(details.cause ?? failure.code ?? 'QUOTE_FAILED', message, { retryable: failure.code === 'unavailable' || failure.code === 'internal' })
+    // A paced refusal is retryable *after a wait*, which is what `retryable`
+    // means to the caller: the same request can succeed, not right now.
+    const retryable = failure.code === 'unavailable' || failure.code === 'internal' || failure.code === 'resource-exhausted'
+    throw new QuoteRefusedError(details.cause ?? failure.code ?? 'QUOTE_FAILED', message, { retryable })
   }
   if (typeof data.quote_id !== 'string' || !data.money) {
     throw new QuoteRefusedError('QUOTE_MALFORMED_REPLY', 'The price could not be confirmed. Please try again.', { retryable: true })

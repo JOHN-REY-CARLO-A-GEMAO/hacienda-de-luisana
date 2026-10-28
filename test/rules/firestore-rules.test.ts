@@ -2565,3 +2565,35 @@ describe('collections with no rule', () => {
     expect(deny({ path: 'rooms/1', method: 'delete', auth: allowlistedAdmin() })).toBe(true)
   })
 })
+
+/**
+ * The collection the (undeployed) rate limiter writes with the Admin SDK.
+ *
+ * A window holds a hashed caller key and the times it tried, and has no client
+ * use: not for the Guest whose address it hashes, not for the Admin app. The
+ * function that writes it does not pass through these rules at all, which is why
+ * both statements — "the server may write it" and "no client may read it" — hold.
+ *
+ * Contact inquiries are deliberately absent: they never reach Firestore. The
+ * public form posts to a Cloudflare Worker (ADR-0024), so `inquiries/{id}` falls
+ * to the catch-all and is refused like any other unclaimed path.
+ */
+describe('rate-limit windows, and the collections the website does not use', () => {
+  it('refuses every client operation on a rate-limit window', () => {
+    const window = { hits: [1, 2], scope: 'contact:ip:1m', expires_at: ruleTimestamp(Date.now() + 60_000) }
+    for (const auth of [null, anonymousGuest(), emailGuest(), allowlistedAdmin()]) {
+      expect(deny({ path: 'rate_limits/abc', method: 'get', auth, resourceData: window })).toBe(true)
+      expect(deny({ path: 'rate_limits/abc', method: 'create', auth, requestData: window })).toBe(true)
+      expect(deny({ path: 'rate_limits/abc', method: 'update', auth, resourceData: window, requestData: { ...window, hits: [] } })).toBe(true)
+      expect(deny({ path: 'rate_limits/abc', method: 'delete', auth, resourceData: window })).toBe(true)
+    }
+  })
+
+  it('has no Firestore home for a contact inquiry', () => {
+    // Nothing on either side writes this path; a document here would be a bug,
+    // and the catch-all is what makes that a refusal rather than a data leak.
+    const inquiry = { name: 'Ana Reyes', email: 'ana@example.test', message: 'A question.' }
+    expect(deny({ path: 'inquiries/i1', method: 'create', auth: emailGuest(), requestData: inquiry })).toBe(true)
+    expect(deny({ path: 'inquiries/i1', method: 'get', auth: allowlistedAdmin(), resourceData: inquiry })).toBe(true)
+  })
+})

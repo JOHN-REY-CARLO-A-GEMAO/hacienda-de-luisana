@@ -2,6 +2,7 @@ import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
 import { PageShell } from '../components/PageShell'
 import { ContactDetails } from '../sections/ContactDetails'
+import { ContactInquiryForm } from '../components/ContactInquiryForm'
 
 /**
  * /contact — the Hacienda's official channels and contact details.
@@ -13,6 +14,12 @@ import { ContactDetails } from '../sections/ContactDetails'
  *
  * Common questions have their own page. Linking there instead of rendering the
  * entire FAQ again keeps each destination focused and avoids duplicate UI.
+ *
+ * The inquiry form is rendered here, and only here. It is the site's one write a
+ * stranger can make, and it had been left unrendered — imported by its tests and
+ * by no page — which is the same failure as not having it, only quieter. It posts
+ * to a Cloudflare Worker (ADR-0024); without a configured endpoint it says so
+ * instead of thanking the Guest for a message that went nowhere.
  */
 export function ContactPage() {
   return (
@@ -45,6 +52,14 @@ export function ContactPage() {
         </Container>
       </section>
 
+      <section id="send-an-inquiry" aria-labelledby="send-an-inquiry-title" className="pb-16 lg:pb-20">
+        <Container width="content">
+          <h2 id="send-an-inquiry-title" className="sr-only">
+            Send an inquiry
+          </h2>
+          <ContactInquiryForm />
+        </Container>
+      </section>
     </PageShell>
   )
 }

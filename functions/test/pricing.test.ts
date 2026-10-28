@@ -13,7 +13,7 @@
  */
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { attestationSurvivesRuleLayer, deriveQuote, MinuteBudget, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift, unattestedVerdict, RULE_MIN_STAY_TOTAL } from '../src/pricing'
+import { attestationSurvivesRuleLayer, deriveQuote, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift, unattestedVerdict, RULE_MIN_STAY_TOTAL } from '../src/pricing'
 
 /** The clock everything is measured against: 2026-10-01, 04:00 UTC. */
 const NOW = Date.parse('2026-10-01T04:00:00Z')
@@ -409,20 +409,4 @@ describe('the attestation stays writable by the estate it will be checked agains
     assert.equal(malformed.verdict, 'UNPARSEABLE')
   })
 
-  it('brakes a caller without growing state forever', () => {
-    const budget = new MinuteBudget(3, 8)
-    const minute = Date.parse('2026-10-01T04:00:10Z')
-    for (let i = 0; i < 3; i++) assert.equal(budget.take('uid-1', minute).ok, true)
-    const blocked = budget.take('uid-1', minute)
-    assert.equal(blocked.ok, false)
-    assert.equal(blocked.retryAfterMs, 50_000)
-    // A different caller is unaffected, and the window rolls over.
-    assert.equal(budget.take('uid-2', minute).ok, true)
-    assert.equal(budget.take('uid-1', minute + 60_000).ok, true)
-    // The leak the audit found: one entry per caller, never released. Now stale
-    // windows are dropped once the table exceeds its bound, so a caller who cycles
-    // identities cannot grow it without limit.
-    for (let window = 0; window < 40; window++) budget.take(`caller-${window}`, minute + window * 60_000)
-    assert.ok(budget.size <= 12, `the budget table kept ${budget.size} rows after pruning`)
-  })
 })

@@ -401,40 +401,6 @@ export function attestationSurvivesRuleLayer(money: AuthoritativeMoney): string[
   return problems
 }
 
-/**
- * A per-minute, per-caller budget, kept out of the handler so it can be tested
- * without a Firestore.
- *
- * It is in-process and per instance: a brake, not a boundary. The boundary is that an
- * unbounded number of quotes buys a caller nothing, because each one prices the stay
- * correctly. But an unbounded *Map* is a gift to whoever can afford the invocations,
- * so stale windows are dropped once the table grows — the leak this replaces was
- * found by reading the code, not by an incident.
- */
-export class MinuteBudget {
-  private readonly rows = new Map<string, { window: number; count: number }>()
-
-  constructor(private readonly limitPerMinute: number, private readonly maxRows = 4096) {}
-
-  take(key: string, now = Date.now()): { ok: boolean; retryAfterMs: number } {
-    const window = Math.floor(now / 60_000)
-    if (this.rows.size > this.maxRows) {
-      for (const [key, value] of [...this.rows]) if (value.window !== window) this.rows.delete(key)
-    }
-    const row = this.rows.get(key)
-    if (row && row.window === window && row.count >= this.limitPerMinute) {
-      return { ok: false, retryAfterMs: (window + 1) * 60_000 - now }
-    }
-    this.rows.set(key, row && row.window === window ? { window, count: row.count + 1 } : { window, count: 1 })
-    return { ok: true, retryAfterMs: 0 }
-  }
-
-  /** Diagnostics and test seam: how much state this instance is carrying. */
-  get size(): number {
-    return this.rows.size
-  }
-}
-
 /** A quote's own identity: the same request under the same document hashes the same. */
 export function quotePayload(request: QuoteRequest, ratesVersion: string): string {
   return JSON.stringify({ ...request, rates_version: ratesVersion })

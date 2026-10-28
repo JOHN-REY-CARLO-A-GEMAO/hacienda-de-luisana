@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# contact-inquiry-worker
+# ---------------------------------------------------------------------------
+# Deploy with `npx wrangler deploy` from this directory. Before the first
+# deploy, create the KV namespace and paste its id below:
+#
+#   npx wrangler kv namespace create RATE_LIMIT_KV
+#
+# The command prints the id; it is not a secret (it is an account-scoped
+# identifier, and the binding below is what grants access to it), but it is
+# deployment-specific, which is why it is not committed here.
+# ---------------------------------------------------------------------------
+name = "contact-inquiry-worker"
+main = "src/index.ts"
+compatibility_date = "2024-04-01"
+
+# One KV namespace holds the rate-limit counters, keyed `rate:<client_ip>` with
+# a TTL, so nothing accumulates. Replace the id — see the note at the top.
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[vars]
+# Public, non-secret configuration.
+#
+# `ENVIRONMENT` is "production" by default so that forgetting to set it cannot
+# accidentally enable the local-development escape hatches. `wrangler dev`
+# overrides it from `.dev.vars` (see `.dev.vars.example`).
+ENVIRONMENT = "production"
+
+# The browser origins allowed to POST an inquiry, comma separated. The deployed
+# site is `https://haciendadeluisana.com` (`public/CNAME`, `SITE_ORIGIN`), so it
+# is the first entry: a worker deployed with these defaults serves the real site
+# rather than refusing it. The Vite dev server is `npm run dev` on port 3000 in
+# this repository; 5173 is Vite's own default, here so a bare `npx vite` works.
+#
+# A wrong value fails closed — the browser gets no `Access-Control-Allow-Origin`
+# and the worker answers 403. Add a preview domain here, or it will be refused.
+ALLOWED_ORIGIN = "https://haciendadeluisana.com,https://www.haciendadeluisana.com,http://localhost:3000,http://localhost:5173"
+
+# Where an inquiry is emailed. Kept as a var rather than a secret because an
+# address is not a credential; it is overridden per environment.
+NOTIFICATION_EMAIL = ""
+
+# The address Resend sends from. `onboarding@resend.dev` is Resend's shared test
+# sender: it works without a verified domain, but it can only deliver to the
+# Resend account owner's own address until a domain is verified.
+FROM_EMAIL = "Website Inquiry <onboarding@resend.dev>"

@@ -124,6 +124,46 @@ export function failureLine(words: FailureWords): string {
 }
 
 /**
+ * A refused-for-pace request, in the shape a form can count down from.
+ *
+ * The estate answers too many attempts with `resource-exhausted` (a callable) or
+ * a 429 (the contact endpoint), and both carry the wait — in `details` on a
+ * callable, in the body/header on HTTP. Reading it in one place is what stops
+ * three screens writing three different "too many requests" sentences, and it is
+ * what lets a form show a real number instead of "try again later".
+ *
+ * Returns `null` for every other failure, so a caller can write
+ * `rateLimitNotice(error) ?? otherMessage` without a code check first.
+ */
+export type RateLimitNotice = {
+  /** Whole seconds, at least 1. */
+  retryAfterSeconds: number
+  /** The sentence the server wrote, or a plain one when it wrote none. */
+  message: string
+}
+
+export function rateLimitNotice(error: unknown): RateLimitNotice | null {
+  const code = codeOf(error).replace(/^functions\//, '')
+  if (code !== 'resource-exhausted' && code !== 'rate_limited') return null
+
+  const details = (error as { details?: unknown } | null)?.details
+  const record = details && typeof details === 'object' ? (details as Record<string, unknown>) : {}
+  const fromDetails = record.retryAfterSeconds ?? record.retry_after_seconds
+  const seconds = typeof fromDetails === 'number' && Number.isFinite(fromDetails) && fromDetails > 0
+    ? Math.ceil(fromDetails)
+    : undefined
+  const serverMessage = typeof record.message === 'string' && record.message.trim() !== ''
+    ? record.message
+    : messageOf(error)
+  return {
+    retryAfterSeconds: seconds ?? 60,
+    message: serverMessage && serverMessage.trim() !== ''
+      ? serverMessage
+      : `Too many requests. Please wait ${seconds ?? 60} seconds and try again.`,
+  }
+}
+
+/**
  * Maps technical or Firebase errors to understandable, friendly messages for guests.
  * Keeps technical details out of guest-facing UI while keeping technical errors in development logs.
  */
@@ -159,6 +199,11 @@ export function guestFacingErrorMessage(
   if (code === 'auth/too-many-requests') {
     return 'Too many attempts. Please wait a moment and try again.'
   }
+  // A paced request is not a failure the Guest should read as a bug: the server
+  // said how long to wait, so the page repeats it rather than inventing a
+  // sentence of its own.
+  const paced = rateLimitNotice(error)
+  if (paced) return paced.message
 
   // Use plain message if user-friendly and not a raw Firebase internal error code
   if (

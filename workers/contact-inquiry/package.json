@@ -1,0 +1,25 @@
+{
+  "name": "contact-inquiry-worker",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Validates, paces and emails the Guest website's contact inquiries on Cloudflare's free plan.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7",
+    "wrangler": "^3.95.0"
+  }
+}

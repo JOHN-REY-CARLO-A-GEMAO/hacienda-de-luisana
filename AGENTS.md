@@ -29,6 +29,31 @@ description and whether it may be indexed are declared once, in
 it the not-found head, and `test/web/seo.test.ts` fails. Read `docs/SEO.md`
 before touching the `<head>`, the JSON-LD, or the deploy configuration.
 
+## The contact form, and the two schemas
+
+The public inquiry form does **not** run on Firebase. The estate's project is on
+the Spark plan, which cannot deploy Cloud Functions, so `submitInquiry` posts to a
+Cloudflare Worker in `workers/contact-inquiry/`. Read
+`docs/FORMS_SECURITY.md` and ADR-0024 before changing either side.
+
+There are two schemas and they are a deliberate pair:
+
+- `src/lib/security/contactInquiry.ts` — the browser's, for UX.
+- `workers/contact-inquiry/src/schema.ts` — the worker's, which is the authority
+  and is stricter.
+
+Neither can import the other, and neither is generated. What keeps them honest is
+`test/web/contact-worker-contract.test.ts`, which imports the worker's real
+`LIMITS`/`inquirySchema` and feeds the browser's output through it. Change a limit
+on one side and that test fails — so fix both. There is no `sync:security` script
+any more; the functions mirror and its manifest were deleted with the endpoint.
+
+The worker has its **own** toolchain: `cd workers/contact-inquiry && npx tsc
+--noEmit && npx vitest run`. The root `tsc -b` does not typecheck it. Its deploy
+steps, secrets and free-tier numbers are in its README. Callable rate limiting is
+still `functions/src/security/rateLimit.ts` (ADR-0023); do not describe
+`src/lib/rateLimit.ts` as security.
+
 ## Agent skills
 
 ### Issue tracker

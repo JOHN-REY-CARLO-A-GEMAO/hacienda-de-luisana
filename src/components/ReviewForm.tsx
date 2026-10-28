@@ -15,6 +15,7 @@ import {
   type ReviewRecord,
 } from '../lib/reviewsCloud'
 import { isFirebaseConfigured } from '../lib/firebase'
+import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 
 /**
  * A Guest's words about a stay they have finished.
@@ -133,6 +134,13 @@ function ReviewComposer({
     }
     if (text.trim().length > REVIEW_MAX) {
       setProblem(`Review must be at most ${REVIEW_MAX} characters`)
+      return
+    }
+    // One Review per stay is the database's rule; this is the other thing that
+    // goes wrong on a double tap — two writes racing to be the same document.
+    const cooldown = checkRateLimit(`review:submit:${bookingId}`, LIMITS.review)
+    if (!cooldown.ok) {
+      setProblem(cooldown.message)
       return
     }
     submitted.current = true

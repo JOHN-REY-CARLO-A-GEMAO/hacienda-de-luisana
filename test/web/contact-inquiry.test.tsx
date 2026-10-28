@@ -44,7 +44,7 @@ describe('ContactInquiryForm strict validation and live counters', () => {
 
     // Verify initial character counters
     expect(container.textContent).toContain('0 / 120 characters')
-    expect(container.textContent).toContain('0 / 1000 characters')
+    expect(container.textContent).toContain('0 / 2000 characters')
 
     // Test typing numbers into name gets sanitized
     act(() => {
@@ -62,7 +62,7 @@ describe('ContactInquiryForm strict validation and live counters', () => {
     act(() => {
       setInputValue(messageInput, 'We would like to inquire about booking the whole villa.')
     })
-    expect(container.textContent).toContain('55 / 1000 characters')
+    expect(container.textContent).toContain('55 / 2000 characters')
   })
 
   it('rejects submission with invalid data and displays inline error messages', () => {

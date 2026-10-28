@@ -152,6 +152,16 @@ _Avoid_: Post-stay window, Review period, Waiting period.
 Which of `pending`, `published` or `hidden` a Review is in. Every Review arrives `pending` and waits for the Admin. `hidden` is the moderation state and it is a *state*: the Review is kept, with the decision in the Activity log, and a Guest is never silently lost because a rating was uncomfortable.
 _Avoid_: Approved (that is a Booking status), Flagged, Removed, Deleted.
 
+**Inquiry**:
+An unanswered question sent through the website's contact form by somebody who may
+have no account. It is **not stored in Firestore**: a Cloudflare Worker
+(`workers/contact-inquiry/`) validates it, proves a person sent it, paces by IP and
+emails it to the estate through Resend, so an Inquiry is a message in an inbox
+rather than a document. It is not a Booking, not a Conversation and not a Case
+(that feature is retired): an Inquiry asks something, a Conversation belongs to a
+Booking, and an Inquiry does not create either.
+_Avoid_: Leads, contact record, ticket, case, message (a message is in a Conversation), `inquiries` collection (there is none)
+
 **Testimonial**:
 What the public website shows, held at `public_reviews/{reviewId}` — six fields (the rating, a quotation, a display name, a month, a published instant and the id it came from) that the Admin writes out of a Review. It is a separate document, not a copy with fields removed, so a Guest's uid, their Booking and the Admin's private reply have no way onto the public page. **Presence in the collection is publication**: there is no status, and the Admin withdraws a testimonial by deleting it. Distinct from the Airbnb quotes transcribed into `src/config/site.ts`, which are a Guest's words published on a platform this system does not control.
 _Avoid_: Review (the Guest's own document, private), Public review, Feedback, Quote.

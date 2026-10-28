@@ -183,6 +183,29 @@ describe('the homepage previews and the pages behind them', () => {
     for (const f of FAQS) expect(faqs.text()).toContain(f.q)
   })
 
+  it("puts the inquiry form on /contact, where a Guest looking for one lands", () => {
+    // The form is the site's only write a stranger can make, and it spent a while
+    // imported by its tests and by no page — which is indistinguishable, from the
+    // outside, from not having a contact form at all. ADR-0024 made it work; this
+    // asserts it is reachable.
+    const contact = open('/contact')
+    const form = contact.container.querySelector('form')
+    expect(form, '/contact renders no inquiry form').toBeTruthy()
+    expect(contact.text()).toContain('Send an inquiry')
+
+    // The bot trap travels with it, off-screen and unlabelled for a human.
+    const trap = contact.container.querySelector('input[name="hdl_extra"]') as HTMLInputElement | null
+    expect(trap, 'the honeypot input is missing').toBeTruthy()
+    expect(trap!.getAttribute('tabindex')).toBe('-1')
+    // Hidden off-screen by a wrapper that is `aria-hidden`, never `display:none`:
+    // a filler that skips unlaid-out fields would skip the trap too.
+    const trapBox = trap!.closest('[aria-hidden="true"]') as HTMLElement | null
+    expect(trapBox, 'the trap is not hidden from a screen reader').toBeTruthy()
+    expect(trapBox!.className).toContain('-left-[9999px]')
+    expect(trapBox!.style.display).not.toBe('none')
+    expect(window.getComputedStyle(trapBox!).display).not.toBe('none')
+  })
+
   it('links to every dedicated page from the nav or the footer', () => {
     for (const { path } of PAGES) {
       expect(LINKED_PATHS, `${path} is not reachable from the nav or footer`).toContain(path)

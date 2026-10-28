@@ -1746,6 +1746,25 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Rate-limit windows are written by the Admin SDK only
+    // (`functions/src/security/rateLimit.ts`), and hold hashed caller keys.
+    //
+    // Written out rather than left to the catch-all below, because this is the
+    // collection where "no rule matched" is not the same statement as "no client
+    // may read or write this": a window says how often an address tried. A rule
+    // added for another collection must not be able to make it readable.
+    //
+    // NOTE: nothing writes this collection on the Spark plan, because Cloud
+    // Functions cannot deploy there. It stays denied so that turning the
+    // callables on later (ADR-0023) does not open the collection by accident.
+    match /rate_limits/{windowId} {
+      allow read, write: if false;
+    }
+
+    // Contact inquiries are not in Firestore at all. The public form posts to a
+    // Cloudflare Worker (ADR-0024), which emails the Hacienda and stores nothing;
+    // the catch-all below is what keeps this sentence true if anyone tries.
+
     // Deny all other collections by default unless explicitly allowed
     match /{document=**} {
       allow read, write: if false;

@@ -34,7 +34,90 @@ and submit callables; it holds no OCR. Guests confirm or type the reference and 
 
 ## Rate limiting
 
-`src/lib/rateLimit.ts` is **client UX cooldowns** (login, reset, booking, payment, OCR, chat, review, lock command). Firestore rules do not count requests and there are no Cloud Functions or callables, so server-side rate limiting **cannot be enforced in this architecture** without new infrastructure. Firebase Auth's own brute-force protection and Firebase quotas still apply, but they are managed outside this repo and were not tested here. The cooldowns must not be described as security rate limiting.
+**Server-side pacing exists now**, in two places.
+
+The **contact form** is paced in its Cloudflare Worker
+(`workers/contact-inquiry/src/kvRateLimit.ts`, ADR-0024): **5 requests per 10
+minutes per IP**, keyed on `cf-connecting-ip`, answered with `429` and
+`Retry-After: 600`. It is a KV counter, and KV has real limits — see below.
+
+The **callables** are paced in `functions/src/security/rateLimit.ts` (ADR-0023):
+`submitBooking` (8/min per caller), `quoteBooking`
+(`QUOTE_RATE_LIMIT_PER_MINUTE`, default 12/min) and `verifyBookingMoney`. It is a
+sliding-window log in Firestore, so it survives instance recycling and has no
+minute boundary to step over. Keys are salted hashes; no address is stored raw.
+**These cannot deploy on the Spark plan**, so today they describe the design
+rather than live behaviour.
+
+What it is **not**:
+
+- **The contact limiter is not atomic, and the window is fixed.** KV has no
+  compare-and-set: two simultaneous requests from one IP can both read the same
+  count and both write the next one, so the limit can overshoot by roughly the
+  concurrency. The window starts at the first request and is not slid, so a caller
+  can send five at 09:59 and five at 10:00. Both are free-tier properties, both are
+  stated in the worker README § 6, and the upgrade path (a Durable Object keyed by
+  IP) is named there.
+- **The contact limiter fails open.** A KV read that throws means the inquiry is
+  accepted, with `X-RateLimit-Degraded: true` on the reply. Losing a real inquiry
+  to a broken binding is the worse failure.
+- **No per-email budget on the contact form.** The worker keys only on the real IP;
+  the submitted address is unverified, so hashing it into a counter would key the
+  limit on whatever an attacker types. Turnstile plus Resend's 100-a-day free tier
+  are the backstop.
+- **Not enforced for `bookingAvailability`.** That callable keeps a per-instance
+  window on purpose (a calendar re-render must not cost a Firestore write), so its
+  limit is per instance, not fleet-wide.
+- **Not enforced for chat messages or Reviews.** Those are direct Firestore
+  writes; `firestore.rules` is the boundary for their shape, author and window,
+  and the app's cooldowns are UX only.
+- **Not enforced for sign-in or sign-up.** Firebase Auth's brute-force protection
+  and quotas apply, managed outside this repository; a function in front of Auth
+  would be bypassable and was not added.
+- **Not a spam classifier.** Shape, pace and a honeypot; a human still reads
+  every inquiry.
+- **Not verified against a deployed function or worker here.** No Java runtime, no
+  Cloudflare account and no credentials in this environment. The worker's handler
+  is exercised directly — fake KV, stubbed `fetch` — and the callables' arithmetic,
+  schema and response parsing are unit-tested. The first live check is in
+  `workers/contact-inquiry/README.md` § 2f.
+- **Degraded when Firestore is unavailable.** The limiter falls back to the
+  per-instance window, marks the reply `X-RateLimit-Degraded: true`, and logs it.
+  That is a choice: losing real inquiries to a database blip is worse.
+- **One read per check, one write per allowed request.** There is no Redis in
+  this deployment, so the store is Firestore. A Firestore TTL policy on
+  `rate_limits.expires_at` is recommended but **not deployed**, so the collection
+  is only kept small by the writes themselves.
+
+`src/lib/rateLimit.ts` is still **client UX cooldowns** (login, reset, contact,
+booking, payment, OCR, chat, review, lock command) and must still not be
+described as security rate limiting.
+
+## The contact form (ADR-0024)
+
+The form sends a real request to a **Cloudflare Worker** and the inquiry becomes an
+**email**. Nothing is stored: no `inquiries` collection, no retention question, and
+nothing to surface in the Admin app.
+
+- **A second deployment exists.** The worker has its own KV namespace, its own
+  secrets and its own README; `npx wrangler deploy` is a separate step from
+  `firebase deploy`. If it is not deployed, the form cannot send.
+- **Resend's free tier is the ceiling.** 100 emails a day, and
+  `onboarding@resend.dev` only delivers to the Resend account owner until the
+  estate's domain is verified. Deliverability beyond that is Resend's, not this
+  code's.
+- **Turnstile is required in production.** A missing `TURNSTILE_SECRET_KEY` is a
+  `500 misconfigured`, not a silently unchecked form. Local development may set
+  `TURNSTILE_SKIP_VERIFY`, which is honoured only when `ENVIRONMENT=development`.
+- **Cloudflare outages fail open** unless `TURNSTILE_FAIL_CLOSED=true`.
+- **The KV counter can overshoot and resets on a fixed window**, and it fails open
+  — see *Rate limiting* above.
+- **No test against a deployed worker.** See above.
+- **CORS is an allowlist.** A preview domain must be added to `ALLOWED_ORIGIN` or
+  the browser will be refused — and `npm run dev` against the deployed worker needs
+  `http://localhost:5173` there (it is in the default).
+- **The functions endpoint is gone.** `functions/src/contact.ts` was deleted with
+  ADR-0024; the callables that remain still cannot deploy on the Spark plan.
 
 ## Payment references
 

@@ -1,0 +1,30 @@
+# Local development values for `npx wrangler dev`.
+#
+# Copy this file to `.dev.vars` (gitignored) and fill it in. Wrangler merges it
+# over `[vars]` in wrangler.toml for local runs only; `npx wrangler deploy` never
+# uploads it.
+#
+# The three secrets are set for production with `wrangler secret put` — never in
+# wrangler.toml, which is committed.
+
+# Local runs are development. This is what allows TURNSTILE_SKIP_VERIFY below;
+# `[vars] ENVIRONMENT` is "production", so a deploy cannot inherit it.
+ENVIRONMENT = "development"
+
+# Cloudflare Turnstile test keys, which always pass and are safe to publish:
+#   site key:   1x00000000000000000000AA
+#   secret key: 1x0000000000000000000000000000000AA
+# Use the real pair from the Turnstile dashboard for anything deployed.
+TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA"
+
+# Skip the Cloudflare round-trip locally. Honoured ONLY when
+# ENVIRONMENT === "development" — see src/turnstile.ts — so this can never be a
+# production bypass. Leave it unset to test the real verification path.
+TURNSTILE_SKIP_VERIFY = "false"
+
+# Resend. With no key the worker answers 503 and says so; nothing is silently
+# dropped. Create a key at https://resend.com/api-keys.
+RESEND_API_KEY = ""
+
+# Where inquiries go. See the note in README.md about onboarding@resend.dev.
+NOTIFICATION_EMAIL = "you@example.com"

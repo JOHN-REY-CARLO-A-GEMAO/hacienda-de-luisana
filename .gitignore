@@ -10,6 +10,11 @@ yarn-error.log*
 # Env - keep .env.example, ignore local secrets
 .env
 .env.local
+# Wrangler's local secrets file (workers/contact-inquiry): the real Turnstile and
+# Resend keys for `wrangler dev`. Committed only as .dev.vars.example.
+.dev.vars
+# Wrangler's local build state.
+.wrangler/
 .env.*.backup
 .env.*.bom-backup
 !.env.example

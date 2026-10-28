@@ -28,7 +28,8 @@ import { getAuth } from 'firebase-admin/auth'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { createHash } from 'node:crypto'
-import { deriveQuote, MinuteBudget, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift, unattestedVerdict, type AuthoritativeMoney, type MoneyVerdict, type QuoteCause, type QuoteRequest } from './pricing'
+import { deriveQuote, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift, unattestedVerdict, type AuthoritativeMoney, type MoneyVerdict, type QuoteCause, type QuoteRequest } from './pricing'
+import { RATE_LIMITS, rateLimitedMessage, rateLimitKey, retryAfterSeconds, sharedRateLimiter, type LimitPolicy } from './security/rateLimit'
 
 const options = { region: 'asia-southeast1', maxInstances: 5, memory: '512MiB' as const, timeoutSeconds: 60 }
 
@@ -54,18 +55,25 @@ function enabled(): void {
 }
 
 // A quote mints a document, so a caller who can call this 10,000 times can fill
-// Firestore. In-memory, per instance, and stale windows are dropped: it is a brake,
-// not a boundary — the boundary is that an unbounded number of quotes buys an
-// attacker nothing, since each one prices the stay correctly. What would have been a
-// leak is the Map growing one entry per caller forever, which the readiness audit of
-// 2026-10-22 turned into `MinuteBudget`.
-const rawLimit = Number(process.env.QUOTE_RATE_LIMIT_PER_MINUTE ?? 12)
-const budget = new MinuteBudget(Number.isInteger(rawLimit) && rawLimit >= 1 ? rawLimit : 12)
+// Firestore. The window is now shared by every instance (`security/rateLimit.ts`)
+// rather than counted in one process's memory: the old per-instance budget reset
+// on a cold start and did not add up across the fleet. `QUOTE_RATE_LIMIT_PER_MINUTE`
+// still sets the ceiling, so an operator can loosen it without a code change.
+const configuredLimit = Number(process.env.QUOTE_RATE_LIMIT_PER_MINUTE ?? 12)
+const quotePolicy: LimitPolicy = {
+  ...RATE_LIMITS.quoteBooking,
+  max: Number.isInteger(configuredLimit) && configuredLimit >= 1 ? configuredLimit : RATE_LIMITS.quoteBooking.max,
+}
 
-function spend(key: string): void {
-  const verdict = budget.take(key)
-  if (!verdict.ok) {
-    throw new HttpsError('resource-exhausted', `Too many price requests from here. Wait ${Math.ceil(verdict.retryAfterMs / 1000)}s, then try again.`)
+async function spend(uid: string): Promise<void> {
+  const outcome = await sharedRateLimiter().check(rateLimitKey('quote:uid', uid), quotePolicy)
+  if (!outcome.allowed) {
+    throw new HttpsError('resource-exhausted', rateLimitedMessage('price', outcome), {
+      cause: 'RATE_LIMITED',
+      retryAfterSeconds: retryAfterSeconds(outcome),
+      limit: outcome.limit,
+      reset_at: new Date(outcome.resetAt).toISOString(),
+    })
   }
 }
 
@@ -113,7 +121,7 @@ export const quoteBooking = onCall(options, async (request: CallableRequest) => 
   const parsed = parseQuoteRequest(request.data)
   if (!parsed.ok) throw causeToError(parsed.cause, parsed.detail, parsed.guestMessage, parsed.status)
 
-  spend(callerUid)
+  await spend(callerUid)
 
   const [ratesDoc, configDoc] = await Promise.all([
     db().doc('site_config/rates').get(),

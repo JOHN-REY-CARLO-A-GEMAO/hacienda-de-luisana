@@ -33,7 +33,8 @@ test/*_test.dart        # flutter test — lifecycle rules, published rates, boo
 
 # Shared
 CONTEXT.md              # Domain glossary (the vocabulary both apps use)
-docs/adr/               # Architecture decision records (0001–0010)
+docs/adr/               # Architecture decision records (0001–0024)
+workers/contact-inquiry/ # The public contact form's Cloudflare Worker (ADR-0024)
 docs/                   # Setup, flows, plans (this folder)
 scripts/quiz-deck/      # offline builder for Gemao_JohnReyCarlo.pptx (deliverable stays at root)
 ```
@@ -71,6 +72,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 - Responsive landing (Hero, Accommodations, Experience, Gallery, Location, Reviews, FAQ)
 - `/book` — Guests book at least **30 days before check-in** (calendar dates in **Asia/Manila**, configurable via `site_config/booking`). The inline color-coded calendar reads a privacy-safe server projection; the regional `submitBooking` callable transaction is the authoritative lead-time, price and availability boundary. The 24-hour Date hold, downpayment proof and Pending → Admin review remain intact. See [BOOKING_POLICY.md](./BOOKING_POLICY.md) for configuration, enforcement, verification and deployment.
 - `/account` — the Guest's own Bookings, drawn as the Hacienda's guest book: the next stay and its dates on the page opener, one dated entry per stay (status, money, Date hold countdown, Payment plan choice from the published rates, Payment proof upload, withdraw, late checkout, review), the stage track and Activity log behind one disclosure per entry, and the Guest's particulars on the flyleaf. The direction and its tokens are [ACCOUNT.md](./ACCOUNT.md)
+- `/contact` — a real inquiry form: it posts to a Cloudflare Worker, which validates with zod, verifies Turnstile, paces 5 per 10 minutes per IP (`429` + `Retry-After`) and emails the estate through Resend ([FORMS_SECURITY.md](./FORMS_SECURITY.md), ADR-0024)
 - `/login`, `/guest/auth` — Guest sign-in / sign-up, email + password and Google, password reset, session kept across reloads
 - `/admin/*`, `/app/*` — a notice: the Admin dashboard moved to the Admin mobile app
 - Interactive guided tutorial (first visit + "Replay tutorial") — drives the real UI instead of slides; see [TUTORIAL.md](./TUTORIAL.md)
@@ -106,7 +108,7 @@ With no Firebase keys configured the site runs in **demo mode**: Guest accounts 
 - **Firebase Hosting**: `firebase deploy --only hosting` (public = `dist`)
 - **GitHub Pages**: workflow `.github/workflows/deploy.yml`
 
-Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`, `VITE_FIREBASE_DATABASE_URL` (live location, [ADR-0013](./adr/0013-live-location-as-a-stream.md); without it the sharing control is disabled and says why), `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (payment-proof uploads to the Supabase Storage bucket `payment-proofs`, [ADR-0011](./adr/ADR-0011-supabase-storage.md); without them proofs stay in this browser as labelled demo mode).
+Env vars (`VITE_` prefix required): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`, `VITE_FIREBASE_DATABASE_URL` (live location, [ADR-0013](./adr/0013-live-location-as-a-stream.md); without it the sharing control is disabled and says why), `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (payment-proof uploads to the Supabase Storage bucket `payment-proofs`, [ADR-0011](./adr/ADR-0011-supabase-storage.md); without them proofs stay in this browser as labelled demo mode), `VITE_CONTACT_WORKER_URL` and `VITE_TURNSTILE_SITE_KEY` (the contact form's Cloudflare Worker and its bot check, [ADR-0024](./adr/0024-the-public-form-runs-on-a-cloudflare-worker.md); without the URL the inquiry is labelled demo mode, without the site key the form refuses to pretend it sent anything).
 
 Two switches worth knowing: `FIREBASE_ENV_STRICT=1` makes a build with no Firebase at all **fail** instead of shipping in demo mode, and `/status` on any deployment says which project it was built for and can test the connection from the browser. Which source wins, and why the committed config is not a secret, is in [FIREBASE_SETUP.md § 3c](./FIREBASE_SETUP.md).
 
@@ -161,6 +163,7 @@ Android: see [ANDROID.md](./ANDROID.md). Without a configured Firebase app the s
 - [docs/adr/](./adr/) — decisions; start with [0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md); the money and audit boundaries are [0010](./adr/0010-money-and-audit-invariants-in-the-rule-layer.md); live location is [0013](./adr/0013-live-location-as-a-stream.md); reviews and the public testimonial are [0014](./adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md); the Admin's Security PIN is [0015](./adr/0015-a-sensitive-admin-action-needs-a-deliberate-second-input.md) and resetting a forgotten one is [0016](./adr/0016-a-forgotten-security-pin-is-reset-by-disposing-of-the-record.md), which deliberately contradicts 0015's never-deletable rule
 - [docs/REVIEWS.md](./REVIEWS.md) — the Review data model, eligibility, the edit window, moderation, and what the website publishes
 - [docs/SEO.md](./SEO.md) — how the single-page website is prerendered to static HTML, where each page's title and description live, and the crawler files (`robots.txt`, `sitemap.xml`, `llms.txt`) and structured data the build writes
+- [docs/FORMS_SECURITY.md](./FORMS_SECURITY.md) — every form, who validates it, the client/worker schema contract, both limiters (KV for the contact form, Firestore for the callables), the 429 contract, and the honeypot/Turnstile bot mitigation (ADR-0023, ADR-0024)
 - [HDL_FLOW_CORRECTED.md](./HDL_FLOW_CORRECTED.md) — the system flow (thesis chart), per module
 - [FLUTTER_FLOW.md](./FLUTTER_FLOW.md) — the Admin app's flow and screen contracts
 - [FLUTTER_UI_UX.md](./FLUTTER_UI_UX.md) — the Admin app's design system

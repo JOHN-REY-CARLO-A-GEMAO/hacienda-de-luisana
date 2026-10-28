@@ -232,9 +232,16 @@ test('Guest submit enforces the published lead time before writing a lock or Boo
   assert.equal([...store.keys()].some(path => path.startsWith('booking_inventory_locks/')), false);
 });
 
+/**
+ * Everything except the rate-limit windows. Counting a refused attempt is the
+ * point of a limiter, so `rate_limits/*` legitimately changes when a request is
+ * refused; what must not change is a Booking, a lock or the published config.
+ */
+const durable = (entries: [string, unknown][]) => entries.filter(([path]) => !path.startsWith('rate_limits/'));
+
 test('Guest submit refuses a foreign identity and stale/invented money before writes', async () => {
   prepareBookingConfig();
-  const before = clone([...store.entries()]);
+  const before = clone(durable([...store.entries()]));
   await assert.rejects(
     run('guest-one', { booking: guestBooking('guest-two') }, 'submitBooking'),
     (error: any) => error.code === 'permission-denied',
@@ -243,5 +250,5 @@ test('Guest submit refuses a foreign identity and stale/invented money before wr
     run('guest-one', { booking: { ...guestBooking('guest-one'), stay_total: 1000, amount_due: 500, balance_due: 500 } }, 'submitBooking'),
     (error: any) => error.code === 'failed-precondition',
   );
-  assert.deepEqual([...store.entries()], before);
+  assert.deepEqual(durable([...store.entries()]), before);
 });
