@@ -194,7 +194,7 @@ describe('which role a signed-in user has', () => {
     // firestore.rules answers from the allowlisted email before it looks at a
     // Profile. A client that disagreed would show buttons the rules refuse.
     expect(resolveRole({ uid: 'u1', email: BOOTSTRAP_ADMINS[0] }, { uid: 'u1', role: 'guest' })).toBe('admin')
-    expect(resolveRole({ uid: 'u2', email: BOOTSTRAP_ADMINS[1] }, null)).toBe('admin')
+    expect(resolveRole({ uid: 'u2', email: BOOTSTRAP_ADMINS[0] }, null)).toBe('admin')
   })
 
   it('makes anybody signed in without a Profile a Guest', () => {

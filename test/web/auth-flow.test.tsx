@@ -32,7 +32,7 @@ const TIMEOUT_MS = 20_000
 const TYPED_AT_SIGN_UP = 'bahay-kubo-9'
 
 /** The owner's address — on the bootstrap allowlist, so it arrives as the Admin. */
-const ADMIN_ADDRESS = 'haciendadeluisiana@gmail.com'
+const ADMIN_ADDRESS = 'gemaojohnreyarguilles@gmail.com'
 
 const mounted: Root[] = []
 

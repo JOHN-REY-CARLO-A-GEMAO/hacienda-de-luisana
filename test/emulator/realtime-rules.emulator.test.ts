@@ -26,7 +26,7 @@ import {
 } from '@firebase/rules-unit-testing'
 
 const PROJECT = process.env.GCLOUD_PROJECT ?? process.env.FIREBASE_PROJECT ?? 'demo-hacienda'
-const ADMIN_EMAIL = 'haciendadeluisiana@gmail.com'
+const ADMIN_EMAIL = 'gemaojohnreyarguilles@gmail.com'
 const GUEST_UID = 'guest-uid-1'
 const OTHER_GUEST_UID = 'guest-uid-2'
 const CONVO_ID = 'convo-1'

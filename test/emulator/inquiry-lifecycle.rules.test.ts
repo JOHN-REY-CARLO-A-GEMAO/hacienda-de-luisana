@@ -62,7 +62,7 @@ describe('Inquiry -> Quoted -> Pending', () => {
     const admin = env.unauthenticatedContext().firestore()
     // admin ctx has no role; seed a profile so isAdmin() is true via the allowlist
     // instead: use the bootstrap allowlist email.
-    const adminCtx = env.authenticatedContext('admin-uid', { email: 'haciendadeluisiana@gmail.com' }).firestore()
+    const adminCtx = env.authenticatedContext('admin-uid', { email: 'gemaojohnreyarguilles@gmail.com' }).firestore()
     await expect(updateDoc(doc(adminCtx, 'bookings/b1'), {
       rate_amount: 6000, rate_unit: 'standard_stay', rate_classification: 'weekday',
       stay_total: 6000, amount_due: 3000, balance_due: 3000, security_deposit: 2000,

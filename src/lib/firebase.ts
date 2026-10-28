@@ -188,7 +188,11 @@ if (isFirebaseConfigured) {
     // authorization enforced by firestore.rules.
     db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true })
     storage = getStorage(app)
-    if (isUsingEmulators && !emulatorsConnected) {
+    // Never point a production visitor at the developer's local emulator. If
+    // VITE_USE_FIREBASE_EMULATORS=true was left on the hosting dashboard, the
+    // build already logged the refusal above; skip every emulator connection
+    // and keep talking to the committed live project (or local mode).
+    if (isUsingEmulators && !import.meta.env.PROD && !emulatorsConnected) {
       emulatorsConnected = true
       // Phones on the same Wi-Fi load the site via the laptop's LAN IP
       // (e.g. http://192.168.1.6:3000), so 127.0.0.1 would point at the phone
@@ -272,7 +276,8 @@ export async function ensureRealtimeDatabase(): Promise<Database | null> {
   try {
     const { getDatabase, connectDatabaseEmulator } = await import('firebase/database')
     realtime = getDatabase(app)
-    if (isUsingEmulators) connectDatabaseEmulator(realtime, emulatorHost, 9000)
+    // Never point a production visitor at the developer's local emulator.
+    if (isUsingEmulators && !import.meta.env.PROD) connectDatabaseEmulator(realtime, emulatorHost, 9000)
   } catch (err) {
     console.warn('[Firebase] Realtime Database unavailable; live location is off.', err)
     realtime = null

@@ -45,7 +45,7 @@ const ttlMinutes = () => {
   const raw = Number(process.env.QUOTE_TTL_MINUTES ?? 30)
   return Number.isInteger(raw) && raw >= 1 && raw <= 240 ? raw : 30
 }
-const bootstrapAdminEmails = ['haciendadeluisiana@gmail.com', 'gemaojohnreyarguilles@gmail.com']
+const bootstrapAdminEmails = ['gemaojohnreyarguilles@gmail.com']
 
 function enabled(): void {
   if (process.env.BOOKING_QUOTES_ENABLED !== 'true' && process.env.FUNCTIONS_EMULATOR !== 'true') {

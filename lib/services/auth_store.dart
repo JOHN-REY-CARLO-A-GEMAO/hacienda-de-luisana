@@ -31,7 +31,6 @@ class AuthStore extends ChangeNotifier {
   /// Bootstrap Admin allowlist. Keep in sync with firestore.rules,
   /// storage.rules and src/lib/auth/profile.ts.
   static const List<String> kAdminEmails = [
-    'haciendadeluisiana@gmail.com',
     'gemaojohnreyarguilles@gmail.com',
   ];
 

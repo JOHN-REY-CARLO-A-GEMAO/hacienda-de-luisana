@@ -66,7 +66,9 @@ describe('the payment-proofs bucket', () => {
     // A Guest's browser has the anon key and no session, so write is the only
     // grant that can work — and it must be there or no Guest can ever send a
     // receipt.
-    expect(grants.map((g) => g.verb).sort()).toEqual(['insert', 'update'])
+    // Insert-only: `anon` may add a proof but may not replace one in place. A
+    // re-send writes a new object via the attempt number in `proofObjectPath`.
+    expect(grants.map((g) => g.verb).sort()).toEqual(['insert'])
     // Scoped to the folder `proofObjectPath` writes into.
     for (const statement of writes) {
       expect(statement).toContain("bucket_id = 'payment-proofs'")

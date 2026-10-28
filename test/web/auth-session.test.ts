@@ -323,15 +323,15 @@ describe('signing in', () => {
 
   it('lets the bootstrap allowlist outrank a Profile, the way the rules do', async () => {
     const provider = createFakeProvider()
-    provider.seed({ user: user('uid-owner', 'haciendadeluisiana@gmail.com'), password: REGISTERED_WITH })
+    provider.seed({ user: user('uid-owner', 'gemaojohnreyarguilles@gmail.com'), password: REGISTERED_WITH })
     // A Profile written before the allowlist was read says Guest; firestore.rules
     // would still answer Admin, so the session must too.
     const { session } = startSession(
       provider,
-      createFakeProfiles([{ uid: 'uid-owner', role: 'guest', email: 'haciendadeluisiana@gmail.com' }]),
+      createFakeProfiles([{ uid: 'uid-owner', role: 'guest', email: 'gemaojohnreyarguilles@gmail.com' }]),
     )
 
-    await session.login('haciendadeluisiana@gmail.com', 'bahay-kubo')
+    await session.login('gemaojohnreyarguilles@gmail.com', 'bahay-kubo')
 
     expect(session.getState().role).toBe('admin')
     expect(session.can('bookings:review')).toBe(true)
