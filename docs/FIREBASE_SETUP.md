@@ -248,6 +248,28 @@ cp .firebaserc.example .firebaserc
 firebase deploy --only firestore:rules,firestore:indexes,storage
 ```
 
+**Read the deploy output before answering anything at the prompt.** Three things
+there are expected, and confusing them for failures is how a deploy gets
+abandoned half-way:
+
+| Output | What it means |
+| --- | --- |
+| `Invalid type. Received one of [list]. Expected one of [set]` at `pricingSnapshotImmutable()` | The compiler resolves `intersection()`'s argument before the `.toSet()` on it runs. Cosmetic: the file compiles and the guard evaluates. **Never "fix" it by calling `toSet()` on `keys()`** — `keys()` already returns a Set, and `toSet()` on a Set is the rules-language error that made the money-snapshot guard unevaluable (docs/VERIFICATION.md records it as fixed). |
+| `Invalid type. Received one of [null]. Expected one of [map]` at `validGuestQuote()` | Should no longer appear: the attestation now defaults to `{}` in the binding instead of `null`. If it does appear, the `{}` default was lost — that is a real bug, because a null dereference throws and a throw reads as a refusal. |
+| `The following indexes are defined in your project but are not present in your firestore indexes file … Would you like to delete these indexes? (y/N)` | Answer **N** unless you have decided to drop that index. Deleting one is a separate, disruptive change — it has to be rebuilt from scratch if it is ever needed again — and `N` still finishes the rest of the deployment. `cases` is genuinely retired (ADR-0020) but prune it deliberately, from the Console, once nothing queries it. |
+
+Never add `--force` to skip that prompt: for indexes, `--force` *means* "yes,
+delete them". To deploy rules alone, with no index reconciliation and no prompt:
+
+```bash
+firebase deploy --only firestore:rules --project <project-id>
+```
+
+A rules deploy replaces the whole ruleset rather than merging into it, so deploy
+from the commit you intend. Rollback: Console → Firestore → Rules → version
+history → restore the previous ruleset, or redeploy `firestore.rules` from the
+previous commit.
+
 ### 5. Deploy Hosting
 ```bash
 npm run build
