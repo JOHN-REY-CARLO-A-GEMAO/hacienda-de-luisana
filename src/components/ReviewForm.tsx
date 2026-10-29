@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { REVIEW_MAX } from '../lib/validation'
 import {
   REVIEW_CATEGORIES,
@@ -135,6 +136,11 @@ function ReviewComposer({
       setProblem(`Review must be at most ${REVIEW_MAX} characters`)
       return
     }
+    const limited = checkRateLimit(`review:${bookingId}`, LIMITS.review)
+    if (!limited.ok) {
+      setProblem(limited.message)
+      return
+    }
     submitted.current = true
     setBusy(true)
     setProblem(null)
@@ -261,7 +267,7 @@ function ReviewComposer({
       <button
         type="submit"
         className="btn-primary btn-sm mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
-        disabled={busy || Boolean(problem)}
+        disabled={busy}
       >
         {busy ? 'Saving…' : (submitLabel ?? (review ? 'Save my changes' : 'Submit review'))}
       </button>

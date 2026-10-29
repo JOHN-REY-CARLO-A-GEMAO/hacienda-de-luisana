@@ -76,6 +76,7 @@ export const EVENT_DETAIL_MAX = 160
  * this constant is the courtesy half and the rules are the enforcement.
  */
 export const MESSAGE_MAX = 1000
+export const INQUIRY_MESSAGE_MIN = 10
 export const REVIEW_MAX = 1000
 export const REF_MAX = 40
 export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5MB
@@ -100,6 +101,8 @@ const PHONE_DISALLOWED_RE = /[^0-9+\-\s()]/g
 const ADDRESS_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s.,#/&'+\-()]+$/
 /** Angle brackets and control characters: never in a subject line, always a tag. */
 const MARKUP_RE = /[<>\u0000-\u001f\u007f]/
+/** Same tag/control guard for multi-line textareas, keeping newlines and tabs valid. */
+const MULTILINE_MARKUP_RE = /[<>\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/
 const DIGITS_RE = /^\d+$/
 
 export type FieldResult = { ok: true; value: string } | { ok: false; message: string }
@@ -310,6 +313,26 @@ export function validateMessage(raw: string): FieldResult {
   return { ok: true, value: v }
 }
 
+/**
+ * Contact inquiry body: enforces the 10-character minimum promised by the form
+ * hint, shares `MESSAGE_MAX`, and refuses markup/control characters while
+ * leaving `validateMessage` untouched for live Guest-Admin chat.
+ */
+export function validateInquiryMessage(raw: string): FieldResult {
+  const v = raw.trim()
+  if (!v) return { ok: false, message: 'Message cannot be empty' }
+  if (v.length < INQUIRY_MESSAGE_MIN) {
+    return { ok: false, message: `Message must be at least ${INQUIRY_MESSAGE_MIN} characters` }
+  }
+  if (v.length > MESSAGE_MAX) {
+    return { ok: false, message: `Message must be at most ${MESSAGE_MAX} characters` }
+  }
+  if (MULTILINE_MARKUP_RE.test(v)) {
+    return { ok: false, message: 'Message cannot contain < or >' }
+  }
+  return { ok: true, value: v }
+}
+
 export function validateProofFile(file: File | null | undefined): FieldResult {
   if (!file) {
     return { ok: false, message: 'Please select a payment proof screenshot or image' }
@@ -428,7 +451,7 @@ export function sanitizeNameInput(raw: string): string {
   return raw
     .replace(NAME_DISALLOWED_RE, '')
     .replace(/\s+/g, ' ')
-    .trim()
+    .trimStart()
     .slice(0, NAME_MAX)
 }
 
@@ -443,7 +466,7 @@ export function sanitizePhoneInput(raw: string): string {
   return raw
     .replace(PHONE_DISALLOWED_RE, '')
     .replace(/\s+/g, ' ')
-    .trim()
+    .trimStart()
     .slice(0, PHONE_MAX_INPUT_LENGTH)
 }
 

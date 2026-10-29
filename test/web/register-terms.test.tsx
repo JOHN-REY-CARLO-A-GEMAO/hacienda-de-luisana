@@ -14,6 +14,7 @@ import { LoginForm } from '../../src/components/Auth/LoginForm'
 import { AuthContext, type AuthContextType } from '../../src/context/AuthContext'
 import { AN_ADULT } from './registration-fixture'
 import { LEGAL_VERSION } from '../../src/lib/legal'
+import { LIMITS, resetRateLimit } from '../../src/lib/rateLimit'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -104,6 +105,7 @@ async function submit(container: HTMLElement) {
 }
 
 beforeEach(() => {
+  resetRateLimit()
   localStorage.clear()
   sessionStorage.clear()
 })
@@ -247,5 +249,37 @@ describe('registering goes through when the Terms are met', () => {
     await submit(page.container)
 
     expect(page.text()).not.toContain('Please accept the Terms')
+  })
+
+  it('sanitizes name and phone inputs on change and enforces LIMITS.register cooldown', async () => {
+    const register = vi.fn(async () => {
+      throw Object.assign(new Error('network'), { code: 'auth/network-request-failed' })
+    })
+    const page = open(register)
+    toRegister(page)
+
+    const first = page.container.querySelector<HTMLInputElement>('input[autocomplete="given-name"]')!
+    const middle = page.container.querySelector<HTMLInputElement>('input[autocomplete="additional-name"]')!
+    const last = page.container.querySelector<HTMLInputElement>('input[autocomplete="family-name"]')!
+    const phone = page.container.querySelector<HTMLInputElement>('input[autocomplete="tel"]')!
+
+    write(first, 'Juan123')
+    write(middle, 'Santos456')
+    write(last, 'Dela 789Cruz!')
+    write(phone, '+63abc 917-123-4567xyz')
+
+    expect(first.value).toBe('Juan')
+    expect(middle.value).toBe('Santos')
+    expect(last.value).toBe('Dela Cruz')
+    expect(phone.value).toBe('+63 917-123-4567')
+
+    for (let i = 0; i < LIMITS.register.max; i++) {
+      await submit(page.container)
+    }
+    expect(register).toHaveBeenCalledTimes(LIMITS.register.max)
+
+    await submit(page.container)
+    expect(register).toHaveBeenCalledTimes(LIMITS.register.max)
+    expect(page.text()).toMatch(/Too many attempts/i)
   })
 })

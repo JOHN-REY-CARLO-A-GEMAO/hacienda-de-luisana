@@ -18,6 +18,7 @@ import { AuthContext } from '../../src/context/AuthContext'
 import type { UseLiveLocation } from '../../src/hooks/useLiveLocation'
 import type { LocationSession } from '../../src/lib/liveLocationPolicy'
 import { type Booking } from '../../src/lib/storage'
+import { LIMITS, resetRateLimit } from '../../src/lib/rateLimit'
 import { MESSAGE_MAX } from '../../src/lib/validation'
 import { MessagesPage } from '../../src/pages/MessagesPage'
 
@@ -133,6 +134,7 @@ function setTextareaValue(textarea: HTMLTextAreaElement, nextValue: string) {
 let objectUrlSequence = 0
 
 beforeEach(() => {
+  resetRateLimit()
   localStorage.clear()
   URL.createObjectURL = vi.fn(() => `blob:private-${++objectUrlSequence}`)
   URL.revokeObjectURL = vi.fn(() => {})
@@ -361,6 +363,39 @@ describe('unified booking-scoped conversation screen', () => {
     // Attachment preview clears after send and MessageAttachmentView renders in the timeline.
     expect(container.querySelector('.messages-attachment-preview')).toBeNull()
     expect(container.querySelector('.messages-attachment')).toBeTruthy()
+  })
+
+  it('allows short chat replies like "OK" and enforces LIMITS.chat cooldown without losing the draft', async () => {
+    seedBookings([makeBooking()])
+    const container = renderPage()
+    await pump(4)
+
+    const textarea = container.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
+
+    // 1st message: short chat reply "OK" succeeds (validateMessage untouched)
+    act(() => setTextareaValue(textarea, 'OK'))
+    await pump(1)
+    act(() => findButton(container, /^Send message$/i).click())
+    await pump(3)
+    expect(textarea.value).toBe('')
+    expect(container.textContent).toContain('OK')
+
+    // Send remaining messages up to LIMITS.chat.max
+    for (let i = 1; i < LIMITS.chat.max; i++) {
+      act(() => setTextareaValue(textarea, `Ping ${i}`))
+      await pump(1)
+      act(() => findButton(container, /^Send message$/i).click())
+      await pump(2)
+    }
+
+    // Next rapid send hits LIMITS.chat cooldown and preserves the typed text
+    act(() => setTextareaValue(textarea, 'Hold this draft during cooldown'))
+    await pump(1)
+    act(() => findButton(container, /^Send message$/i).click())
+    await pump(2)
+
+    expect(container.textContent).toMatch(/Too many attempts/i)
+    expect(textarea.value).toBe('Hold this draft during cooldown')
   })
 })
 

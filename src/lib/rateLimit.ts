@@ -12,7 +12,9 @@ export type RateLimitConfig = {
 
 export const LIMITS = {
   login: { windowMs: 60_000, max: 5, lockMs: 60_000 },
+  register: { windowMs: 60_000, max: 5, lockMs: 60_000 },
   reset: { windowMs: 60_000, max: 3, lockMs: 120_000 },
+  inquiry: { windowMs: 60_000, max: 3, lockMs: 60_000 },
   booking: { windowMs: 60_000, max: 4, lockMs: 30_000 },
   payment: { windowMs: 60_000, max: 5, lockMs: 30_000 },
   ocr: { windowMs: 60_000, max: 8, lockMs: 20_000 },
@@ -45,7 +47,11 @@ export function checkRateLimit(key: string, cfg: RateLimitConfig, now = Date.now
   return { ok: true, remaining: cfg.max - existing.count }
 }
 
-export function resetRateLimit(key: string) {
+export function resetRateLimit(key?: string) {
+  if (key === undefined) {
+    buckets.clear()
+    return
+  }
   buckets.delete(key)
 }
 

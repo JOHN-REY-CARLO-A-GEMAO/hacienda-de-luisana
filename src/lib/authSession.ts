@@ -12,6 +12,7 @@
 import { createSession, type AuthPort, type ProfilePort, type SessionStore } from './auth'
 import { createFirebasePorts } from './authFirebase'
 import { createLocalPorts } from './authLocal'
+import { resetRateLimit } from './rateLimit'
 
 export type SessionPorts = {
   auth: AuthPort
@@ -49,4 +50,5 @@ export function appSession(): SessionStore {
  */
 export function resetAppSession(): void {
   instance = null
+  resetRateLimit()
 }

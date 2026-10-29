@@ -17,6 +17,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { ReviewForm } from '../../src/components/ReviewForm'
+import { LIMITS, resetRateLimit } from '../../src/lib/rateLimit'
 import { getReviewForBooking } from '../../src/lib/reviewsCloud'
 import { REVIEW_CATEGORIES, STAR_LABELS } from '../../src/lib/reviewPolicy'
 import { REVIEW_MAX } from '../../src/lib/validation'
@@ -80,6 +81,7 @@ async function click(node: Element | null | undefined) {
 }
 
 beforeEach(() => {
+  resetRateLimit()
   localStorage.clear()
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -243,5 +245,42 @@ describe('what the Guest is told', () => {
     await pump()
     expect(maybe('textarea')).toBeNull()
     expect(maybe('[role="radiogroup"]')).toBeNull()
+  })
+
+  it('enforces LIMITS.review cooldown on repeated edits while keeping the draft intact', async () => {
+    localStorage.setItem(
+      `hdl:review:${BOOKING}`,
+      JSON.stringify({
+        booking_id: BOOKING,
+        uid: UID,
+        stars: 4,
+        text: 'Initial feedback.',
+        created_at: new Date().toISOString(),
+        status: 'pending',
+        edit_until: new Date().toISOString(),
+      }),
+    )
+
+    for (let i = 0; i < LIMITS.review.max; i++) {
+      const root = render(form())
+      await pump()
+      await type('textarea', `Updated note ${i + 1}`)
+      await click(q('button[type="submit"]'))
+      await pump(4)
+      act(() => root.unmount())
+      mounted.pop()
+      container.innerHTML = ''
+    }
+
+    render(form())
+    await pump()
+    await type('textarea', 'Fourth edit in the same minute stays preserved.')
+    const submitBtn = q<HTMLButtonElement>('button[type="submit"]')
+    await click(submitBtn)
+    await pump(2)
+
+    expect(text()).toMatch(/Too many attempts/i)
+    expect(q<HTMLTextAreaElement>('textarea').value).toBe('Fourth edit in the same minute stays preserved.')
+    expect(submitBtn.disabled).toBe(false)
   })
 })
