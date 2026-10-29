@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -18,8 +19,42 @@ import 'views/security/pin_gate_screen.dart';
 /// whole operation from here — bookings and their lifecycle, payment
 /// review, refunds, rates, stays, guest chat, smart-lock logs, rooms,
 /// CRM and analytics. Guests never use this app; they book on the website.
+void _installGlobalErrorHandlers() {
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (kReleaseMode) {
+      debugPrint('[flutter-error] ${details.exception.runtimeType}');
+    } else {
+      FlutterError.presentError(details);
+    }
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    if (kReleaseMode) {
+      debugPrint('[uncaught-async] ${error.runtimeType}');
+    } else {
+      debugPrint('[uncaught-async] $error\n$stack');
+    }
+    return true;
+  };
+
+  if (kReleaseMode) {
+    ErrorWidget.builder = (FlutterErrorDetails _) => const Material(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Something went wrong while displaying this view. Please go back and try again.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        );
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _installGlobalErrorHandlers();
 
   // 1. Local notifications (new booking / approaching guest alerts).
   try {

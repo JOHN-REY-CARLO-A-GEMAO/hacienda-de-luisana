@@ -407,6 +407,24 @@ describe('the error boundary', () => {
     expect(page.container.querySelector('a[href="/"]')).toBeTruthy()
   })
 
+  it('hides raw exception details when showDetails is disabled (production mode)', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    function LeaksSecret(): JSX.Element {
+      throw new Error('FirebaseError: [code=permission-denied] projects/hacienda-de-luisana/secret')
+    }
+    const page = open(
+      <ErrorBoundary showDetails={false}>
+        <LeaksSecret />
+      </ErrorBoundary>,
+    )
+
+    expect(page.text()).toContain('This page could not be shown')
+    expect(page.text()).not.toContain('FirebaseError')
+    expect(page.text()).not.toContain('projects/hacienda-de-luisana')
+    expect(page.container.querySelector('pre')).toBeNull()
+    expect(page.button('Try again')).toBeTruthy()
+  })
+
   it('recovers to the children when Try again is pressed', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     function Flaky({ boom }: { boom: boolean }) {
