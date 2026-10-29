@@ -416,17 +416,46 @@ export class MinuteBudget {
 
   constructor(private readonly limitPerMinute: number, private readonly maxRows = 4096) {}
 
-  take(key: string, now = Date.now()): { ok: boolean; retryAfterMs: number } {
-    const window = Math.floor(now / 60_000)
+  private prune(window: number): void {
     if (this.rows.size > this.maxRows) {
-      for (const [key, value] of [...this.rows]) if (value.window !== window) this.rows.delete(key)
+      for (const [k, value] of [...this.rows]) {
+        if (value.window !== window) this.rows.delete(k)
+      }
     }
+  }
+
+  take(key: string, now = Date.now()): { ok: boolean; count: number; retryAfterMs: number } {
+    const window = Math.floor(now / 60_000)
+    this.prune(window)
     const row = this.rows.get(key)
     if (row && row.window === window && row.count >= this.limitPerMinute) {
-      return { ok: false, retryAfterMs: (window + 1) * 60_000 - now }
+      return { ok: false, count: row.count, retryAfterMs: (window + 1) * 60_000 - now }
     }
-    this.rows.set(key, row && row.window === window ? { window, count: row.count + 1 } : { window, count: 1 })
-    return { ok: true, retryAfterMs: 0 }
+    const count = row && row.window === window ? row.count + 1 : 1
+    this.rows.set(key, { window, count })
+    return { ok: true, count, retryAfterMs: 0 }
+  }
+
+  /**
+   * Synchronize this instance's window counter with a higher cross-instance
+   * count returned by `takePersistentQuota`, so subsequent overflow hits on
+   * this warm instance short-circuit in memory without touching Firestore.
+   */
+  observe(key: string, count: number, now = Date.now()): void {
+    if (!Number.isFinite(count) || count <= 0) return
+    const window = Math.floor(now / 60_000)
+    this.prune(window)
+    const row = this.rows.get(key)
+    const current = row && row.window === window ? row.count : 0
+    const next = Math.floor(count)
+    if (next > current) {
+      this.rows.set(key, { window, count: next })
+    }
+  }
+
+  /** Clear all tracked windows (test seam). */
+  reset(): void {
+    this.rows.clear()
   }
 
   /** Diagnostics and test seam: how much state this instance is carrying. */

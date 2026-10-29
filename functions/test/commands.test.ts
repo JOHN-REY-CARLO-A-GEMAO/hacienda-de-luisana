@@ -62,7 +62,9 @@ const accounts: Record<string, any> = {
   'admin-one': { uid: 'admin-one', providerData: [{}], email: 'admin@example.test' },
   'admin-two': { uid: 'admin-two', providerData: [{}] },
 };
-class FakeHttpsError extends Error { constructor(readonly code: string, message: string) { super(message); } }
+class FakeHttpsError extends Error {
+  constructor(readonly code: string, message: string, readonly details?: unknown) { super(message); }
+}
 Module._load = function(name: string, ...rest: any[]) {
   if (name === 'firebase-admin/app') return { initializeApp: () => {} };
   if (name === 'firebase-admin/firestore') return { getFirestore: () => database, FieldValue: { serverTimestamp: () => 'server-timestamp' } };
@@ -72,12 +74,16 @@ Module._load = function(name: string, ...rest: any[]) {
 };
 process.env.FUNCTIONS_EMULATOR = 'true';
 const handlers = require('../src/index');
+const { resetAvailabilityRateLimits } = require('../src/availability');
+const { resetQuoteRateLimits } = require('../src/quotes');
 Module._load = loader;
 function run(uid: string | null, data: any, name: string) {
   return handlers[name].run({ auth: uid ? { uid, token: { auth_time: Date.now() / 1000, firebase: { sign_in_provider: 'password' } } } : null, data });
 }
 beforeEach(() => {
   store.clear();
+  resetAvailabilityRateLimits();
+  resetQuoteRateLimits();
   for (const uid of ['admin-one', 'admin-two']) store.set(`profiles/${uid}`, { role: 'admin' });
   queue = Promise.resolve();
   for (const account of Object.values(accounts)) { delete account.disabled; delete account.tokensValidAfterTime; }
@@ -239,9 +245,81 @@ test('Guest submit refuses a foreign identity and stale/invented money before wr
     run('guest-one', { booking: guestBooking('guest-two') }, 'submitBooking'),
     (error: any) => error.code === 'permission-denied',
   );
+  assert.deepEqual([...store.entries()], before);
   await assert.rejects(
     run('guest-one', { booking: { ...guestBooking('guest-one'), stay_total: 1000, amount_due: 500, balance_due: 500 } }, 'submitBooking'),
     (error: any) => error.code === 'failed-precondition',
   );
-  assert.deepEqual([...store.entries()], before);
+  assert.deepEqual(
+    [...store.entries()].filter(([path]) => !path.startsWith('callable_rate_limits/')),
+    before,
+  );
+});
+
+test('submitBooking enforces global 8/min ceiling across instances via persistent Firestore quota', async () => {
+  prepareBookingConfig();
+  for (let i = 0; i < 8; i++) {
+    // Simulate every request landing on a fresh warm instance whose in-memory MinuteBudget is empty.
+    resetAvailabilityRateLimits();
+    const result = await run('guest-one', { booking: guestBooking('guest-one', isoAfter(50 + i)) }, 'submitBooking');
+    assert.equal(result.status, 'Pending');
+  }
+  resetAvailabilityRateLimits();
+  await assert.rejects(
+    run('guest-one', { booking: guestBooking('guest-one', isoAfter(70)) }, 'submitBooking'),
+    (error: any) => error.code === 'resource-exhausted' && /Too many Booking requests/i.test(error.message),
+  );
+  assert.equal([...store.keys()].filter(path => /^bookings\/[^/]+$/.test(path)).length, 8);
+});
+
+test('quoteBooking and verifyBookingMoney enforce persistent global ceilings across instances', async () => {
+  prepareBookingConfig();
+  for (let i = 0; i < 12; i++) {
+    resetQuoteRateLimits();
+    const quote = await run('guest-one', {
+      accommodation: 'main-house',
+      check_in: isoAfter(45 + i),
+      check_out: isoAfter(46 + i),
+      guests: 2,
+    }, 'quoteBooking');
+    assert.ok(quote.quote_id);
+  }
+  resetQuoteRateLimits();
+  await assert.rejects(
+    run('guest-one', {
+      accommodation: 'main-house',
+      check_in: isoAfter(80),
+      check_out: isoAfter(81),
+      guests: 2,
+    }, 'quoteBooking'),
+    (error: any) => error.code === 'resource-exhausted' && /Too many price requests/i.test(error.message),
+  );
+
+  const created = await run('guest-two', { booking: guestBooking('guest-two', isoAfter(45)) }, 'submitBooking');
+  for (let i = 0; i < 30; i++) {
+    resetQuoteRateLimits();
+    const check = await run('admin-one', { bookingId: created.id, record: false }, 'verifyBookingMoney');
+    assert.equal(check.verdict, 'MATCH');
+  }
+  resetQuoteRateLimits();
+  await assert.rejects(
+    run('admin-one', { bookingId: created.id, record: false }, 'verifyBookingMoney'),
+    (error: any) => error.code === 'resource-exhausted' && /Too many money verification requests/i.test(error.message),
+  );
+});
+
+test('bookingAvailability keeps light calendar reads in-memory and persists only past threshold', async () => {
+  prepareBookingConfig();
+  const payload = { accommodation: 'main-house', from: isoAfter(45), to: isoAfter(46) };
+  for (let i = 0; i < 6; i++) {
+    await run('guest-one', payload, 'bookingAvailability');
+  }
+  assert.equal(
+    [...store.keys()].some(path => path.startsWith('callable_rate_limits/bookingAvailability_')),
+    false,
+  );
+  await run('guest-one', payload, 'bookingAvailability');
+  const bucketPaths = [...store.keys()].filter(path => path.startsWith('callable_rate_limits/bookingAvailability_'));
+  assert.equal(bucketPaths.length, 1);
+  assert.equal(store.get(bucketPaths[0]!).count, 7);
 });

@@ -29,6 +29,7 @@ import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { createHash } from 'node:crypto'
 import { deriveQuote, MinuteBudget, moneyMismatches, parseQuoteRequest, quotePayload, ratesVersionDrift, unattestedVerdict, type AuthoritativeMoney, type MoneyVerdict, type QuoteCause, type QuoteRequest } from './pricing'
+import { spendCallableQuota } from './rateLimit'
 
 const options = { region: 'asia-southeast1', maxInstances: 5, memory: '512MiB' as const, timeoutSeconds: 60 }
 
@@ -60,13 +61,17 @@ function enabled(): void {
 // leak is the Map growing one entry per caller forever, which the readiness audit of
 // 2026-10-22 turned into `MinuteBudget`.
 const rawLimit = Number(process.env.QUOTE_RATE_LIMIT_PER_MINUTE ?? 12)
-const budget = new MinuteBudget(Number.isInteger(rawLimit) && rawLimit >= 1 ? rawLimit : 12)
+const quoteLimit = Number.isInteger(rawLimit) && rawLimit >= 1 ? rawLimit : 12
+const budget = new MinuteBudget(quoteLimit)
 
-function spend(key: string): void {
-  const verdict = budget.take(key)
-  if (!verdict.ok) {
-    throw new HttpsError('resource-exhausted', `Too many price requests from here. Wait ${Math.ceil(verdict.retryAfterMs / 1000)}s, then try again.`)
-  }
+const rawVerifyLimit = Number(process.env.VERIFY_RATE_LIMIT_PER_MINUTE ?? 30)
+const verifyLimit = Number.isInteger(rawVerifyLimit) && rawVerifyLimit >= 1 ? rawVerifyLimit : 30
+const verifyBudget = new MinuteBudget(verifyLimit)
+
+/** Test seam to clear per-instance in-memory rate-limit counters between test cases. */
+export function resetQuoteRateLimits(): void {
+  budget.reset()
+  verifyBudget.reset()
 }
 
 /**
@@ -113,7 +118,14 @@ export const quoteBooking = onCall(options, async (request: CallableRequest) => 
   const parsed = parseQuoteRequest(request.data)
   if (!parsed.ok) throw causeToError(parsed.cause, parsed.detail, parsed.guestMessage, parsed.status)
 
-  spend(callerUid)
+  await spendCallableQuota({
+    firestore: db(),
+    budget,
+    scope: 'quoteBooking',
+    key: callerUid,
+    limit: quoteLimit,
+    formatMessage: (seconds) => `Too many price requests from here. Wait ${seconds}s, then try again.`,
+  })
 
   const [ratesDoc, configDoc] = await Promise.all([
     db().doc('site_config/rates').get(),
@@ -193,6 +205,14 @@ export const verifyBookingMoney = onCall(options, async (request: CallableReques
   if (typeof bookingIdRaw !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(bookingIdRaw)) {
     throw new HttpsError('invalid-argument', 'A Booking id is required.')
   }
+  await spendCallableQuota({
+    firestore: db(),
+    budget: verifyBudget,
+    scope: 'verifyBookingMoney',
+    key: auth.uid,
+    limit: verifyLimit,
+    label: 'money verification',
+  })
   const bookingRef = db().doc(`bookings/${bookingIdRaw}`)
   const bookingDoc = await bookingRef.get()
   if (!bookingDoc.exists) throw new HttpsError('not-found', 'No Booking with that id.')
