@@ -254,6 +254,17 @@ export const ROUTE_META: readonly RouteMeta[] = [
     index: false,
     prerender: false,
   },
+  // The receipt reader on its own. Kept out of every index: it is a tool for a
+  // Guest who is already paying, not a destination to find in a result list —
+  // and a search result for "GCash receipt scanner" is not what this site is.
+  {
+    path: '/receipt-scan',
+    title: `Receipt Reader | ${BRAND}`,
+    description:
+      'See which reference number, amount, sender and date the app can read off your GCash, Maya or bank receipt screenshot before you submit it as payment proof.',
+    index: false,
+    prerender: false,
+  },
   {
     path: '/review',
     title: `Review Desk | ${BRAND}`,

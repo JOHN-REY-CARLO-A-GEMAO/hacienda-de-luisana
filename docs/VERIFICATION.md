@@ -427,6 +427,16 @@ Implemented as a client-side pipeline (2026-09-27), documented, and still
   against another Booking is refused unless the Admin confirms on the record, and
   changing the reference of a *verified* payment needs a second explicit
   confirmation.
+- **Amended 2026-10-29 — what has and has not moved.** An earlier draft of this
+  section required a server-side pipeline (image → function → engine → text) and
+  recorded that `functions/` did not exist. `functions/` now exists
+  (`availability`, `pricing`, `quotes`, `rateLimit`) and **still holds no OCR**,
+  so the boundary that paragraph was protecting — no API key in the browser
+  bundle — is intact for the simpler reason that there is no cloud call at all.
+  The Guest-side engine remains `tesseract.js` in the browser. A standalone
+  `/receipt-scan` page now shows what the extraction reads, and
+  `src/lib/payments/receipt-preview.ts` names the Booking field each value lands
+  in; see `docs/RECEIPT_OCR_GUIDE.md`. `canAutoVerifyFromOcr()` is still `false`.
 
 ## 7. P5 — server-side rate limiting
 
@@ -529,7 +539,7 @@ in Git).
 | 2 | Booking lifecycle with logged transitions | ⚠️ Partial | executed locally: Pending → review → Payment Pending → Reserved → Staying → Completed, 11 entries; cloud writes unexecuted |
 | 3 | Terms accepted and recorded | ⚠️ Partial | versioning helpers verified; acceptance not persisted |
 | 4 | Payment submission and verification | ⚠️ Partial | steps 14–17, 20, 21; §3.3 #1, #2 and the two audit extras fixed and regression-tested; rules still supplemental-only, not emulator-verified |
-| 5 | OCR integration | ⚠️ Partial | Guest side: tesseract.js in the browser at upload (2026-09-27). Admin side: ML Kit on-device read of the proof, pure-Dart parsing, pre-filled Payment Reference with review/correction (2026-10-29, ADR-0023). Parser and decision rules unit-tested; the recognizer itself needs a device, so it is unexecuted here |
+| 5 | OCR integration | ⚠️ Partial | Guest side: tesseract.js in the browser at upload (2026-09-27), with `/receipt-scan` showing what the extraction reads. Admin side: ML Kit on-device read of the proof, pure-Dart parsing, pre-filled Payment Reference with review/correction (2026-10-29, ADR-0023). Parser and decision rules unit-tested; the recognizer itself needs a device, so it is unexecuted here |
 | 6 | OCR can never auto-verify payment | ✅ Verified | `canAutoVerifyFromOcr() === false`, asserted in `npm test` and step 16 |
 | 7 | Admin workflows (approve, verify, reject, refund path) | ⚠️ Partial | lifecycle + rules executed; the Admin's verify now writes the marker the rules require; Flutter screens unrun (🔴) |
 | 8 | Chat | ⚠️ Partial | steps 29–31; §3.3 #4, #6 fixed (membership + truthful label); the Admin UI's own write path is unrun (🔴 Flutter) |

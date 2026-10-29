@@ -39,6 +39,10 @@ const POLICY_LINKS: NavLink[] = [
   { href: '/faqs', label: 'FAQs' },
   { href: '/house-rules', label: 'House rules' },
   { href: '/legal', label: 'Terms & policies' },
+  // The receipt reader is linked from here rather than the bar: it is a tool for
+  // a Guest who is already paying, and it is the only place that says what the
+  // app can read off a screenshot before one is submitted.
+  { href: '/receipt-scan', label: 'Receipt reader' },
   { href: '/support', label: 'Support' },
   { href: '/contact', label: 'Contact' },
 ]
