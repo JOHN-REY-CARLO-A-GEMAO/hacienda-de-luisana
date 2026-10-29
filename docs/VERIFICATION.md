@@ -398,6 +398,15 @@ Implemented as a client-side pipeline (2026-09-27), documented, and still
   Admin verification. The API key lives in the function's environment/secret
   store — never in web JS, the Flutter APK, public config, or Git. There is no
   `functions/` directory in this repository, so none of that exists yet.
+- **Amended 2026-10-29.** The paragraph above is kept as written, but two of its
+  facts have moved: `functions/` now exists (`availability`, `pricing`,
+  `quotes`, `rateLimit`) and **still holds no OCR** — so no server-side pipeline
+  exists, and the boundary it protects (no API key in the browser) is intact by
+  the fact that there is no cloud call at all. The engine used is
+  `tesseract.js` in the Guest's browser. A standalone `/receipt-scan` page now
+  shows what the extraction reads, and `src/lib/payments/receipt-preview.ts`
+  names the Booking field each value lands in; see
+  `docs/RECEIPT_OCR_GUIDE.md`. `canAutoVerifyFromOcr()` is still `false`.
 
 ## 7. P5 — server-side rate limiting
 
@@ -498,7 +507,7 @@ in Git).
 | 2 | Booking lifecycle with logged transitions | ⚠️ Partial | executed locally: Pending → review → Payment Pending → Reserved → Staying → Completed, 11 entries; cloud writes unexecuted |
 | 3 | Terms accepted and recorded | ⚠️ Partial | versioning helpers verified; acceptance not persisted |
 | 4 | Payment submission and verification | ⚠️ Partial | steps 14–17, 20, 21; §3.3 #1, #2 and the two audit extras fixed and regression-tested; rules still supplemental-only, not emulator-verified |
-| 5 | OCR integration | ❌ Missing | regex text extraction only; no engine, no server pipeline |
+| 5 | OCR integration | ⚠️ Partial | tesseract.js in the browser (2026-10-29); no server pipeline — see §6 |
 | 6 | OCR can never auto-verify payment | ✅ Verified | `canAutoVerifyFromOcr() === false`, asserted in `npm test` and step 16 |
 | 7 | Admin workflows (approve, verify, reject, refund path) | ⚠️ Partial | lifecycle + rules executed; the Admin's verify now writes the marker the rules require; Flutter screens unrun (🔴) |
 | 8 | Chat | ⚠️ Partial | steps 29–31; §3.3 #4, #6 fixed (membership + truthful label); the Admin UI's own write path is unrun (🔴 Flutter) |
