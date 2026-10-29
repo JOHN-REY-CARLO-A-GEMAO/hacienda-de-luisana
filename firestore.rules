@@ -1788,6 +1788,9 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Server-only collections (`booking_quotes`, `booking_inventory_locks`,
+    // `callable_rate_limits`) are written exclusively by Cloud Functions via
+    // the Admin SDK and denied to every client by the catch-all below.
     // Deny all other collections by default unless explicitly allowed
     match /{document=**} {
       allow read, write: if false;

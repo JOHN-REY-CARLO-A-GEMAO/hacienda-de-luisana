@@ -1,7 +1,15 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { MessageScreen } from './ui/MessageScreen'
 
-type Props = { children: ReactNode }
+type Props = {
+  children: ReactNode
+  /**
+   * Whether to show the caught Error's message inline. Defaults to
+   * `import.meta.env.DEV` so local builds and unit tests see the exact throw,
+   * while production builds never expose raw exception messages to visitors.
+   */
+  showDetails?: boolean
+}
 type State = { error: Error | null }
 
 /**
@@ -20,14 +28,19 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[boundary] render failed', error, info.componentStack)
+    if (import.meta.env.DEV) {
+      console.error('[boundary] render failed', error, info.componentStack)
+    } else {
+      console.error('[boundary] render failed')
+    }
   }
 
   private reset = () => this.setState({ error: null })
 
   render() {
     const { error } = this.state
-    if (!error) return this.props.children
+    const { children, showDetails = import.meta.env.DEV } = this.props
+    if (!error) return children
 
     return (
       <MessageScreen
@@ -40,9 +53,11 @@ export class ErrorBoundary extends Component<Props, State> {
               The rest of the site is still working — this one screen hit an error while it was drawing. Nothing you
               submitted was lost. Try again, and if it keeps happening tell the Admin what you were doing.
             </p>
-            <pre className="mx-auto mt-4 max-h-32 overflow-auto whitespace-pre-wrap rounded-xl border border-forest-900/10 bg-cream-100 px-3 py-2 text-left text-[11px] text-forest-800 dark:border-cream-100/15 dark:bg-forest-950 dark:text-cream-100">
-              {error.message}
-            </pre>
+            {showDetails && (
+              <pre className="mx-auto mt-4 max-h-32 overflow-auto whitespace-pre-wrap rounded-xl border border-forest-900/10 bg-cream-100 px-3 py-2 text-left text-[11px] text-forest-800 dark:border-cream-100/15 dark:bg-forest-950 dark:text-cream-100">
+                {error.message}
+              </pre>
+            )}
           </>
         }
         actions={

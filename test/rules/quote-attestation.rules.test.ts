@@ -148,16 +148,23 @@ describe('server-only and Spark-fallback website Booking boundaries', () => {
       })).allow).toBe(false)
     })
 
-    it('closes server quote and inventory-lock documents to every client, including Admins', () => {
-      for (const path of ['booking_quotes/quote-1', 'booking_inventory_locks/main-house']) {
+    it('closes server quote, inventory-lock, and callable rate-limit documents to every client, including Admins', () => {
+      for (const path of [
+        'booking_quotes/quote-1',
+        'booking_inventory_locks/main-house',
+        'callable_rate_limits/submitBooking_0123456789abcdef0123456789abcdef',
+      ]) {
+        const sampleDoc = path.startsWith('booking_quotes/')
+          ? quote()
+          : path.startsWith('callable_rate_limits/')
+            ? { scope: 'submitBooking', window: 1, count: 1, limit: 8 }
+            : { revision: 1 }
         for (const method of ['get', 'create', 'update', 'delete'] as const) {
           for (const auth of [anonymousGuest(), allowlistedAdmin()]) {
             expect(decide(request({
               method, path, auth, time: NOW,
-              resourceData: path.startsWith('booking_quotes/') ? quote() : { revision: 1 },
-              requestData: method === 'delete' || method === 'get'
-                ? null
-                : path.startsWith('booking_quotes/') ? quote() : { revision: 2 },
+              resourceData: sampleDoc,
+              requestData: method === 'delete' || method === 'get' ? null : sampleDoc,
             }), { store }).allow).toBe(false)
           }
         }

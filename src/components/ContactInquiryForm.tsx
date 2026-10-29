@@ -2,18 +2,21 @@ import React, { useState } from 'react'
 import { Alert, Field, Input, Textarea } from './ui'
 import {
   EMAIL_MAX,
+  INQUIRY_MESSAGE_MIN,
   NAME_MAX,
+  PHONE_MAX_INPUT_LENGTH,
   SUBJECT_MAX_LENGTH,
   MESSAGE_MAX,
   sanitizeNameInput,
   sanitizePhoneInput,
   validateEmail,
+  validateInquiryMessage,
   validateName,
   validatePhMobile,
   validateSubject,
-  validateMessage,
 } from '../lib/validation'
-import { ArrowRight, CheckCircle, MessageCircle } from '../lib/icons'
+import { LIMITS, checkRateLimit } from '../lib/rateLimit'
+import { ArrowRight, MessageCircle } from '../lib/icons'
 
 export function ContactInquiryForm() {
   const [name, setName] = useState('')
@@ -44,7 +47,7 @@ export function ContactInquiryForm() {
     const subjectRes = validateSubject(subject)
     if (!subjectRes.ok) errs.subject = subjectRes.message
 
-    const messageRes = validateMessage(message)
+    const messageRes = validateInquiryMessage(message)
     if (!messageRes.ok) errs.message = messageRes.message
 
     setErrors(errs)
@@ -56,6 +59,12 @@ export function ContactInquiryForm() {
     setSubmitError(null)
     if (!validate()) {
       setSubmitError('Please correct the highlighted form errors before sending your inquiry.')
+      return
+    }
+
+    const limited = checkRateLimit('inquiry', LIMITS.inquiry)
+    if (!limited.ok) {
+      setSubmitError(limited.message)
       return
     }
 
@@ -142,7 +151,7 @@ export function ContactInquiryForm() {
               inputMode="tel"
               placeholder="09171234567"
               value={phone}
-              maxLength={20}
+              maxLength={PHONE_MAX_INPUT_LENGTH}
               onChange={(e) => {
                 const clean = sanitizePhoneInput(e.target.value)
                 setPhone(clean)
@@ -187,7 +196,7 @@ export function ContactInquiryForm() {
           error={errors.message}
           hint={
             <span className="flex items-center justify-between gap-3">
-              <span>Minimum 10 characters</span>
+              <span>Minimum {INQUIRY_MESSAGE_MIN} characters</span>
               <span
                 className={`font-mono tabular-nums ${message.length >= MESSAGE_MAX ? 'font-semibold text-amber-700' : ''}`}
                 aria-live="polite"

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ADDITIONAL_NOTES_MAX,
   EVENT_DETAIL_MAX,
+  INQUIRY_MESSAGE_MIN,
   MESSAGE_MAX,
   MIN_GUEST_AGE,
   NAME_MAX,
@@ -19,6 +20,7 @@ import {
   validateBirthdate,
   validateEmail,
   validateEventDetail,
+  validateInquiryMessage,
   validateMessage,
   validateName,
   validatePhMobile,
@@ -152,10 +154,21 @@ describe('OCR is not verification', () => {
 })
 
 describe('rate limit', () => {
-  it('locks after too many attempts', () => {
+  it('locks after too many attempts and clears all buckets when resetRateLimit() is called with no key', () => {
     resetRateLimit('t')
     for (let i = 0; i < LIMITS.login.max; i++) expect(checkRateLimit('t', LIMITS.login).ok).toBe(true)
     expect(checkRateLimit('t', LIMITS.login).ok).toBe(false)
+
+    for (let i = 0; i < LIMITS.register.max; i++) expect(checkRateLimit('reg', LIMITS.register).ok).toBe(true)
+    expect(checkRateLimit('reg', LIMITS.register).ok).toBe(false)
+
+    for (let i = 0; i < LIMITS.inquiry.max; i++) expect(checkRateLimit('inq', LIMITS.inquiry).ok).toBe(true)
+    expect(checkRateLimit('inq', LIMITS.inquiry).ok).toBe(false)
+
+    resetRateLimit()
+    expect(checkRateLimit('t', LIMITS.login).ok).toBe(true)
+    expect(checkRateLimit('reg', LIMITS.register).ok).toBe(true)
+    expect(checkRateLimit('inq', LIMITS.inquiry).ok).toBe(true)
   })
 })
 
@@ -264,7 +277,9 @@ describe('address & subject validation', () => {
 })
 
 describe('message & feedback validation', () => {
-  it('validateMessage accepts messages within character limits and rejects empty or over-limit', () => {
+  it('validateMessage accepts short chat replies within character limits and rejects empty or over-limit', () => {
+    expect(validateMessage('OK').ok).toBe(true)
+    expect(validateMessage('Thanks!').ok).toBe(true)
     expect(validateMessage('Hello, I would like to inquire about booking availability.').ok).toBe(true)
     expect(validateMessage('').ok).toBe(false)
     expect(validateMessage('   ').ok).toBe(false)
@@ -272,6 +287,29 @@ describe('message & feedback validation', () => {
     const over = validateMessage('A'.repeat(MESSAGE_MAX + 1))
     expect(over.ok).toBe(false)
     if (!over.ok) expect(over.message).toContain(String(MESSAGE_MAX))
+  })
+
+  it('validateInquiryMessage enforces 10-character minimum, MESSAGE_MAX ceiling, and markup rejection while allowing newlines', () => {
+    expect(validateInquiryMessage('').ok).toBe(false)
+    const empty = validateInquiryMessage('   ')
+    expect(empty).toEqual({ ok: false, message: 'Message cannot be empty' })
+
+    const short = validateInquiryMessage('Too short')
+    expect(short.ok).toBe(false)
+    if (!short.ok) expect(short.message).toContain(String(INQUIRY_MESSAGE_MIN))
+
+    expect(validateInquiryMessage('A'.repeat(INQUIRY_MESSAGE_MIN)).ok).toBe(true)
+    expect(
+      validateInquiryMessage('Hello Hacienda,\nWe would like to ask about availability for December 15.').ok,
+    ).toBe(true)
+
+    const markup = validateInquiryMessage('Valid length <script>alert(1)</script> inquiry')
+    expect(markup.ok).toBe(false)
+    if (!markup.ok) expect(markup.message).toContain('< or >')
+
+    expect(validateInquiryMessage('Valid length\u0000with null byte').ok).toBe(false)
+    expect(validateInquiryMessage('A'.repeat(MESSAGE_MAX)).ok).toBe(true)
+    expect(validateInquiryMessage('A'.repeat(MESSAGE_MAX + 1)).ok).toBe(false)
   })
 })
 

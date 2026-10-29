@@ -22,6 +22,7 @@ import {
   type HoldBearingBooking,
 } from './booking/availability'
 import { deriveQuote, MinuteBudget, moneyMismatches, parseQuoteRequest, type QuoteRequest } from './pricing'
+import { spendCallableQuota } from './rateLimit'
 
 const options = {
   region: 'asia-southeast1',
@@ -39,23 +40,24 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_CALENDAR_DAYS = 62
 const CANONICAL_ACCOMMODATIONS = ['main-house', 'annex', 'house-a-camping'] as const
 
+const AVAILABILITY_LIMIT_PER_MINUTE = 40
+const AVAILABILITY_PERSIST_AFTER = 6
+const rawSubmitLimit = Number(process.env.SUBMIT_RATE_LIMIT_PER_MINUTE ?? 8)
+const SUBMIT_LIMIT_PER_MINUTE = Number.isInteger(rawSubmitLimit) && rawSubmitLimit >= 1 ? rawSubmitLimit : 8
+
 /** Public availability is intentionally callable, but not an unbounded Firestore scraper. */
-const availabilityBudget = new MinuteBudget(40)
+const availabilityBudget = new MinuteBudget(AVAILABILITY_LIMIT_PER_MINUTE)
 /** A signed-in Guest should not be able to create an unbounded number of Pending rows. */
-const submitBudget = new MinuteBudget(8)
+const submitBudget = new MinuteBudget(SUBMIT_LIMIT_PER_MINUTE)
+
+/** Test seam to clear per-instance in-memory rate-limit counters between test cases. */
+export function resetAvailabilityRateLimits(): void {
+  availabilityBudget.reset()
+  submitBudget.reset()
+}
 
 function callableKey(request: CallableRequest): string {
   return request.auth?.uid || request.rawRequest?.ip || 'unknown-caller'
-}
-
-function spend(budget: MinuteBudget, request: CallableRequest, label: string): void {
-  const result = budget.take(callableKey(request))
-  if (!result.ok) {
-    throw new HttpsError(
-      'resource-exhausted',
-      `Too many ${label} requests. Wait ${Math.ceil(result.retryAfterMs / 1000)} seconds and try again.`,
-    )
-  }
 }
 
 function dateMs(value: unknown): number | null {
@@ -173,8 +175,16 @@ export type AvailabilityReply = {
 }
 
 export const bookingAvailability = onCall(options, async (request: CallableRequest): Promise<AvailabilityReply> => {
-  spend(availabilityBudget, request, 'availability')
   const input = parseAvailabilityRequest(request.data)
+  await spendCallableQuota({
+    firestore: db(),
+    budget: availabilityBudget,
+    scope: 'bookingAvailability',
+    key: callableKey(request),
+    limit: AVAILABILITY_LIMIT_PER_MINUTE,
+    persistAfter: AVAILABILITY_PERSIST_AFTER,
+    label: 'availability',
+  })
   try {
     const [ratesDocument, bookings] = await Promise.all([
       db().doc('site_config/rates').get(),
@@ -330,7 +340,6 @@ export type SubmitBookingReply = {
 export const submitBooking = onCall(options, async (request: CallableRequest): Promise<SubmitBookingReply> => {
   const authUid = request.auth?.uid
   if (!authUid) throw new HttpsError('unauthenticated', 'Reconnect your Guest session before submitting the Booking.')
-  spend(submitBudget, request, 'Booking')
   const body = request.data && typeof request.data === 'object' && !Array.isArray(request.data)
     ? request.data as Record<string, unknown>
     : {}
@@ -339,6 +348,14 @@ export const submitBooking = onCall(options, async (request: CallableRequest): P
   if (!parsed.ok) {
     throw new HttpsError(parsed.status as never, parsed.guestMessage, { cause: parsed.cause })
   }
+  await spendCallableQuota({
+    firestore: db(),
+    budget: submitBudget,
+    scope: 'submitBooking',
+    key: authUid,
+    limit: SUBMIT_LIMIT_PER_MINUTE,
+    label: 'Booking',
+  })
 
   const bookingRef = db().collection('bookings').doc()
   // This is a transaction coordinator, not an availability store: it contains

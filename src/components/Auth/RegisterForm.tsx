@@ -3,13 +3,19 @@ import { Link } from 'react-router-dom'
 import { MIN_PASSWORD_LENGTH, describeAuthError } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 import {
+  EMAIL_MAX,
+  NAME_MAX,
+  PHONE_MAX_INPUT_LENGTH,
   composeFullName,
+  sanitizeNameInput,
+  sanitizePhoneInput,
   todayIso,
   validateBirthdate,
   validateEmail,
   validateNamePart,
   validatePhMobile,
 } from '../../lib/validation'
+import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import { LEGAL_VERSION } from '../../lib/legal'
 import type { RegisterIntro } from './AuthShell'
 import { CheckboxRow, Field, Input } from '../ui'
@@ -164,6 +170,12 @@ export function RegisterForm({
       return
     }
 
+    const rateLimit = checkRateLimit('register', LIMITS.register)
+    if (!rateLimit.ok) {
+      onError(rateLimit.message)
+      return
+    }
+
     setLoading(true)
     try {
       const first = validateNamePart(firstName, 'First name')
@@ -223,10 +235,10 @@ export function RegisterForm({
             <Input
               placeholder="Juan"
               value={firstName}
-              onChange={(e) => edit('firstName', () => setFirstName(e.target.value))}
+              onChange={(e) => edit('firstName', () => setFirstName(sanitizeNameInput(e.target.value)))}
               onBlur={() => checkOnBlur('firstName')}
               autoComplete="given-name"
-              maxLength={80}
+              maxLength={NAME_MAX}
               aria-required="true"
               invalid={Boolean(fieldErrors.firstName)}
             />
@@ -236,10 +248,10 @@ export function RegisterForm({
             <Input
               placeholder="Dela Cruz"
               value={lastName}
-              onChange={(e) => edit('lastName', () => setLastName(e.target.value))}
+              onChange={(e) => edit('lastName', () => setLastName(sanitizeNameInput(e.target.value)))}
               onBlur={() => checkOnBlur('lastName')}
               autoComplete="family-name"
-              maxLength={80}
+              maxLength={NAME_MAX}
               aria-required="true"
               invalid={Boolean(fieldErrors.lastName)}
             />
@@ -250,10 +262,10 @@ export function RegisterForm({
           <Input
             placeholder="Santos"
             value={middleName}
-            onChange={(e) => edit('middleName', () => setMiddleName(e.target.value))}
+            onChange={(e) => edit('middleName', () => setMiddleName(sanitizeNameInput(e.target.value)))}
             onBlur={() => checkOnBlur('middleName')}
             autoComplete="additional-name"
-            maxLength={80}
+            maxLength={NAME_MAX}
             invalid={Boolean(fieldErrors.middleName)}
           />
         </Field>
@@ -285,7 +297,7 @@ export function RegisterForm({
                 setFieldErrors((current) => (current.email ? { ...current, email: undefined } : current))
               }}
               onBlur={() => checkOnBlur('email')}
-              maxLength={254}
+              maxLength={EMAIL_MAX}
               autoComplete="email"
               spellCheck={false}
               aria-required="true"
@@ -313,10 +325,10 @@ export function RegisterForm({
             inputMode="tel"
             placeholder="09171234567"
             value={phone}
-            onChange={(e) => edit('phone', () => setPhone(e.target.value))}
+            onChange={(e) => edit('phone', () => setPhone(sanitizePhoneInput(e.target.value)))}
             onBlur={() => checkOnBlur('phone')}
             autoComplete="tel"
-            maxLength={16}
+            maxLength={PHONE_MAX_INPUT_LENGTH}
             aria-required="true"
             invalid={Boolean(fieldErrors.phone)}
           />

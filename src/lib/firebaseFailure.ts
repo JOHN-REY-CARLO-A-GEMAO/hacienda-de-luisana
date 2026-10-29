@@ -87,6 +87,8 @@ const FIRESTORE_ADVICE: Record<string, string> = {
     'firebase deploy --only firestore:indexes and the fields being written.',
   'resource-exhausted':
     'The project has hit its Firestore quota (free plans have a daily limit on reads and writes).',
+  'already-exists':
+    'Firestore refused the create because the document or held dates already exist.',
   'invalid-argument':
     'Firestore refused the data itself — a field that should be a string is not, or a document ' +
     'id is empty.',
@@ -123,6 +125,25 @@ export function failureLine(words: FailureWords): string {
   return `[${words.code}] ${words.advice}`
 }
 
+const INTERNAL_SDK_CODES = new Set([
+  'internal',
+  'not-found',
+  'unimplemented',
+  'invalid-argument',
+  'aborted',
+  'cancelled',
+  'data-loss',
+])
+
+const RAW_INTERNAL_MESSAGE_RE =
+  /FirebaseError:|firestore\.googleapis\.com|projects\/[A-Za-z0-9_-]+\/databases|\b(?:functions|auth|firestore|storage)\/[a-z-]+|\[code=[a-z-]+\]|\b(?:TypeError|ReferenceError|RangeError|SyntaxError):|\n\s*at\s+/i
+
+function hasCuratedGuestMessage(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { from_server_details?: unknown; name?: unknown }
+  return candidate.from_server_details === true || candidate.name === 'QuoteRefusedError'
+}
+
 /**
  * Maps technical or Firebase errors to understandable, friendly messages for guests.
  * Keeps technical details out of guest-facing UI while keeping technical errors in development logs.
@@ -134,40 +155,73 @@ export function guestFacingErrorMessage(
   if (!error) return fallbackMessage
 
   const code = codeOf(error)
+  const normalizedCode = code.replace(/^(?:functions|firestore|storage)\//, '')
   const message = messageOf(error) ?? (typeof error === 'string' ? error : '')
+  const lowerMessage = message.toLowerCase()
 
-  if (code === 'permission-denied' || message.includes('permission-denied')) {
+  // Preserve server-curated Guest guidance (e.g., submitBooking DATE_UNAVAILABLE
+  // or QuoteRefusedError) before generic status-code fallbacks overwrite it.
+  if (hasCuratedGuestMessage(error) && message && !RAW_INTERNAL_MESSAGE_RE.test(message)) {
+    return message
+  }
+
+  if (
+    normalizedCode === 'resource-exhausted' ||
+    code === 'auth/too-many-requests' ||
+    code === 'auth/quota-exceeded' ||
+    lowerMessage.includes('resource-exhausted') ||
+    lowerMessage.includes('too-many-requests') ||
+    lowerMessage.includes('quota-exceeded')
+  ) {
+    return 'Too many attempts. Please wait a moment and try again.'
+  }
+  if (
+    normalizedCode === 'already-exists' ||
+    lowerMessage.includes('already-exists') ||
+    lowerMessage.includes('document already exists')
+  ) {
+    return 'Those dates or this booking are no longer available. Please review your selection and try again.'
+  }
+  if (normalizedCode === 'permission-denied' || lowerMessage.includes('permission-denied')) {
     return "We couldn't submit your booking right now. Please try again."
   }
-  if (code === 'failed-precondition' || message.includes('failed-precondition')) {
+  if (normalizedCode === 'failed-precondition' || lowerMessage.includes('failed-precondition')) {
     return "We couldn't process this request with the current details. Please check your stay details and try again."
   }
   if (
+    normalizedCode === 'unavailable' ||
+    normalizedCode === 'deadline-exceeded' ||
     code === 'network-request-failed' ||
     code === 'auth/network-request-failed' ||
-    code === 'unavailable' ||
-    message.includes('network-request-failed')
+    lowerMessage.includes('network-request-failed') ||
+    lowerMessage.includes('deadline-exceeded') ||
+    lowerMessage.includes('failed to fetch')
   ) {
     return 'Your internet connection appears to be unavailable. Please check your connection and try again.'
   }
-  if (code === 'unauthenticated' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
+  if (
+    normalizedCode === 'unauthenticated' ||
+    code === 'auth/user-not-found' ||
+    code === 'auth/wrong-password' ||
+    code === 'auth/invalid-credential'
+  ) {
     return 'Invalid email or password. Please try again.'
   }
   if (code === 'auth/email-already-in-use') {
     return 'An account with this email already exists. Please sign in instead.'
   }
-  if (code === 'auth/too-many-requests') {
-    return 'Too many attempts. Please wait a moment and try again.'
+  if (
+    INTERNAL_SDK_CODES.has(normalizedCode) ||
+    code.startsWith('auth/') ||
+    code.startsWith('functions/') ||
+    code.startsWith('firestore/') ||
+    code.startsWith('storage/')
+  ) {
+    return fallbackMessage
   }
 
-  // Use plain message if user-friendly and not a raw Firebase internal error code
-  if (
-    message &&
-    !message.includes('FirebaseError:') &&
-    !message.includes('permission-denied') &&
-    !message.includes('failed-precondition') &&
-    !message.includes('network-request-failed')
-  ) {
+  // Use plain message if user-friendly and not a raw Firebase/runtime error string
+  if (message && !RAW_INTERNAL_MESSAGE_RE.test(message)) {
     return message
   }
 

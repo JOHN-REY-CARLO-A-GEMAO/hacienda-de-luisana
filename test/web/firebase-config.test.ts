@@ -16,6 +16,9 @@ import {
   type FirebaseConfig,
 } from '../../src/lib/firebaseConfig'
 import { COMMITTED_PROJECT } from '../../src/lib/firebaseDefaults'
+import { describeFirestoreFailure, guestFacingErrorMessage } from '../../src/lib/firebaseFailure'
+import { AvailabilityUnavailableError } from '../../src/lib/availabilityApi'
+import { QuoteRefusedError } from '../../src/lib/quotesApi'
 
 const EMPTY: FirebaseConfig = {
   apiKey: '',
@@ -179,3 +182,89 @@ describe('the project a build talks to', () => {
     expect(maskValue('')).toBe('')
   })
 })
+
+describe('guest-facing error translation without leaking internals', () => {
+  it('maps resource-exhausted and quota-exceeded errors to a safe cooldown message', () => {
+    expect(
+      guestFacingErrorMessage({
+        code: 'resource-exhausted',
+        message: 'Quota exceeded for quota metric Read requests.',
+      }),
+    ).toBe('Too many attempts. Please wait a moment and try again.')
+    expect(
+      guestFacingErrorMessage({
+        code: 'functions/resource-exhausted',
+        message: 'functions/resource-exhausted: rate bucket depleted',
+      }),
+    ).toBe('Too many attempts. Please wait a moment and try again.')
+    expect(
+      guestFacingErrorMessage({
+        code: 'auth/quota-exceeded',
+        message: 'Firebase: Quota exceeded (auth/quota-exceeded).',
+      }),
+    ).toBe('Too many attempts. Please wait a moment and try again.')
+  })
+
+  it('maps already-exists errors without exposing document paths', () => {
+    const raw = {
+      code: 'functions/already-exists',
+      message:
+        'Document already exists: projects/hacienda-de-luisana/databases/(default)/documents/bookings/HDL-999',
+    }
+    const msg = guestFacingErrorMessage(raw)
+    expect(msg).toBe(
+      'Those dates or this booking are no longer available. Please review your selection and try again.',
+    )
+    expect(msg).not.toContain('projects/')
+    expect(describeFirestoreFailure({ code: 'already-exists' }).advice).toMatch(/already exist/)
+  })
+
+  it('preserves server-curated Guest guidance on structured callable refusals', () => {
+    const conflict = new AvailabilityUnavailableError(
+      'already-exists',
+      'Those dates were just held by another Booking. Choose a different check-in date.',
+      'DATE_UNAVAILABLE',
+      true,
+    )
+    expect(guestFacingErrorMessage(conflict)).toBe(
+      'Those dates were just held by another Booking. Choose a different check-in date.',
+    )
+
+    const quoteRefused = new QuoteRefusedError(
+      'GUEST_COUNT_UNPRICED',
+      'The Main House cannot be priced for 99 guests online.',
+    )
+    expect(guestFacingErrorMessage(quoteRefused)).toBe(
+      'The Main House cannot be priced for 99 guests online.',
+    )
+  })
+
+  it('strips internal SDK codes, database paths, and runtime exceptions to the fallback', () => {
+    const fallback = 'Could not complete request.'
+    expect(
+      guestFacingErrorMessage(
+        { code: 'functions/internal', message: 'INTERNAL: TypeError: Cannot read properties of undefined' },
+        fallback,
+      ),
+    ).toBe(fallback)
+    expect(
+      guestFacingErrorMessage(
+        { code: 'storage/unauthorized', message: 'User does not have permission to access bucket.' },
+        fallback,
+      ),
+    ).toBe(fallback)
+    expect(
+      guestFacingErrorMessage(
+        new Error('Not found: projects/hacienda-de-luisana/databases/(default)/documents/bookings/secret'),
+        fallback,
+      ),
+    ).toBe(fallback)
+    expect(
+      guestFacingErrorMessage(
+        new Error('Unexpected crash\n    at submitBooking (/srv/index.js:42:11)'),
+        fallback,
+      ),
+    ).toBe(fallback)
+  })
+})
+

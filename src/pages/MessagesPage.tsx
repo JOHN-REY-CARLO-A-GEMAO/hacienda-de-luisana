@@ -33,6 +33,8 @@ import {
 import { retentionDaysLeft, retentionElapsed } from '../lib/chatRetention'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { Clock, Lock, MessageCircle } from '../lib/icons'
+import { LIMITS, checkRateLimit } from '../lib/rateLimit'
+import { MESSAGE_MAX, validateMessage } from '../lib/validation'
 
 export function MessagesPage() {
   const { user, profile } = useAuth()
@@ -335,6 +337,22 @@ export function MessagesPage() {
       const imageDraft = pendingImage
 
       if (!draftText.trim() && !imageDraft) return
+
+      const messageCheck = imageDraft
+        ? draftText.trim().length <= MESSAGE_MAX
+          ? ({ ok: true } as const)
+          : ({ ok: false, message: `Message must be at most ${MESSAGE_MAX} characters` } as const)
+        : validateMessage(draftText)
+      if (!messageCheck.ok) {
+        setComposerError(messageCheck.message)
+        return
+      }
+
+      const limited = checkRateLimit(`chat:${selectedConvo.conversationId}`, LIMITS.chat)
+      if (!limited.ok) {
+        setComposerError(limited.message)
+        return
+      }
 
       setComposerError(null)
       setSendStage(imageDraft ? 'uploading' : 'sending')

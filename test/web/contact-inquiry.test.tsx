@@ -1,7 +1,8 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContactInquiryForm } from '../../src/components/ContactInquiryForm'
+import { LIMITS, resetRateLimit } from '../../src/lib/rateLimit'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -17,12 +18,14 @@ describe('ContactInquiryForm strict validation and live counters', () => {
   let container: HTMLDivElement
 
   beforeEach(() => {
+    resetRateLimit()
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     act(() => {
       root?.unmount()
     })
@@ -82,5 +85,66 @@ describe('ContactInquiryForm strict validation and live counters', () => {
     expect(container.textContent).toContain('Please enter an email')
     expect(container.textContent).toContain('Please enter a subject')
     expect(container.textContent).toContain('Message cannot be empty')
+  })
+
+  it('rejects short (< 10 chars) and markup-containing inquiry messages, and enforces LIMITS.inquiry cooldown', () => {
+    vi.useFakeTimers()
+    act(() => {
+      root?.render(<ContactInquiryForm />)
+    })
+
+    const fillForm = (msgText: string) => {
+      const nameInput = container.querySelector('input[placeholder="Juan Dela Cruz"]') as HTMLInputElement
+      const emailInput = container.querySelector('input[type="email"]') as HTMLInputElement
+      const subjectInput = container.querySelector('input[placeholder*="Wedding photoshoot"]') as HTMLInputElement
+      const messageInput = container.querySelector('textarea') as HTMLTextAreaElement
+      act(() => {
+        setInputValue(nameInput, 'Juan Dela Cruz')
+        setInputValue(emailInput, 'juan@example.com')
+        setInputValue(subjectInput, 'Weekend venue inquiry')
+        setInputValue(messageInput, msgText)
+      })
+    }
+
+    // 1. Short message refused without consuming rate-limit budget
+    fillForm('Too short')
+    act(() => {
+      ;(container.querySelector('button[type="submit"]') as HTMLButtonElement).click()
+    })
+    expect(container.textContent).toContain('Message must be at least 10 characters')
+
+    // 2. Angle brackets refused
+    fillForm('Inquiry with <script>alert(1)</script>')
+    act(() => {
+      ;(container.querySelector('button[type="submit"]') as HTMLButtonElement).click()
+    })
+    expect(container.textContent).toContain('Message cannot contain < or >')
+
+    // 3. Up to LIMITS.inquiry.max valid inquiries succeed, then the next one hits cooldown
+    for (let i = 0; i < LIMITS.inquiry.max; i++) {
+      fillForm(`We would like to ask about December availability (${i + 1}).`)
+      act(() => {
+        ;(container.querySelector('button[type="submit"]') as HTMLButtonElement).click()
+      })
+      act(() => {
+        vi.advanceTimersByTime(450)
+      })
+      expect(container.textContent).toContain('Inquiry sent.')
+      const sendAnother = [...container.querySelectorAll('button')].find((b) =>
+        b.textContent?.includes('Send another inquiry'),
+      ) as HTMLButtonElement
+      act(() => {
+        sendAnother.click()
+      })
+    }
+
+    fillForm('One more inquiry right away within the same minute.')
+    act(() => {
+      ;(container.querySelector('button[type="submit"]') as HTMLButtonElement).click()
+    })
+    expect(container.textContent).toMatch(/Too many attempts/i)
+    expect((container.querySelector('textarea') as HTMLTextAreaElement).value).toBe(
+      'One more inquiry right away within the same minute.',
+    )
   })
 })
