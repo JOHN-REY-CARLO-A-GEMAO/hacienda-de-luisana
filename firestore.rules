@@ -710,19 +710,33 @@ service cloud.firestore {
     // added (legacy Payment Pending records choosing a plan need that).
     function pricingSnapshotImmutable() {
       let old = resource.data;
-      // **Do not move the `toSet()` onto `keys()`.** `keys()` already returns a
-      // Set, and calling `toSet()` on a Set is a rules-language error that made
-      // this guard unevaluable — the outage recorded in docs/VERIFICATION.md as
-      // "`pricingSnapshotImmutable()` no longer calls `toSet()` on a `Set`". The
-      // list literal is the only operand that needs converting, and this is the
-      // line that conversion belongs on.
+      // The deploy-time compiler warns at the `intersection()` call below
+      // (`Invalid type. Received one of [list]. Expected one of [set]`). It is
+      // accepted, not silenced: both ways to silence it are wrong, and both are
+      // one plausible keystroke away.
       //
-      // Bound to a name rather than chained into the `intersection()` call so each
-      // operand's type is stated on its own line. The deploy-time compiler still
-      // warns at this call (`Invalid type. Received one of [list]. Expected one of
-      // [set]`), because it resolves the argument before the `.toSet()` on it
-      // runs; that warning is cosmetic — the file compiles and the guard
-      // evaluates — and "fixing" it the obvious way reinstates the outage above.
+      // 1. Do NOT move the `toSet()` onto `keys()`. `keys()` already returns a
+      //    Set, and `toSet()` on a Set is a rules-language error that made this
+      //    guard unevaluable — the outage docs/VERIFICATION.md records as fixed
+      //    ("`pricingSnapshotImmutable()` no longer calls `toSet()` on a `Set`").
+      //    The list literal is the only operand that needs converting.
+      // 2. Do NOT flatten to `affectedKeys().hasAny([…the same keys…])`. It reads
+      //    like the same question and is not: `affectedKeys()` also reports keys
+      //    the write *adds*, so the flat form refuses a legacy Booking that adds
+      //    a snapshot key it never carried — which is exactly how a historical
+      //    Payment Pending record chooses a plan from its saved total. Measured
+      //    2026-10-29: flattening fails three cases in
+      //    `test/rules/firestore-rules.test.ts` ("lets a historical unclassified
+      //    Booking choose a plan from its saved total without repricing it",
+      //    "recovers an absent legacy total only from the saved nightly rate and
+      //    stay length", "recovers a legacy camel-case totalAmount without
+      //    consulting current rates").
+      //
+      // So the `intersection()` is load-bearing: it narrows the check to frozen
+      // keys the *stored* document already carries, which is what lets a missing
+      // one be added. Bound to a name so each operand's type is stated on its own
+      // line; the compiler resolves the argument before the `.toSet()` on it
+      // runs, which is the whole of the warning.
       let frozenKeys = ['nights', 'rate_amount', 'rate_unit',
         'rate_classification', 'stay_total', 'total_amount', 'totalAmount',
         'security_deposit', 'amount_due', 'balance_due', 'policy_version',
