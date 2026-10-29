@@ -78,7 +78,27 @@ export function getSupabaseStatus() {
  * policy that is correct in the dashboard. Writing receipts must not depend on
  * which role the browser happens to be holding.
  */
-export const supabase: SupabaseClient | null = report.configured
+/**
+ * True only where a receipt can actually be uploaded from: a browser.
+ *
+ * `createClient` constructs a realtime client, and `@supabase/realtime-js`
+ * demands a native `WebSocket` at construction. Node has had one only since 22,
+ * so importing this module under Node 20 threw
+ * `Error: Node.js detected but native WebSocket not found.` — not when a Guest
+ * uploaded, but when the module was *evaluated*, which `scripts/prerender.mjs`
+ * does for every build. That is what turned every GitHub Pages deploy from #111
+ * onward red at `npm run build`, while Vercel (newer Node) stayed green.
+ *
+ * The prerender renders markup; it never uploads a proof, and a receipt is
+ * uploaded from a browser and nowhere else. So outside a browser there is no
+ * client to build, and `storage.ts` already treats a null client as "upload
+ * locally" (`isSupabaseConfigured && supabase`). `getSupabaseStatus()` still
+ * reports the *configuration* from `report`, so `/status` keeps telling the
+ * truth about which project the build resolved to, client or no client.
+ */
+const runsInBrowser = typeof window !== 'undefined'
+
+export const supabase: SupabaseClient | null = report.configured && runsInBrowser
   ? createClient(report.config.url, report.config.anonKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     })
