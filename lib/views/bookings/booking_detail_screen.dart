@@ -28,6 +28,7 @@ import '../../widgets/booking_timeline_widget.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/loading_state.dart';
+import '../../widgets/payment_reference_panel.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/status_pill.dart';
 
@@ -860,6 +861,17 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           ],
           const SizedBox(height: 12),
           _moneyCard(booking),
+          const SizedBox(height: 12),
+          // The extracted details and the reference a human accepted, in one
+          // place. Pre-filled from OCR, never verifying anything: the Approve
+          // and Verify actions above stay the only way money is recorded, and
+          // they stay behind the Security PIN (ADR-0015).
+          PaymentReferencePanel(
+            booking: booking,
+            enabled: !_busy && !_openingProof,
+            onOpenProof: () => _openProof(booking),
+            actorUid: _actor().id,
+          ),
           const SizedBox(height: 16),
           const SectionHeader(title: 'Booking Timeline & Activity Log', padding: EdgeInsets.zero),
           const SizedBox(height: 8),

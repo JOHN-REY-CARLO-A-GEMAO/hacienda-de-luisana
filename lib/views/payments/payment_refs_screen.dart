@@ -48,6 +48,7 @@ class _RefRow {
     this.senderName,
     this.paymentDate,
     this.proofUrl,
+    this.source,
     this.docId,
   });
   final String reference;
@@ -57,6 +58,10 @@ class _RefRow {
   final String? senderName;
   final String? paymentDate;
   final String? proofUrl;
+
+  /// `admin_confirmed`, `guest_claimed` or `ocr` — who supplied the reference
+  /// on a payment row. Only the first two can carry `verified`.
+  final String? source;
   final String? docId;
 
   /// Whether this row records a Guest's actual payment on a Booking.
@@ -110,6 +115,7 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
             senderName: data['sender_name'] as String?,
             paymentDate: data['payment_date'] as String?,
             proofUrl: data['proof_url'] as String?,
+            source: data['reference_source'] as String?,
             docId: doc.id,
           ));
         }
@@ -196,8 +202,11 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
           title: const Text('Correct payment record'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text('Reference ${row.reference} (cannot be changed)',
-                  style: const TextStyle(fontSize: 13, color: Colors.grey)),
+              Text(
+                'Reference ${row.reference} (cannot be changed here — rules keep '
+                'a filed reference as evidence; correct it on the Booking)',
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: refCtrl,
@@ -300,6 +309,15 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
     final dateLine =
         row.paymentDate != null ? ' · ${row.paymentDate}' : '';
     final senderLine = row.senderName != null ? ' · ${row.senderName!}' : '';
+    // Where the number came from, when it is not simply "a human typed it".
+    // `ocr` is the one an Admin still has to agree with: the machine read it and
+    // nobody has confirmed it, so it stays `pending_review` and says so here.
+    final sourceLine = switch (row.source) {
+      'ocr' => ' · OCR (hindi pa nakumpirma)',
+      'admin_confirmed' => ' · Kinumpirma ng Admin',
+      'guest_claimed' => ' · Mula sa bisita',
+      _ => '',
+    };
 
     return HaciendaCard(
       child: ListTile(
@@ -317,7 +335,7 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '₱${row.amount.toStringAsFixed(2)}$senderLine$dateLine  ${guestLine.isNotEmpty ? '· $guestLine' : ''}',
+              '₱${row.amount.toStringAsFixed(2)}$senderLine$dateLine$sourceLine  ${guestLine.isNotEmpty ? '· $guestLine' : ''}',
               style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
