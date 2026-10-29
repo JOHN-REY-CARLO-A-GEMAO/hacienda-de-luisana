@@ -45,6 +45,13 @@ dependencies:
   firebase_app_check: ^0.4.8
   # Local persistence — the guided tour remembers completion on-device.
   shared_preferences: ^2.3.2
+  # On-device receipt OCR (ADR-0023). Google ML Kit's Latin text recognizer runs
+  # entirely on the phone: no API key to ship or rotate, no per-page cost, and a
+  # Guest's GCash screenshot never leaves the device. The website already runs
+  # tesseract.js at upload time; this is the Admin app's fallback for proofs
+  # uploaded before OCR existed, for a browser that could not load it, and for a
+  # re-sent proof whose stored read no longer describes the image.
+  google_mlkit_text_recognition: ^0.15.0
 
 dev_dependencies:
   flutter_test:

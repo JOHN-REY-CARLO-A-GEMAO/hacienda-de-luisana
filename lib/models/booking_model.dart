@@ -109,6 +109,36 @@ class BookingModel {
   final String? ocrSenderName;
   /// The payment date OCR read off the receipt, normalized to YYYY-MM-DD (never verified).
   final String? ocrPaymentDate;
+  /// The reference number OCR read off the receipt (`ocr_reference`).
+  ///
+  /// Evidence, never a decision: this is what a machine saw, kept beside
+  /// [paymentReference] (what a human accepted) so the Admin can always tell
+  /// the two apart.
+  final String? ocrReference;
+  /// The amount OCR read off the receipt (`ocr_amount`), as printed.
+  final String? ocrAmount;
+  /// The recipient / merchant / payee OCR read (`ocr_recipient_name`).
+  final String? ocrRecipientName;
+  /// The proof path the stored OCR read describes (`ocr_proof_url`).
+  ///
+  /// A re-sent proof is a new object under a new path (ADR-0011), so this is
+  /// how the app knows the stored read belongs to the image being reviewed
+  /// rather than to one that was replaced.
+  final String? ocrProofUrl;
+  /// Which engine produced the read — `mlkit-latin`, or the website's
+  /// `tesseract` (`ocr_engine`).
+  final String? ocrEngine;
+  /// `high` | `low` | `none`, written with the read (`ocr_confidence`).
+  final String? ocrConfidence;
+  /// When the read was stored (`ocr_extracted_at`).
+  final DateTime? ocrExtractedAt;
+  /// Who supplied the stored [paymentReference] (`payment_reference_source`):
+  /// `admin_corrected` once an Admin has edited it, absent otherwise.
+  final String? paymentReferenceSource;
+  /// The reference an Admin's correction replaced (`payment_reference_previous`).
+  final String? paymentReferencePrevious;
+  final DateTime? paymentReferenceCorrectedAt;
+  final String? paymentReferenceCorrectedBy;
   /// The sender name the Guest confirmed from the receipt.
   final String? paymentSenderName;
   /// The payment date the Guest confirmed from the receipt.
@@ -155,6 +185,17 @@ class BookingModel {
     this.amountClaimed,
     this.ocrSenderName,
     this.ocrPaymentDate,
+    this.ocrReference,
+    this.ocrAmount,
+    this.ocrRecipientName,
+    this.ocrProofUrl,
+    this.ocrEngine,
+    this.ocrConfidence,
+    this.ocrExtractedAt,
+    this.paymentReferenceSource,
+    this.paymentReferencePrevious,
+    this.paymentReferenceCorrectedAt,
+    this.paymentReferenceCorrectedBy,
     this.paymentSenderName,
     this.paymentDate,
     this.rateClassification,
@@ -187,6 +228,47 @@ class BookingModel {
       case BookingStatus.cancelled:
         return BookingStatuses.cancelled;
     }
+  }
+
+  /// Whether this Booking's money has been verified by an Admin.
+  ///
+  /// Read the same way `firestore.rules` reads it (`payment_status: verified`
+  /// *with* a verified amount), because a document that says the first without
+  /// the second is a half-written record, not a paid stay.
+  bool get paymentIsVerified =>
+      (paymentStatus ?? '').toLowerCase() == 'verified' &&
+      (amountVerified ?? 0) > 0;
+
+  /// The reference to show in the Payment Reference field.
+  ///
+  /// The value a human accepted wins; otherwise the number OCR read, labelled as
+  /// unverified wherever it is shown. Null when neither exists — the field is
+  /// then empty for the Admin to fill from the image, which is the honest state
+  /// rather than a blank that looks like an error.
+  String? get effectivePaymentReference {
+    final accepted = paymentReference?.trim() ?? '';
+    if (accepted.isNotEmpty) return accepted;
+    final read = ocrReference?.trim() ?? '';
+    return read.isEmpty ? null : read;
+  }
+
+  /// True when the reference on record came from OCR and no human has accepted
+  /// it yet — the state the Admin must clear before a payment is verified.
+  bool get paymentReferenceIsMachineRead =>
+      (paymentReference?.trim() ?? '').isEmpty &&
+      (ocrReference?.trim() ?? '').isNotEmpty;
+
+  /// True when the reference on record was typed or corrected by an Admin.
+  bool get paymentReferenceWasCorrected =>
+      (paymentReferenceSource ?? '') == 'admin_corrected';
+
+  /// True when the stored OCR read describes a proof that has since been
+  /// replaced, so its values must not be read as describing the current image.
+  bool get ocrReadIsStale {
+    final readFrom = ocrProofUrl?.trim() ?? '';
+    final current = paymentProofUrl?.trim() ?? '';
+    if (readFrom.isEmpty || current.isEmpty) return false;
+    return readFrom != current;
   }
 
   /// The document the lifecycle rules act on: the stored fields, with the
@@ -282,6 +364,20 @@ class BookingModel {
 
   /// Website docs store Firestore Timestamps (created_at, check_in,
   /// check_out) while local mocks use ISO strings — accept both.
+  /// [raw] as a date, or null — for fields that are legitimately absent.
+  static DateTime? _parseDateOrNull(Object? raw) {
+    if (raw == null) return null;
+    if (raw is String) {
+      if (raw.trim().isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }
+    try {
+      return (raw as dynamic).toDate() as DateTime;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static DateTime _parseDate(Object? raw, DateTime fallback) {
     if (raw == null) return fallback;
     if (raw is String) {
@@ -385,6 +481,19 @@ class BookingModel {
       amountClaimed: _dbl(json['amount_claimed']),
       ocrSenderName: _str(json['ocr_sender_name']),
       ocrPaymentDate: _str(json['ocr_payment_date']),
+      ocrReference: _str(json['ocr_reference']),
+      ocrAmount: _str(json['ocr_amount']),
+      ocrRecipientName: _str(json['ocr_recipient_name']),
+      ocrProofUrl: _str(json['ocr_proof_url']),
+      ocrEngine: _str(json['ocr_engine']),
+      ocrConfidence: _str(json['ocr_confidence']),
+      ocrExtractedAt: _parseDateOrNull(json['ocr_extracted_at']),
+      paymentReferenceSource: _str(json['payment_reference_source']),
+      paymentReferencePrevious: _str(json['payment_reference_previous']),
+      paymentReferenceCorrectedAt:
+          _parseDateOrNull(json['payment_reference_corrected_at']),
+      paymentReferenceCorrectedBy:
+          _str(json['payment_reference_corrected_by']),
       paymentSenderName: _str(json['payment_sender_name']),
       paymentDate: _str(json['payment_date']),
       rateClassification: _str(json['rate_classification']),

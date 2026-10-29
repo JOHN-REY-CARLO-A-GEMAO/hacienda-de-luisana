@@ -392,12 +392,41 @@ Implemented as a client-side pipeline (2026-09-27), documented, and still
   edit.
 - Hard rule intact: `canAutoVerifyFromOcr()` returns `false`; extraction can
   never set `payment_status`. Admin verification is the only path to `verified`.
-- If a real OCR engine is added, the required pipeline is: receipt image →
-  **server-side function** (never the browser bundle) → OCR engine → extracted
-  text → reference + amount → **Guest confirmation** → payment submission →
-  Admin verification. The API key lives in the function's environment/secret
-  store — never in web JS, the Flutter APK, public config, or Git. There is no
-  `functions/` directory in this repository, so none of that exists yet.
+- **Admin app side (2026-10-29, ADR-0023).** The extraction the website stores is
+  now read where the decision is made. `BookingModel` parses `ocr_reference` and
+  `ocr_amount` (it previously ignored both), and `PaymentReferencePanel` shows the
+  reference pre-filled, marked `OCR — hindi pa beripikado`, with the amount,
+  transaction date/time, sender and recipient beside it, plus warnings when
+  anything could not be read. When there is no usable stored read — a proof from
+  before OCR existed, a browser where tesseract failed, a re-sent proof whose
+  stored read describes the old image — the app reads the proof itself with
+  **Google ML Kit's on-device Latin text recognizer**
+  (`google_mlkit_text_recognition`). The parsing lives in
+  `lib/models/receipt_extraction.dart` (pure Dart, no Flutter/Firebase import,
+  unit-tested in `test/receipt_extraction_test.dart`); the read and its guards
+  live in `lib/services/receipt_ocr_service.dart` and
+  `lib/services/payment_reference_service.dart`.
+- **Why on-device rather than a server function.** ML Kit needs **no API key**, so
+  there is no secret in the APK, no key to rotate and nothing for the paragraph
+  above to refuse; the model is bundled, so there is no per-page cost; and the
+  receipt never leaves the phone, which is what ADR-0011's private bucket exists
+  to protect. A cloud OCR API would have to be called from a server-side function
+  with its key in a secret store, and would ship every Guest's name, number and
+  reference to a third party. On-device is the cheaper *and* the more private
+  option here, so the server-side pipeline the earlier draft required is not
+  needed for OCR.
+- **Still a hint engine, and now explicitly a two-step one.** An OCR write touches
+  `ocr_*` fields only and cannot change `status`, `payment_status`,
+  `amount_verified` or the verification marker. The reference a human accepts is a
+  separate write (`payment_reference`, `payment_reference_source`,
+  `payment_reference_corrected_by/at`, `payment_reference_previous`). In the
+  payment queue a Booking whose only reference is machine-read stops before
+  verification and asks the Admin to confirm or correct it; the
+  `payment_references` row filed afterwards records `reference_source` and stays
+  `pending_review` unless a human accepted the number. A reference already filed
+  against another Booking is refused unless the Admin confirms on the record, and
+  changing the reference of a *verified* payment needs a second explicit
+  confirmation.
 
 ## 7. P5 — server-side rate limiting
 
@@ -481,7 +510,9 @@ in Git).
    "fixed" here means "the rule text refuses it and the module refuses it", not
    "Google's engine confirmed it".
 5. **Terms acceptance is not persisted** (UI checkbox only).
-6. **OCR is regex text extraction**; no image pipeline, no server function (§6).
+6. **OCR runs on the Guest's browser and the Admin's phone** — tesseract.js and
+   ML Kit respectively; parsing is regex/line-shape based, and neither engine has
+   been executed in this environment (§6). Latin script only, mobile only.
 7. **No server-side rate limiting** (§7).
 8. **Duplicate payment-reference detection is a function + Admin-only catalogue,
    not wired into a screen** (§3.2, Payments).
@@ -498,7 +529,7 @@ in Git).
 | 2 | Booking lifecycle with logged transitions | ⚠️ Partial | executed locally: Pending → review → Payment Pending → Reserved → Staying → Completed, 11 entries; cloud writes unexecuted |
 | 3 | Terms accepted and recorded | ⚠️ Partial | versioning helpers verified; acceptance not persisted |
 | 4 | Payment submission and verification | ⚠️ Partial | steps 14–17, 20, 21; §3.3 #1, #2 and the two audit extras fixed and regression-tested; rules still supplemental-only, not emulator-verified |
-| 5 | OCR integration | ❌ Missing | regex text extraction only; no engine, no server pipeline |
+| 5 | OCR integration | ⚠️ Partial | Guest side: tesseract.js in the browser at upload (2026-09-27). Admin side: ML Kit on-device read of the proof, pure-Dart parsing, pre-filled Payment Reference with review/correction (2026-10-29, ADR-0023). Parser and decision rules unit-tested; the recognizer itself needs a device, so it is unexecuted here |
 | 6 | OCR can never auto-verify payment | ✅ Verified | `canAutoVerifyFromOcr() === false`, asserted in `npm test` and step 16 |
 | 7 | Admin workflows (approve, verify, reject, refund path) | ⚠️ Partial | lifecycle + rules executed; the Admin's verify now writes the marker the rules require; Flutter screens unrun (🔴) |
 | 8 | Chat | ⚠️ Partial | steps 29–31; §3.3 #4, #6 fixed (membership + truthful label); the Admin UI's own write path is unrun (🔴 Flutter) |

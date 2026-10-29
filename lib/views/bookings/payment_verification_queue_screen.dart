@@ -13,10 +13,13 @@ import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
 import '../../services/booking_queue.dart';
 import '../../services/payment_proof_service.dart';
+import '../../services/payment_reference_service.dart';
+import '../../models/receipt_extraction.dart';
 import '../../services/pin_store.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/loading_state.dart';
+import '../../widgets/payment_reference_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../../utils/validators.dart';
 import '../security/security_pin_sheet.dart';
@@ -83,6 +86,41 @@ class _PaymentVerificationQueueScreenState
         amount = entered;
       }
 
+      // A number nobody has accepted cannot carry a verified payment. When the
+      // only reference on the record is what OCR read, the Admin confirms it
+      // here — the same field they would otherwise type into — and the approval
+      // then records a reference a human has actually seen.
+      var reference = booking.effectivePaymentReference;
+      if (booking.paymentReferenceIsMachineRead) {
+        final form = await showPaymentReferenceCorrectionDialog(
+          context,
+          booking: booking,
+          service: PaymentReferenceService.instance,
+          title: 'I-confirm ang reference bago i-verify',
+          requireReference: true,
+        );
+        if (form == null || !mounted) return;
+        final saved = await PaymentReferenceService.instance.saveCorrection(
+          booking,
+          reference: form.reference,
+          actorUid: _actor().id,
+          senderName: form.senderName,
+          paymentDateIso: form.paymentDateIso,
+          confirmDuplicate: form.confirmDuplicate,
+        );
+        if (!saved.ok) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: AppColors.statusAlert,
+            content: Text(saved.message ??
+                'Hindi na-save ang reference, kaya hindi natuloy ang verification.'),
+            duration: const Duration(seconds: 7),
+          ));
+          return;
+        }
+        reference = normalizeReference(form.reference);
+      }
+
       final ticket = await requirePinTicket(
         context,
         ref: ref,
@@ -112,7 +150,7 @@ class _PaymentVerificationQueueScreenState
         duration: Duration(seconds: result.ok ? 4 : 7),
       ));
       if (result.ok && mounted) {
-        await _recordPaymentReference(booking, amount);
+        await _recordPaymentReference(booking, amount, reference: reference);
       }
     } catch (error) {
       if (!mounted) return;
@@ -188,24 +226,56 @@ class _PaymentVerificationQueueScreenState
   /// Persists one payment reference row from a proof the Admin just verified.
   ///
   /// Idempotent: a row with the same reference number for the same Booking is
-  /// never written twice, and no row is invented when the Guest gave no
-  /// reference at all. The row carries the extraction evidence (sender, date,
-  /// proof path) so the Payment references screen can show it without asking
-  /// the Admin to re-type anything.
+  /// never written twice, and no row is invented when nobody gave a reference at
+  /// all. The row carries the extraction evidence (sender, date, proof path) so
+  /// the Payment references screen can show it without asking the Admin to
+  /// re-type anything.
+  ///
+  /// [reference] is the number a human accepted — either already on the Booking
+  /// or just confirmed in [_approvePayment]. It falls back to
+  /// [BookingModel.effectivePaymentReference] so a payment verified after OCR
+  /// pre-filled the field still files its row instead of silently writing
+  /// nothing. A number that only ever existed as OCR output is filed
+  /// `pending_review`, never `verified`: the machine read it, nobody has agreed
+  /// to it yet, and the Payment references screen can correct it from there.
   ///
   /// Concurrency: the check-and-insert runs inside a Firestore transaction on
   /// a deterministic document id (`reference` + Booking id), so two concurrent
   /// verifications of the same reference can never insert a second row. The
   /// transaction reads the document first and writes only when it is absent;
   /// contention retries the read, turning a duplicate insert into a no-op.
-  Future<void> _recordPaymentReference(BookingModel booking, double verifiedAmount) async {
-    final reference = booking.paymentReference?.trim();
-    if (reference == null || reference.isEmpty) return;
+  Future<void> _recordPaymentReference(
+    BookingModel booking,
+    double verifiedAmount, {
+    String? reference,
+  }) async {
+    final raw = (reference ?? booking.effectivePaymentReference)?.trim();
+    if (raw == null || raw.isEmpty) return;
+    final normalized = normalizeReference(raw);
+    if (!isValidReference(normalized)) return;
+
+    // Who supplied this number? The dialog override is the Admin typing or
+    // accepting it in this very flow; a reference already on the Booking came
+    // from the Guest (or from an Admin's earlier correction); anything left is
+    // the machine's read, and only the first two can carry a `verified` row.
+    final guestClaimed = (booking.paymentReference ?? '').trim();
+    final String source;
+    if (reference != null) {
+      source = 'admin_confirmed';
+    } else if (guestClaimed.isNotEmpty) {
+      source = booking.paymentReferenceWasCorrected
+          ? 'admin_confirmed'
+          : 'guest_claimed';
+    } else {
+      source = 'ocr';
+    }
+    final accepted = source != 'ocr';
     if (!mounted) return;
     try {
-      // Firestore document ids may not contain '/'; references are already
-      // validated as [A-Z0-9-]{6,40}, but normalise defensively.
-      final safeRef = reference.replaceAll(RegExp(r'[/\s]+'), '_');
+      // Firestore document ids may not contain '/'; a normalized reference is
+      // already [A-Z0-9-]{6,40}, but the substitution stays as a belt to that
+      // brace so a legacy row can never produce an invalid path.
+      final safeRef = normalized.replaceAll(RegExp(r'[/\s]+'), '_');
       final docRef = FirebaseFirestore.instance
           .collection(AppConstants.colPaymentReferences)
           .doc('${safeRef}_${booking.id}');
@@ -214,13 +284,17 @@ class _PaymentVerificationQueueScreenState
         final existing = await transaction.get(docRef);
         if (existing.exists) return; // already filed — idempotent no-op
         transaction.set(docRef, {
-          'reference': reference,
+          'reference': normalized,
           'amount': verifiedAmount,
-          'status': 'verified',
+          'status': accepted ? 'verified' : 'pending_review',
           'booking_id': booking.id,
-          'sender_name': booking.paymentSenderName,
-          'payment_date': booking.paymentDate,
+          'sender_name': booking.paymentSenderName ?? booking.ocrSenderName,
+          'payment_date': booking.paymentDate ?? booking.ocrPaymentDate,
           'proof_url': booking.paymentProofUrl,
+          // The machine's own read, kept beside the accepted number so the
+          // Payment references screen can show where it came from.
+          'ocr_reference': booking.ocrReference,
+          'reference_source': source,
           'created_at': FieldValue.serverTimestamp(),
         });
       });
@@ -504,7 +578,17 @@ class _PaymentVerificationQueueScreenState
                 'Petsa sa receipt',
                 '${booking.paymentDate ?? booking.ocrPaymentDate}${booking.paymentDate == null ? ' (OCR)' : ''}'),
           if (booking.paymentPlan != null) _infoRow('Payment plan', booking.paymentPlan!),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          // Extracted details and the reference a human accepted, shown where
+          // the decision is made. Compact here: the rows above already carry the
+          // sender and the date.
+          PaymentReferencePanel(
+            booking: booking,
+            enabled: !_busy,
+            dense: true,
+            actorUid: _actor().id,
+          ),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
