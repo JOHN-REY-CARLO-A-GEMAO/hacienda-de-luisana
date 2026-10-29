@@ -411,14 +411,21 @@ service cloud.firestore {
       let lookup = quoted ? claimed : '__none__';
       // `exists()` before `get()`, for the same reason the lead-time helper does.
       let path = /databases/$(database)/documents/booking_quotes/$(lookup);
-      let found = exists(path) ? get(path).data : null;
       // `{}` for "no such attestation", not a skipped call: an empty map reads back
       // nulls and refuses, while a null dereference would throw — and this clause is
       // evaluated even when its value is about to be discarded, because `let`
       // bindings are eager. The Admin half of the create rule reaches here as
       // `isAdmin() || <this>`, so this must produce a boolean for a manual booking,
       // never an error.
-      let attested = validAttestedQuote(found == null ? {} : found, data);
+      //
+      // Both branches are a map. This used to be `: null`, with the `{}` supplied
+      // by the caller (`found == null ? {} : found`); the value was the same, but
+      // the deploy-time compiler has to type the ternary, and a `map | null` union
+      // warns (`Invalid type. Received one of [null]. Expected one of [map]`).
+      // Defaulting in the binding keeps the type a single `map` and leaves one
+      // place — here — where "no attestation" is spelled.
+      let found = exists(path) ? get(path).data : {};
+      let attested = validAttestedQuote(found, data);
       // One nested ternary, value-safe on every branch: un-enforced cannot refuse
       // and cannot throw; enforced without a usable id is a refusal, not an error;
       // the comparison itself only ever reads a document that was proven to exist.
@@ -703,12 +710,24 @@ service cloud.firestore {
     // added (legacy Payment Pending records choosing a plan need that).
     function pricingSnapshotImmutable() {
       let old = resource.data;
-      // `keys()` already returns a Set, so the frozen-key list is the only
-      // operand that needs `toSet()` — `Set` has no `toSet()` of its own.
-      let frozenHere = old.keys().intersection(['nights', 'rate_amount', 'rate_unit',
+      // **Do not move the `toSet()` onto `keys()`.** `keys()` already returns a
+      // Set, and calling `toSet()` on a Set is a rules-language error that made
+      // this guard unevaluable — the outage recorded in docs/VERIFICATION.md as
+      // "`pricingSnapshotImmutable()` no longer calls `toSet()` on a `Set`". The
+      // list literal is the only operand that needs converting, and this is the
+      // line that conversion belongs on.
+      //
+      // Bound to a name rather than chained into the `intersection()` call so each
+      // operand's type is stated on its own line. The deploy-time compiler still
+      // warns at this call (`Invalid type. Received one of [list]. Expected one of
+      // [set]`), because it resolves the argument before the `.toSet()` on it
+      // runs; that warning is cosmetic — the file compiles and the guard
+      // evaluates — and "fixing" it the obvious way reinstates the outage above.
+      let frozenKeys = ['nights', 'rate_amount', 'rate_unit',
         'rate_classification', 'stay_total', 'total_amount', 'totalAmount',
         'security_deposit', 'amount_due', 'balance_due', 'policy_version',
-        'policy_effective_date', 'refund_policy_snapshot'].toSet());
+        'policy_effective_date', 'refund_policy_snapshot'].toSet();
+      let frozenHere = old.keys().intersection(frozenKeys);
       return !request.resource.data.diff(old).affectedKeys().hasAny(frozenHere);
     }
 
