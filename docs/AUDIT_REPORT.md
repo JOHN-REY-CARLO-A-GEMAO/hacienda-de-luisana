@@ -4,6 +4,59 @@
 **Auditor:** Senior Software Architect, Full-Stack Engineer, Firebase Security Specialist, & IoT Systems Engineer
 **Repository Baseline:** `hacienda-de-luisana`
 **Architecture:** React Guest Web App (`src/`), Flutter Admin Mobile App (`lib/`), Firebase (Auth, Cloud Firestore, Realtime Database, Storage), Supabase Storage (`supabase/`).
+**Last reconciled:** 2026-10-30 against `main@0393a29`. Findings are left as written on the
+day they were raised — the reconciliation section below is the only place a verdict is updated,
+so the audit still reads as an audit and the corrections can be seen rather than inferred.
+
+---
+
+## 0. Reconciliation — what is still true, and what has been fixed since
+
+This section was added on **2026-10-30**, after the findings below were re-checked against the
+code at `main@0393a29`. Nothing above it was rewritten: a finding keeps the words it was raised
+with, and its verdict lives here and in the `Status` line under its heading.
+
+### Executed while reconciling
+
+| Check | Result |
+| --- | --- |
+| `npm run lint` (`tsc -b`) | clean |
+| `npm test` (vitest, jsdom) | **81 files / 1169 tests pass** |
+| `npm run test:rules` (in-repo evaluator) | **330 / 330** (6 files) — supplemental, not emulator-verified |
+| `npm run test:e2e` | **44 / 44** |
+| `npm --prefix functions test` | **51 / 51** (after installing `functions/` deps) |
+| `npm run build` | clean; 14 pages prerendered |
+| `npm run test:safety` | 44 / 44 |
+| `npm run test:invariants` | **18 fail / 13 pass** — all of them the pre-existing `DESIRED` set; none is a regression |
+| `npm run test:emulator` | **not run** (no JVM in this environment) |
+| `flutter test` / `flutter analyze` | **not run** — no Flutter SDK here, so §6's Dart numbers remain the auditor's and are re-stated as unverified |
+
+### Finding-by-finding
+
+| # | Finding | Status today | Evidence |
+| --- | --- | --- | --- |
+| P0-01 | Double-booking approval race | ✅ **Fixed** | every Admin Booking action runs in one `runTransaction` that re-reads every Booking for the same Accommodation inside it (`lib/services/firestore_service.dart:347`); a rival approval that commits first aborts and reruns. Rescheduling does the same (`:615`) |
+| P0-02 | Forged `granted` Access-log rows | ✅ **Fixed** (rules half) | `firestore.rules:1326-1334`: `create` requires `isAdmin()` when `result == 'granted'`, and `uid == request.auth.uid` always; reads are Admin-only. The rule moved from the line the audit cited (620–628) when the file was reorganised |
+| P0-02 | Static RFID UID is cloneable | ⚪ **Out of scope — no firmware exists** | there is no ESP32 code in this repository to harden; `docs/SMART_LOCK.md` carries the requirement (dynamic credential, not a static UID), and the Flutter screen is an Access-log viewer, not a lock |
+| P0-03 | Supabase anonymous upload is unbound | ⛔ **Accepted by design, not a defect** | `supabase/01-storage.sql` argues it in its header: `anon` is insert-only under `payments/`, there is deliberately **no** `select` policy, and writing a file grants nobody anything — verification is the Admin's, in Firestore. Residual that is real: unlinked objects accumulate |
+| P1-01 | Price rules could fail to evaluate | ✅ **Superseded in the document itself** | corrected in place on 2026-10-21 (ADR-0018/0019); `validAuthoritativeMoney` is gone and `quoteBooking` attests prices. **Activation is still off** — `site_config/booking.quotes_required` defaults absent and the functions are not deployed |
+| P1-02 | Anonymous identity replaced on registration | 🔴 **Open, narrowed** | the Support page can link an anonymous session to Google or a password (`src/pages/SupportPage.tsx:29-30`), which preserves the uid. The **sign-up form does not link**, so a Guest who booked anonymously and then registered on `/guest/auth` still loses the Booking in `/account` |
+| P2-01 | Live-location lease mismatch | ✅ **Fixed** | the Guest is offered 15/30/60 minutes and the rules cap at `now + 3600000` (`database.rules.json`); the two invariants (`F21 DESIRED`, `F21 LEASE`) pass |
+| P2-02 | No revocation to offline locks | ⚪ **Out of scope — no firmware** | unchanged, and unchangeable from this repository |
+| P3-01 | `withOpacity` deprecations | 🔴 **Open** | **39** occurrences in `lib/` today (the 61 was measured at a different commit). Mechanical, and only worth doing with a Flutter toolchain present to re-run `flutter test` |
+| §3 #13 | "Analytics rendered via FL Chart" | ⚠️ **Stale claim, corrected below** | `fl_chart` is a declared dependency and is **imported nowhere**; the Analytics screen draws its bars by hand (`lib/views/analytics/analytics_screen.dart:236`, `_StayBar`) |
+
+### Two things found while reconciling, neither fixed here
+
+1. **The Access log is not append-only against the Admin.** `firestore.rules:1333` allows
+   `update, delete: if isAdmin()`, and `CONTEXT.md` calls the Access log an *append-only record*.
+   No screen deletes a row (`lib/views/smartlock/` has no delete path), so the permission is
+   unused. Making it `allow update, delete: if false` is a two-line change — but it is a rules
+   change, and rules changes are verified by the emulator suite, which has not run here. Do it
+   after that run, not before a defence.
+2. **Two numbers in this document were measured at an older commit** and drift: the
+   `withOpacity` count (§ above) and the same claim appearing in `docs/README.md`'s dependency
+   list, which describes `fl_chart` as used.
 
 ---
 
@@ -72,7 +125,7 @@ hacienda-de-luisana/
 | **10. Payment Reference Search** | **Implemented** | `payment_references` collection, `lib/views/payments/` | Ref search by code, status tracking (`available`, `used`, `void`), enforced in `firestore.rules`. |
 | **11. Messaging Grouped by Conversation** | **Implemented** | `conversations/{id}/messages/{id}`, `messageAttachments/{conversationId}/{messageId}`, `src/pages/MessagesPage.tsx`, `lib/views/inbox/` | Optional captions and private JPEG/PNG/WebP images up to 5 MiB. Membership, exact path binding, MIME and size limits are enforced in Firestore/Storage rules. |
 | **12. Biometric Authentication** | **Missing** | `lib/services/pin_store.dart` | Biometrics (Fingerprint/Face ID) not implemented (`local_auth` package not in `pubspec.yaml`). Security PIN sheet is used instead. |
-| **13. Occupancy & Revenue Analytics** | **Implemented** | `lib/views/analytics/analytics_screen.dart` | Revenue breakdown, conversion rates, average length of stay, top accommodations rendered via FL Chart. |
+| **13. Occupancy & Revenue Analytics** | **Implemented** | `lib/views/analytics/analytics_screen.dart` | Revenue breakdown, conversion rates, average length of stay, top accommodations. **Corrected 2026-10-30:** not FL Chart — `fl_chart` is declared in `pubspec.yaml` and imported nowhere; the bars are hand-drawn (`lib/views/analytics/analytics_screen.dart:236`). |
 | **14. Live Location & Proximity Alerts** | **Implemented** | `database.rules.json`, `src/lib/liveLocation.ts`, `lib/services/live_location_service.dart` | Realtime Database stream ([ADR-0013](docs/adr/0013-live-location-as-a-stream.md)), max 1h session, stream secret token. Proximity banner on Admin dashboard when guest < 5km away. No coordinates saved to Firestore ([ADR-0009](docs/adr/0009-no-live-location-tracking.md)). |
 | **15. Disputes & Complaints** | **Retired 2026-10-24** | `docs/adr/0020-retire-dispute-cases-for-private-message-images.md` | Active case management was replaced by ordinary private message images. Historical data is retained under default-deny rules pending separately approved archival/deletion. |
 | **16. Guest Reviews & Moderation** | **Implemented** | `reviews/{bookingId}`, `public_reviews/{id}`, `src/pages/AccountPage.tsx`, `lib/views/reviews/` | 14-day guest edit window, 1-5 star categories, Admin moderation & response, curated public testimonials ([ADR-0014](docs/adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md)). |
@@ -84,12 +137,16 @@ hacienda-de-luisana/
 ### Critical Severity (P0)
 
 #### [P0-01] Double-Booking Approval Race Condition (F06)
+**Status (2026-10-30): ✅ Fixed.** The recommendation below was implemented: approval re-reads and re-checks inside a Firestore transaction (`lib/services/firestore_service.dart:347`). One caveat on the *word* fixed: the `F06 DESIRED` invariant in `npm run test:invariants` still fails, because that probe exercises the pure lifecycle function against a stale list — the transaction is what serialises approval, not the pure function.
+
 - **Status / Behavior**: If two admin sessions or near-simultaneous client requests attempt to approve two pending bookings for the same accommodation unit and overlapping dates, both writes can succeed if executed outside a Firestore transaction.
 - **Location**: `lib/services/booking_lifecycle.dart`, `src/lib/booking/actions.ts`.
 - **Impact**: Operational failure, guest displacement, refund disputes, loss of revenue.
 - **Recommended Fix**: Ensure all status transitions to `Approved` or `Reserved` execute inside a Firestore transaction (`runTransaction`) that re-queries existing committed bookings for date overlap before writing.
 
 #### [P0-02] IoT Insecure Static RFID UID Assumption & Access Log Rule Flaw (F19, F20)
+**Status (2026-10-30): ✅ rules half fixed; ⚪ cloning half out of scope.** Recommended fix 2 is in `firestore.rules:1326-1334` (a `granted` row needs `isAdmin()`, and a row always names its own writer). Recommended fix 1 has nothing to attach to: there is no firmware in this repository, so the requirement is recorded in `docs/SMART_LOCK.md` rather than implemented.
+
 - **Status / Behavior**: The proposed smart-lock design assumes reading a static RFID card UID is sufficient for room unlock. Plain 125kHz or 13.56MHz RFID UIDs can be easily sniffed and cloned using handheld copiers or Flipper Zero devices. Furthermore, `firestore.rules` under `access_logs/{logId}` allows *any* signed-in user (including anonymous guest tokens) to create a row with `result: "granted"` under their own UID.
 - **Location**: `docs/SMART_LOCK.md`, `firestore.rules` (lines 620–628), `lib/views/smartlock/smart_lock_screen.dart`.
 - **Impact**: Physical break-in risk, unauthorized access, forged audit logs.
@@ -98,6 +155,8 @@ hacienda-de-luisana/
   2. Restrict `access_logs` creation in `firestore.rules` so that only verified hardware gateway accounts or admin UIDs can record `granted` events.
 
 #### [P0-03] Supabase Storage Anonymous Upload Unbound Policy (F05)
+**Status (2026-10-30): ⛔ Accepted by design.** The asymmetry is deliberate and argued in `supabase/01-storage.sql` — anonymous insert, no anonymous read, and a write that grants nobody anything. The storage-exhaustion part of the impact is real and unfixed; the bucket has a 5 MB per-object ceiling but no per-caller quota, and quotas would need a signed-in caller the Guest flow does not have.
+
 - **Status / Behavior**: `supabase/01-storage.sql` permits anonymous upload of payment proof files into `payments/{uid}/...` without verifying that an active booking exists for that `uid`.
 - **Location**: `supabase/01-storage.sql`, `src/lib/supabase.ts`.
 - **Impact**: Storage exhaustion (DoS), unlinked file accumulation, potential submission of fake payment proofs.
@@ -122,6 +181,8 @@ hacienda-de-luisana/
 - **Recommended Fix**: Re-verify all booking pricing snapshots on the Admin app during the `Approve` step before confirming dates.
 
 #### [P1-02] Anonymous Identity Replacement on Guest Registration (F16)
+**Status (2026-10-30): 🔴 Open.** Narrowed, not closed: `src/pages/SupportPage.tsx:29-30` links an anonymous session to a real credential, which keeps the uid and therefore the Booking. The sign-up form still creates a fresh identity without linking, so the finding survives for that path.
+
 - **Status / Behavior**: When an anonymous guest submits a booking and later registers or signs in with Google/Email, Firebase Auth assigns a new UID. The previous booking remains tied to the old anonymous UID, severing the guest's ownership view in `/account`.
 - **Location**: `src/lib/auth/profile.ts`, `src/lib/guestAuth.ts`.
 - **Impact**: Guest loses access to their booking timeline and payment status on `/account`.
@@ -132,12 +193,16 @@ hacienda-de-luisana/
 ### Medium Severity (P2)
 
 #### [P2-01] Live Location Stream Expiry Mismatch (F21)
+**Status (2026-10-30): ✅ Fixed.** The client no longer defaults to a lease the rules would refuse: it offers 15/30/60 minutes against a `now + 3600000` ceiling, and both invariants (`F21 DESIRED`, `F21 LEASE`) pass in `npm run test:invariants`.
+
 - **Status / Behavior**: The web client transport (`src/lib/liveLocation.ts`) defaults to a 30-minute location lease, whereas Realtime Database rules (`database.rules.json`) enforce an `expires_at_ms` limit capped at 1 hour (`now + 3600000`).
 - **Location**: `src/lib/liveLocation.ts`, `database.rules.json`.
 - **Impact**: Discrepancies between UI countdown and database enforcement, causing premature stream disconnection.
 - **Recommended Fix**: Align client lease duration constants strictly with Realtime Database rule limits.
 
 #### [P2-02] Lack of Physical Hardware Sync & Offline Credential Revocation List
+**Status (2026-10-30): ⚪ Out of scope.** Nothing in this repository can push a revocation to a device that this repository does not program. Unchanged.
+
 - **Status / Behavior**: No mechanism exists to push credential revocation commands to physical ESP32 devices when an Admin revokes access or cancels a booking.
 - **Location**: `lib/services/booking_lifecycle.dart`, `docs/SMART_LOCK.md`.
 - **Impact**: Revoked cards might still unlock doors if the smart lock is offline.
@@ -148,6 +213,8 @@ hacienda-de-luisana/
 ### Low Severity (P3)
 
 #### [P3-01] Deprecated Flutter Method Calls
+**Status (2026-10-30): 🔴 Open — 39 occurrences**, not 61, measured on `lib/` at this commit. Still mechanical, still worth doing only where `flutter analyze` can be re-run to prove nothing broke.
+
 - **Status / Behavior**: 61 occurrences of `withOpacity(...)` in Flutter UI components trigger deprecation warnings in Flutter SDK 3.27+.
 - **Location**: `lib/views/`, `lib/widgets/`, `lib/tutorial/`.
 - **Impact**: Potential future SDK breakage upon Flutter upgrade.
@@ -180,6 +247,14 @@ The original NotebookLM report recommendations were evaluated against the codeba
    - Results: 65 lints (0 errors, 4 warnings for unused fields/imports, 61 informational deprecation warnings).
 3. **Web & Firestore Security Rule Characterization Harness**:
    - Web unit tests, rules mirror, and Phase 0 characterization tests pass in hermetic test mode.
+
+> **Re-stated 2026-10-30.** Items 1–2 above are the auditor's run on a machine with the Flutter
+> SDK; they have **not** been reproduced since, because the environment this reconciliation ran in
+> has no Flutter toolchain and the repository ships no APK. Treat them as reported, not verified.
+> Item 3 was re-run and now has numbers: **1169 web tests**, **330 rules assertions**, **44
+> end-to-end steps**, **51 callable tests**, clean `tsc -b` and a clean `npm run build`. The
+> `DESIRED` invariants remain **18 failed / 13 passed**, unchanged from the baseline this document
+> was written against — those are the audit's own open findings, not new breakage.
 
 ---
 

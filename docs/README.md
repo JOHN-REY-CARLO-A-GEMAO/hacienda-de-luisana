@@ -118,7 +118,8 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 
 ### Tech stack
 
-- Flutter / Dart ≥ 3.2 — `flutter_riverpod` (data streams), `provider` (auth session), `firebase_core`, `firebase_auth`, `cloud_firestore`, `google_sign_in`, `fl_chart`, `google_fonts`, `intl`, `url_launcher`, `flutter_local_notifications`, `shared_preferences`
+- Flutter / Dart ≥ 3.2 — `flutter_riverpod` (data streams), `provider` (auth session), `firebase_core`, `firebase_auth`, `cloud_firestore`, `google_sign_in`, `google_fonts`, `intl`, `url_launcher`, `flutter_local_notifications`, `shared_preferences`
+- **Declared in `pubspec.yaml` but imported nowhere:** `fl_chart` (the Analytics bars are hand-drawn), `firebase_messaging` and `firebase_app_check` (no push, no App Check — see `docs/LIMITATIONS.md`), `cached_network_image`.
 - Theme (`lib/core/theme/app_theme.dart`): forest greens + gold accent, Cinzel / Cormorant Garamond / Inter
 - `firebase_database` — the ephemeral live-location stream, read only by the inbox ([ADR-0013](./adr/0013-live-location-as-a-stream.md), [MESSAGING.md](./MESSAGING.md))
 - Interactive guided tour (`lib/tutorial/`) — first launch + More → "Replay the guided tour"; drives the real screens, see [TUTORIAL.md](./TUTORIAL.md)

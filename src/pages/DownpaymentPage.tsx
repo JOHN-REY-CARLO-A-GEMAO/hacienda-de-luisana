@@ -584,6 +584,15 @@ refund_policy_snapshot: published.refund ?? null,
                   </>
                 )}
               </label>
+              {!proofFile && (
+                <p className="mt-3 text-base text-forest-700">
+                  Gusto munang makita kung ano ang nababasa ng app mula sa screenshot?{' '}
+                  <Link className="text-link" to="/receipt-scan">
+                    Buksan ang receipt reader
+                  </Link>
+                  .
+                </p>
+              )}
               {proofFile && (
                 <button
                   type="button"

@@ -6,6 +6,7 @@
     { "source": "/account", "destination": "/404.html" },
     { "source": "/messages", "destination": "/404.html" },
     { "source": "/book/pay", "destination": "/404.html" },
+    { "source": "/receipt-scan", "destination": "/404.html" },
     { "source": "/booking/status", "destination": "/404.html" },
     { "source": "/review", "destination": "/404.html" },
     { "source": "/admin", "destination": "/404.html" },
