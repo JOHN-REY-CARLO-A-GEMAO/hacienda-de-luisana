@@ -6,7 +6,7 @@ results were; this one is the standing list of things the system does **not** do
 ## Emulator / real Firebase
 
 Rules are verified by **executing their text** with the in-repo evaluator
-(`test/rules/engine.ts`) — 315 assertions as of 2026-10-21, **supplemental** verification. The
+(`test/rules/engine.ts`) — 330 assertions as of 2026-10-30, **supplemental** verification. The
 Firebase Emulator Suite, which is the **canonical** verification, did **not** run
 in this environment: no Java runtime, and the emulator JAR host
 (`storage.googleapis.com`) is unreachable. `test/emulator/rules.emulator.test.ts`
@@ -37,15 +37,19 @@ and of `robots.txt`. See `docs/RECEIPT_OCR_GUIDE.md`.
 
 ## Rate limiting
 
-`src/lib/rateLimit.ts` is **client UX cooldowns** (login, reset, booking, payment, OCR, chat, review, lock command). Firestore rules do not count requests and there are no Cloud Functions or callables, so server-side rate limiting **cannot be enforced in this architecture** without new infrastructure. Firebase Auth's own brute-force protection and Firebase quotas still apply, but they are managed outside this repo and were not tested here. The cooldowns must not be described as security rate limiting.
+`src/lib/rateLimit.ts` is **client UX cooldowns** (login, reset, booking, payment, OCR, chat, review, lock command) and nothing more: reloading the page clears them, so they must not be described as security rate limiting.
+
+Real server-side limiting exists, but **only on the callables**. `functions/src/rateLimit.ts` gives `bookingAvailability`, `submitBooking`, `quoteBooking` and `verifyBookingMoney` a two-tier brake: an in-memory `MinuteBudget` per instance rejects a single-instance flood, then `spendCallableQuota` runs an Admin-SDK Firestore transaction against `callable_rate_limits/{bucketId}` so a caller spread across warm instances cannot multiply the ceiling. Caller keys are SHA-256 hashed with the scope, one document per caller is overwritten in place, and the collection has no rule at all — the default-deny catch-all refuses every client. The ceilings (availability 40/min, submit 8/min by default, quote and verify configurable) live in the callables, and only once `functions/` is deployed.
+
+**What is still outside it:** direct Guest writes that never touch a callable — chat messages, reviews, payment-proof metadata — cannot be rate limited by this design, because Firestore rules do not count requests. Firebase Auth's own brute-force protection and Firebase quotas still apply, but they are managed outside this repo and were not tested here. Deploying the callables is also a separate step this repository does not perform (see `docs/quotes/IMPLEMENTATION.md`), so a build with no functions deployed has no server-side limit at all.
 
 ## Payment references
 
-The `payment_references` catalogue is Admin-only by rule, and `matchPaymentReference` detects a reference already used by another Booking (unit-tested and exercised in the E2E scenario). **No screen consumes it yet** — the Flutter app never queries the collection, so duplicate detection is a contract function plus a rule, not a wired workflow.
+The `payment_references` catalogue is Admin-only by rule, and the Admin app both reads and writes it: `lib/views/payments/payment_refs_screen.dart:102` watches the collection and `:152` adds a row, and the verification panel files the row a proof implies (`lib/services/payment_reference_service.dart`). `matchPaymentReference` detects a reference already used by another Booking (unit-tested and exercised in the E2E scenario). **What is still not automated:** nothing marks a row spent when a payment is verified, so duplicate detection is a check the Admin confirms on the record rather than a state machine the store enforces, and a reference is only refused once a human has looked at it.
 
 ## Terms acceptance
 
-The version is displayed and the checkbox is required by the UI, but acceptance is **not persisted** — no code writes `terms_version` / `terms_accepted_at`, and `recordAcceptance` / `isAcceptanceCurrent` are unused. There is no stored record of which version a Guest accepted.
+Two different acceptances, and only one is stored. **At sign-up it is recorded:** `src/lib/auth/session.ts:246` writes `terms_version` and `terms_accepted_at` into `profiles/{uid}` when the account is created, so the version a Guest signed up under is on the record. **At booking it is not:** the checkbox on `/book` gates the submit and writes nothing, and `recordAcceptance` / `isAcceptanceCurrent` (`src/lib/legal.ts`) remain unused. There is therefore no stored record of the version a Guest accepted for a particular Booking.
 
 ## Pagination
 
@@ -69,6 +73,15 @@ The version is displayed and the checkbox is required by the UI, but acceptance 
 - Hosting caches `**/*.js` and `**/*.css` for a year as `immutable`; Vite's content hashes make that safe. No service worker, no app-shell cache.
 - Firebase Auth persistence (IndexedDB) is the session: ID token (~1h) + refresh token. Standard SDK behaviour, XSS-readable; there is **no CSP header** (a hardening gap). Sign-out clears it.
 - localStorage (`hdl:bookings`, `hdl:activity`, `hdl:rates`, `hdl:chat`, `hdl:chat-images`, `hdl:review:{bookingId}`, local auth store) is the **demo fallback when Firebase is not configured**. No payment credentials, card data or API keys — ever.
+
+## Contact form
+
+There is **no form on `/contact`**. The page carries the Hacienda's published channels — the numbers, the
+address, the anti-scam notice — and a Guest writes or calls. A standalone inquiry form (Turnstile +
+a Cloudflare Worker on the free tier + Resend) was written and never merged; its branch is PR #110,
+closed rather than deployed because the Worker needs a KV namespace and three secrets that do not
+exist yet. The dead `src/components/ContactInquiryForm.tsx` that was imported by nothing but its own
+test was removed on 2026-10-30 so the repository stops implying a form exists.
 
 ## Chat / reviews without Firebase
 

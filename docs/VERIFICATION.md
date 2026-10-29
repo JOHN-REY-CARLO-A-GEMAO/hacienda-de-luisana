@@ -537,7 +537,7 @@ in Git).
 | --- | --- | --- | --- |
 | 1 | Guest registration, roles, no self-promotion | ⚠️ Partial | steps 1–4 executed (local adapter); Firebase Auth path unexecuted |
 | 2 | Booking lifecycle with logged transitions | ⚠️ Partial | executed locally: Pending → review → Payment Pending → Reserved → Staying → Completed, 11 entries; cloud writes unexecuted |
-| 3 | Terms accepted and recorded | ⚠️ Partial | versioning helpers verified; acceptance not persisted |
+| 3 | Terms accepted and recorded | ⚠️ Partial | sign-up records `terms_version` + `terms_accepted_at` on `profiles/{uid}` (`src/lib/auth/session.ts:246`); the `/book` checkbox still writes nothing, and `recordAcceptance` / `isAcceptanceCurrent` are unused |
 | 4 | Payment submission and verification | ⚠️ Partial | steps 14–17, 20, 21; §3.3 #1, #2 and the two audit extras fixed and regression-tested; rules still supplemental-only, not emulator-verified |
 | 5 | OCR integration | ⚠️ Partial | Guest side: tesseract.js in the browser at upload (2026-09-27), with `/receipt-scan` showing what the extraction reads. Admin side: ML Kit on-device read of the proof, pure-Dart parsing, pre-filled Payment Reference with review/correction (2026-10-29, ADR-0023). Parser and decision rules unit-tested; the recognizer itself needs a device, so it is unexecuted here |
 | 6 | OCR can never auto-verify payment | ✅ Verified | `canAutoVerifyFromOcr() === false`, asserted in `npm test` and step 16 |
