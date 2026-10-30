@@ -88,12 +88,15 @@
       </style>
     </noscript>
     <div id="root"></div>
-    <!-- Cloudflare Turnstile — loads only when a site key is configured in .env.local -->
-    <script
-      defer
-      src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-      data-site-key=""
-    ></script>
+    <!--
+      Cloudflare Turnstile, in explicit mode: this script only defines
+      window.turnstile — it draws nothing on its own. The auth forms render a
+      widget themselves, and only when VITE_CLOUDFLARE_TURNSTILE_SITE_KEY is set
+      (src/lib/turnstile.ts). Loading it here, deferred, means it is usually
+      already waiting by the time a Guest opens a form; the forms wait for it if
+      it is not.
+    -->
+    <script defer src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"></script>
 
     <script type="module" src="/src/main.tsx"></script>
   </body>
