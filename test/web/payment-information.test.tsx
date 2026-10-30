@@ -109,6 +109,12 @@ describe('payment information configuration', () => {
     expect(host.textContent).not.toContain('005438013682')
   })
 
+  it('does not give GCash instructions for another payment method', () => {
+    const host = render({ active: true, methods: [{ method: 'Maya', recipient_name: 'Hacienda', qr_image: '/qr.png' }], instructions: 'Keep the receipt.' })
+    expect(host.textContent).toContain('Use a compatible payment app')
+    expect(host.textContent).not.toContain('In GCash, tap Scan QR')
+  })
+
   it('fills in the official QR codes for an older published document that names GCash and BDO', () => {
     // What `site_config/payment` looked like before the owner supplied QR
     // codes: GCash and BDO with account numbers and no images.

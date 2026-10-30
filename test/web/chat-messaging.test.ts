@@ -154,6 +154,21 @@ describe('reading a thread a page at a time', () => {
     expect(seen.at(-1)).toBe('m0499')
   })
 
+  it('does not skip messages sharing the same timestamp across pages', async () => {
+    const at = '2026-10-01T12:00:00.000Z'
+    localStorage.setItem('hdl:chat', JSON.stringify(Array.from({ length: 85 }, (_, i) => ({ id: `tie-${String(i).padStart(3, '0')}`, at, text: 'same time', sender_uid: 'u1' }))))
+    const seen: string[] = []
+    let before: MessageCursor | null = null
+    for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+      const page = await loadMessagePage({ convoId: 'local:u1', uid: 'u1', before, pageSize: 20 })
+      seen.push(...page.messages.map((message) => message.id))
+      before = page.cursor
+      if (!page.hasMore) break
+    }
+    expect(seen).toHaveLength(85)
+    expect(new Set(seen).size).toBe(85)
+  })
+
   it('refuses a page larger than the cap, however it is asked for', async () => {
     seedLocal(500)
     const page = await loadMessagePage({ convoId: 'local:u1', uid: 'u1', pageSize: 10_000 })

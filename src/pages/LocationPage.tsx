@@ -16,22 +16,26 @@ export function LocationPage() {
   return (
     <PageShell
       eyebrow="Location"
-      title="Getting to the Hacienda"
+      title="Location & arrival"
+      darkMode
       lead={
         <p>
-          Luisiana–Lucban Road, Brgy. San Isidro, Luisiana, Laguna — with the landmarks and both
-          standard routes below, and no travel time quoted, because the Hacienda has not measured one.
+          Find the Hacienda along the Luisiana–Lucban Road in Brgy. San Isidro, Luisiana, Laguna.
+          Explore the map, local landmarks and arrival routes below.
         </p>
       }
       cta={
-        <a
-          href={BUSINESS.contact.directions}
-          target="_blank"
-          rel="noreferrer"
-          className="btn-primary shrink-0"
-        >
-          Get Directions
-        </a>
+        <div className="shrink-0">
+          <a
+            href={BUSINESS.contact.directions}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-primary"
+          >
+            Get Directions
+          </a>
+          <p className="mt-2 text-xs text-forest-700 dark:text-cream-100/75">Opens Google Maps in a new tab.</p>
+        </div>
       }
     >
       <Location />

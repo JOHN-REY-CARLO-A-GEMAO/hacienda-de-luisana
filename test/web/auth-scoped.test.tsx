@@ -44,7 +44,7 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
   }
 }
 
-const BOOK_MARKER = 'SCOPED-BOOK-LANDED'
+const ACCOUNT_MARKER = 'SCOPED-ACCOUNT-LANDED'
 
 const mounted: Root[] = []
 
@@ -59,7 +59,7 @@ function renderAt(path: string, value: AuthContextType): { text: () => string; h
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/guest/auth" element={<GuestAuthPage />} />
-            <Route path="/book" element={<div>{BOOK_MARKER}</div>} />
+            <Route path="/mybookings" element={<div>{ACCOUNT_MARKER}</div>} />
           </Routes>
         </MemoryRouter>
       </AuthContext.Provider>,
@@ -91,10 +91,10 @@ describe('/guest/auth', () => {
     expect(page.text()).toContain('Continue with Google')
   })
 
-  it('sends a signed-in Guest straight to booking', () => {
+  it('sends a signed-in Guest to their account', () => {
     const page = renderAt('/guest/auth', session({ role: 'guest' }))
 
-    expect(page.text()).toContain(BOOK_MARKER)
+    expect(page.text()).toContain(ACCOUNT_MARKER)
     expect(page.text()).not.toContain('Sign in as Guest')
   })
 

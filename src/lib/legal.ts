@@ -1,4 +1,6 @@
-export const LEGAL_VERSION = '2026-09-27'
+import { MAX_STAY_NIGHTS } from './booking/availability'
+
+export const LEGAL_VERSION = '2026-10-30'
 
 export type LegalSection = {
   id: string
@@ -30,7 +32,7 @@ export const TERMS: LegalSection[] = [
     id: 'booking-rules',
     title: 'Booking rules',
     body: [
-      'Check-in cannot be in the past. Check-out must be after check-in. Stays are 1–30 nights.',
+      `Check-in cannot be in the past. Check-out must be after check-in. Stays are 1–${MAX_STAY_NIGHTS} nights.`,
       'Availability is checked before you submit and re-checked when the Admin approves. A held date is not a confirmed reservation.',
       'A date hold lasts 24 hours while the booking waits for review. If it expires, the dates are released.',
       'Only one active booking identity is attached at creation; it cannot be claimed later by another account.',
@@ -50,7 +52,7 @@ export const TERMS: LegalSection[] = [
     id: 'payment',
     title: 'Payment instructions',
     body: [
-      'Pay the downpayment only through the Hacienda’s official phone, email, or Facebook page shown on the payment step — never to a third party claiming to be staff.',
+      'Pay the downpayment using the official payment methods shown on the payment step. Verify payment details with the Hacienda’s official contact channels; never pay a third party claiming to be staff.',
       'A screenshot of the transfer is required before the booking can be submitted.',
       'Upload a clear photo of the receipt. OCR may suggest a reference and amount; you must confirm or correct it.',
       'OCR is not a decision. The booking stays Pending until an Admin approves or rejects the screenshot.',

@@ -52,6 +52,10 @@ export function DownpaymentPage() {
   const paymentInformation = usePaymentInformation()
   const fileInput = useRef<HTMLInputElement>(null)
   const submittingRef = useRef(false)
+  // A late OCR result must never describe a removed or replacement screenshot.
+  const scanGeneration = useRef(0)
+  const amountEdited = useRef(false)
+  const [scanning, setScanning] = useState(false)
 
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -118,7 +122,7 @@ export function DownpaymentPage() {
         replace: true,
         state: {
           notice:
-            'Your booking session has ended, so your details were cleared. Please enter your stay details again — nothing was submitted or charged.',
+            'Your booking session has ended, so your details were cleared. Please enter your stay details again. If you already sent payment, keep your receipt and contact the Hacienda for help.',
         },
       })
     } else if (!accommodation) {
@@ -126,7 +130,7 @@ export function DownpaymentPage() {
         replace: true,
         state: {
           notice:
-            'That accommodation is no longer valid for booking. Please choose an available accommodation and try again — nothing was submitted or charged.',
+            'That accommodation is no longer valid for booking. Please choose an available accommodation. If you already sent payment, keep your receipt and contact the Hacienda for help.',
         },
       })
     }
@@ -150,13 +154,20 @@ export function DownpaymentPage() {
     return () => URL.revokeObjectURL(url)
   }, [proofFile])
 
+  useEffect(() => () => { scanGeneration.current += 1 }, [])
+
   if (!draft) return null
 
   const onFile = async (file: File | null) => {
+    const scan = ++scanGeneration.current
+    setScanning(false)
+    amountEdited.current = false
     setError('')
     setOcrNote('')
     setAmountCandidates([])
     setClaimOffReceipt(false)
+    setReference('')
+    setAmount(dueNow === null ? '' : String(dueNow))
     if (!file) {
       setProofFile(null)
       return
@@ -169,9 +180,11 @@ export function DownpaymentPage() {
       return
     }
     setProofFile(file)
+    setScanning(true)
     try {
       const fields = await runReceiptOcr(file)
-      if (fields.reference && !reference) setReference(fields.reference)
+      if (scan !== scanGeneration.current) return
+      if (fields.reference) setReference((current) => current || fields.reference)
       // Every distinct figure the screenshot prints, kept so a receipt whose
       // `Amount` and `Total Amount Sent` disagree asks the Guest which one they
       // sent. Without this the field sits on the published `dueNow` whatever the
@@ -180,10 +193,10 @@ export function DownpaymentPage() {
       // pre-filled field agrees with itself and nothing catches it.
       const candidates = fields.amounts
       setAmountCandidates(candidates)
-      if (candidates.length === 1) {
+      if (!amountEdited.current && candidates.length === 1) {
         // One unambiguous figure: trust it over a pre-filled amount.
         setAmount(candidates[0].value)
-      } else if (candidates.length > 1 && dueNow !== null) {
+      } else if (!amountEdited.current && candidates.length > 1 && dueNow !== null) {
         const suggestion = suggestedAmount(candidates, dueNow)
         if (suggestion) setAmount(suggestion.value)
       }
@@ -199,13 +212,16 @@ export function DownpaymentPage() {
       setOcrNote(notes.join(' '))
     } catch {
       // OCR is a convenience. The screenshot itself is what the Admin reviews.
+      if (scan === scanGeneration.current) setOcrNote('Could not read this screenshot automatically. Please enter the amount and reference yourself.')
+    } finally {
+      if (scan === scanGeneration.current) setScanning(false)
     }
   }
 
   const submit = async () => {
     // The ref closes the small gap before React paints `disabled`; a second tap
     // must not upload the same proof or create a second Booking.
-    if (submittingRef.current) return
+    if (submittingRef.current || scanning) return
     submittingRef.current = true
     setBusy(true)
     setError('')
@@ -270,13 +286,21 @@ export function DownpaymentPage() {
         setError(limited.message)
         return
       }
-      const availability = await cloudBookingsDB.checkAvailability({
-        accommodation: draft.accommodation,
-        check_in: draft.check_in,
-        check_out: draft.check_out,
-      })
+      let availability
+      try {
+        availability = await cloudBookingsDB.checkAvailability({
+          accommodation: draft.accommodation,
+          check_in: draft.check_in,
+          check_out: draft.check_out,
+        })
+      } catch {
+        setError('Availability could not be checked. Your booking was not submitted. Please retry; if you have already paid, keep your receipt and contact the Hacienda for assistance.')
+        return
+      }
       if (!availability.available) {
-        setError('Those dates were just held by another booking. Go back and choose different dates.')
+        setError(availability.blockingState === 'unknown'
+          ? 'Availability could not be checked. Your booking was not submitted. Please retry; if you have already paid, keep your receipt and contact the Hacienda for assistance.'
+          : 'Those dates are no longer available. Your booking was not submitted. If you have already paid, keep your receipt and contact the Hacienda for assistance before choosing other dates.')
         return
       }
       const uid = (await ensureGuestUid()) ?? undefined
@@ -288,8 +312,7 @@ export function DownpaymentPage() {
       // localStorage and is untouched.
       if (cloudBookingsDB.isCloud && !uid) {
         setError(
-          'We could not attach this booking to you, so the booking was not sent. Nothing was saved or ' +
-            'charged and your screenshot is still here — please sign in again and resend it.',
+          'We could not attach this booking to you, so the booking was not sent. No booking was saved and your screenshot is still here. Retry or contact the Hacienda; if you already paid, keep your receipt.',
         )
         return
       }
@@ -471,7 +494,7 @@ refund_policy_snapshot: published.refund ?? null,
   }
 
   return (
-    <Page className="relative">
+    <Page className="booking-page relative dark:bg-forest-950 dark:text-cream-50">
       <Container width="wide" className="relative">
         <PageHeader
           eyebrow="Hakbang 5–6 sa 7 · Bayad at pagsusumite"
@@ -487,18 +510,27 @@ refund_policy_snapshot: published.refund ?? null,
           aside={<FlowSteps current={4} completedThrough={3} />}
         />
 
+        <Alert tone="warning" role="status" className="mt-6 max-w-4xl">
+          <strong>Dates are not held yet.</strong> Availability may change before you submit your proof;
+          payment alone does not reserve a stay. If you have already paid and cannot submit, keep your
+          receipt and contact the Hacienda through its official channels for help. Do not pay again.
+        </Alert>
         <div className="mt-10 grid lg:grid-cols-3 gap-8 lg:gap-10">
           <section className="lg:col-span-2 space-y-6">
             {error && <Alert tone="danger">{error}</Alert>}
 
-            <div className="card p-6 sm:p-8">
+            <div className="booking-light-surface card p-6 sm:p-8">
               <h2 className="h2">Paano Magbayad</h2>
               <p className="mt-3 text-base text-forest-800 leading-relaxed">
                 Gamitin lamang ang QR code o account na inilathala ng Admin. Huwag magpadala sa ibang tao at
                 huwag ibahagi ang password, PIN, o one-time code.
               </p>
               <div className="mt-5">
-                <PaymentInformationPanel payment={paymentInformation} requiredAmount={dueNow ?? undefined} />
+                {dueNow !== null ? (
+                  <PaymentInformationPanel payment={paymentInformation} requiredAmount={dueNow} />
+                ) : (
+                  <Alert tone="warning" role="status">The published rate is not available yet. Do not send payment; online submission requires an applicable published rate.</Alert>
+                )}
               </div>
               <div className="mt-5">
                 <OfficialChannelsNotice />
@@ -506,7 +538,7 @@ refund_policy_snapshot: published.refund ?? null,
               <div className="mt-5 rounded-2xl bg-forest-900 p-5 text-cream-50 sm:p-6">
                 <h3 className="font-serif text-2xl">Buod ng Bayad</h3>
                 <p className="mt-1 text-base text-cream-100/85">
-                  {selectedOption ? (paymentPlan === 'down-payment' ? '50% downpayment' : 'Full payment') : 'Presyo ay kumpirmahin'} · {nights} {nights === 1 ? 'night' : 'nights'}
+                  {selectedOption ? (paymentPlan === 'down-payment' ? '50% downpayment' : 'Full payment') : 'Published rate unavailable'} · {nights} {nights === 1 ? 'night' : 'nights'}
                 </p>
                 <dl className="mt-5 space-y-4">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
@@ -515,7 +547,7 @@ refund_policy_snapshot: published.refund ?? null,
                   </div>
                   <div className="border-t border-cream-100/20 pt-4">
                     <dt className="text-base font-semibold text-cream-50">Babayaran Ngayon (Downpayment due now)</dt>
-                    <dd className="guest-num mt-1 text-4xl font-semibold sm:text-5xl">{dueNow === null ? 'Kumpirmahin sa Hacienda' : peso(dueNow)}</dd>
+                    <dd className="guest-num mt-1 text-4xl font-semibold sm:text-5xl">{dueNow === null ? 'Hindi available' : peso(dueNow)}</dd>
                   </div>
                   {stayTotal !== null && dueNow !== null && selectedOption && selectedOption.balance > 0 && (
                     <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-t border-cream-100/20 pt-4">
@@ -545,20 +577,21 @@ refund_policy_snapshot: published.refund ?? null,
                   </p>
                 ) : (
                   <p className="mt-5 text-base leading-relaxed text-cream-100/90">
-                    Walang published na exact amount para sa stay na ito. Huwag magpadala hangga’t hindi
-                    nakukumpirma ng Hacienda ang halaga sa opisyal na channel.
+                    Hindi available ang published rate para sa stay na ito. Huwag magpadala: hindi
+                    maisusumite online ang booking hangga’t walang applicable published rate. Bumalik sa
+                    detalye o makipag-ugnayan sa Hacienda sa opisyal na channel.
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="card p-6 sm:p-8" data-tour="payment-proof">
+            <fieldset disabled={busy} className="booking-light-surface card min-w-0 p-6 sm:p-8" data-tour="payment-proof">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="h2">Patunay ng Bayad</h2>
                 <RequestBadge status="required" label="Kailangan" />
               </div>
               <p className="mt-2 text-base leading-relaxed text-forest-700">
-                Larawan ng GCash, Maya, o bank receipt. JPG, PNG, o WEBP, at hindi lalampas sa 5 MB.
+                Larawan ng GCash, Maya, o bank receipt. Image file na mas maliit sa 5 MB.
                 Dapat mabasa ang halaga at reference bago ipadala.
               </p>
 
@@ -584,21 +617,17 @@ refund_policy_snapshot: published.refund ?? null,
                   </>
                 )}
               </label>
-              {!proofFile && (
-                <p className="mt-3 text-base text-forest-700">
-                  Gusto munang makita kung ano ang nababasa ng app mula sa screenshot?{' '}
-                  <Link className="text-link" to="/receipt-scan">
-                    Buksan ang receipt reader
-                  </Link>
-                  .
-                </p>
-              )}
               {proofFile && (
                 <button
                   type="button"
                   className="mt-3 inline-flex min-h-11 items-center px-2 text-base text-forest-700 underline underline-offset-2"
                   onClick={() => {
+                    scanGeneration.current += 1
+                    setScanning(false)
+                    amountEdited.current = false
                     setProofFile(null)
+                    setOcrNote('')
+                    setReference('')
                     setAmountCandidates([])
                     setClaimOffReceipt(false)
                     // The figure that was read off this screenshot has no evidence
@@ -611,7 +640,17 @@ refund_policy_snapshot: published.refund ?? null,
                   Remove screenshot · Alisin
                 </button>
               )}
-              {ocrNote && <p className="mt-3 text-base text-forest-700/70">{ocrNote}</p>}
+              {scanning && (
+                <p className="mt-3 text-base text-forest-700" role="status">
+                  Reading the screenshot… You can{' '}
+                  <button type="button" className="underline" onClick={() => {
+                    scanGeneration.current += 1
+                    setScanning(false)
+                    setOcrNote('Automatic reading skipped. Enter the amount and reference from your receipt.')
+                  }}>enter details manually</button> instead.
+                </p>
+              )}
+              {ocrNote && <p className="mt-3 text-base text-forest-700/70" role="status">{ocrNote}</p>}
 
               {/* Two or more figures on one screenshot is a question, not a detail.
                   A GCash Express Send prints `Amount` (what the recipient receives)
@@ -630,7 +669,7 @@ refund_policy_snapshot: published.refund ?? null,
                           name="screenshot-amount"
                           className="h-5 w-5 shrink-0"
                           checked={amount === candidate.value}
-                          onChange={() => setAmount(candidate.value)}
+                          onChange={() => { amountEdited.current = true; setAmount(candidate.value) }}
                         />
                         <span className="font-medium">
                           ₱{Number(candidate.value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -653,7 +692,7 @@ refund_policy_snapshot: published.refund ?? null,
                     spellCheck={false}
                     value={amount}
                     placeholder="0.00"
-                    onChange={(event) => setAmount(event.target.value)}
+                    onChange={(event) => { amountEdited.current = true; setAmount(event.target.value) }}
                   />
                 </Field>
                 <Field label="Reference Number" hint="Optional, pero mabilisang masusuri kung mayroon.">
@@ -687,7 +726,7 @@ refund_policy_snapshot: published.refund ?? null,
                           key={candidate.value}
                           type="button"
                           className="text-base text-red-700 underline underline-offset-2"
-                          onClick={() => setAmount(candidate.value)}
+                          onClick={() => { amountEdited.current = true; setAmount(candidate.value) }}
                         >
                           Use {peso(Number(candidate.value))} ({candidate.label})
                         </button>
@@ -723,10 +762,10 @@ refund_policy_snapshot: published.refund ?? null,
                 <button
                   type="button"
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={busy || !proofFile}
+                  disabled={busy || scanning || !proofFile}
                   onClick={() => void submit()}
                 >
-                  {busy ? 'Submitting… · Ipinapasa…' : 'Submit booking · Ipadala'}
+                  {busy ? 'Submitting… · Ipinapasa…' : scanning ? 'Reading screenshot…' : 'Submit booking · Ipadala'}
                   {!busy && <ArrowRight size={20} />}
                 </button>
                 <Link
@@ -745,7 +784,7 @@ refund_policy_snapshot: published.refund ?? null,
                   <>Ang pagpasa ay gagawa ng <strong>Pending</strong> booking. Hindi pa ito kumpirmado hangga’t hindi ina-aprubahan ng Admin ang patunay at detalye. Kapag bumalik sa detalye, mananatili ang iyong isinulat.</>
                 )}
               </p>
-            </div>
+            </fieldset>
           </section>
 
           <StaySummary draft={draft} accommodationName={accommodation?.name} image={accommodation?.images[0]} nights={nights} addonLines={addonLines} />
@@ -770,7 +809,7 @@ function StaySummary({
 }) {
   return (
     <aside className="lg:sticky lg:top-28 self-start">
-      <div className="rounded-[28px] overflow-hidden border border-forest-900/5 shadow-depth bg-white">
+      <div className="booking-light-surface rounded-[28px] overflow-hidden border border-forest-900/5 shadow-depth bg-white">
         <div className="relative">
           <SmartImage src={image || '/images/gmaps/img-07.jpg'} alt={accommodationName || 'Hacienda'} className="w-full h-44 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-forest-950/75 to-transparent" />

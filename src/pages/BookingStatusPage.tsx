@@ -202,7 +202,7 @@ export function BookingStatusPage() {
       return { to: '/location', label: 'Tingnan ang Direksyon' }
     }
     if (['Payment Pending', 'Payment Verified'].includes(status)) {
-      return { to: '/account', label: 'Tingnan ang Aking Bookings' }
+      return { to: '/mybookings', label: 'Tingnan ang Aking Bookings' }
     }
     return null
   })()
@@ -220,7 +220,7 @@ export function BookingStatusPage() {
               <button type="button" className="btn-primary mt-6" onClick={() => void load(idFromUrl)}>
                 Subukan Muli
               </button>
-              <Link to="/account" className="btn-ghost mt-3 sm:ml-3">Buksan ang Aking Bookings</Link>
+              <Link to="/mybookings" className="btn-ghost mt-3 sm:ml-3">Buksan ang Aking Bookings</Link>
             </div>
           ) : booking ? (
             <>
@@ -332,8 +332,8 @@ export function BookingStatusPage() {
                     Mag-message sa Hacienda
                   </a>
                 )}
-                {primaryAction?.to !== '/account' && (
-                  <Link to="/account" className="btn-quiet">Aking Bookings</Link>
+                {primaryAction?.to !== '/mybookings' && (
+                  <Link to="/mybookings" className="btn-quiet">Aking Bookings</Link>
                 )}
                 {primaryAction?.to !== '/book' && (
                   <Link to="/book" className="btn-ghost">Mag-book ng Panibagong Stay</Link>

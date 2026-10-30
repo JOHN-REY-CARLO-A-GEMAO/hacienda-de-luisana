@@ -100,7 +100,7 @@ export type SessionStore = {
   loginWithGoogle(): Promise<SessionUser>
   logout(): Promise<void>
   resetPassword(email: string): Promise<void>
-  /** Re-read the signed-in person's Profile, in case its role changed elsewhere. */
+  /** Re-read the current identity and Profile, in case either changed. */
   refresh(): Promise<void>
 }
 
@@ -294,10 +294,14 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
 
     refresh: () =>
       guard(async () => {
-        const user = state.user
-        if (!user) return
+        const previous = state.user
+        const current = auth.current()
+        // Never resurrect a signed-out or different identity during a refresh.
+        // The provider listener owns changes of person; refresh only updates the
+        // same UID (including after an anonymous account is linked).
+        if (!previous || !current || previous.uid !== current.uid) return
         generation += 1
-        await loadProfile(user, generation)
+        await loadProfile(current, generation)
       }),
   }
 }

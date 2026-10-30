@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MIN_PASSWORD_LENGTH, describeAuthError } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
@@ -70,6 +70,8 @@ export function RegisterForm({
   onSuggestLogin,
 }: RegisterFormProps) {
   const { register } = useAuth()
+  const emailId = useId()
+  const passwordId = useId()
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [firstName, setFirstName] = useState('')
@@ -216,7 +218,7 @@ export function RegisterForm({
         type="button"
         onClick={onClear}
         aria-label={label}
-        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900"
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900 dark:bg-cream-100/10 dark:text-cream-100 dark:hover:bg-cream-100/20"
       >
         Clear
       </button>
@@ -226,7 +228,7 @@ export function RegisterForm({
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
       {/* One group heading per question the form asks, not per field. */}
       <fieldset className="space-y-4">
-        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
           Your name
         </legend>
 
@@ -271,9 +273,9 @@ export function RegisterForm({
         </Field>
 
         {composeFullName({ first: firstName, middle: middleName, last: lastName }) && (
-          <p className="text-[11px] text-forest-600">
+          <p className="text-[11px] text-forest-600 dark:text-sage-400">
             Your name will appear as:{' '}
-            <strong className="font-semibold text-forest-800">
+            <strong className="font-semibold text-forest-800 dark:text-cream-100">
               {composeFullName({ first: firstName, middle: middleName, last: lastName })}
             </strong>
           </p>
@@ -281,13 +283,15 @@ export function RegisterForm({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
           How the Hacienda reaches you
         </legend>
 
-        <Field label="Email" required error={fieldErrors.email}>
+        <Field label="Email" required error={fieldErrors.email} controlId={emailId}>
           <div className="relative">
             <Input
+              id={emailId}
+              aria-describedby={fieldErrors.email ? `${emailId}-message` : undefined}
               className="pr-16"
               type="email"
               placeholder="you@email.com"
@@ -336,13 +340,14 @@ export function RegisterForm({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
           Securing your account
         </legend>
 
         <Field
           label="Password"
           required
+          controlId={passwordId}
           error={fieldErrors.password}
           hint={
             <span
@@ -356,6 +361,8 @@ export function RegisterForm({
         >
           <div className="relative">
             <Input
+              id={passwordId}
+              aria-describedby={`${passwordId}-message`}
               className="pr-32"
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
@@ -373,7 +380,7 @@ export function RegisterForm({
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
                 aria-pressed={showPassword}
-                className="rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900"
+                className="rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900 dark:bg-cream-100/10 dark:text-cream-100 dark:hover:bg-cream-100/20"
               >
                 {showPassword ? 'Hide' : 'Show'}
               </button>
@@ -385,7 +392,7 @@ export function RegisterForm({
                     setFieldErrors((current) => ({ ...current, password: undefined }))
                   }}
                   aria-label="Clear password"
-                  className="rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900"
+                  className="rounded-md bg-forest-900/5 px-2 py-1 text-xs font-medium text-forest-600 transition hover:bg-forest-900/10 hover:text-forest-900 dark:bg-cream-100/10 dark:text-cream-100 dark:hover:bg-cream-100/20"
                 >
                   Clear
                 </button>
@@ -408,7 +415,7 @@ export function RegisterForm({
       </fieldset>
 
       <div className="space-y-3">
-        <CheckboxRow checked={acceptTerms} onChange={(checked) => edit('acceptTerms', () => setAcceptTerms(checked))}>
+        <CheckboxRow className="dark:text-cream-100" checked={acceptTerms} onChange={(checked) => edit('acceptTerms', () => setAcceptTerms(checked))}>
           I have read and accept the{' '}
           <Link to="/legal" className="text-link">
             Terms and Conditions

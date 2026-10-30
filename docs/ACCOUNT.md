@@ -1,4 +1,4 @@
-# `/account` — the guest book
+# `/mybookings` — the guest book
 
 **Scope:** the Guest's own page on the website (`src/pages/AccountPage.tsx` and
 `src/components/Account/`).
@@ -11,7 +11,7 @@ history of why each decision was made.
 
 ## 1. What the page is for
 
-A Guest does not return to `/account` to be reminded what the house looks like. They
+A Guest does not return to `/mybookings` to be reminded what the house looks like. They
 come back to answer one question — *when am I going, and is it confirmed?* — and,
 second, to reach a person at the Hacienda. Everything on the page is judged against
 that:
@@ -48,7 +48,7 @@ Colour (defined once, scoped to `.ledger-ground` in `src/styles.css`):
 | `--ledger-ink` | `#15241B` | `#F5F1E8` | names, figures, the loud line |
 | `--ledger-soft` | `#4E5E4F` | cream at 78% | facts, sentences |
 | `--ledger-meta` | `#6F7B65` | cream at 58% | references, marginalia |
-| `--ledger-brass` | `#B89A64` | `#DDC497` | the margin rule, night marks, the selected tab |
+| `--ledger-brass` | `#B89A64` | `#DDC497` | the margin rule, night marks, section accents |
 
 Brass is spent three times and no more. The forest, cream and brass family is the
 estate's own identity — the same palette the sign at the gate and the site's own
@@ -60,7 +60,7 @@ Type:
 
 | Face | Role |
 | --- | --- |
-| Cormorant Garamond | the date range, place names, italics of marginalia (tabs, block titles, the summary line, the greeting) |
+| Cormorant Garamond | the date range, place names, italics of marginalia (block titles, the summary line, the greeting) |
 | Inter | facts, sentences, controls, anything a Guest has to read precisely |
 
 Scale: `3.35 / 2.85 / 2.2 / 1.8 / 1.5 / 1.15 / 1.0625 / 0.9375 / 0.8125 / 0.75 / 0.6875 rem`.
@@ -79,7 +79,7 @@ Layout:
 │                          [Notifications]  [Book a stay]    │
 └────────────────────────────────────────────────────────────┘
 ┌ the sheet ──────────────────────────┬ the flyleaf ─────────┐
-│ My bookings 4    My profile         │ ┌ bookplate ───────┐ │
+│ My bookings                         │ ┌ bookplate ───────┐ │
 ├─────────────────────────────────────│ │ This book …      │ │
 │ [Search] [Status ▾] [Order ▾]       │ │ Ana L. Reyes     │ │
 │                                     │ │ ana@example.com  │ │
@@ -125,7 +125,7 @@ except a button's own label.
 | The three stat tiles (`StatCard`) | Three identical tiles are a dashboard. The same counts are one italic line at the foot of the book. |
 | The rail's "Next stay" panel | A second copy of the opener, 200px below it. |
 | The always-open stage track and Activity log | What a Guest opens when something is disputed, not what they need on every visit — now one `<details>` per entry. |
-| `Tabs` (segmented pill), `BookingFolio`, `AccountRail`, `StatCard` | Nothing else rendered them; each was replaced by the sheet, `StayEntry`, `Flyleaf` and `LedgerTabs`. |
+| `Tabs` (segmented pill), `BookingFolio`, `AccountRail`, `StatCard` | Nothing else rendered them; each was replaced by the sheet, `StayEntry`, `Flyleaf` and the guest-book sheet. |
 | ALL-CAPS tracked eyebrows inside the page | They made every label shout at the same volume. Entry titles, block titles and labels are sentence case, and the mise-en-page carries the hierarchy. |
 
 The one label the page keeps (`Your stay · Guest`) is pinned by
@@ -134,15 +134,14 @@ The one label the page keeps (`Your stay · Guest`) is pinned by
 
 ## 6. Interaction and accessibility
 
-- **Tabs** are a real `tablist`: arrow keys, Home and End, `aria-selected`, roving
-  `tabIndex`, `aria-controls` on every tab and a `role="tabpanel"` that points back
-  with `aria-labelledby`. The selected tab is marked by a brass underline *and* its
-  ink weight, never by colour alone. The choice is written back to `?tab=`, so the
-  back button and a shared link land on the leaf that was open.
+- **Separate pages:** `/mybookings` shows bookings and `/profile` holds the
+  editable profile. Both are Guest-protected and reachable from the account menu.
+  Notifications open at `/mybookings?tab=notifications`. The old `/account` routes
+  have been removed.
 - **The record** is a native `<details>`, so it opens from the keyboard, is announced
   as a disclosure, and still works when the script that drew the page never runs.
 - **The focus ring** comes from the shared `btn` / `.field` tokens and the brass
-  outline on the tabs and the fold.
+  outline on the fold.
 - **Motion** is one entrance on the opener (`guest-rise`), and it is off under
   `prefers-reduced-motion`.
 - **Contrast**: ink on leaf, soft on leaf and brass on leaf all clear 4.5:1 at the
@@ -159,7 +158,7 @@ The one label the page keeps (`Your stay · Guest`) is pinned by
 | `components/Account/StayMasthead.tsx` | The opener: photograph, dates, status, actions. |
 | `components/Account/StayEntry.tsx` | One entry as a ledger row: date margin, facts, money, actions, folded record. |
 | `components/Account/StatusTrack.tsx` | The five stages, drawn inside the folded record only. |
-| `components/Account/LedgerTabs.tsx` | The index tabs and their keyboard contract. |
+| `pages/ProfilePage.tsx` | The separate Guest profile form. |
 | `components/Account/Flyleaf.tsx` | The bookplate and the way to a person. |
 | `components/Account/stayFacts.ts` | Every reading a Booking needs on this page — dates, nights, pesos, stages. |
 | `components/Auth/ProtectedRoute.tsx` | The one strip that says a build has no Firebase; it clears the fixed bar itself. |

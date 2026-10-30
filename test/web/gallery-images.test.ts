@@ -67,6 +67,11 @@ describe('gallery imagery', () => {
     }
   })
 
+  it('includes the Annex photograph and its filter', () => {
+    expect(GALLERY.some((g) => g.category === 'Annex' && g.url === '/images/gmaps/annex_night_lit.jpg')).toBe(true)
+    expect(TABS).toContain('Annex')
+  })
+
   it('offers no filter tab that holds nothing', () => {
     // Every tab in the row must lead somewhere. A category is offered only
     // while GALLERY holds a photo for it, so a dead filter cannot be shipped —

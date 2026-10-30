@@ -61,7 +61,7 @@ export type AuthContextType = {
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
-  /** Re-read the signed-in person's Profile. */
+  /** Re-read the current identity and its Profile. */
   refresh: () => Promise<void>
 }
 

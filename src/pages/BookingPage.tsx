@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { cloudBookingsDB } from '../lib/firestoreBookings'
-import { loadBookingDraft, saveBookingDraft } from '../lib/bookingDraft'
+import { loadBookingDraft, loadBookingProgress, saveBookingDraft, saveBookingProgress } from '../lib/bookingDraft'
 import { formatStayDate } from '../lib/formatDate'
 import { FlowSteps } from '../components/Booking/FlowSteps'
 import { AvailabilityCalendar } from '../components/Booking/AvailabilityCalendar'
@@ -71,7 +71,7 @@ export function BookingPage() {
   // Returning from payment must not erase the stay or contact details. The
   // draft remains session-only and is still submitted through the same fresh
   // availability, rate and server checks below.
-  const restoredDraft = useMemo(() => loadBookingDraft(), [])
+  const restoredDraft = useMemo(() => loadBookingDraft() ?? loadBookingProgress(), [])
   const requestedAccommodation = params.get('accommodation')
   // A link for a different property starts that property's stay rather than
   // silently combining it with an older draft. The payment page's Back link
@@ -108,6 +108,7 @@ export function BookingPage() {
     heldBy: number
     blockingState?: 'pending' | 'booked' | 'unknown'
   } | null>(null)
+  const [availabilityRetry, setAvailabilityRetry] = useState(0)
   const [calendarState, setCalendarState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [calendarNotice, setCalendarNotice] = useState('')
   const [acceptedTerms, setAcceptedTerms] = useState(false)
@@ -154,9 +155,8 @@ export function BookingPage() {
     return Math.max(0, Math.round((b - a) / (1000 * 60 * 60 * 24)))
   }, [form.check_in, form.check_out])
 
-  // The estimate uses the Admin's Published rates when they exist (the figure a
-  // Booking is actually quoted at), else the Hacienda's own listed price; when
-  // neither exists the summary says the Hacienda quotes it, rather than guess.
+  // The estimate uses the Admin's published rates; no figure is invented
+  // when the dates, guest count or rate document cannot be priced.
   const published = usePublishedRates()
   const options = useMemo(() => ACCOMMODATIONS
     .filter((a) => a.active && published?.accommodations[a.id]?.active !== false)
@@ -241,7 +241,7 @@ export function BookingPage() {
       })
       .then((result) => {
         if (alive) setAvailability({
-          status: result.available ? 'available' : 'unavailable',
+          status: result.available ? 'available' : result.blockingState === 'unknown' ? 'unknown' : 'unavailable',
           available: result.available,
           heldBy: result.conflicts.length,
           ...(result.blockingState ? { blockingState: result.blockingState } : {}),
@@ -255,7 +255,7 @@ export function BookingPage() {
     return () => {
       alive = false
     }
-  }, [form.check_in, form.check_out, form.accommodation, nights, minimumBookingLeadTimeDays, earliestCheckIn])
+  }, [form.check_in, form.check_out, form.accommodation, nights, minimumBookingLeadTimeDays, earliestCheckIn, availabilityRetry])
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -406,14 +406,16 @@ export function BookingPage() {
       })
       if (!currentAvailability.available) {
         setAvailability({
-          status: 'unavailable',
+          status: currentAvailability.blockingState === 'unknown' ? 'unknown' : 'unavailable',
           available: false,
           heldBy: currentAvailability.conflicts.length,
           ...(currentAvailability.blockingState ? { blockingState: currentAvailability.blockingState } : {}),
         })
         failRule({
           code: 'DATE_UNAVAILABLE',
-          message: currentAvailability.conflicts.length > 0
+          message: currentAvailability.blockingState === 'unknown'
+            ? 'Availability could not be checked. Please retry the selected stay before continuing.'
+            : currentAvailability.conflicts.length > 0
             ? `${currentAvailability.conflicts.length === 1 ? 'Those dates are already held by another Booking' : 'Those dates are already held by other Bookings'} for ${selectedAcc?.name || 'this property'}. Please choose different dates before continuing.`
             : `Those dates are no longer available for ${selectedAcc?.name || 'this property'}. Please choose different dates before continuing.`,
         })
@@ -471,7 +473,7 @@ export function BookingPage() {
   }
 
   return (
-    <Page className="relative">
+    <Page className="booking-page relative dark:bg-forest-950 dark:text-cream-50">
       {/* Visual shell only — soft countryside wash behind the form; the form itself is untouched */}
       <div
         className="pointer-events-none absolute -top-32 right-[-10%] h-[560px] w-[560px] rounded-full opacity-70 blur-3xl"
@@ -524,7 +526,7 @@ export function BookingPage() {
           <form
             onSubmit={onSubmit}
             noValidate
-            className="card space-y-8 p-6 sm:p-8 lg:col-span-2 lg:p-10"
+            className="booking-light-surface card space-y-8 p-6 sm:p-8 lg:col-span-2 lg:p-10"
           >
             {sessionNotice && <Alert tone="warning">{sessionNotice}</Alert>}
             {status === 'error' && <Alert tone="danger">{errorMsg}</Alert>}
@@ -557,6 +559,7 @@ export function BookingPage() {
                     <Input
                       type="number"
                       min={1}
+                      max={100}
                       inputMode="numeric"
                       value={form.guests}
                       onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
@@ -608,11 +611,11 @@ export function BookingPage() {
               {usedAccount ? (
                 <p className="mt-2 text-base text-emerald-800">
                   Filled in from your account. You can change any of it for this booking, and update your
-                  profile any time from <Link to="/account?tab=profile" className="underline">My Profile</Link>.
+                  profile any time from <Link to="/profile" className="underline">My Profile</Link>.
                 </p>
               ) : !user ? (
                 <p className="mt-2 text-base text-forest-700">
-                  Have an account? <Link to="/guest/auth" className="underline">Sign in</Link> and these fields fill themselves.
+                  Have an account? <Link to="/guest/auth?returnTo=book" onClick={() => saveBookingProgress(form)} className="underline">Sign in</Link> and these fields fill themselves.
                 </p>
               ) : null}
               <div className="mt-6 grid sm:grid-cols-2 gap-5">
@@ -687,7 +690,8 @@ export function BookingPage() {
             {availability?.status === 'unknown' && (
               <Alert tone="danger" className="text-base">
                 <strong>Availability is unknown.</strong> The Hacienda’s Booking data could not be checked.
-                Refresh the calendar or try again; these dates are not being treated as available.
+                These dates are not being treated as available.
+                <button type="button" onClick={() => setAvailabilityRetry((count) => count + 1)} className="ml-2 font-semibold underline underline-offset-2">Retry selected stay</button>
               </Alert>
             )}
             {availability?.status === 'unavailable' && (
@@ -744,7 +748,7 @@ export function BookingPage() {
           </form>
 
           <aside className="lg:sticky lg:top-28 self-start">
-            <div className="rounded-[28px] overflow-hidden border border-forest-900/5 shadow-depth bg-white">
+            <div className="booking-light-surface rounded-[28px] overflow-hidden border border-forest-900/5 shadow-depth bg-white">
               <div className="relative">
                 <SmartImage
                   src={selectedAcc?.images[0] || '/images/gmaps/img-07.jpg'}
@@ -778,7 +782,7 @@ export function BookingPage() {
                           </div>
                         </>
                       ) : (
-                        <div className="text-base text-forest-800/70">Quoted by the Hacienda</div>
+                        <div className="text-base text-forest-800/70">Estimate unavailable</div>
                       )}
                     </div>
                   </div>
@@ -789,8 +793,12 @@ export function BookingPage() {
                   <div>
                     <Sparkle size={14} className="inline mr-1 -mt-1 text-forest-600" />
                     {estimatedTotal
-                      ? 'An estimate of the stay, including any add-ons marked “Added to total”. The refundable security deposit is added at the payment step; requests marked “Pending approval” are reviewed and priced by the Hacienda and are not part of this figure. The final quote is confirmed before anything is reserved.'
-                      : 'The Hacienda quotes this stay on request and confirms the final figure — plus the refundable security deposit — before anything is reserved.'}{' '}
+                      ? 'An estimate of the stay, including any add-ons marked “Added to total”. The refundable security deposit is shown separately at the payment step, not added to the downpayment; requests marked “Pending approval” are reviewed and priced by the Hacienda and are not part of this figure. The final quote is confirmed before anything is reserved.'
+                      : !form.check_in || !form.check_out
+                        ? 'Choose your dates and guest count to see an estimate based on published rates.'
+                        : !published?.accommodations[form.accommodation]
+                          ? 'Online booking cannot proceed until rates for this accommodation are published. Contact the Hacienda for assistance.'
+                          : 'No estimate is available for this selection. Check your dates and guest count or contact the Hacienda before continuing.'}{' '}
                     <Link to="/rates" className="underline underline-offset-2">Rates &amp; Fees</Link>
                   </div>
                   <div className="pt-2 border-t border-forest-900/10">

@@ -17,9 +17,9 @@
 // ----------------------------------------------------------------------------
 
 import {
-  addDoc,
   collection,
   doc,
+  documentId,
   getDoc,
   getDocs,
   limit,
@@ -136,7 +136,12 @@ export type ChatMessage = {
   convo_id?: string
 }
 
-export type MessageCursor = { at: string; id: string }
+export type MessageCursor = {
+  at: string
+  id: string
+  /** The original Firestore snapshot retains nanosecond precision for pagination. */
+  snapshot?: QueryDocumentSnapshot<DocumentData>
+}
 
 export type MessagePage = {
   /** Oldest first, chronological. */
@@ -235,8 +240,8 @@ function localMessagesFor(convoId: string, uid: string): ChatMessage[] {
 function localPage(convoId: string, uid: string, before: MessageCursor | null, pageSize: number): MessagePage {
   const all = localMessagesFor(convoId, uid)
     .slice()
-    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-  const older = before ? all.filter((m) => m.at < before.at) : all
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)))
+  const older = before ? all.filter((m) => m.at < before.at || (m.at === before.at && m.id < before.id)) : all
   const slice = older.slice(0, pageSize)
   const oldest = slice.length ? slice[slice.length - 1] : null
   return {
@@ -614,7 +619,17 @@ export function subscribeConversationMeta(
   onMeta: (meta: ConversationLiveMeta) => void,
 ): () => void {
   if (offline() || isLocal(convoId)) {
-    return () => {}
+    const emit = () => {
+      const messages = localLoad().filter((message) => message.convo_id === convoId)
+      const latest = messages.sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id)).at(-1)
+      if (!latest) return
+      onMeta({ unreadGuest: 0, unreadAdmin: 0, adminLastReadAt: null, retentionExpiresAt: null,
+        lastMessage: latest.text || (latest.attachment ? 'Sent a photo' : null),
+        updatedAtMs: Date.parse(latest.at) || null })
+    }
+    emit()
+    localSubscribers.add(emit)
+    return () => { localSubscribers.delete(emit) }
   }
   return onSnapshot(
     doc(conversations(), convoId),
@@ -670,15 +685,16 @@ export async function loadMessagePage(input: {
 
   const constraints = [
     orderBy('created_at', 'desc'),
+    orderBy(documentId(), 'desc'),
     limit(pageSize + 1),
-    ...(input.before ? [startAfter(Timestamp.fromMillis(Date.parse(input.before.at)))] : []),
+    ...(input.before ? [input.before.snapshot ? startAfter(input.before.snapshot) : startAfter(Timestamp.fromMillis(Date.parse(input.before.at)), input.before.id)] : []),
   ]
   const snap = await getDocs(query(messagesOf(input.convoId), ...constraints))
   const docs = snap.docs.slice(0, pageSize)
   const oldest = docs.length ? docs[docs.length - 1] : null
   return {
     messages: docs.map((d) => toMessage(d, input.uid)).reverse(),
-    cursor: oldest ? { at: toMessage(oldest, input.uid).at, id: oldest.id } : null,
+    cursor: oldest ? { at: toMessage(oldest, input.uid).at, id: oldest.id, snapshot: oldest } : null,
     hasMore: snap.docs.length > pageSize,
   }
 }
@@ -699,7 +715,7 @@ export function subscribeMessages(
       localSubscribers.delete(emit)
     }
   }
-  const q = query(messagesOf(convoId), orderBy('created_at', 'desc'), limit(size + 1))
+  const q = query(messagesOf(convoId), orderBy('created_at', 'desc'), orderBy(documentId(), 'desc'), limit(size + 1))
   return onSnapshot(
     q,
     (snap) => {
@@ -708,7 +724,7 @@ export function subscribeMessages(
       const oldest = docs.length ? docs[docs.length - 1] : null
       onPage({
         messages,
-        cursor: oldest ? { at: toMessage(oldest, uid).at, id: oldest.id } : null,
+        cursor: oldest ? { at: toMessage(oldest, uid).at, id: oldest.id, snapshot: oldest } : null,
         hasMore: snap.docs.length > size,
       })
     },
@@ -785,40 +801,36 @@ export async function sendChatMessage(input: {
     return { ok: true, id }
   }
 
-  if (input.attachment) {
-    const reference = doc(messagesOf(input.convoId), id)
-    const existing = await getDoc(reference)
+  // One immutable message id per draft, and an atomic message + preview update.
+  // If the response is lost, retrying the same id observes the committed record
+  // instead of creating a duplicate or reporting a partially completed write.
+  const reference = doc(messagesOf(input.convoId), id)
+  const conversation = doc(db as never, 'conversations', input.convoId)
+  const outcome = await runTransaction(db as never, async (tx) => {
+    const existing = await tx.get(reference)
     if (existing.exists()) {
       const data = existing.data()
-      if (
-        data.sender_uid !== input.uid ||
-        data.sender_role !== 'guest' ||
-        data.text !== v.value ||
-        data.attachment?.path !== input.attachment.path
-      ) {
-        return { ok: false, message: 'This message id is already in use. Start a new draft.' }
+      if (data.sender_uid !== input.uid || data.sender_role !== 'guest' || data.text !== v.value
+          || (data.attachment?.path ?? null) !== (input.attachment?.path ?? null)) {
+        return false
       }
-    } else {
-      await setDoc(reference, {
-        sender_uid: input.uid,
-        sender_role: 'guest',
-        text: v.value,
-        created_at: serverTimestamp(),
-        attachment: attachmentDocument(input.attachment),
-      })
+      return true
     }
-  } else {
-    await addDoc(messagesOf(input.convoId), {
+    tx.set(reference, {
       sender_uid: input.uid,
       sender_role: 'guest',
       text: v.value,
       created_at: serverTimestamp(),
+      ...(input.attachment ? { attachment: attachmentDocument(input.attachment) } : {}),
     })
-  }
-  await updateDoc(doc(db as never, 'conversations', input.convoId), {
-    updated_at: serverTimestamp(),
-    last_message: (v.value || (input.attachment ? 'Sent a photo' : '')).slice(0, CHAT_PREVIEW_CHARS),
-    unread_admin: 1,
+    tx.update(conversation, {
+      updated_at: serverTimestamp(),
+      last_message: (v.value || (input.attachment ? 'Sent a photo' : '')).slice(0, CHAT_PREVIEW_CHARS),
+      unread_admin: 1,
+    })
+    return true
   })
+  if (!outcome) return { ok: false, message: 'This message id is already in use. Start a new draft.' }
+
   return { ok: true, id }
 }

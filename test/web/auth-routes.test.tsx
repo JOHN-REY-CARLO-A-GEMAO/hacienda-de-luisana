@@ -107,20 +107,20 @@ afterEach(() => {
 
 describe('a page nobody has signed in for', () => {
   it('shows the sign-in form and none of the page', () => {
-    const page = renderGate('/account', session())
+    const page = renderGate('/mybookings', session())
 
     expect(page.text()).toContain('Sign in')
     expect(page.text()).not.toContain(BEHIND_THE_GATE)
   })
 
   it('says a sign-up makes a Guest, and never mentions a Staff or Host role', () => {
-    const page = renderGate('/account', session())
+    const page = renderGate('/mybookings', session())
     expect(page.text()).toContain('Signing up here makes you a Guest')
     expect(page.text()).not.toMatch(/\bStaff\b|\bHost\b/)
   })
 
   it('shows a spinner, and neither the form nor the page, while the session is restored', () => {
-    const page = renderGate('/account', session({ loading: true, status: 'loading' }))
+    const page = renderGate('/mybookings', session({ loading: true, status: 'loading' }))
 
     expect(page.text()).toContain('Checking authentication')
     expect(page.text()).not.toContain(BEHIND_THE_GATE)
@@ -130,20 +130,20 @@ describe('a page nobody has signed in for', () => {
 
 describe('the Guest’s own page', () => {
   it('opens for the Guest', () => {
-    const page = renderGate('/account', session({ role: 'guest' }))
+    const page = renderGate('/mybookings', session({ role: 'guest' }))
     expect(page.text()).toContain(BEHIND_THE_GATE)
     expect(page.text()).not.toContain("isn't yours")
   })
 
   it('opens for the Guest under a nested path, trailing slash or query', () => {
-    for (const path of ['/account/', '/account/history']) {
+    for (const path of ['/mybookings/', '/mybookings/history']) {
       const page = renderGate(path, session({ role: 'guest' }))
       expect(page.text(), path).toContain(BEHIND_THE_GATE)
     }
   })
 
   it('shows the Guest the local-mode banner when there is no Firebase', () => {
-    const page = renderGate('/account', session({ role: 'guest', isConfigured: false, isCloud: false }))
+    const page = renderGate('/mybookings', session({ role: 'guest', isConfigured: false, isCloud: false }))
     expect(page.text()).toContain('Local Mode Active')
     expect(page.text()).toContain('Signed in as Guest')
     // The demo role switcher is gone with the roles it switched between.
@@ -153,16 +153,16 @@ describe('the Guest’s own page', () => {
 
 describe('an Admin on the Guest website', () => {
   it('is turned away from the Guest’s page and pointed at the mobile app', () => {
-    const page = renderGate('/account', session({ role: 'admin' }))
+    const page = renderGate('/mybookings', session({ role: 'admin' }))
 
     expect(page.text()).not.toContain(BEHIND_THE_GATE)
     expect(page.text()).toContain('This website is for Guests')
     expect(page.text()).toContain('Admin mobile app')
-    expect(page.text()).toContain('/account')
+    expect(page.text()).toContain('/mybookings')
   })
 
   it('is told who they are signed in as, and offered a way out', () => {
-    const page = renderGate('/account', session({ role: 'admin' }))
+    const page = renderGate('/mybookings', session({ role: 'admin' }))
 
     expect(page.text()).toContain('Admin')
     expect(page.text()).toContain('admin@hacienda.test')
@@ -258,6 +258,29 @@ describe('the sign-in form itself', () => {
     await fillAndSubmit(page.container, 'short@example.com', '123')
 
     expect(page.text()).toContain('Password must be at least 6 characters')
+  })
+
+  it('connects registration inputs to their hint and validation messages', async () => {
+    const page = renderForm(session())
+    openSignUp(page.container)
+    const password = page.container.querySelector<HTMLInputElement>('input[autocomplete="new-password"]')!
+    const hintId = password.getAttribute('aria-describedby')!
+    expect(document.getElementById(hintId)?.textContent).toContain('6+ characters')
+    await submit(page.container)
+    for (const input of [password, page.container.querySelector<HTMLInputElement>('input[type="email"]')!]) {
+      const id = input.getAttribute('aria-describedby')!
+      expect(id).toBeTruthy()
+      expect(document.getElementById(id)?.getAttribute('role')).toBe('alert')
+      expect(input.getAttribute('aria-invalid')).toBe('true')
+    }
+  })
+
+  it('explains that reset emails are unavailable in demo mode', () => {
+    const page = renderForm(session({ isConfigured: false, isCloud: false }))
+    openForgot(page.container)
+    expect(page.text()).toContain('Password reset emails are unavailable in demo mode')
+    const button = [...page.container.querySelectorAll('button')].find((b) => b.textContent?.includes('Send Reset Link'))!
+    expect(button.disabled).toBe(true)
   })
 
   it('sends a password reset and says it was sent', async () => {

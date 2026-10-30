@@ -4,6 +4,7 @@ import { EmailAuthProvider, linkWithCredential, linkWithPopup } from 'firebase/a
 import { useAuth } from '../hooks/useAuth'
 import { auth, googleProvider } from '../lib/firebase'
 import { EMAIL_MAX } from '../lib/validation'
+import { MIN_PASSWORD_LENGTH } from '../lib/auth'
 import { Alert, Card, Container, Field, Input, Page, PageHeader } from '../components/ui'
 import { MessageCircle } from '../lib/icons'
 
@@ -14,36 +15,66 @@ import { MessageCircle } from '../lib/icons'
  * conversation. Keeping account linking here preserves the original anonymous
  * Booking identity without inventing an email/reference ownership shortcut.
  */
+function linkingError(error: unknown): string {
+  const code = (error && typeof error === 'object' && 'code' in error) ? String(error.code) : ''
+  if (['auth/email-already-in-use', 'auth/credential-already-in-use', 'auth/mybookings-exists-with-different-credential'].includes(code)) {
+    return 'This credential is already linked to another account. Do not sign out; contact the Hacienda through its official channels for verified recovery.'
+  }
+  if (code === 'auth/invalid-email') return 'Please enter a valid email address.'
+  if (code === 'auth/weak-password') return 'The password does not meet the account requirements. Please choose a stronger password.'
+  if (code === 'auth/network-request-failed') return 'Could not reach the server. Check your connection and try again.'
+  if (code === 'auth/popup-blocked') return 'The Google popup was blocked. Allow popups and try again.'
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return 'Google linking was cancelled. You can try again.'
+  if (code === 'auth/operation-not-allowed') return 'This sign-in method is not enabled. Contact the Hacienda for help.'
+  return 'Could not link this identity. Please try again or contact the Hacienda without signing out.'
+}
+
 export function SupportPage() {
-  const { user, role, refresh } = useAuth()
+  const { user, role, refresh, loading } = useAuth()
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function link(google: boolean) {
+    if (busy) return
     setBusy(true)
     setError('')
+    setNotice('')
     try {
-      if (!auth?.currentUser?.isAnonymous) throw new Error('The original anonymous booking session must still be present.')
-      if (google && googleProvider) await linkWithPopup(auth.currentUser, googleProvider)
-      else await linkWithCredential(auth.currentUser, EmailAuthProvider.credential(email, password))
-      await auth.currentUser?.getIdToken(true)
-      await refresh()
+      const current = auth?.currentUser
+      if (!current?.isAnonymous || current.uid !== user?.uid) {
+        setError('The original anonymous booking session must still be present. Contact the Hacienda for help without signing out.')
+        return
+      }
+      if (google) {
+        if (!googleProvider) {
+          setError('Google linking is not configured. Use email or contact the Hacienda for help.')
+          return
+        }
+        await linkWithPopup(current, googleProvider)
+      } else {
+        await linkWithCredential(current, EmailAuthProvider.credential(email.trim(), password))
+      }
       setPassword('')
+      setNotice('Your booking identity was linked successfully. Your booking keeps the same UID.')
+      // Linking is already complete even if the token or session refresh fails.
+      try {
+        await current.getIdToken(true)
+        await refresh()
+      } catch {
+        setNotice('Your identity was linked, but the session could not be refreshed. Reload this page; do not try to link it again.')
+      }
     } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : 'Linking failed. Contact official support; never infer ownership from email alone.',
-      )
+      setError(linkingError(e))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Page>
+    <Page className="dark:bg-forest-950 dark:text-cream-50">
       <Container width="narrow">
         <PageHeader
           eyebrow="Support"
@@ -58,13 +89,17 @@ export function SupportPage() {
               . Messaging is not an emergency-response channel.
             </p>
           }
-          actions={
+          actions={!loading && role !== 'admin' ? (
             <Link to="/messages" className="btn-primary">
               <MessageCircle size={16} />
               Message the Admin
             </Link>
-          }
+          ) : undefined}
         />
+
+        {loading && <p role="status" className="mt-8 text-forest-700 dark:text-cream-100/80">Checking your session…</p>}
+
+        {notice && <Alert tone="success" className="mt-6">{notice}</Alert>}
 
         {error && (
           <Alert tone="danger" className="mt-6">
@@ -72,7 +107,7 @@ export function SupportPage() {
           </Alert>
         )}
 
-        {!user && (
+        {!loading && !user && (
           <Card className="mt-8" padding="lg">
             <h2 className="h3">Sign in to start a private conversation</h2>
             <p className="mt-2 text-sm leading-relaxed text-forest-700/85 dark:text-cream-100/75">
@@ -90,7 +125,7 @@ export function SupportPage() {
           </Card>
         )}
 
-        {user && role === 'admin' && (
+        {!loading && user && role === 'admin' && (
           <Card className="mt-8" padding="lg">
             <h2 className="h3">Guest messages are in the Admin app</h2>
             <p className="mt-2 text-sm leading-relaxed text-forest-700/85 dark:text-cream-100/75">
@@ -100,7 +135,7 @@ export function SupportPage() {
           </Card>
         )}
 
-        {user && role !== 'admin' && user.isAnonymous && (
+        {!loading && user && role !== 'admin' && user.isAnonymous && !notice && (
           <Card className="mt-8" padding="lg">
             <h2 className="h3">Secure this booking identity</h2>
             <p className="mt-2 text-sm leading-relaxed text-forest-700/85 dark:text-cream-100/75">
@@ -128,11 +163,11 @@ export function SupportPage() {
                   autoComplete="email"
                 />
               </Field>
-              <Field label="New account password" hint="At least 12 characters." required>
+              <Field label="New account password" hint={`At least ${MIN_PASSWORD_LENGTH} characters, as for a Guest account.`} required>
                 <Input
                   type="password"
                   required
-                  minLength={12}
+                  minLength={MIN_PASSWORD_LENGTH}
                   maxLength={200}
                   value={password}
                   onChange={(event) => {
@@ -145,20 +180,23 @@ export function SupportPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="submit"
-                  disabled={busy || !email.trim() || password.length < 12 || Boolean(error)}
+                  disabled={busy || !email.trim() || password.length < MIN_PASSWORD_LENGTH}
                   className="btn-primary"
                 >
                   {busy ? 'Linking…' : 'Link with email'}
                 </button>
-                <button type="button" disabled={busy} className="btn-quiet" onClick={() => void link(true)}>
+                <button type="button" disabled={busy || !googleProvider} className="btn-quiet" onClick={() => void link(true)}>
                   Link with Google
                 </button>
               </div>
+              {!googleProvider && (
+                <p className="text-sm text-forest-700 dark:text-cream-100/75">Google linking is not configured. Use email or contact the Hacienda for help.</p>
+              )}
             </form>
           </Card>
         )}
 
-        {user && role !== 'admin' && !user.isAnonymous && (
+        {!loading && user && role !== 'admin' && !user.isAnonymous && (
           <Card className="mt-8" padding="lg" as="section" aria-label="Private Guest support">
             <h2 className="h3">Your Booking, your conversation</h2>
             <p className="mt-2 text-sm leading-relaxed text-forest-700/85 dark:text-cream-100/75">
@@ -170,7 +208,7 @@ export function SupportPage() {
                 <MessageCircle size={16} />
                 Open messages
               </Link>
-              <Link to="/account" className="btn-quiet">
+              <Link to="/mybookings" className="btn-quiet">
                 View My Bookings
               </Link>
             </div>

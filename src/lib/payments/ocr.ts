@@ -25,7 +25,7 @@ export type OcrExtract = {
   amount: string
   /** Every distinct figure the receipt prints, in the order it prints them. */
   amounts: ReceiptAmount[]
-  /** Sender the receipt names (GCash phone/account name, bank remitter), when OCR can read one. */
+  /** Sender the receipt names (GCash phone/mybookings name, bank remitter), when OCR can read one. */
   senderName: string
   /** Payment date as printed, e.g. `Aug 26, 2026`. */
   paymentDate: string
@@ -567,7 +567,7 @@ export function matchPaymentReference(input: {
  * - `blocks_submit` — `/book/pay`. A new Booking is not submitted with less than
  *   the published down payment (`DownpaymentPage.submit`), so no Admin ever sees
  *   the claim and no page may promise that one will.
- * - `reaches_admin` — `/account`, re-sending a proof for a Booking the Admin
+ * - `reaches_admin` — `/mybookings`, re-sending a proof for a Booking the Admin
  *   already has. There is no gate there (`PaymentStep.submit`), so the claim
  *   does reach a person and the Admin's reading of the receipt is the next step.
  *
@@ -639,7 +639,7 @@ export function claimAgainstReceipt(
  * The sentence a Guest sees when the amount they entered is not the amount this
  * Booking asks for.
  *
- * Under `/account` it is a warning and nothing more: a Guest who genuinely sent
+ * Under `/mybookings` it is a warning and nothing more: a Guest who genuinely sent
  * a different figure is allowed to say so, the Admin's verification is what
  * moves money, and a blocked form would only push them into contacting the
  * Hacienda by phone to say exactly this.

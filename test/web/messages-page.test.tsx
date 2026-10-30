@@ -235,6 +235,27 @@ describe('unified booking-scoped conversation screen', () => {
     expect(logRegion.textContent).toContain('Start your conversation')
   })
 
+  it('keeps unsent drafts separate per booking', async () => {
+    seedBookings([
+      makeBooking({ id: 'bk_1', ref_id: 'HDL-1111', accommodation: 'main-house', created_at: '2026-10-23T10:00:00.000Z' }),
+      makeBooking({ id: 'bk_2', ref_id: 'HDL-2222', accommodation: 'annex', created_at: '2026-10-21T10:00:00.000Z' }),
+    ])
+    const container = renderPage()
+    await pump(4)
+    const textarea = container.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
+    act(() => setTextareaValue(textarea, 'Only for the first stay'))
+    act(() => findButton(container, /Annex.*HDL-2222/i).click())
+    await pump(2)
+    expect(textarea.value).toBe('')
+    act(() => setTextareaValue(textarea, 'Only for the second stay'))
+    act(() => findButton(container, /Main House.*HDL-1111/i).click())
+    await pump(2)
+    expect(textarea.value).toBe('Only for the first stay')
+    act(() => findButton(container, /Annex.*HDL-2222/i).click())
+    await pump(2)
+    expect(textarea.value).toBe('Only for the second stay')
+  })
+
   it('populates verified Hacienda directions via Send Directions quick reply and opens BookingDetailsDrawer', async () => {
     seedBookings([makeBooking()])
     const container = renderPage()
@@ -247,6 +268,8 @@ describe('unified booking-scoped conversation screen', () => {
     const textarea = container.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
     expect(textarea.value).toContain(BUSINESS.address.formatted)
     expect(textarea.value).toContain(BUSINESS.contact.directions)
+    expect(textarea.value).toContain('map pin is approximate')
+    expect(textarea.value).not.toContain('Verified directions')
 
     // Open Booking Details drawer.
     act(() => findButton(container, /Booking details/i).click())

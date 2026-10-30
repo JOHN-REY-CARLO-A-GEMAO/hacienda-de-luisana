@@ -17,8 +17,8 @@ import { BookingPage } from './pages/BookingPage'
 import { DownpaymentPage } from './pages/DownpaymentPage'
 import { BookingStatusPage } from './pages/BookingStatusPage'
 import { ReviewDeskPage } from './pages/ReviewDeskPage'
-import { ReceiptScanPage } from './pages/ReceiptScanPage'
 import { AccountPage } from './pages/AccountPage'
+import { ProfilePage } from './pages/ProfilePage'
 import { LegalPage } from './pages/LegalPage'
 import { MessagesPage } from './pages/MessagesPage'
 import { StatusPage } from './pages/StatusPage'
@@ -126,11 +126,6 @@ export default function App() {
 
           <Route path="/book" element={<BookingPage />} />
           <Route path="/book/pay" element={<DownpaymentPage />} />
-          {/* The receipt reader, standalone. The payment step already runs the
-              same engine when a screenshot is chosen; this page exists so a
-              Guest can see what it reads before money moves, and so a receipt
-              that cannot be read is discovered here rather than mid-booking. */}
-          <Route path="/receipt-scan" element={<ReceiptScanPage />} />
           <Route path="/booking/status" element={<BookingStatusPage />} />
           {/* Demo review desk, and the same decision for an Admin session.
               Guests are turned away when Firebase is configured. */}
@@ -145,15 +140,9 @@ export default function App() {
               same session either way. */}
           <Route path="/guest/auth" element={<GuestAuthPage />} />
 
-          {/* The Guest's own page: their Bookings, their ID, their Date hold */}
-          <Route
-            path="/account"
-            element={
-              <ProtectedRoute>
-                <AccountPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* Private Guest pages. */}
+          <Route path="/mybookings" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route
             path="/messages"
             element={
@@ -198,7 +187,7 @@ function AdminMoved() {
           <Link to="/" className="btn-primary">
             Back to the Hacienda
           </Link>
-          <Link to="/account" className="btn-ghost">
+          <Link to="/mybookings" className="btn-ghost">
             My Bookings
           </Link>
         </>

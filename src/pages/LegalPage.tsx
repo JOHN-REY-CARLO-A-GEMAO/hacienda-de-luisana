@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TERMS } from '../lib/legal'
+import { LEGAL_VERSION, TERMS } from '../lib/legal'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { formatRefundPolicySummary } from '../lib/booking'
 import { Alert, Card, Container, Page, PageHeader } from '../components/ui'
@@ -16,7 +16,7 @@ export function LegalPage() {
   const published = usePublishedRates()
 
   return (
-    <Page>
+    <Page className="dark:bg-forest-950 dark:text-cream-50">
       <Container width="narrow">
         <PageHeader
           eyebrow="Policies"
@@ -29,11 +29,18 @@ export function LegalPage() {
           }
         />
 
+        <div className="mt-6 text-sm text-forest-700 dark:text-cream-100/75">
+          Terms version: <time dateTime={LEGAL_VERSION}>{LEGAL_VERSION}</time>
+        </div>
+        <p className="mt-3 text-sm text-forest-800 dark:text-cream-100/85">
+          For the Hacienda’s stay rules, see <Link to="/house-rules" className="text-link">House rules &amp; good to know</Link>.
+        </p>
+
         <div className="mt-10 space-y-6">
           {TERMS.map((section) => (
             <Card key={section.id} as="section" padding="lg" className="scroll-mt-28" id={section.id}>
               <h2 className="h2">{section.title}</h2>
-              <ul className="mt-4 space-y-2 text-sm leading-relaxed text-forest-800/85">
+              <ul className="mt-4 space-y-2 text-sm leading-relaxed text-forest-800/85 dark:text-cream-100/85">
                 {section.body.map((paragraph) => (
                   <li key={paragraph} className="flex gap-2.5">
                     <span aria-hidden="true" className="mt-2 h-1 w-1 shrink-0 rounded-full bg-forest-500" />
@@ -44,6 +51,8 @@ export function LegalPage() {
                   <li>
                     <Alert tone="success" className="text-xs">
                       Currently published cancellation policy: {formatRefundPolicySummary(published.refund)}
+                      {' '}This is the current policy, not necessarily the one stamped on an existing booking.
+                      Check your booking’s recorded policy for the terms that apply to it.
                     </Alert>
                   </li>
                 )}

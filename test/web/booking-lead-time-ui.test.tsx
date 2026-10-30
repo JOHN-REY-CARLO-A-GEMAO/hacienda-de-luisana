@@ -15,6 +15,7 @@ import { minimumBookingLeadTimeMessage } from '../../src/lib/booking'
 import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
 import { bookingsDB } from '../../src/lib/storage'
 import * as payments from '../../src/lib/payments'
+import * as ocr from '../../src/lib/payments/ocr'
 import { resetRateLimit } from '../../src/lib/rateLimit'
 import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 
@@ -24,7 +25,7 @@ import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 // is how `amountMismatchNote` went missing and took all 7 of these tests with it.
 vi.mock('../../src/lib/payments/ocr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/lib/payments/ocr')>()),
-  runReceiptOcr: vi.fn(async () => ({ reference: '', amount: '', amounts: [], confidence: 'none', notes: [] })),
+  runReceiptOcr: vi.fn(async () => ({ reference: '', amount: '', amounts: [], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' })),
 }))
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -141,6 +142,35 @@ afterEach(() => {
 })
 
 describe('the existing booking date picker', () => {
+  it('retries the selected stay after an unknown response without treating it as available', async () => {
+    const check = vi.spyOn(cloudBookingsDB, 'checkAvailability')
+      .mockResolvedValueOnce({ available: false, conflicts: [], blockingState: 'unknown' })
+      .mockResolvedValue({ available: true, conflicts: [] })
+    open()
+    fill('[data-tour-field="check-in"]', '2026-11-06')
+    fill('[data-tour-field="check-out"]', '2026-11-07')
+    await until(() => container.textContent?.includes('Availability is unknown.') ?? false)
+    expect(container.querySelector<HTMLButtonElement>('[data-tour="submit-booking"]')?.disabled).toBe(true)
+    const retry = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Retry selected stay'))!
+    click(retry)
+    await until(() => container.textContent?.includes('Selected stay is available.') ?? false)
+    expect(check).toHaveBeenCalledTimes(2)
+  })
+
+  it('saves incomplete details only when leaving for sign-in, without creating a payment draft', async () => {
+    open()
+    fill('[data-tour-field="guest-name"]', 'Ana Reyes')
+    const link = container.querySelector<HTMLAnchorElement>('a[href="/guest/auth?returnTo=book"]')!
+    expect(link).toBeTruthy()
+    click(link)
+    expect(loadBookingDraft()).toBeNull()
+    act(() => root!.unmount())
+    root = undefined
+    container.remove()
+    open()
+    expect(input('[data-tour-field="guest-name"]').value).toBe('Ana Reyes')
+  })
+
   it('disables the first 30 dates and allows exactly day 30 using the native date minimum', () => {
     open()
     const checkIn = input('[data-tour-field="check-in"]')
@@ -283,6 +313,80 @@ describe('payment-page draft manipulation cannot skip the guard', () => {
 
 
 describe('new date policy preserves the existing validation gates', () => {
+  it('warns against sending payment when no published rate is available', async () => {
+    saveBookingDraft(draft())
+    localStorage.removeItem(LOCAL_RATES_KEY)
+    open('/book/pay')
+    await until(() => container.textContent?.includes('online submission requires an applicable published rate') ?? false)
+    expect(container.textContent).toContain('Dates are not held yet.')
+    expect(container.textContent).not.toContain('Kumpirmahin sa Hacienda')
+    expect(container.querySelector('.booking-light-surface')).not.toBeNull()
+  })
+
+  it('does not overwrite manual entries typed while OCR is running', async () => {
+    saveBookingDraft(draft())
+    let resolveScan!: (value: Awaited<ReturnType<typeof ocr.runReceiptOcr>>) => void
+    vi.mocked(ocr.runReceiptOcr).mockImplementationOnce(() => new Promise((resolve) => { resolveScan = resolve }))
+    open('/book/pay')
+    Object.defineProperty(input('[type="file"]'), 'files', { configurable: true, value: [new File(['image'], 'proof.png', { type: 'image/png' })] })
+    await act(async () => { input('[type="file"]').dispatchEvent(new Event('change', { bubbles: true })) })
+    fill('[inputmode="decimal"]', '3100')
+    fill('[placeholder="GCash / Maya / bank ref"]', 'MYREF')
+    await act(async () => { resolveScan({ reference: 'OCRREF', amount: '9000', amounts: [{ value: '9000', label: 'Amount' }], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' }) })
+    expect(input('[inputmode="decimal"]').value).toBe('3100')
+    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('MYREF')
+  })
+
+  it('reports unknown availability without asserting that another booking holds the dates', async () => {
+    saveBookingDraft(draft())
+    vi.spyOn(cloudBookingsDB, 'checkAvailability').mockResolvedValue({ available: false, conflicts: [], blockingState: 'unknown' })
+    const upload = vi.spyOn(payments, 'uploadPaymentProof')
+    open('/book/pay')
+    await attachScreenshot()
+    submitProof()
+    await until(() => Boolean(container.querySelector('[role="alert"]')))
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Availability could not be checked')
+    expect(container.querySelector('[role="alert"]')?.textContent).not.toContain('held by another')
+    expect(upload).not.toHaveBeenCalled()
+  })
+
+  it('ignores late OCR for removed and replaced screenshots and clears the old reference', async () => {
+    saveBookingDraft(draft())
+    let resolveFirst!: (value: Awaited<ReturnType<typeof ocr.runReceiptOcr>>) => void
+    vi.mocked(ocr.runReceiptOcr).mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ reference: 'NEWREF', amount: '', amounts: [], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' })
+    open('/book/pay')
+    const select = async (name: string) => {
+      Object.defineProperty(input('[type="file"]'), 'files', { configurable: true, value: [new File(['image'], name, { type: 'image/png' })] })
+      await act(async () => { input('[type="file"]').dispatchEvent(new Event('change', { bubbles: true })) })
+    }
+    await select('old.png')
+    expect(container.textContent).toContain('Reading the screenshot')
+    expect([...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Reading screenshot'))?.disabled).toBe(true)
+    await select('new.png')
+    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('NEWREF')
+    await act(async () => { resolveFirst({ reference: 'OLDREF', amount: '9000', amounts: [{ value: '9000', label: 'Amount' }], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' }) })
+    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('NEWREF')
+    expect(input('[inputmode="decimal"]').value).not.toBe('9000')
+    click([...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Remove screenshot'))!)
+    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('')
+  })
+
+  it('allows manual entry if OCR is slow and ignores the late result', async () => {
+    saveBookingDraft(draft())
+    let resolveScan!: (value: Awaited<ReturnType<typeof ocr.runReceiptOcr>>) => void
+    vi.mocked(ocr.runReceiptOcr).mockImplementationOnce(() => new Promise((resolve) => { resolveScan = resolve }))
+    open('/book/pay')
+    Object.defineProperty(input('[type="file"]'), 'files', { configurable: true, value: [new File(['image'], 'proof.png', { type: 'image/png' })] })
+    await act(async () => { input('[type="file"]').dispatchEvent(new Event('change', { bubbles: true })) })
+    click([...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('enter details manually'))!)
+    fill('[inputmode="decimal"]', '3100')
+    await act(async () => { resolveScan({ reference: 'STALE', amount: '9000', amounts: [{ value: '9000', label: 'Amount' }], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' }) })
+    expect(input('[inputmode="decimal"]').value).toBe('3100')
+    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('')
+    expect(container.textContent).toContain('Automatic reading skipped')
+  })
+
   it('does not bypass guest details validation for an otherwise valid date', async () => {
     open()
     fillDetails('2026-10-31')
@@ -300,7 +404,7 @@ describe('new date policy preserves the existing validation gates', () => {
     await attachScreenshot()
     submitProof()
     await until(() => Boolean(container.querySelector('[role="alert"]')))
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Those dates were just held by another booking')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Those dates are no longer available')
     expect(upload).not.toHaveBeenCalled()
     expect(bookingsDB.list().some((booking) => booking.guest_name === 'Ana Reyes')).toBe(false)
   })

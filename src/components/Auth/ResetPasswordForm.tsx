@@ -31,12 +31,13 @@ export function ResetPasswordForm({
   onError,
   onInfo,
 }: ResetPasswordFormProps) {
-  const { resetPassword } = useAuth()
+  const { resetPassword, isConfigured } = useAuth()
   const [loading, setLoading] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isConfigured) return
     onError(null)
     onInfo(null)
 
@@ -69,6 +70,11 @@ export function ResetPasswordForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {!isConfigured && (
+        <p className="text-sm text-forest-700 dark:text-cream-100/80" role="status">
+          Password reset emails are unavailable in demo mode.
+        </p>
+      )}
       <Field label="Email" required error={emailError}>
         <Input
           type="email"
@@ -88,7 +94,7 @@ export function ResetPasswordForm({
 
       <button
         type="submit"
-        disabled={loading || Boolean(emailError)}
+        disabled={!isConfigured || loading || Boolean(emailError)}
         className="btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {loading ? 'Please wait…' : 'Send Reset Link'}

@@ -35,7 +35,7 @@
 //     every AI assistant) can otherwise not see at all.
 //   * `index` — ask search engines to list it. False for the deployment report
 //     (useful to the Hacienda, noise in a result list) and for every signed-in
-//     page: `/account`, `/messages`, a booking's status, the payment step and
+//     page: `/mybookings`, `/messages`, a booking's status, the payment step and
 //     the review desk belong to one Guest and must never appear in a search
 //     result.
 //
@@ -215,10 +215,16 @@ export const ROUTE_META: readonly RouteMeta[] = [
   // and the second in a link preview, and neither is a claim about the site —
   // they describe one person's own records.
   {
-    path: '/account',
-    title: `My Bookings & Profile | ${BRAND}`,
-    description:
-      'Your own bookings, their status and payment plan, your saved profile details and the notifications the Hacienda has sent you.',
+    path: '/mybookings',
+    title: `My Bookings | ${BRAND}`,
+    description: 'Your own bookings, their status and payment plan, and notifications the Hacienda has sent you.',
+    index: false,
+    prerender: false,
+  },
+  {
+    path: '/profile',
+    title: `My Profile | ${BRAND}`,
+    description: 'Update your personal details and contact information for your Hacienda account.',
     index: false,
     prerender: false,
   },
@@ -251,17 +257,6 @@ export const ROUTE_META: readonly RouteMeta[] = [
     title: `Sign In | ${BRAND}`,
     description:
       'Sign in to your Guest account, create one, or reset a forgotten password — the same account that holds your bookings and messages.',
-    index: false,
-    prerender: false,
-  },
-  // The receipt reader on its own. Kept out of every index: it is a tool for a
-  // Guest who is already paying, not a destination to find in a result list —
-  // and a search result for "GCash receipt scanner" is not what this site is.
-  {
-    path: '/receipt-scan',
-    title: `Receipt Reader | ${BRAND}`,
-    description:
-      'See which reference number, amount, sender and date the app can read off your GCash, Maya or bank receipt screenshot before you submit it as payment proof.',
     index: false,
     prerender: false,
   },

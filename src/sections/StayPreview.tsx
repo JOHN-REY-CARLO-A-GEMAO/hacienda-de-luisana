@@ -87,7 +87,7 @@ function StayPreviewCard({
           </span>
           {a.availableUnits && (
             <span className="rounded-full bg-forest-800/90 dark:bg-brass-500 text-cream-50 dark:text-forest-950 text-xs uppercase tracking-eyebrow px-3 py-1.5 font-medium">
-              {a.availableUnits} units available
+              {a.availableUnits} units
             </span>
           )}
         </div>

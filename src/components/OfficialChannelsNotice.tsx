@@ -53,6 +53,8 @@ export function OfficialChannelsNotice({ tone = 'light', compact = false }: { to
         </ul>
       )}
 
+      <p className="mt-2 text-xs">External links open in a new tab.</p>
+
       {compact && (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
           <a href={LISTINGS.airbnb.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 underline underline-offset-2">

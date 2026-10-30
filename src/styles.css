@@ -1326,3 +1326,16 @@ body[data-scroll-locked='true'] { overflow: hidden; }
   .guest-rise { animation: none; }
   .ledger-opener-media > img { animation: none !important; transform: none !important; }
 }
+
+/* Booking keeps its complex calendar and request cards on light surfaces in
+   both themes, while the surrounding page follows the selected theme. */
+.dark .booking-page .booking-light-surface { @apply bg-white text-forest-900 border-forest-900/10; }
+.dark .booking-page .booking-light-surface .h2 { @apply text-forest-900; }
+.dark .booking-page .booking-light-surface .eyebrow { @apply text-forest-600; }
+.dark .booking-page .booking-light-surface .label { @apply text-forest-700; }
+.dark .booking-page .booking-light-surface .field-hint { @apply text-forest-600; }
+.dark .booking-page .booking-light-surface .field-error { @apply text-red-700; }
+.dark .booking-page .booking-light-surface .field { @apply bg-white border-forest-200 text-forest-900 placeholder:text-forest-600 focus:bg-white focus:border-forest-600; }
+.dark .booking-page .booking-light-surface .field:disabled { @apply bg-cream-50 text-forest-600; }
+.dark .booking-page .booking-light-surface .alert-info { @apply bg-cream-100 border-forest-900/10 text-forest-800; }
+.dark .booking-page .booking-light-surface .text-link { @apply text-forest-800; }

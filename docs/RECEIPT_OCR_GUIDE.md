@@ -8,9 +8,8 @@ tumatakbo pag pumili ka ng screenshot sa `/book/pay` (bagong booking) o sa `/acc
 pagpapadala ng proof). Napupunta ang nabasa sa `payment_reference` ng Booking, at pag na-verify ng
 Admin, nagiging row sa `payment_references` collection.
 
-Ang kulang lang dati: **hindi ito nakikita** hangga't hindi ka na nasa gitna ng booking. Kaya may
-bagong page na `/receipt-scan` — doon mo makikita, bago mag-bayad, kung ano ang nababasa mula sa
-screenshot mo at saang field ito napupunta.
+Makikita at makokorek ang mga nabasang detalye sa mga payment proof form. Inalis na ang
+standalone receipt-reader page; nananatili ang OCR sa booking at account flows.
 
 ---
 
@@ -18,7 +17,6 @@ screenshot mo at saang field ito napupunta.
 
 | Saan | Kailan tumatakbo | Ano ang nangyayari |
 | --- | --- | --- |
-| **`/receipt-scan`** (bago, pampubliko) | Pag pumili ka ng screenshot o nag-paste ng text | Ipinapakita ang reference, amount(s), sender, date — at saang field napupunta. Walang isinusulat, walang ina-upload. |
 | **`/book/pay`** (`DownpaymentPage.tsx`) | Pag pumili ka ng screenshot bago mag-submit ng booking | Automatic na pinupuno ang **Reference** at **Amount you sent**; may note kapag dalawa ang amount sa resibo. |
 | **`/account` → Pay and send proof** (`PaymentStep.tsx`) | Pag nag-upload ka ng proof sa booking na aprubado na | Pinupuno ang **Reference**, **Amount**, **Sender**, **Date** — lahat pwedeng i-correct bago i-submit. |
 | **Admin app (Flutter)** | Pag binuksan ng Admin ang proof | Ipinapakita ang `ocr_*` values bilang `(OCR)` kapag walang na-type ang Guest. |
@@ -81,11 +79,11 @@ Dart), kaya hindi ito ma-doble kahit dalawang Admin ang mag-verify nang sabay.
 npm install                 # kung wala pang node_modules
 npx vitest run --config vitest.local.config.ts     # buong web suite (1190 tests)
 npx vitest run test/web/receipt-ocr.test.ts test/web/receipt-preview.test.ts \
-  test/web/receipt-scan-page.test.tsx --config vitest.local.config.ts
-npm run dev                 # tapos buksan ang /receipt-scan
+  --config vitest.local.config.ts
+npm run dev                 # subukan ang screenshot sa payment proof form
 ```
 
-Sample text na pwedeng i-paste sa `/receipt-scan` para makita ang mahirap na kaso:
+Sample text na pwedeng gamitin sa OCR parser tests para makita ang mahirap na kaso:
 
 ```
 Amount 1,020.00
@@ -97,8 +95,7 @@ Ref No. 7044 357 Aug 26, 2026 10:23
 Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa dalawang linya.
 
 > **Note sa dev:** dina-download ng tesseract.js ang engine at English language data sa unang
-> pagbasa ng larawan. Kailangan ng internet sa browser mo. Kapag pinindot ang "Read pasted text",
-> wala itong network call — puro regex lang.
+> pagbasa ng larawan. Kailangan ng internet sa browser mo. Ang parser tests ay walang network call.
 
 ## 5. Ano ang sinasadyang hindi ginagawa
 
@@ -112,8 +109,7 @@ Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa
 
 ## 6. Kung may resibong hindi mabasa
 
-1. Kunin ang **toong OCR text** — buksan ang browser console, o i-paste ang text sa `/receipt-scan`,
-   at tingnan kung ano ang nakukuha.
+1. Kunin ang **toong OCR text** mula sa isang ligtas na test fixture, at gamitin ito sa parser tests.
 2. Kung mali ang pagkakabasa ng layout (halimbawa bagong template ng Maya o bank), dagdagan ang
    pattern sa `src/lib/payments/ocr.ts`:
    - reference → `REF_PATTERNS`, `REF_LABEL_RE`, `labelledGroups()`
@@ -131,12 +127,11 @@ Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa
 | --- | --- |
 | `src/lib/payments/ocr.ts` | Ang buong extraction engine (`runReceiptOcr`, `extractReceiptFields`, `extractReferenceNumber`, `extractSenderName`, `extractPaymentDate`, `claimAgainstReceipt`, `canAutoVerifyFromOcr`). |
 | `src/lib/payments/receipt-preview.ts` | Bagong: isinasalin ang extraction sa "saang field napupunta" rows (`scanFields`, `unreadFields`, `scanVerdict`, `paymentReferenceDocId`). |
-| `src/pages/ReceiptScanPage.tsx` | Bagong: ang `/receipt-scan` page. |
 | `src/pages/DownpaymentPage.tsx` | OCR pag pumili ng screenshot sa bagong booking (`onFile`). |
 | `src/components/Booking/PaymentStep.tsx` | OCR + pag-submit ng apat na field sa `/account`. |
 | `lib/views/bookings/payment_verification_queue_screen.dart` | Admin verification, at ang pagsulat ng `payment_references` row. |
 | `lib/views/payments/payment_refs_screen.dart` | Admin listahan ng references; dito nakikita at naitatama ang extraction. |
-| `test/web/receipt-ocr.test.ts`, `receipt-amounts.test.ts`, `receipt-preview.test.ts`, `receipt-scan-page.test.tsx` | 130 tests para sa OCR at sa bagong page. |
+| `test/web/receipt-ocr.test.ts`, `receipt-amounts.test.ts`, `receipt-preview.test.ts` | Mga test para sa OCR at field mapping. |
 
 ## 8. Kung gusto mong ilagay din ito sa Flutter app
 

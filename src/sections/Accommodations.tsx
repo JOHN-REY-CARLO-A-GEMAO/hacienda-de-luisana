@@ -54,12 +54,12 @@ export function Accommodations() {
       <Container width="wide">
         <SceneHeader index="03" eyebrow="Accommodations" title="Stay Your Way">
           <p>
-            Two ways to unwind at Hacienda de LuisAna — a private main house for the whole barkada,
-            or a more intimate camping stay tucked into the countryside.
+            Choose your countryside stay, from the private Main House and Annex to an intimate
+            A-House camping unit.
           </p>
         </SceneHeader>
 
-        <div className="mt-14 grid lg:grid-cols-2 gap-8 lg:gap-10">
+        <div className="mt-14 grid gap-8 lg:grid-cols-3">
           {ACCOMMODATIONS.filter((a) => a.active && published?.accommodations[a.id]?.active !== false).map((a) => {
             const rate = displayedRate(a, published)
             const propertyName = published?.accommodations[a.id]?.property_name?.trim() || a.name
@@ -84,7 +84,7 @@ export function Accommodations() {
                     </span>
                     {a.availableUnits && (
                       <span className="rounded-full bg-forest-800/90 text-cream-50 text-[11px] uppercase tracking-eyebrow px-3 py-1.5">
-                        {a.availableUnits} units available
+                        {a.availableUnits} units
                       </span>
                     )}
                   </div>
@@ -110,7 +110,7 @@ export function Accommodations() {
                   {/* Sleeping arrangements — only for units the Hacienda has listed room by room */}
                   {a.sleeping && (
                     <div className="mt-6 rounded-2xl bg-cream-50 border border-forest-900/5 p-4 sm:p-5" data-testid={`sleeping-${a.id}`}>
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="text-[11px] uppercase tracking-eyebrow text-forest-600 inline-flex items-center gap-2">
                           <Bed size={14} className="text-forest-600" /> Sleeping arrangements
                         </div>
@@ -122,7 +122,7 @@ export function Accommodations() {
                           )}
                         </div>
                       </div>
-                      <ul className="mt-3 grid sm:grid-cols-3 gap-2 text-sm text-forest-800">
+                      <ul className="mt-3 grid gap-2 text-sm text-forest-800 sm:grid-cols-3 md:grid-cols-2">
                         {a.sleeping.beds.map((b) => (
                           <li key={`${b.where}-${b.type}`} className="rounded-xl bg-white border border-forest-900/5 px-3 py-2">
                             <div className="font-medium text-forest-900">
@@ -137,7 +137,7 @@ export function Accommodations() {
                   )}
 
                   <div className="mt-6 flex flex-wrap gap-2">
-                    {a.amenities.slice(0, 9).map((k) => {
+                    {a.amenities.map((k) => {
                       const meta = AMENITIES.find((x) => x.key === k)
                       const Icon = AMENITY_ICONS[k]
                       if (!meta) return null

@@ -17,7 +17,11 @@
         "destination": "/404.html"
       },
       {
-        "source": "/account",
+        "source": "/mybookings",
+        "destination": "/404.html"
+      },
+      {
+        "source": "/profile",
         "destination": "/404.html"
       },
       {

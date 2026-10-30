@@ -26,10 +26,12 @@ export type BookingDraft = {
 }
 
 const DRAFT_KEY = 'hdl:booking-draft'
+const PROGRESS_KEY = 'hdl:booking-progress'
 export const LAST_BOOKING_KEY = 'hdl:last-booking-id'
 
 export function saveBookingDraft(draft: BookingDraft): void {
   sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+  sessionStorage.removeItem(PROGRESS_KEY)
 }
 
 export function loadBookingDraft(): BookingDraft | null {
@@ -63,8 +65,37 @@ export function loadBookingDraft(): BookingDraft | null {
   }
 }
 
+// Incomplete details are saved only when the guest explicitly leaves to sign in.
+// They are never accepted by the payment page as a complete booking draft.
+export function saveBookingProgress(progress: BookingDraft): void {
+  sessionStorage.setItem(PROGRESS_KEY, JSON.stringify(progress))
+  sessionStorage.removeItem(DRAFT_KEY)
+}
+
+export function loadBookingProgress(): BookingDraft | null {
+  try {
+    const raw = sessionStorage.getItem(PROGRESS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<BookingDraft>
+    if (!parsed || typeof parsed !== 'object') return null
+    const text = (value: unknown) => typeof value === 'string' ? value : ''
+    const requests = sanitizeStayRequests(parsed)
+    return {
+      check_in: text(parsed.check_in), check_out: text(parsed.check_out),
+      accommodation: text(parsed.accommodation),
+      guests: typeof parsed.guests === 'number' && Number.isFinite(parsed.guests) ? parsed.guests : 2,
+      name: text(parsed.name), phone: text(parsed.phone), email: text(parsed.email),
+      special_requests: text(parsed.special_requests),
+      pet_count: requests.pet_count ?? 0, bonfire_wood_sets: requests.bonfire_wood_sets ?? 0,
+      late_checkout_hours: requests.late_checkout_hours ?? 0,
+      event_purpose: requests.event_purpose ?? '', event_purpose_detail: text(parsed.event_purpose_detail),
+    }
+  } catch { return null }
+}
+
 export function clearBookingDraft(): void {
   sessionStorage.removeItem(DRAFT_KEY)
+  sessionStorage.removeItem(PROGRESS_KEY)
 }
 
 export function rememberBookingId(id: string): void {

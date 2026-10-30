@@ -98,7 +98,7 @@ export function BookingDetailsDrawer({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Link to="/account" onClick={onClose} className="btn-quiet btn-sm">
+              <Link to="/mybookings" onClick={onClose} className="btn-quiet btn-sm">
                 View full reservation
               </Link>
             </div>

@@ -127,8 +127,9 @@ describe('reviews and the Airbnb rating', () => {
     expect(monthYear('2026-09-26')).toBe('September 2026')
   })
 
-  it('renders the rating badge and every review word for word', () => {
+  it('renders the rating badge and every review word for word', async () => {
     const page = render(<Reviews />)
+    await act(async () => {})
     expect(page.text()).toContain('5.0')
     expect(page.text()).toContain('9 reviews on Airbnb')
     expect(page.text()).toContain('Superhost')
@@ -265,7 +266,8 @@ describe('house rules, guest notes and getting here', () => {
     expect(page.text()).toContain('House rules')
     expect(page.text()).toContain('The standard 22-hour stay checks in at 2:00 PM and checks out by 12:00 NN')
     expect(page.text()).toContain('CLEAN AS YOU GO!')
-    expect(page.text()).toContain('₱300')
+    expect(page.text()).toContain('confirm the current charge')
+    expect(page.text()).not.toMatch(/₱/)
     expect(page.text()).toContain('What recent guests mention')
     for (const note of GUEST_NOTES) expect(page.text()).toContain(note.from)
     expect(page.text()).toContain('in an Airbnb review')

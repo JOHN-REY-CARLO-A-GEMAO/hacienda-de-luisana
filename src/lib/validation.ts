@@ -360,6 +360,7 @@ export function validateStarRating(n: number): FieldResult {
 
 export function guestCountValid(guests: number, absoluteMaximum?: number, propertyName?: string): FieldResult {
   if (!Number.isInteger(guests) || guests < 1) return { ok: false, message: 'At least 1 guest required' }
+  if (guests > 100) return { ok: false, message: 'Online bookings support up to 100 guests. Contact the Hacienda for larger groups.' }
   if (absoluteMaximum !== undefined && guests > absoluteMaximum) {
     const label = propertyName || 'This accommodation'
     return { ok: false, message: `${label} can accommodate up to ${absoluteMaximum} guests.` }

@@ -22,7 +22,7 @@ export type RegisterIntro = AuthIntro & { submitLabel: string; successMessage: s
  */
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-cream-50 pt-20 lg:pt-0">
+    <div className="min-h-screen bg-cream-50 dark:bg-forest-950 pt-20 lg:pt-0">
       <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col lg:flex-row">
         {/* Photograph. Decorative on the desktop split; the heading below is what
             carries the page for a screen reader. */}
@@ -47,14 +47,15 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col bg-cream-50 px-6 pb-12 pt-8 lg:px-14 lg:pb-16 lg:pt-10">
+        <div className="flex flex-1 flex-col bg-cream-50 dark:bg-forest-950 px-6 pb-12 pt-8 lg:px-14 lg:pb-16 lg:pt-28">
           <Link to="/" aria-label="Hacienda de LuisAna — home">
-            <Logo tone="dark" />
+            <span className="block dark:hidden"><Logo tone="dark" /></span>
+            <span className="hidden dark:block"><Logo tone="light" /></span>
           </Link>
           <div className="flex flex-1 items-center py-10">
             <div className="w-full max-w-md">{children}</div>
           </div>
-          <p className="text-xs leading-relaxed text-forest-700/70">
+          <p className="text-xs leading-relaxed text-forest-700/70 dark:text-cream-100/70">
             Running the hacienda? The Admin signs in on the Hacienda de LuisAna Admin mobile app, not on
             this website.
           </p>
@@ -69,7 +70,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
  * the fields, and the mode-switching links.
  *
  * It is a panel rather than a page so the same component works on `/guest/auth`
- * and inside the gate in front of `/account` — one sign-in surface, not two.
+ * and inside the gate in front of `/mybookings` — one sign-in surface, not two.
  */
 export function AuthFormPanel({
   mode,
@@ -97,7 +98,7 @@ export function AuthFormPanel({
       <div className="mb-6">
         <div className="eyebrow">{intro.eyebrow}</div>
         <h1 className="h2 mt-2">{intro.title}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-forest-700/85">{intro.body}</p>
+        <p className="mt-2 text-sm leading-relaxed text-forest-700/85 dark:text-cream-100/85">{intro.body}</p>
       </div>
 
       {error && (
@@ -137,7 +138,7 @@ export function AuthFormPanel({
 
       {children}
 
-      <div className="mt-6 space-y-2 text-center text-xs text-forest-700">
+      <div className="mt-6 space-y-2 text-center text-xs text-forest-700 dark:text-cream-100/80">
         {mode === 'login' && (
           <div>
             Don&rsquo;t have an account?{' '}
@@ -163,7 +164,7 @@ export function AuthFormPanel({
           </div>
         )}
         <div>
-          <Link to={homeForRole(role)} className="text-link text-forest-600">
+          <Link to={homeForRole(role)} className="text-link text-forest-600 dark:text-cream-100">
             {role === 'guest' ? 'Go to my bookings' : 'Continue browsing the Hacienda'}
           </Link>
         </div>

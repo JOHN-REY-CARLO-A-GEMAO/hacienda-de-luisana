@@ -3,7 +3,7 @@
 // Hacienda de LuisAna
 // ----------------------------------------------------------------------------
 // The order follows the real life of a Booking: browse → request → hold →
-// follow it at /account → chat → access with an RFID or Mobile Key → review.
+// follow it at /mybookings → chat → access with an RFID or Mobile Key → review.
 // The vocabulary matches CONTEXT.md (Booking, Date hold, Payment plan,
 // Reserved…) so the tour teaches the same words the booking flow uses.
 // ----------------------------------------------------------------------------
@@ -127,7 +127,7 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
   },
   {
     id: 'account',
-    route: '/account',
+    route: '/mybookings',
     targets: ['booking-card', 'account-tools'],
     eyebrow: 'Guest tour',
     title: 'My Bookings — follow your own stay',
@@ -142,7 +142,7 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
   },
   {
     id: 'account-next',
-    route: '/account',
+    route: '/mybookings',
     targets: ['booking-card', 'account-tools'],
     eyebrow: 'Guest tour',
     title: 'After approval: pay, upload, arrive',

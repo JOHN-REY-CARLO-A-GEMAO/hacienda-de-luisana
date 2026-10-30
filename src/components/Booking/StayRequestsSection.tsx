@@ -53,6 +53,12 @@ type StayRequestsSectionProps = {
 
 export function StayRequestsSection({ values, onChange, published, fallback, error }: StayRequestsSectionProps) {
   const lines = addonFeeLines(published, values, fallback)
+  // Use the same precedence as the fee breakdown, even if a caller passes
+  // fallback figures that differ from the current published document.
+  const unitLines = addonFeeLines(published, { pet_count: 1, bonfire_wood_sets: 1, late_checkout_hours: 1 }, fallback)
+  const petFee = unitLines.find((line) => line.id === 'pets')?.unitAmount
+  const woodFee = unitLines.find((line) => line.id === 'bonfire_wood')?.unitAmount
+  const lateFee = unitLines.find((line) => line.id === 'late_checkout')?.unitAmount
   const maxPets = maxPetsFor(published)
   const petsPriced = Boolean(published?.pet_policy && typeof published.pet_policy.fee_per_pet === 'number')
   const latePriced = typeof published?.late_checkout_per_hour === 'number'
@@ -76,8 +82,8 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
             <UnitBadge priced={petsPriced} />
           </div>
           <p className="mt-1.5 text-sm text-forest-700/75 leading-relaxed">
-            {fallback.fee_per_pet !== undefined
-              ? `${formatPesos(fallback.fee_per_pet)} per pet sanitation fee.`
+            {petFee != null
+              ? `${formatPesos(petFee)} per pet sanitation fee.`
               : 'Sanitation fee applies per pet.'}{' '}
             {petsPriced
               ? 'Added to your estimated total.'
@@ -104,8 +110,8 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
           </div>
           <p className="mt-1.5 text-sm text-forest-700/75 leading-relaxed">
             The bonfire pit is free to use.
-            {fallback.bonfire_wood_per_set !== undefined
-              ? ` A wood set is ${formatPesos(fallback.bonfire_wood_per_set)}, prepared on approval.`
+            {woodFee != null
+              ? ` A wood set is ${formatPesos(woodFee)}, prepared on approval.`
               : ' Wood sets are prepared on approval.'}
           </p>
           <QuantityStepper
@@ -129,8 +135,8 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
           </div>
           <p className="mt-1.5 text-sm text-forest-700/75 leading-relaxed">
             Standard check-out is 12:00 noon.
-            {fallback.late_checkout_per_hour !== undefined
-              ? ` Extra hours are ${formatPesos(fallback.late_checkout_per_hour)} per hour, subject to availability and Admin approval.`
+            {lateFee != null
+              ? ` Extra hours are ${formatPesos(lateFee)} per hour, subject to availability and Admin approval.`
               : ' Extra hours are subject to availability and Admin approval.'}
           </p>
           <div className="mt-3 sm:max-w-xs">
@@ -152,8 +158,8 @@ export function StayRequestsSection({ values, onChange, published, fallback, err
               {Array.from({ length: MAX_LATE_CHECKOUT_HOURS }, (_, index) => index + 1).map((hours) => (
                 <option key={hours} value={hours}>
                   +{hours} hour{hours === 1 ? '' : 's'} — until {hours}:00 PM
-                  {fallback.late_checkout_per_hour !== undefined
-                    ? ` (${formatPesos(hours * fallback.late_checkout_per_hour)})`
+                  {lateFee != null
+                    ? ` (${formatPesos(hours * lateFee)})`
                     : ''}
                 </option>
               ))}

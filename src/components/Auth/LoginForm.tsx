@@ -9,9 +9,9 @@ type Mode = 'login' | 'register' | 'reset'
 const DEFAULT_REGISTER_INTRO: RegisterIntro = {
   eyebrow: 'Create account',
   title: 'Make a Guest account',
-  body: 'A Guest account keeps your Bookings, your payment proofs and your dates in one place.',
+  body: 'Sign in before booking to keep your future bookings, payment proofs and dates in one place. Earlier bookings are not automatically linked.',
   submitLabel: 'Create Guest Account',
-  successMessage: 'Your Guest account is ready — your Bookings are now tied to it.',
+  successMessage: 'Your Guest account is ready. Bookings made while signed in can be linked to your account; earlier bookings are not automatically linked.',
 }
 
 /**
@@ -52,7 +52,7 @@ export function LoginForm({
     reset: {
       eyebrow: 'Reset password',
       title: 'Forgot your password?',
-      body: 'Enter your email and the Hacienda will send a reset link.',
+      body: 'Enter your email to request a password reset link.',
     },
   }[mode]
 

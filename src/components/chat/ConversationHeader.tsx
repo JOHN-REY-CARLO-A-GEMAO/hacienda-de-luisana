@@ -48,7 +48,7 @@ export function ConversationHeader({
     .join(' · ')
 
   const activityText = lastActiveAtMs
-    ? `Active ${formatConversationTimestamp(lastActiveAtMs)}`
+    ? `Last activity ${formatConversationTimestamp(lastActiveAtMs)}`
     : 'Private Guest–Admin channel'
 
   return (
@@ -77,7 +77,7 @@ export function ConversationHeader({
             <h2 className="truncate text-sm font-semibold text-forest-900 dark:text-cream-50">
               {title}
             </h2>
-            <span className="messages-private" title="End-to-end access controlled by Firestore rules">
+            <span className="messages-private" title="Access controlled by Firestore rules">
               <Lock size={11} />
               <span>Private</span>
             </span>

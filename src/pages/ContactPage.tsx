@@ -19,10 +19,11 @@ export function ContactPage() {
     <PageShell
       eyebrow="Contact"
       title="Talk to the Hacienda"
+      darkMode
       lead={
         <p>
-          A question about your dates, a special gathering, or just checking whether the house is
-          free — a real person answers, usually the same day. For quick answers, visit the FAQs.
+          Get in touch about your stay, a special gathering, or any questions you have.
+          You can also visit the FAQs for quick answers.
         </p>
       }
       cta={
@@ -39,7 +40,7 @@ export function ContactPage() {
       <section id="contact-details" className="pt-10 pb-16 lg:pb-20 scroll-mt-24">
         <Container width="content" className="space-y-12">
           <Link to="/support" className="btn-ghost">
-            Report or track an issue
+            Get support
           </Link>
           <ContactDetails />
         </Container>

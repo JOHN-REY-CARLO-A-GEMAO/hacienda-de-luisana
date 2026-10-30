@@ -236,19 +236,18 @@ export function validateBookingSelection(
       'accommodation',
     )
   }
-  const capacityMap: Record<string, number> = {
-    'main-house': 10,
-    'annex': 6,
-    'house-a-camping': 3,
-  }
-  const maxCapacity = capacityMap[selection.accommodation] ?? schedule.max_guests
-  if (!Number.isInteger(selection.guests) || selection.guests < schedule.min_guests
+  // Included occupancy is not a physical limit. Only the published schedule's
+  // explicit maximum is a cap; excess-guest pricing handles larger groups.
+  const maxCapacity = schedule.max_guests
+  if (!Number.isInteger(selection.guests) || selection.guests < schedule.min_guests || selection.guests > 100
       || (maxCapacity !== undefined && selection.guests > maxCapacity)) {
     return failure(
       'GUEST_COUNT_NOT_SUPPORTED',
       maxCapacity !== undefined && selection.guests > maxCapacity
         ? `${property} can accommodate up to ${maxCapacity} guests.`
-        : guestRuleMessage(property, classification, schedule, selection.guests),
+        : selection.guests > 100
+          ? 'Online bookings support up to 100 guests. Contact the Hacienda for larger groups.'
+          : guestRuleMessage(property, classification, schedule, selection.guests),
       'guests',
     )
   }

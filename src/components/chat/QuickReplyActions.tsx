@@ -9,7 +9,7 @@ export type QuickReplyOption = {
 }
 
 /**
- * Verified quick replies using official Hacienda de LuisAna address & coordinates
+ * Quick replies using the Hacienda address and the current approximate map pin
  * from `src/config/site.ts` — zero placeholder URLs or coordinates.
  */
 export const DEFAULT_QUICK_REPLIES: readonly QuickReplyOption[] = [
@@ -26,7 +26,7 @@ export const DEFAULT_QUICK_REPLIES: readonly QuickReplyOption[] = [
   {
     id: 'send-directions',
     label: 'Send Directions',
-    text: `Verified directions to ${BUSINESS.name} (${BUSINESS.address.formatted}): ${BUSINESS.contact.directions}`,
+    text: `Directions to ${BUSINESS.name} (${BUSINESS.address.formatted}): ${BUSINESS.contact.directions} — the map pin is approximate; please confirm it with the Hacienda.`,
   },
 ] as const
 

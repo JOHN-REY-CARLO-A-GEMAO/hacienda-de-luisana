@@ -81,7 +81,7 @@ describe('every described page has a head worth serving', () => {
 })
 
 describe('what may be crawled', () => {
-  const privatePaths = ['/account', '/messages', '/booking/status', '/book/pay', '/review', '/guest/auth']
+  const privatePaths = ['/mybookings', '/profile', '/messages', '/booking/status', '/book/pay', '/review', '/guest/auth']
 
   it('never indexes a signed-in page', () => {
     for (const path of privatePaths) {
@@ -251,7 +251,7 @@ describe('headTags', () => {
   })
 
   it('asks search engines to keep a private page out', () => {
-    expect(headTags(routeMetaFor('/account'))).toContain('content="noindex, nofollow"')
+    expect(headTags(routeMetaFor('/mybookings'))).toContain('content="noindex, nofollow"')
   })
 
   it('escapes the ampersands the page titles are full of', () => {
@@ -307,7 +307,7 @@ describe('structured data', () => {
   })
 
   it('does not describe a private page to a crawler', () => {
-    const schema = structuredData(routeMetaFor('/account')).join('\n')
+    const schema = structuredData(routeMetaFor('/mybookings')).join('\n')
     expect(schema).toContain('LodgingBusiness')
     expect(schema).not.toContain('BreadcrumbList')
   })
@@ -323,14 +323,14 @@ describe('crawler files', () => {
     for (const route of indexableRoutes()) {
       expect(xml).toContain(`<loc>${absoluteUrl(route.path)}</loc>`)
     }
-    expect(xml).not.toContain('/account')
+    expect(xml).not.toContain('/mybookings')
     expect(xml).not.toContain('/status')
     expect(xml.match(/<url>/g)!.length).toBe(indexableRoutes().length)
   })
 
   it('keeps signed-in pages out of robots.txt, with the sitemap named', () => {
     const robots = robotsTxt()
-    for (const path of ['/account', '/messages', '/booking/status', '/book/pay', '/review']) {
+    for (const path of ['/mybookings', '/messages', '/booking/status', '/book/pay', '/review']) {
       expect(robots).toContain(`Disallow: ${path}`)
     }
     expect(robots).toContain('Sitemap: https://haciendadeluisana.com/sitemap.xml')
@@ -359,7 +359,7 @@ describe('crawler files', () => {
       expect(text).toContain(route.description)
     }
     // No rate is invented, and no private page is advertised.
-    expect(text).not.toContain('/account')
+    expect(text).not.toContain('/mybookings')
     expect(text).not.toMatch(/₱\s?\d/ )
   })
 })

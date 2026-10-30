@@ -98,10 +98,6 @@ function openAccount(list: Booking[]) {
   return {
     container,
     text: () => (container.textContent ?? '').replace(/\s+/g, ' '),
-    tab: (label: string) =>
-      [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) =>
-        (b.textContent ?? '').includes(label),
-      ),
   }
 }
 
@@ -229,35 +225,12 @@ describe('an entry', () => {
   })
 })
 
-describe('the leave switch', () => {
-  it('is a real tablist, with the keyboard contract that implies', () => {
+describe('the bookings page', () => {
+  it('shows bookings without the old profile tab', () => {
     const page = openAccount([booking()])
-
-    const list = page.container.querySelector('[role="tablist"]')
-    expect(list?.getAttribute('aria-label')).toBe('Account sections')
-
-    const tabs = [...page.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-    expect(tabs.map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false'])
-    expect(tabs.map((t) => t.tabIndex)).toEqual([0, -1])
-
-    // Each tab says which panel it controls, and that panel points back at the
-    // tab that is showing it — the pair a screen reader needs to announce.
-    for (const tab of tabs) expect(tab.getAttribute('aria-controls')).toBe('account-panel')
-    const panel = page.container.querySelector('[role="tabpanel"]')
-    expect(panel?.id).toBe('account-panel')
-    expect(panel?.getAttribute('aria-labelledby')).toBe('account-tab-bookings')
-
-    // Arrow keys move the selection and the roving tabstop with it.
-    act(() => {
-      list?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
-    })
-    expect(page.tab('My profile')?.getAttribute('aria-selected')).toBe('true')
-
-    // Home goes back to the first leaf.
-    act(() => {
-      list?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
-    })
-    expect(page.tab('My bookings')?.getAttribute('aria-selected')).toBe('true')
+    expect(page.container.querySelector('#bookings-heading')?.textContent).toBe('My bookings')
+    expect(page.container.querySelector('[role="tablist"]')).toBeNull()
+    expect(page.container.querySelector('input[autocomplete="given-name"]')).toBeNull()
   })
 })
 
