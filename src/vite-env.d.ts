@@ -10,6 +10,12 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string
   readonly VITE_SUPABASE_URL?: string
   readonly VITE_SUPABASE_ANON_KEY?: string
+  /**
+   * Cloudflare Turnstile site key. Public by design; the secret key must never
+   * be exposed as a `VITE_*` variable. Unset means the auth forms ask for no
+   * verification — see `src/lib/turnstile.ts`.
+   */
+  readonly VITE_CLOUDFLARE_TURNSTILE_SITE_KEY?: string
   readonly BASE_URL: string
   readonly MODE: string
   readonly DEV: boolean
