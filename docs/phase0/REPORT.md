@@ -183,6 +183,7 @@ Shell environment: **no** Firebase, Supabase, Google credential, Admin or proxy 
 | `VITE_USE_FIREBASE_EMULATORS` | Development switch | Only the exact value `true` uses emulators. |
 | `FIREBASE_ENV_STRICT` | Build switch | Fails a build only when there is no Firebase configuration at all. Does not check Supabase. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_PROJECT_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | **Secrets**, Edge Function only | Production-only. Never used by tests. |
+| `BOOTSTRAP_ADMIN_EMAILS` | **Secret**, Edge Function only | Comma-separated bootstrap Admin allowlist (`supabase secrets set`). Optional: unset means the function admits only a Profile-promoted Admin, and every other surface keeps reading `src/config/admin-roles.json`. It is configuration rather than a literal in the function so the list has one source and cannot drift — issue #138. |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | **Secrets**, cleanup script | Destructive and live. Refused by the launcher. |
 | `GCLOUD_PROJECT`, `FIREBASE_PROJECT` | Test | Forced to `demo-hacienda`; anything else is refused. |
 | `src/lib/firebaseDefaults.ts`, `lib/firebase_options.dart`, `.firebaserc`, `supabase/config.toml` (`project_id`) | Committed public identifiers | Point to real projects. Not secrets, but they are why isolation must be network-level. |

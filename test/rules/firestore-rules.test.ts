@@ -181,6 +181,30 @@ describe('official guest-count rates', () => {
     }
   })
 
+  it('accepts the page’s floored half of a fractional total, and no centavo further', () => {
+    // ₱1,024.10 halves to 51205 centavos, but `1024.10 * 50` evaluates to
+    // 51204.999… and `int()` truncates it to 51204. The window is that one
+    // centavo: the floor `downPaymentAmount` produces is accepted, the truncated
+    // half is accepted, and either side of the pair is refused. Before this, the
+    // rule demanded the truncated half exactly, so the figure the website showed
+    // the Guest could never be stored — issue #137.
+    const windowCases: Array<[number, number, boolean]> = [
+      [512.05, 512.05, true], // the page's floor (`downPaymentAmount`)
+      [512.04, 512.06, true], // the truncated half the rule computes
+      [512.03, 512.07, false], // one centavo below the floor
+      [512.06, 512.04, false], // one centavo above the window
+    ]
+    for (const [due, balance, expected] of windowCases) {
+      const requestData = officialBooking({
+        rate_amount: 1024.1, stay_total: 1024.1, amount_due: due, balance_due: balance,
+      })
+      const decision = allow({
+        path: 'bookings/fractional-split', method: 'create', auth: anonymousGuest(), requestData,
+      }, officialStore)
+      expect(decision, `amount_due ${due} / balance_due ${balance}`).toBe(expected)
+    }
+  })
+
   it('allows a coherent multi-night Guest create inside the ceiling, and refuses twenty-one', () => {
     // One standard stay per night: the money arithmetic is the same shape as a
     // one-night Booking — `stay_total` the per-night rate times the nights, the

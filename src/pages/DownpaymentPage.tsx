@@ -344,7 +344,9 @@ export function DownpaymentPage() {
         return
       }
 
-      const balance = Math.max(0, Math.round((stayTotal - dueNow) * 100) / 100)
+      // The balance this option states, so the page and the preflight below read
+      // one number rather than two roundings of the same subtraction.
+      const balance = selectedOption?.balance ?? Math.max(0, Math.round((stayTotal - dueNow) * 100) / 100)
       // Validate the complete create payload while the proof is still on the
       // device. The storage URL is not known until after upload, so a non-empty
       // provisional marker is enough for this pure shape check; the real URL is

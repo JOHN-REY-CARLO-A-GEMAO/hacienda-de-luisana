@@ -151,4 +151,25 @@ describe('the Admin read path', () => {
     expect(fn).not.toMatch(/@gmail\.com/)
     expect(fn).toMatch(/profiles/)
   })
+
+  it('reads the bootstrap allowlist from its environment, not a literal', () => {
+    // Configuring an Admin is one edit in `src/config/admin-roles.json`. A
+    // literal address here is a copy nothing keeps in step with it, so the
+    // allowlist has to arrive as configuration — and no address may be spelled
+    // out in this file at all, comment or code.
+    expect(fnCode).toMatch(/BOOTSTRAP_ADMIN_EMAILS/)
+    expect(fnCode).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)
+  })
+
+  it('still refuses a caller the allowlist does not name', () => {
+    // The bootstrap half reads an environment variable now; the decision it
+    // feeds must survive the move. A missing or empty secret is "no bootstrap
+    // Admin", never "everyone is the Admin".
+    const allowlist = fnCode.match(/const bootstrapAdminEmails[\s\S]{0,240}?\.filter\(Boolean\)/)
+    expect(allowlist).not.toBeNull()
+    expect(allowlist?.[0]).toMatch(/Deno\.env\.get\('BOOTSTRAP_ADMIN_EMAILS'\)/)
+    expect(allowlist?.[0]).toMatch(/\.toLowerCase\(\)/)
+    expect(fnCode).toMatch(/decoded\.email_verified === true/)
+    expect(fnCode).toMatch(/if \(role !== 'admin' && !isBootstrapAdmin\)/)
+  })
 })
