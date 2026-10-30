@@ -66,9 +66,15 @@ export function proofObjectPath(input: {
   bookingRefId: string
   filename: string
   attempt: number
+  /** A secure per-upload nonce, preventing collision after an uncommitted upload. */
+  uploadId?: string
 }): string {
   const safeRef = input.bookingRefId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()
-  return `payments/${input.uid}/${safeRef}/proof-${input.attempt}.${extOf(input.filename)}`
+  const nonce = input.uploadId ?? ''
+  if (nonce && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(nonce)) {
+    throw new Error('Payment-proof upload id must be a UUID.')
+  }
+  return `payments/${input.uid}/${safeRef}/proof-${input.attempt}${nonce ? `-${nonce}` : ''}.${extOf(input.filename)}`
 }
 
 /**
@@ -79,7 +85,7 @@ export function proofObjectPath(input: {
  */
 export function nextProofAttempt(previousPath: string | null | undefined): number {
   if (!previousPath) return 1
-  const last = previousPath.match(/proof-(\d+)\.[a-z0-9]+$/i)
+  const last = previousPath.match(/proof-(\d+)(?:-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})?\.[a-z0-9]+$/i)
   return last ? Number(last[1]) + 1 : 1
 }
 

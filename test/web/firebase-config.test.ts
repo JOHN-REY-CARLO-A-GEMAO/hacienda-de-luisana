@@ -5,10 +5,14 @@
 // browser. So every branch of the order — variables, committed project, nothing —
 // is a case here, and so is every way a value can arrive wrong (a placeholder, a
 // quoted paste, a key that is not a Firebase key).
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   describeSource,
   fieldReport,
+  hasConfiguredRealtimeDatabase,
   isApiKeyLike,
+  isRealtimeDatabaseUrlForProject,
   isUsableValue,
   maskValue,
   readEnvValue,
@@ -39,7 +43,7 @@ const REAL: FirebaseConfig = {
   messagingSenderId: '648433185',
   appId: '1:648433185:web:abcdef',
   measurementId: 'G-ABCDEF',
-  databaseURL: 'https://hacienda-de-luisana-default-rtdb.firebaseio.com',
+  databaseURL: 'https://hacienda-de-luisana-default-rtdb.us-central1.firebasedatabase.app',
 }
 
 const FULL_ENV = {
@@ -77,6 +81,20 @@ describe('reading a value out of the environment', () => {
     expect(isApiKeyLike('my-api-key')).toBe(false)
     expect(isApiKeyLike('AIza-short')).toBe(false)
   })
+
+  it('accepts only same-project Realtime Database URLs or local emulator URLs', () => {
+    expect(isRealtimeDatabaseUrlForProject(
+      'https://hacienda-de-luisana-default-rtdb.us-central1.firebasedatabase.app',
+      'hacienda-de-luisana',
+    )).toBe(true)
+    expect(isRealtimeDatabaseUrlForProject('https://hacienda-de-luisana.firebaseio.com', 'hacienda-de-luisana')).toBe(true)
+    expect(isRealtimeDatabaseUrlForProject('http://127.0.0.1:9000', 'hacienda-de-luisana')).toBe(true)
+    expect(isRealtimeDatabaseUrlForProject('https://other-project-default-rtdb.us-central1.firebasedatabase.app', 'hacienda-de-luisana')).toBe(false)
+    expect(isRealtimeDatabaseUrlForProject('https://hacienda-de-luisana-other-db.us-central1.firebasedatabase.app', 'hacienda-de-luisana')).toBe(false)
+    expect(isRealtimeDatabaseUrlForProject('http://hacienda-de-luisana.firebaseio.com', 'hacienda-de-luisana')).toBe(false)
+    expect(isRealtimeDatabaseUrlForProject('https://hacienda-de-luisana.firebaseio.com/path', 'hacienda-de-luisana')).toBe(false)
+    expect(isRealtimeDatabaseUrlForProject('https://hacienda-de-luisana.firebaseio.com:9000', 'hacienda-de-luisana')).toBe(false)
+  })
 })
 
 describe('the project a build talks to', () => {
@@ -113,6 +131,15 @@ describe('the project a build talks to', () => {
     // not have (the Web app id) stay absent rather than invented.
     expect(report.fields.filter((f) => f.required).every((f) => f.state === 'default')).toBe(true)
     expect(fieldReport(report, 'appId').state).toBe('missing')
+    expect(hasConfiguredRealtimeDatabase(report)).toBe(true)
+  })
+
+  it('uses the same Realtime Database as the Admin app defaults', () => {
+    const adminOptions = readFileSync(join(__dirname, '../../lib/firebase_options.dart'), 'utf8')
+    const adminDatabaseUrl = adminOptions.match(/databaseURL:\s*'([^']+)'/)?.[1]
+    expect(adminDatabaseUrl).toBeTruthy()
+    expect(COMMITTED_PROJECT.databaseURL).toBe(adminDatabaseUrl)
+    expect(isRealtimeDatabaseUrlForProject(COMMITTED_PROJECT.databaseURL, COMMITTED_PROJECT.projectId)).toBe(true)
   })
 
   it('keeps local development in demo mode unless .env.local says otherwise', () => {
@@ -122,6 +149,7 @@ describe('the project a build talks to', () => {
 
     expect(report.configured).toBe(false)
     expect(report.source).toBe('none')
+    expect(hasConfiguredRealtimeDatabase(report)).toBe(false)
   })
 
   it('lets a variable over the committed project, value by value', () => {
@@ -135,6 +163,34 @@ describe('the project a build talks to', () => {
     expect(report.source).toBe('mixed')
     expect(report.config.projectId).toBe('staging-project')
     expect(report.config.authDomain).toBe(COMMITTED_PROJECT.authDomain)
+  })
+
+  it('refuses a malformed or cross-project database URL without breaking the other Firebase services', () => {
+    const malformed = resolveFirebaseConfig({
+      env: { ...FULL_ENV, VITE_FIREBASE_DATABASE_URL: 'not a database url' },
+      defaults: COMMITTED_PROJECT,
+      allowDefaults: true,
+    })
+    expect(malformed.configured).toBe(true)
+    expect(malformed.config.databaseURL).toBe(COMMITTED_PROJECT.databaseURL)
+    expect(fieldReport(malformed, 'databaseURL').state).toBe('default')
+    expect(malformed.refusedEnvKeys).toContain('VITE_FIREBASE_DATABASE_URL')
+    expect(hasConfiguredRealtimeDatabase(malformed)).toBe(true)
+
+    const crossProject = resolveFirebaseConfig({
+      env: {
+        ...FULL_ENV,
+        VITE_FIREBASE_PROJECT_ID: 'staging-project',
+        VITE_FIREBASE_DATABASE_URL: COMMITTED_PROJECT.databaseURL,
+      },
+      defaults: COMMITTED_PROJECT,
+      allowDefaults: true,
+    })
+    expect(crossProject.configured).toBe(true)
+    expect(crossProject.config.projectId).toBe('staging-project')
+    expect(crossProject.config.databaseURL).toBe('')
+    expect(fieldReport(crossProject, 'databaseURL').state).toBe('invalid')
+    expect(hasConfiguredRealtimeDatabase(crossProject)).toBe(false)
   })
 
   it('is connected without an app id: Auth, Firestore and Storage do not read one', () => {

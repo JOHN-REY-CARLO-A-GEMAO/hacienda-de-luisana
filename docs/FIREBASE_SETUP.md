@@ -127,13 +127,16 @@ stream, and the only rules file that is not Firestore or Storage:
   it leaves the browser. Removal is `onDisconnect().remove()` plus the client's
   own `stopSharing`; see `docs/adr/0013-live-location-as-a-stream.md`
 
-Deploy it with `firebase deploy --only database`, after creating the database in the
-console and setting `VITE_FIREBASE_DATABASE_URL`. Without any of those three the
-website's share control is disabled and says why. `npm run test:emulator` now starts
-the Database emulator too.
+Deploy it with `firebase deploy --only database` after creating the database in the
+console. The production website's committed default URL matches the Android/iOS
+value in `lib/firebase_options.dart`; set `VITE_FIREBASE_DATABASE_URL` when building
+for a different project, and keep it paired with that project's `VITE_FIREBASE_PROJECT_ID`.
+The resolver refuses malformed or cross-project URLs, and the share control stays off
+when no valid URL is available. `npm run test:emulator` starts the Database emulator too.
 
 **Indexes** (`firestore.indexes.json`):
-- `status + created_at`, `check_in + check_out`, `uid + created_at`
+- Bookings: `status + created_at`, `check_in + check_out`, `uid + created_at`
+- Conversations: `guest_uid + booking_id`, `guest_uid + updated_at DESC`
 
 ### 5. Firebase Hosting
 - `firebase.json`:
@@ -460,9 +463,9 @@ in `lib/firebase_options.dart`, which is what the Dart side actually reads; the
 JSON mainly exists to satisfy Gradle.
 
 **2. `databaseURL`, for live location.** `lib/firebase_options.dart` carries it for
-both platform blocks, and `VITE_FIREBASE_DATABASE_URL` carries it for the website.
-Without it the feature is switched off and says so, rather than half-working
-(ADR-0013).
+both platform blocks; the website uses the same committed default, with
+`VITE_FIREBASE_DATABASE_URL` available as a same-project override. Without a valid
+URL the feature is switched off and says so, rather than half-working (ADR-0013).
 
 ```bash
 flutter pub get

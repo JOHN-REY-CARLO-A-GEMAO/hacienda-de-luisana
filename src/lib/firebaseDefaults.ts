@@ -66,7 +66,8 @@ export const COMMITTED_PROJECT: FirebaseConfig = {
   // if the project has never been opened there: the URL is
   // `https://<projectId>-default-rtdb.<region>.firebasedatabase.app` on a
   // current project and `https://<projectId>.firebaseio.com` on an older one.
-  // A build with no usable value here does not fall back to guessing one — the
-  // live-location control is disabled with a reason instead.
-  databaseURL: '',
+  // Keep the Guest URL in sync with `lib/firebase_options.dart`: both apps must
+  // write live-location events to the same project and database. Malformed or
+  // cross-project overrides are refused and disable live-location safely.
+  databaseURL: 'https://hacienda-de-luisana-default-rtdb.us-central1.firebasedatabase.app',
 }

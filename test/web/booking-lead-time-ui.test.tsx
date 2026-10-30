@@ -274,7 +274,7 @@ describe('the existing booking date picker', () => {
     expect(container.textContent).toContain('Susunod na Hakbang')
     const created = bookingsDB.list().find((booking) => booking.guest_name === 'Ana Reyes')
     expect(created).toMatchObject({ check_in: '2026-10-31', check_out: '2026-11-01', status: 'Pending', payment_status: 'pending', amount_claimed: 3000, stay_total: 6000, amount_due: 3000, rate_classification: 'weekend_holiday', policy_version: 'test-v2', policy_effective_date: '2026-10-01', refund_policy_snapshot: null })
-    expect(created?.payment_proof_url).toMatch(/^payments\/.+\/HDL-\d+\/proof-1.png$/)
+    expect(created?.payment_proof_url).toMatch(/^payments\/.+\/HDL-\d+\/proof-1-[0-9a-f-]{36}\.png$/i)
     expect(localStorage.getItem('hdl:payment-proofs')).not.toBeNull()
     expect(loadBookingDraft()).toBeNull()
   })

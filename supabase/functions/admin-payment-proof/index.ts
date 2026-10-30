@@ -68,7 +68,7 @@ const BUCKET = 'payment-proofs'
  * be able to walk out with someone else's receipt by editing a string. The
  * Firestore read below is what makes the `{uid}` in the path mean something.
  */
-const PROOF_PATH = /^payments\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\/proof(-\d+)?\.[A-Za-z0-9]+$/
+const PROOF_PATH = /^payments\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\/proof(-\d+)?(?:-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})?\.[A-Za-z0-9]+$/i
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
