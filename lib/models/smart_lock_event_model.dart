@@ -116,6 +116,8 @@ class SmartLockEventModel {
   final DateTime timestamp;
   final bool isSuccess;
   final String? notes;
+  /// Why this access event was recorded, matching the Firestore `reason` field.
+  final String? reason;
 
   /// The uid the rules require on every `access_logs` create
   /// (`request.resource.data.uid == request.auth.uid`). The simulator rows
@@ -141,6 +143,7 @@ class SmartLockEventModel {
     required this.timestamp,
     required this.isSuccess,
     this.notes,
+    this.reason,
     this.uid,
     this.refId,
     this.simulated = false,
@@ -167,10 +170,19 @@ class SmartLockEventModel {
           : DateTime.now(),
       isSuccess: (json['isSuccess'] ?? json['success'] ?? (action != LockAction.denied)) as bool,
       notes: json['notes'] ?? json['reason'],
+      reason: json['reason']?.toString(),
       uid: json['uid'],
       refId: json['ref_id'] ?? json['refId'],
       simulated: json['simulated'] == true,
     );
+  }
+
+  String get _serializedReason {
+    final explicit = reason?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    final note = notes?.trim();
+    if (note != null && note.isNotEmpty) return note;
+    return action == LockAction.denied ? 'Access denied' : 'Access event recorded';
   }
 
   Map<String, dynamic> toJson() {
@@ -184,6 +196,8 @@ class SmartLockEventModel {
       'timestamp': timestamp.toIso8601String(),
       'isSuccess': isSuccess,
       'notes': notes,
+      // Firestore rules require a non-empty reason for every access-log create.
+      'reason': _serializedReason,
       // The keys `firestore.rules` holds every access_logs create to.
       'uid': uid,
       'ref_id': refId,
