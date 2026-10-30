@@ -5,6 +5,19 @@ import { useAuth } from '../../hooks/useAuth'
 import { LIMITS, checkRateLimit, resetRateLimit } from '../../lib/rateLimit'
 import { Field, Input } from '../ui'
 
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement | string, options: {
+        sitekey: string
+        callback: (token: string) => void
+        'expired-callback': () => void
+      }) => number
+      remove: (widgetId: number) => void
+    }
+  }
+}
+
 interface LoginFormOnlyProps {
   email: string
   onEmailChange: (email: string) => void
@@ -83,7 +96,7 @@ export function LoginFormOnly({
 
     // Turnstile is enforced only when a site key is configured.
     if (siteKey && !turnstileToken) {
-      setError('Please complete the verification before signing in.')
+      onError('Please complete the verification before signing in.')
       return
     }
 
