@@ -478,7 +478,7 @@ class FirestoreService implements PinSecurityRemote {
 
     if (title != null && message != null) {
       final notifRef = _firestore!.collection('notifications').doc();
-      batch.set(notifRef, {
+      writer.set(notifRef, {
         'user_id': uid,
         'booking_id': booking.id,
         'title': title,
