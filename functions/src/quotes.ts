@@ -46,6 +46,12 @@ const ttlMinutes = () => {
   const raw = Number(process.env.QUOTE_TTL_MINUTES ?? 30)
   return Number.isInteger(raw) && raw >= 1 && raw <= 240 ? raw : 30
 }
+// Bootstrap Admin allowlist. Single source of truth is
+// src/config/admin-roles.json (imported by src/lib/auth/profile.ts).
+// This copy must be kept in sync manually — functions/ cannot import
+// from outside its own directory. See firestore.rules adminEmails(),
+// storage.rules isAdminEmail(), database.rules.json, and
+// lib/services/auth_store.dart kAdminEmails.
 const bootstrapAdminEmails = ['gemaojohnreyarguilles@gmail.com']
 
 function enabled(): void {

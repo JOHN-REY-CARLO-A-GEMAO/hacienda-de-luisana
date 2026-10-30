@@ -338,16 +338,14 @@ service cloud.firestore {
         // centavos and floors the half; `int(data.stay_total * 50)` is that half
         // truncated *after* a float multiply, and the two can land a centavo apart —
         // ₱1,024.10 halves to 51205 centavos on the page while `1024.10 * 50` is
-        // 51204.999… to the evaluator. The one-centavo window on the upper side is
-        // not leniency about rounding: fractional rates stay legal (only
-        // `down_payment_percent` is pinned), and a rule that refuses a real booking
-        // over ₱0.01 is worse than the half-centavo hole it would guard. What closes
-        // the hole is the closing sum below, which the window does not loosen. In a
-        // CEL-based language `/` between two ints is INTEGER division, which is why
-        // both sides are compared in centavos and never in pesos.
+        // 51204.999… to the evaluator. `amount_due` must equal the floored half
+        // exactly (in centavos); there is no tolerance above the floor. Fractional
+        // rates stay legal (only `down_payment_percent` is pinned). In a CEL-based
+        // language `/` between two ints is INTEGER division, which is why both
+        // sides are compared in centavos and never in pesos.
         && data.amount_due is number
         && int(data.amount_due * 100 + 0.5) >= int(data.stay_total * 50)
-        && int(data.amount_due * 100 + 0.5) <= int(data.stay_total * 50) + 1
+        && int(data.amount_due * 100 + 0.5) == int(data.stay_total * 50)
         // The split has to close: what is owed now plus what remains is the whole
         // stay, to the centavo, with no peso unaccounted for in either direction.
         && data.balance_due is number

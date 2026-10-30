@@ -26,14 +26,12 @@
 // where ADR-0005 already put the stored half of the answer, and the same
 // service account that verifies the token is what reads it.
 //
-// ON THE AUTH, and one honest gap: this checks `profiles/{uid}.role == 'admin'`
-// and deliberately does NOT carry its own copy of the bootstrap email
-// allowlist. That list already exists in five files in this repository and
-// duplicating it a sixth time inside a function is how the `carlo` typo
-// happened in the first place. The cost is that an Admin who is on the
-// allowlist but has no `profiles/{uid}` document is refused here, so
-// `docs/ANDROID.md` step 5 (create the Profile with `role: 'admin'`) is
-// required for proof review, not optional.
+// ON THE AUTH: this checks `profiles/{uid}.role == 'admin'` OR the bootstrap
+// email allowlist with a verified email, matching firestore.rules' `role()`
+// function. The allowlist lives here too (six copies total) because the
+// function runs outside Firestore and cannot import the shared constant;
+// duplication is the cost of independence. An Admin on the allowlist with a
+// verified email is accepted even without a `profiles/{uid}` document.
 //
 // DEPLOYMENT:
 //
@@ -142,7 +140,16 @@ Deno.serve(async (request) => {
     return json({ error: 'Could not confirm your role. Try again in a moment.' }, 503)
   }
 
-  if (role !== 'admin') {
+  // Bootstrap Admin allowlist. Single source of truth is
+  // src/config/admin-roles.json (imported by src/lib/auth/profile.ts).
+  // This copy must be kept in sync manually.
+  const bootstrapAdminEmails = ['gemaojohnreyarguilles@gmail.com']
+  const callerEmail = typeof decoded.email === 'string' ? decoded.email.toLowerCase() : ''
+
+  const isBootstrapAdmin =
+    bootstrapAdminEmails.includes(callerEmail) && decoded.email_verified === true
+
+  if (role !== 'admin' && !isBootstrapAdmin) {
     return json({ error: 'Only the Admin may open a payment proof.' }, 403)
   }
 
