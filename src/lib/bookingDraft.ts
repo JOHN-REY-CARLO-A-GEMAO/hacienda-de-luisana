@@ -29,14 +29,41 @@ const DRAFT_KEY = 'hdl:booking-draft'
 const PROGRESS_KEY = 'hdl:booking-progress'
 export const LAST_BOOKING_KEY = 'hdl:last-booking-id'
 
+// A draft is a convenience for this tab. QuotaExceededError and SecurityError
+// (private mode, blocked site data, some in-app webviews) must never become a
+// Guest-facing booking error — especially not after a Booking already exists.
+function storageGet(storage: Storage, key: string): string | null {
+  try {
+    return storage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function storageSet(storage: Storage, key: string, value: string): void {
+  try {
+    storage.setItem(key, value)
+  } catch {
+    // ignore
+  }
+}
+
+function storageDrop(storage: Storage, key: string): void {
+  try {
+    storage.removeItem(key)
+  } catch {
+    // ignore
+  }
+}
+
 export function saveBookingDraft(draft: BookingDraft): void {
-  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
-  sessionStorage.removeItem(PROGRESS_KEY)
+  storageSet(sessionStorage, DRAFT_KEY, JSON.stringify(draft))
+  storageDrop(sessionStorage, PROGRESS_KEY)
 }
 
 export function loadBookingDraft(): BookingDraft | null {
   try {
-    const raw = sessionStorage.getItem(DRAFT_KEY)
+    const raw = storageGet(sessionStorage, DRAFT_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<BookingDraft>
     if (!parsed.check_in || !parsed.check_out || !parsed.accommodation || !parsed.name || !parsed.email) {
@@ -68,13 +95,13 @@ export function loadBookingDraft(): BookingDraft | null {
 // Incomplete details are saved only when the guest explicitly leaves to sign in.
 // They are never accepted by the payment page as a complete booking draft.
 export function saveBookingProgress(progress: BookingDraft): void {
-  sessionStorage.setItem(PROGRESS_KEY, JSON.stringify(progress))
-  sessionStorage.removeItem(DRAFT_KEY)
+  storageSet(sessionStorage, PROGRESS_KEY, JSON.stringify(progress))
+  storageDrop(sessionStorage, DRAFT_KEY)
 }
 
 export function loadBookingProgress(): BookingDraft | null {
   try {
-    const raw = sessionStorage.getItem(PROGRESS_KEY)
+    const raw = storageGet(sessionStorage, PROGRESS_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<BookingDraft>
     if (!parsed || typeof parsed !== 'object') return null
@@ -94,14 +121,14 @@ export function loadBookingProgress(): BookingDraft | null {
 }
 
 export function clearBookingDraft(): void {
-  sessionStorage.removeItem(DRAFT_KEY)
-  sessionStorage.removeItem(PROGRESS_KEY)
+  storageDrop(sessionStorage, DRAFT_KEY)
+  storageDrop(sessionStorage, PROGRESS_KEY)
 }
 
 export function rememberBookingId(id: string): void {
-  localStorage.setItem(LAST_BOOKING_KEY, id)
+  storageSet(localStorage, LAST_BOOKING_KEY, id)
 }
 
 export function rememberedBookingId(): string | null {
-  return localStorage.getItem(LAST_BOOKING_KEY)
+  return storageGet(localStorage, LAST_BOOKING_KEY)
 }

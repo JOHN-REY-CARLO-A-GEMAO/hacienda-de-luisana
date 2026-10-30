@@ -388,7 +388,7 @@ regenerate or re-encode that code — see `public/images/payment/README.md`.
   and `AuthStore.kAdminEmails` in the Flutter app, then `firebase deploy --only firestore:rules,storage`.
 - A role is never read from the body of a request: the rules take it from the signed-in identity's own
   Profile, and the test suite asserts that `request.resource.data.role` appears nowhere else.
-- Storage Rules limit uploads to 10MB site images, 2MB avatars and 5MB payment documents. The legacy
+- Storage Rules limit uploads to 10MB site images and 5MB payment documents. The legacy
   `/payments` path is readable only by the Guest it belongs to and the Admin, who may also delete them.
   (Government ID KYC is gone: the `/kyc` path was removed from the rules entirely — new payment proofs
   live in Supabase Storage's `payment-proofs` bucket, ADR-0011.)

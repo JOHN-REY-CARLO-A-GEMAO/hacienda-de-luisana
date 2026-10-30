@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { MIN_PASSWORD_LENGTH, describeAuthError } from '../../lib/auth'
 import { EMAIL_MAX, validateEmail } from '../../lib/validation'
 import { useAuth } from '../../hooks/useAuth'
-import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
+import { LIMITS, checkRateLimit, resetRateLimit } from '../../lib/rateLimit'
 import { Field, Input } from '../ui'
 
 interface LoginFormOnlyProps {
@@ -69,6 +69,9 @@ export function LoginFormOnly({
       }
 
       await login(email, password)
+      // Successful sign-in is not an attack. Refund the attempt so five
+      // genuine sign-ins in a minute (a demo, a reviewer) cannot lock the Guest out.
+      resetRateLimit('login')
       onSuccess?.()
     } catch (err) {
       const described = describeAuthError(err)

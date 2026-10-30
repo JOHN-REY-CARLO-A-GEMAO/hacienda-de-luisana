@@ -89,7 +89,7 @@ Three consumers read it and nothing re-declares a title:
 2. Add a row to `ROUTE_META`. Public page → `index: true, prerender: true`.
    Signed-in page → `index: false, prerender: false`.
 3. Run `npm run build`. The console lists every page written, its word count and
-   its size; `test/web/seo.test.ts` fails if the manifest and the router drift
+   its size; `test/web/seo.test.tsx` fails if the manifest and the router drift
    apart, if a description is the wrong length, or if two pages share a title.
 
 ---

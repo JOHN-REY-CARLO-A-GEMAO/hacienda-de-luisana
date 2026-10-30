@@ -444,7 +444,7 @@ export function BookingPage() {
         } catch (_) {}
       }
 
-      saveBookingDraft({
+      const draft = {
         check_in: form.check_in,
         check_out: form.check_out,
         guests: Number(form.guests),
@@ -460,8 +460,11 @@ export function BookingPage() {
         ...(form.event_purpose === 'other' && form.event_purpose_detail.trim()
           ? { event_purpose_detail: form.event_purpose_detail.trim() }
           : {}),
-      })
-      navigate('/book/pay')
+      }
+      // sessionStorage is a convenience. The draft also travels on the route so
+      // a blocked or full store cannot be mistaken for a booking-rules failure.
+      saveBookingDraft(draft)
+      navigate('/book/pay', { state: { draft } })
     } catch (err) {
       stopped = true
       setStatus('error')

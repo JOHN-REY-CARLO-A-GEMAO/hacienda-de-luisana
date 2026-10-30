@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { FlowSteps } from '../components/Booking/FlowSteps'
 import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
@@ -47,7 +47,11 @@ function nightsBetween(checkIn: string, checkOut: string): number {
 
 export function DownpaymentPage() {
   const navigate = useNavigate()
-  const draft = useMemo(() => loadBookingDraft(), [])
+  const location = useLocation()
+  const draft = useMemo(() => {
+    const fromRoute = (location.state as { draft?: BookingDraft } | null)?.draft
+    return fromRoute ?? loadBookingDraft()
+  }, [location.state])
   const published = usePublishedRates()
   const paymentInformation = usePaymentInformation()
   const fileInput = useRef<HTMLInputElement>(null)
