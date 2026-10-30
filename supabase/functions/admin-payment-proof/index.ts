@@ -58,6 +58,9 @@ const EXPIRY_SECONDS = 60
 /** The one bucket that exists. */
 const BUCKET = 'payment-proofs'
 
+/** Warn once per instance, not once per request, when the allowlist secret is unset. */
+let warnedMissingBootstrap = false
+
 /**
  * The stored address of a proof, and the only one this function will sign.
  *
@@ -140,14 +143,35 @@ Deno.serve(async (request) => {
     return json({ error: 'Could not confirm your role. Try again in a moment.' }, 503)
   }
 
-  // Bootstrap Admin allowlist. Single source of truth is
-  // src/config/admin-roles.json (imported by src/lib/auth/profile.ts).
-  // This copy must be kept in sync manually.
-  const bootstrapAdminEmails = ['gemaojohnreyarguilles@gmail.com']
+  // Bootstrap Admin allowlist, read from this function's own environment rather
+  // than restated as a literal. The single source of truth is
+  // src/config/admin-roles.json; a literal here was a sixth copy that nothing
+  // kept in step with it, so adding or removing an Admin silently did not apply
+  // to the one path that opens a Guest's payment proof.
+  //
+  // Set it once per project, alongside the other function secrets:
+  //   supabase secrets set BOOTSTRAP_ADMIN_EMAILS="first-admin,second-admin"
+  // Comma-separated, case-insensitive. Unset means "no bootstrap Admin": the
+  // Profile path below (`profiles/{uid}.role == 'admin'`) still admits the Admin,
+  // which is the same fallback every other surface uses.
+  const bootstrapAdminEmails = (Deno.env.get('BOOTSTRAP_ADMIN_EMAILS') ?? '')
+    .split(',')
+    .map((address) => address.trim().toLowerCase())
+    .filter(Boolean)
   const callerEmail = typeof decoded.email === 'string' ? decoded.email.toLowerCase() : ''
 
   const isBootstrapAdmin =
-    bootstrapAdminEmails.includes(callerEmail) && decoded.email_verified === true
+    callerEmail !== '' &&
+    bootstrapAdminEmails.includes(callerEmail) &&
+    decoded.email_verified === true
+
+  if (bootstrapAdminEmails.length === 0 && !warnedMissingBootstrap) {
+    // Not fatal — a Profile-promoted Admin is still served — but a deployment
+    // that has not set the secret should say so, rather than looking like a role
+    // check that simply never matches. Once per instance.
+    warnedMissingBootstrap = true
+    console.warn('[admin-payment-proof] BOOTSTRAP_ADMIN_EMAILS is not set; relying on profiles only')
+  }
 
   if (role !== 'admin' && !isBootstrapAdmin) {
     return json({ error: 'Only the Admin may open a payment proof.' }, 403)

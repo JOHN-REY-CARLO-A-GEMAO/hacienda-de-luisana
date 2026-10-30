@@ -36,6 +36,7 @@ import {
   maxPetsFor,
   pricedStayExtras,
 } from './requests'
+import { paymentOptionsForTotal } from './money'
 
 export type BookingRuleFailureCode =
   | 'INVALID_CHECK_IN_DATE'
@@ -342,7 +343,6 @@ export function validateBookingPayload(
   if (!selection.ok) return selection
   const { quote } = selection
   const property = displayProperty(input.accommodation, options.published?.accommodations?.[input.accommodation])
-  const due = Math.floor((quote.stayTotal * 50 + Number.EPSILON)) / 100
 
   const proof = assertSubmittable(input)
   if (!proof.ok) {
@@ -369,9 +369,33 @@ export function validateBookingPayload(
   if (input.rate_classification !== quote.classification) return snapshotFailure(property, 'rate classification', quote.classification, input.rate_classification)
   if (input.stay_total !== quote.stayTotal) return snapshotFailure(property, 'stay total', quote.stayTotal, input.stay_total)
   if (input.payment_plan !== 'down-payment') return snapshotFailure(property, 'payment plan', 'down-payment', input.payment_plan)
+  // The split is read from the same function the page renders from, never
+  // restated here as a float multiply. Two implementations of the 50/50 split is
+  // what put a centavo between the quote the Guest was shown and the quote this
+  // check expected, and refused a correct Booking as a stale one: ₱2,499.99 for
+  // one night halves to ₱1,249.99 with a ₱1,250.00 balance, while
+  // `Math.floor(stayTotal * 50) / 100` — and the unrounded subtraction that
+  // followed — expected ₱1,249.9999999999998.
+  const downPayment = paymentOptionsForTotal(quote.stayTotal, quote.rateCard)
+    .find((option) => option.plan === 'down-payment')
+  if (!downPayment) {
+    return failure(
+      'RATE_CONFIGURATION_INVALID',
+      `The published rate for ${property} states no down payment to collect, so nothing was submitted. Please contact the Hacienda.`,
+      'payment',
+    )
+  }
+  const due = downPayment.dueNow
   if (input.amount_due !== due) return snapshotFailure(property, 'downpayment due now', due, input.amount_due)
   if (input.security_deposit !== quote.rateCard.securityDeposit) return snapshotFailure(property, 'security deposit', quote.rateCard.securityDeposit, input.security_deposit)
-  if (input.balance_due !== quote.stayTotal - due) return snapshotFailure(property, 'balance due', quote.stayTotal - due, input.balance_due)
+  // Compared in the same whole centavos the option states, for the same reason.
+  // A Booking stored before `balance_due` existed has no figure to compare, and
+  // that is an absent field rather than a changed policy — reporting it as a
+  // stale rate is what made `explainGuestCreateRefusal` blame the rates for a
+  // refusal they had nothing to do with.
+  if (typeof input.balance_due === 'number' && input.balance_due !== downPayment.balance) {
+    return snapshotFailure(property, 'balance due', downPayment.balance, input.balance_due)
+  }
   if (input.policy_version !== quote.snapshot.version) return snapshotFailure(property, 'rate version', quote.snapshot.version, input.policy_version)
   if (input.policy_effective_date !== quote.snapshot.effectiveDate) return snapshotFailure(property, 'rate effective date', quote.snapshot.effectiveDate, input.policy_effective_date)
   if (!sameValue(input.refund_policy_snapshot, options.published?.refund ?? null)) {
