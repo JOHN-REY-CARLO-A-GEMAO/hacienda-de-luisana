@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MIN_PASSWORD_LENGTH, describeAuthError } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
@@ -74,6 +74,28 @@ export function RegisterForm({
   const passwordId = useId()
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [turnstileWidgetId, setTurnstileWidgetId] = useState<number | null>(null)
+  const turnstileContainerRef = useRef<HTMLDivElement>(null)
+
+  const siteKey = import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY
+
+  // Render the Turnstile widget explicitly when the script and container are ready.
+  useEffect(() => {
+    if (!siteKey || !turnstileContainerRef.current || !window.turnstile) return
+    const id = window.turnstile.render(turnstileContainerRef.current, {
+      sitekey: siteKey,
+      callback: (token: string) => setTurnstileToken(token),
+      'expired-callback': () => setTurnstileToken(null),
+    })
+    setTurnstileWidgetId(id)
+    return () => {
+      if (turnstileWidgetId !== null) {
+        window.turnstile.remove(turnstileWidgetId)
+      }
+    }
+  }, [siteKey])
+
   const [firstName, setFirstName] = useState('')
   const [middleName, setMiddleName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -175,6 +197,12 @@ export function RegisterForm({
     const rateLimit = checkRateLimit('register', LIMITS.register)
     if (!rateLimit.ok) {
       onError(rateLimit.message)
+      return
+    }
+
+    // Turnstile is enforced only when a site key is configured.
+    if (siteKey && !turnstileToken) {
+      onError('Please complete the verification before creating an account.')
       return
     }
 
@@ -428,6 +456,15 @@ export function RegisterForm({
           </span>
         )}
       </div>
+
+      {siteKey && (
+        <div className="space-y-3">
+          <div ref={turnstileContainerRef} className="turnstile-widget" />
+          <span className="text-xs text-forest-500 dark:text-sage-400 leading-relaxed">
+            Completing the verification helps keep this form free of spam.
+          </span>
+        </div>
+      )}
 
       <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
         {loading ? 'Please wait…' : intro.submitLabel}

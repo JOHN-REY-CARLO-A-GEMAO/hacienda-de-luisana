@@ -28,8 +28,10 @@ class AuthException implements Exception {
 /// Anyone else who signs in is told the app is for the Admin and signed
 /// straight back out; Guests book on the website.
 class AuthStore extends ChangeNotifier {
-  /// Bootstrap Admin allowlist. Keep in sync with firestore.rules,
-  /// storage.rules and src/lib/auth/profile.ts.
+  /// Bootstrap Admin allowlist. Single source of truth is
+  /// src/config/admin-roles.json (imported by src/lib/auth/profile.ts).
+  /// Keep in sync with firestore.rules, storage.rules, database.rules.json,
+  /// functions/src/quotes.ts, and src/lib/auth/profile.ts.
   static const List<String> kAdminEmails = [
     'gemaojohnreyarguilles@gmail.com',
   ];

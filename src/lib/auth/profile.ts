@@ -15,6 +15,7 @@
 // ----------------------------------------------------------------------------
 
 import { normalizeRole, type Role } from './roles'
+import adminRoles from '../../config/admin-roles.json' assert { type: 'json' }
 
 /** The role everybody signed in starts with, and the one a bad Profile falls to. */
 export const DEFAULT_ROLE: Role = 'guest'
@@ -59,15 +60,15 @@ export type Profile = {
  * The bootstrap allowlist: the Admin addresses, which carry the role with no
  * Profile written.
  *
+ * Derived from the single source of truth in `src/config/admin-roles.json`.
  * Kept in step with `adminEmails()` in firestore.rules, `isAdminEmail()` in
  * storage.rules and `AuthStore.kAdminEmails` in the Flutter app
  * (`lib/services/auth_store.dart`). Changing one without the others splits the
  * two apps' idea of who the Admin is. `test/web/auth-firestore-rules.test.ts`
  * compares this list with the rules file.
  */
-export const BOOTSTRAP_ROLES: ReadonlyArray<{ email: string; role: Role }> = [
-  { email: 'gemaojohnreyarguilles@gmail.com', role: 'admin' },
-]
+export const BOOTSTRAP_ROLES: ReadonlyArray<{ email: string; role: Role }> =
+  adminRoles.adminEmails.map((email) => ({ email, role: 'admin' }))
 
 /**
  * The role an email address carries on its own, or null when it carries none.
