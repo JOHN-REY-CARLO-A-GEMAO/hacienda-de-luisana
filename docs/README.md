@@ -47,9 +47,9 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 | | Guest | Admin |
 | --- | --- | --- |
 | Public site, `/book` | ✅ | ✅ (reads like anyone) |
-| `/account` — own Bookings, payment plan, payment proof, Date hold, withdraw | ✅ | — (turned away; pointed to the app) |
+| `/mybookings` — own Bookings, payment plan, payment proof, Date hold, withdraw | ✅ | — (turned away; pointed to the app) |
 | `/messages` — chat with the Admin, and 📍 Share Live Location (15/30/60 min) | ✅ | ✅ app inbox |
-| Rate a finished stay, and change your mind for 14 days | ✅ (at `/account`) | — |
+| Rate a finished stay, and change your mind for 14 days | ✅ (at `/mybookings`) | — |
 | Read, answer, moderate and publish Reviews | — | ✅ app ([ADR-0014](./adr/0014-a-review-is-private-and-a-testimonial-is-a-separate-document.md)) |
 | Review a Booking: approve / reject, refuse an ID | — | ✅ app |
 | Verify / reject Payment proof, cancel, settle and mark Refunds | — | ✅ app |
@@ -70,7 +70,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 
 - Responsive landing (Hero, Accommodations, Experience, Gallery, Location, Reviews, FAQ)
 - `/book` — Guests book at least **30 days before check-in** (calendar dates in **Asia/Manila**, configurable via `site_config/booking`). The inline color-coded calendar reads a privacy-safe server projection; the regional `submitBooking` callable transaction is the authoritative lead-time, price and availability boundary. The 24-hour Date hold, downpayment proof and Pending → Admin review remain intact. See [BOOKING_POLICY.md](./BOOKING_POLICY.md) for configuration, enforcement, verification and deployment.
-- `/account` — the Guest's own Bookings, drawn as the Hacienda's guest book: the next stay and its dates on the page opener, one dated entry per stay (status, money, Date hold countdown, Payment plan choice from the published rates, Payment proof upload, withdraw, late checkout, review), the stage track and Activity log behind one disclosure per entry, and the Guest's particulars on the flyleaf. The direction and its tokens are [ACCOUNT.md](./ACCOUNT.md)
+- `/mybookings` — the Guest's own Bookings, drawn as the Hacienda's guest book: the next stay and its dates on the page opener, one dated entry per stay (status, money, Date hold countdown, Payment plan choice from the published rates, Payment proof upload, withdraw, late checkout, review), the stage track and Activity log behind one disclosure per entry, and the Guest's particulars on the flyleaf. The direction and its tokens are [ACCOUNT.md](./ACCOUNT.md)
 - `/login`, `/guest/auth` — Guest sign-in / sign-up, email + password and Google, password reset, session kept across reloads
 - `/admin/*`, `/app/*` — a notice: the Admin dashboard moved to the Admin mobile app
 - Interactive guided tutorial (first visit + "Replay tutorial") — drives the real UI instead of slides; see [TUTORIAL.md](./TUTORIAL.md)
@@ -82,7 +82,7 @@ A role is **stored**, not chosen: signing up on the website makes a Guest and ca
 | `/` | Landing | everyone |
 | `/book` | Booking form + aggregate availability calendar | everyone (an authenticated Guest identity is bound by `submitBooking` — [ADR-0004](./adr/0004-a-web-guests-booking-belongs-to-the-anonymous-identity-attached-at-creation.md), [ADR-0020](./adr/0020-private-availability-projection-and-transactional-guest-submit.md)) |
 | `/login`, `/guest/auth` | Sign in / sign up | Guests |
-| `/account` | My Bookings | signed-in Guest (`booking:read:own`) |
+| `/mybookings` | My Bookings | signed-in Guest (`booking:read:own`) |
 | `/status` | Deployment status — is this build wired to Firebase, and why not | everyone (read-only; the key is masked) |
 | `/admin/*`, `/app/*` | "Moved to the Admin app" | — |
 

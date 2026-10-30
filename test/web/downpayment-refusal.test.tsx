@@ -157,6 +157,6 @@ describe('DownpaymentPage with no Guest identity to attach the Booking to', () =
     await pump(2)
     await submitBooking(container)
 
-    expect(container.textContent).toContain('Nothing was saved')
+    expect(container.textContent).toContain('No booking was saved')
   })
 })

@@ -3,7 +3,7 @@ import { describeAuthError } from '../../lib/auth'
 import { EMAIL_MAX, validateEmail } from '../../lib/validation'
 import { useAuth } from '../../hooks/useAuth'
 import { Field, Input } from '../ui'
-import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
+import { LIMITS, checkRateLimit, resetRateLimit } from '../../lib/rateLimit'
 import type { AuthIntro } from './AuthShell'
 
 interface ResetPasswordFormProps {
@@ -58,6 +58,7 @@ export function ResetPasswordForm({
       }
 
       await resetPassword(email)
+      resetRateLimit('reset')
       onInfo('Password reset email sent! Check your inbox.')
       onSuccess?.()
     } catch (err) {

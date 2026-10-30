@@ -29,7 +29,7 @@ _Avoid_: Scope, entitlement, access level
 ### Applications
 
 **Website**:
-The Guest's application (`src/`): a privacy-safe aggregate availability calendar, the Booking form, Payment proof upload, Payment plan choice, the Guest's own Bookings at `/account`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app. Private Booking reads and authoritative website creation cross regional callable boundaries (`bookingAvailability` and `submitBooking`; ADR-0020).
+The Guest's application (`src/`): a privacy-safe aggregate availability calendar, the Booking form, Payment proof upload, Payment plan choice, the Guest's own Bookings at `/mybookings`, chat with the Admin, and a review after the stay. It has no management screens; `/admin` and `/app` only point at the Admin app. Private Booking reads and authoritative website creation cross regional callable boundaries (`bookingAvailability` and `submitBooking`; ADR-0020).
 _Avoid_: Portal, dashboard, admin site
 
 **Admin app**:

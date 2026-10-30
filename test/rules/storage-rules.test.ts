@@ -53,14 +53,19 @@ describe('site images: gallery and accommodations', () => {
   })
 })
 
-describe('avatars', () => {
-  it('lets a person write their own avatar, under 2 MB, and anybody read it', () => {
-    expect(storage({ path: `avatars/${GUEST_UID}/me.jpg`, method: 'create', auth: anonymousGuest(), requestData: { ...IMAGE, size: 1_000_000 } })).toBe(true)
-    expect(storage({ path: `avatars/${GUEST_UID}/me.jpg`, method: 'create', auth: anonymousGuest(), requestData: { ...IMAGE, size: 3 * 1024 * 1024 } })).toBe(false)
-    expect(storage({ path: `avatars/${GUEST_UID}/me.jpg`, method: 'get', auth: null, resourceData: {}, ...IMAGE })).toBe(true)
-  })
+describe('avatars: the /avatars slot closed because nothing writes it', () => {
+  const path = `avatars/${GUEST_UID}/me.jpg`
 
-  it('refuses writing somebody else\'s avatar', () => {
+  it('refuses every operation on the retired path — nobody reads or writes avatars', () => {
+    // Same shape as the /kyc retirement: a path nobody uses falls through to
+    // the default deny. Public-read + anonymous arbitrary-content writes is
+    // not a grant this bucket should carry for a dead prefix.
+    expect(storage({ path, method: 'create', auth: anonymousGuest(), requestData: { ...IMAGE, size: 1_000_000 } })).toBe(false)
+    expect(storage({ path, method: 'create', auth: anonymousGuest(), requestData: { size: 1000, contentType: 'text/html' } })).toBe(false)
+    expect(storage({ path, method: 'create', auth: allowlistedAdmin(), requestData: { ...IMAGE } })).toBe(false)
+    expect(storage({ path, method: 'get', auth: null, resourceData: {}, ...IMAGE })).toBe(false)
+    expect(storage({ path, method: 'get', auth: anonymousGuest(), resourceData: {}, ...IMAGE })).toBe(false)
+    expect(storage({ path, method: 'delete', auth: allowlistedAdmin() })).toBe(false)
     expect(storage({ path: `avatars/${OTHER_GUEST_UID}/me.jpg`, method: 'create', auth: anonymousGuest(), requestData: { ...IMAGE } })).toBe(false)
   })
 })

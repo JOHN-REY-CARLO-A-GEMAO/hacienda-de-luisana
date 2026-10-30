@@ -2,7 +2,7 @@
 
 Two roles, two apps, one Firebase project (ADR-0007):
 
-- **Guest website** (`src/`) — React + Vite + TS + Tailwind + Firebase. Guest-only: landing page, `/book`, `/account` (own Bookings, payment proof upload, payment plan), `/messages` (chat with the Admin). No management screens.
+- **Guest website** (`src/`) — React + Vite + TS + Tailwind + Firebase. Guest-only: landing page, `/book`, `/mybookings` (own Bookings, payment proof upload, payment plan), `/messages` (chat with the Admin). No management screens.
 - **Admin mobile app** (`lib/`) — Flutter. Admin-only: Booking review and lifecycle, payment verification, refunds, published rates, stays, chat inbox, smart-lock Access log, rooms, CRM, analytics.
 
 There is no Staff role and no Host role. Roles are `guest` | `admin`.
@@ -26,7 +26,7 @@ The Guest website is a single-page app that is prerendered at build time
 (`scripts/prerender.mjs`) into one `.html` file per public route. A page's title,
 description and whether it may be indexed are declared once, in
 `src/config/routes.ts`; adding a route to `src/App.tsx` without a row there gives
-it the not-found head, and `test/web/seo.test.ts` fails. Read `docs/SEO.md`
+it the not-found head, and `test/web/seo.test.tsx` fails. Read `docs/SEO.md`
 before touching the `<head>`, the JSON-LD, or the deploy configuration.
 
 ## Agent skills
