@@ -20,19 +20,6 @@ import { LEGAL_VERSION } from '../../lib/legal'
 import type { RegisterIntro } from './AuthShell'
 import { CheckboxRow, Field, Input } from '../ui'
 
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (container: HTMLElement | string, options: {
-        sitekey: string
-        callback: (token: string) => void
-        'expired-callback': () => void
-      }) => number
-      remove: (widgetId: number) => void
-    }
-  }
-}
-
 /** Matches `MAX_PASSWORD_LENGTH` in `src/lib/auth/credentials.ts`. */
 const PASSWORD_MAX = 200
 
@@ -103,9 +90,7 @@ export function RegisterForm({
     })
     setTurnstileWidgetId(id)
     return () => {
-      if (turnstileWidgetId !== null) {
-        window.turnstile.remove(turnstileWidgetId)
-      }
+      window.turnstile.remove(id)
     }
   }, [siteKey])
 
