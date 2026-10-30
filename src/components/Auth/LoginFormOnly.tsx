@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MIN_PASSWORD_LENGTH, describeAuthError } from '../../lib/auth'
 import { EMAIL_MAX, validateEmail } from '../../lib/validation'
 import { useAuth } from '../../hooks/useAuth'
@@ -24,6 +24,7 @@ interface LoginFormOnlyProps {
  * - Rate limiting
  * - Error handling via describeAuthError
  * - Google sign-in button
+ * - Cloudflare Turnstile CAPTCHA (when VITE_CLOUDFLARE_TURNSTILE_SITE_KEY is set)
  */
 export function LoginFormOnly({
   email,
@@ -38,6 +39,27 @@ export function LoginFormOnly({
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [turnstileWidgetId, setTurnstileWidgetId] = useState<number | null>(null)
+  const turnstileContainerRef = useRef<HTMLDivElement>(null)
+
+  const siteKey = import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY
+
+  // Render the Turnstile widget explicitly when the script and container are ready.
+  useEffect(() => {
+    if (!siteKey || !turnstileContainerRef.current || !window.turnstile) return
+    const id = window.turnstile.render(turnstileContainerRef.current, {
+      sitekey: siteKey,
+      callback: (token: string) => setTurnstileToken(token),
+      'expired-callback': () => setTurnstileToken(null),
+    })
+    setTurnstileWidgetId(id)
+    return () => {
+      if (turnstileWidgetId !== null) {
+        window.turnstile.remove(turnstileWidgetId)
+      }
+    }
+  }, [siteKey])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -56,6 +78,12 @@ export function LoginFormOnly({
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs)
       onError('Please correct the highlighted errors before signing in.')
+      return
+    }
+
+    // Turnstile is enforced only when a site key is configured.
+    if (siteKey && !turnstileToken) {
+      setError('Please complete the verification before signing in.')
       return
     }
 
@@ -150,6 +178,15 @@ export function LoginFormOnly({
             </button>
           </div>
         </div>
+
+        {siteKey && (
+          <div className="space-y-3">
+            <div ref={turnstileContainerRef} className="turnstile-widget" />
+            <span className="text-xs text-forest-500 dark:text-sage-400 leading-relaxed">
+              Completing the verification helps keep this form free of spam.
+            </span>
+          </div>
+        )}
 
         <button
           type="submit"
