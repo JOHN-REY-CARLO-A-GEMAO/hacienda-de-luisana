@@ -1,18 +1,5 @@
 /// <reference types="vite/client" />
 
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (container: HTMLElement | string, options: {
-        sitekey: string
-        callback: (token: string) => void
-        'expired-callback': () => void
-      }) => number
-      remove: (widgetId: number) => void
-    }
-  }
-}
-
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY: string
   readonly VITE_FIREBASE_AUTH_DOMAIN: string
