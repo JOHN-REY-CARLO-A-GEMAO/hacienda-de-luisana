@@ -5,19 +5,6 @@ import { useAuth } from '../../hooks/useAuth'
 import { LIMITS, checkRateLimit, resetRateLimit } from '../../lib/rateLimit'
 import { Field, Input } from '../ui'
 
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (container: HTMLElement | string, options: {
-        sitekey: string
-        callback: (token: string) => void
-        'expired-callback': () => void
-      }) => number
-      remove: (widgetId: number) => void
-    }
-  }
-}
-
 interface LoginFormOnlyProps {
   email: string
   onEmailChange: (email: string) => void
@@ -68,9 +55,7 @@ export function LoginFormOnly({
     })
     setTurnstileWidgetId(id)
     return () => {
-      if (turnstileWidgetId !== null) {
-        window.turnstile.remove(turnstileWidgetId)
-      }
+      window.turnstile.remove(id)
     }
   }, [siteKey])
 
