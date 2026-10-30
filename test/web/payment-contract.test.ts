@@ -41,10 +41,24 @@ describe('proofObjectPath', () => {
     ).toBe('payments/u1/R1/proof-2.heic')
   })
 
-  it('gives every attempt its own object, so a re-send never overwrites', () => {
-    const first = proofObjectPath({ uid: 'u1', bookingRefId: 'R1', filename: 'a.png', attempt: 1 })
-    const second = proofObjectPath({ uid: 'u1', bookingRefId: 'R1', filename: 'b.png', attempt: 2 })
-    expect(first).not.toBe(second)
+  it('gives every upload a unique object even when a retry reuses the same attempt number', () => {
+    const first = proofObjectPath({
+      uid: 'u1', bookingRefId: 'R1', filename: 'a.png', attempt: 1,
+      uploadId: '00000000-0000-4000-8000-000000000001',
+    })
+    const retry = proofObjectPath({
+      uid: 'u1', bookingRefId: 'R1', filename: 'a.png', attempt: 1,
+      uploadId: '00000000-0000-4000-8000-000000000002',
+    })
+    expect(first).not.toBe(retry)
+    expect(first).toBe('payments/u1/R1/proof-1-00000000-0000-4000-8000-000000000001.png')
+    expect(retry).toBe('payments/u1/R1/proof-1-00000000-0000-4000-8000-000000000002.png')
+  })
+
+  it('rejects malformed upload IDs instead of letting them alter the storage path', () => {
+    expect(() => proofObjectPath({
+      uid: 'u1', bookingRefId: 'R1', filename: 'a.png', attempt: 1, uploadId: '../proof',
+    })).toThrow('Payment-proof upload id must be a UUID.')
   })
 })
 
@@ -63,6 +77,7 @@ describe('nextProofAttempt', () => {
     expect(nextProofAttempt('payments/u1/R1/proof-1.png')).toBe(2)
     expect(nextProofAttempt('payments/u1/R1/proof-2.jpg')).toBe(3)
     expect(nextProofAttempt('payments/u1/R1/proof-12.webp')).toBe(13)
+    expect(nextProofAttempt('payments/u1/R1/proof-12-00000000-0000-4000-8000-000000000001.webp')).toBe(13)
   })
 
   it('moves off a legacy un-numbered path, so the rules see a changed proof', () => {
@@ -185,21 +200,25 @@ describe('uploadPaymentProof in demo mode (no Supabase keys)', () => {
     // The Booking records this path (paymentProofUrl / payment_proof_url).
     expect(out.url).toMatch(/^payments\//)
     expect(out.url).toContain('HDL-9')
-    expect(out.url).toBe('payments/demo/HDL-9/proof-1.png')
+    expect(out.url).toMatch(/^payments\/demo\/HDL-9\/proof-1-[0-9a-f-]{36}\.png$/i)
 
     const stored = JSON.parse(localStorage.getItem('hdl:payment-proofs') ?? '{}')
     expect(stored[out.url]).toMatch(/^data:image\/png;base64,/)
   })
 
-  it('keeps both attempts when a proof is re-sent', async () => {
+  it('keeps a second upload when the first object exists but its Booking update failed', async () => {
     const file = new File(['first'], 'gcash.png', { type: 'image/png' })
-    const first = await uploadPaymentProof({ file, bookingRefId: 'HDL-9' })
-    const second = await uploadPaymentProof({ file, bookingRefId: 'HDL-9', attempt: 2 })
-    expect(first.ok && second.ok).toBe(true)
-    if (!first.ok || !second.ok) return
+    // The Firestore write did not record the first path, so the UI correctly
+    // retries with the same attempt number. The upload nonce must still differ.
+    const first = await uploadPaymentProof({ file, bookingRefId: 'HDL-9', attempt: 1 })
+    const retry = await uploadPaymentProof({ file, bookingRefId: 'HDL-9', attempt: 1 })
+    expect(first.ok && retry.ok).toBe(true)
+    if (!first.ok || !retry.ok) return
+    expect(retry.url).not.toBe(first.url)
+    expect(retry.url).toMatch(/^payments\/demo\/HDL-9\/proof-1-[0-9a-f-]{36}\.png$/i)
 
     const stored = JSON.parse(localStorage.getItem('hdl:payment-proofs') ?? '{}')
-    expect(Object.keys(stored).sort()).toEqual([first.url, second.url].sort())
+    expect(Object.keys(stored).sort()).toEqual([first.url, retry.url].sort())
   })
 
   it('refuses an oversized or non-image file before anything is stored', async () => {

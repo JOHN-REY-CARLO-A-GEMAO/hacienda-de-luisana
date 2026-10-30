@@ -20,6 +20,7 @@ const STUBBED: Record<string, string> = {
   VITE_FIREBASE_API_KEY: 'AIzaSyFakeKeyForThisWiringTestOnly0123456789',
   VITE_FIREBASE_AUTH_DOMAIN: 'hacienda-de-luisana.firebaseapp.com',
   VITE_FIREBASE_PROJECT_ID: 'hacienda-de-luisana',
+  VITE_FIREBASE_DATABASE_URL: 'https://hacienda-de-luisana-default-rtdb.us-central1.firebasedatabase.app',
 }
 
 describe('the environment src/lib/firebase.ts hands the resolver', () => {
@@ -34,7 +35,7 @@ describe('the environment src/lib/firebase.ts hands the resolver', () => {
     for (const [key, value] of Object.entries(STUBBED)) vi.stubEnv(key, value)
     vi.resetModules()
 
-    const { isFirebaseConfigured, firebaseConfigSource, firebaseConfigReport } = await import(
+    const { isFirebaseConfigured, firebaseConfigSource, firebaseConfigReport, getFirebaseStatus } = await import(
       '../../src/lib/firebase'
     )
 
@@ -52,6 +53,9 @@ describe('the environment src/lib/firebase.ts hands the resolver', () => {
     const apiKey = firebaseConfigReport.fields.find((f) => f.field === 'apiKey')
     expect(apiKey?.state).toBe('env')
     expect(apiKey?.value).toBe(STUBBED.VITE_FIREBASE_API_KEY)
+    expect(firebaseConfigReport.fields.find((f) => f.field === 'databaseURL')?.value)
+      .toBe(STUBBED.VITE_FIREBASE_DATABASE_URL)
+    expect(getFirebaseStatus().realtimeDatabase).toBe(STUBBED.VITE_FIREBASE_DATABASE_URL)
   })
 
   it('still says demo mode when the build carries no variables at all', async () => {

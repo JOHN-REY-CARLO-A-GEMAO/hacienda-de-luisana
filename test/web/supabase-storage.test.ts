@@ -67,7 +67,7 @@ describe('the payment-proofs bucket', () => {
     // grant that can work — and it must be there or no Guest can ever send a
     // receipt.
     // Insert-only: `anon` may add a proof but may not replace one in place. A
-    // re-send writes a new object via the attempt number in `proofObjectPath`.
+    // re-send writes a new object via the attempt number and per-upload nonce.
     expect(grants.map((g) => g.verb).sort()).toEqual(['insert'])
     // Scoped to the folder `proofObjectPath` writes into.
     for (const statement of writes) {
@@ -104,15 +104,18 @@ describe('the read that must not exist', () => {
 
 describe('the Admin read path', () => {
   /** The validator lifted out of the function, so the test runs the real one. */
-  const pattern = fn.match(/const PROOF_PATH = \/(.+)\/$/m)?.[1]
-  const proofPath = new RegExp(pattern ?? 'a^')
+  const pattern = fn.match(/const PROOF_PATH = \/(.+)\/([a-z]*)$/m)
+  const proofPath = new RegExp(pattern?.[1] ?? 'a^', pattern?.[2] ?? '')
 
   it('accepts every path the website can write', () => {
     // If the function refused a path `proofObjectPath` produces, the Admin
     // could not open a proof the Guest had actually sent.
     for (const ref of ['HDL-1', 'abc123', 'A-1', '2026-0004']) {
       for (const ext of PROOF_IMAGE_EXTENSIONS) {
-        const path = proofObjectPath({ uid: 'uid-abc_123', bookingRefId: ref, filename: `shot.${ext}`, attempt: 1 })
+        const path = proofObjectPath({
+          uid: 'uid-abc_123', bookingRefId: ref, filename: `shot.${ext}`, attempt: 1,
+          uploadId: '00000000-0000-4000-8000-000000000001',
+        })
         expect(proofPath.test(path), `${path} should be openable by the Admin`).toBe(true)
       }
     }

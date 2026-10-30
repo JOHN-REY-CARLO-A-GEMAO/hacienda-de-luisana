@@ -26,6 +26,7 @@ import { connectStorageEmulator, getStorage, type FirebaseStorage } from 'fireba
 import type { Database } from 'firebase/database'
 import {
   fieldReport,
+  hasConfiguredRealtimeDatabase,
   resolveFirebaseConfig,
   FIREBASE_ENV_KEYS,
   type FirebaseConfigField,
@@ -255,7 +256,7 @@ export { app, auth, db, storage, googleProvider, firebaseConfig }
  * what the sharing control needs to decide whether to offer the button at all.
  */
 export function hasRealtimeDatabaseConfig(): boolean {
-  return isFirebaseConfigured && Boolean(resolution.config.databaseURL)
+  return isFirebaseConfigured && hasConfiguredRealtimeDatabase(resolution)
 }
 
 /**

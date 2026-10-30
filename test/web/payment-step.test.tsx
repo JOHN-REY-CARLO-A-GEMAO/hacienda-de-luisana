@@ -8,7 +8,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PaymentStep } from '../../src/components/Booking/PaymentStep'
 import { cloudBookingsDB } from '../../src/lib/firestoreBookings'
@@ -112,6 +112,7 @@ const byPlaceholder = (root: HTMLElement, placeholder: string) =>
 describe('PaymentStep', () => {
   beforeEach(() => localStorage.clear())
   afterEach(() => {
+    vi.restoreAllMocks()
     for (const root of mounted.splice(0)) act(() => root.unmount())
     document.body.innerHTML = ''
   })
@@ -239,16 +240,37 @@ describe('PaymentStep', () => {
     await pump(1)
     expect(terms!.checked).toBe(true)
 
+    // Fault-inject a Firestore refusal after the real upload succeeds. The
+    // orphaned object is retained; the next click retries the same attempt
+    // number but must upload to a fresh path rather than reuse it.
+    const transition = vi.spyOn(cloudBookingsDB, 'transition').mockImplementationOnce(async () => ({
+      ok: false,
+      reason: 'simulated Firestore update failure',
+    }))
+    await act(async () => {
+      send!.click()
+    })
+    await pump(6)
+    expect(container.textContent).toContain('simulated Firestore update failure')
+    const firstStored = JSON.parse(localStorage.getItem('hdl:payment-proofs') ?? '{}')
+    const firstPath = Object.keys(firstStored)[0]
+    expect(firstPath).toMatch(/proof-1-[0-9a-f-]{36}\.jpg$/i)
+
     await act(async () => {
       send!.click()
     })
     await pump(6)
     expect(container.textContent).toContain('Proof sent. The Admin will verify it')
+    expect(transition).toHaveBeenCalledTimes(2)
 
     // What the Booking now carries for the Admin to verify against.
     const stored = await cloudBookingsDB.get(booking.id)
     expect(stored?.payment_status).toBe('pending')
     expect(stored?.payment_proof_url).toMatch(/^payments\//)
+    expect(stored?.payment_proof_url).not.toBe(firstPath)
+    const allProofs = JSON.parse(localStorage.getItem('hdl:payment-proofs') ?? '{}')
+    expect(Object.keys(allProofs)).toHaveLength(2)
+    expect(allProofs[stored!.payment_proof_url!]).toMatch(/^data:image\/png;base64,/)
     expect(stored?.payment_reference).toBe('1234567890123')
     expect(stored?.extractedRefNumber).toBe('1234567890123')
   })

@@ -174,6 +174,32 @@ export function isApiKeyLike(value: string | undefined): boolean {
   return Boolean(value && value.startsWith('AIza') && value.length >= 20)
 }
 
+/**
+ * Accept only an RTDB URL on the configured Firebase project. The web app must
+ * never silently write live-location data into a different project merely
+ * because a dashboard URL was mistyped or copied from another environment.
+ * Local HTTP URLs are accepted only for the Realtime Database emulator.
+ */
+export function isRealtimeDatabaseUrlForProject(value: string | undefined, projectId: string): boolean {
+  if (!value || !isUsableValue(value) || !projectId) return false
+  try {
+    const url = new URL(value)
+    if (url.username || url.password || url.search || url.hash || !['', '/'].includes(url.pathname)) return false
+
+    const hostname = url.hostname.toLowerCase()
+    const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
+    if (localHost) return url.protocol === 'http:' || url.protocol === 'https:'
+    if (url.protocol !== 'https:' || url.port) return false
+
+    const project = projectId.toLowerCase()
+    const legacy = hostname === `${project}.firebaseio.com` || hostname === `${project}-default-rtdb.firebaseio.com`
+    const regional = hostname.startsWith(`${project}-default-rtdb.`) && hostname.endsWith('.firebasedatabase.app')
+    return legacy || regional
+  } catch {
+    return false
+  }
+}
+
 function stateOf(value: string | undefined, looksRight: boolean): FieldState {
   if (!value) return 'missing'
   return looksRight ? 'env' : 'invalid'
@@ -207,10 +233,21 @@ export function resolveFirebaseConfig({
   for (const field of Object.keys(FIREBASE_ENV_KEYS) as FirebaseConfigField[]) {
     const envKey = FIREBASE_ENV_KEYS[field]
     const raw = readEnvValue(env[envKey])
-    const looksRight = field === 'apiKey' ? isApiKeyLike(raw) : isUsableValue(raw)
+    const projectIdForDatabase = field === 'databaseURL'
+      ? config.projectId || readEnvValue(defaults.projectId) || ''
+      : ''
+    const looksRight = field === 'apiKey'
+      ? isApiKeyLike(raw)
+      : field === 'databaseURL'
+        ? isRealtimeDatabaseUrlForProject(raw, projectIdForDatabase)
+        : isUsableValue(raw)
     const envState = stateOf(raw, looksRight)
     const fallback = readEnvValue(defaults[field])
-    const fallbackOk = field === 'apiKey' ? isApiKeyLike(fallback) : isUsableValue(fallback)
+    const fallbackOk = field === 'apiKey'
+      ? isApiKeyLike(fallback)
+      : field === 'databaseURL'
+        ? isRealtimeDatabaseUrlForProject(fallback, projectIdForDatabase)
+        : isUsableValue(fallback)
 
     let state: FieldState
     let value = ''
@@ -227,7 +264,9 @@ export function resolveFirebaseConfig({
       problem =
         field === 'apiKey'
           ? 'not a Firebase web API key (they start with "AIza")'
-          : 'still the placeholder from .env.example'
+          : field === 'databaseURL'
+            ? 'not a valid Realtime Database URL for the configured Firebase project'
+            : 'still the placeholder from .env.example'
       if (allowDefaults && fallbackOk) {
         state = 'default'
         value = fallback as string
@@ -276,6 +315,11 @@ export function resolveFirebaseConfig({
 /** The report for one field, for callers that ask about a single value. */
 export function fieldReport(report: FirebaseConfigReport, field: FirebaseConfigField): FieldReport {
   return report.fields.find((f) => f.field === field) as FieldReport
+}
+
+/** A valid project connection plus its explicitly resolved RTDB URL. */
+export function hasConfiguredRealtimeDatabase(report: FirebaseConfigReport): boolean {
+  return report.configured && Boolean(report.config.databaseURL)
 }
 
 /** A value shown the way a public key may be shown: enough to recognise, no more. */

@@ -37,6 +37,29 @@ export async function uploadPaymentProof(input: {
   const check = validateProofFile({ name: input.file.name, size: input.file.size, type: input.file.type })
   if (!check.ok) return check
 
+  // This nonce is independent of the retry counter. If the object upload
+  // succeeds but the Booking write fails, the next click must not target the
+  // orphaned object: Supabase intentionally forbids overwrites. Refuse the
+  // upload rather than fall back to a predictable or non-cryptographic id.
+  const randomUUID = globalThis.crypto?.randomUUID
+  if (typeof randomUUID !== 'function') {
+    return {
+      ok: false,
+      reason: 'failed',
+      message: 'This browser cannot create a secure upload ID. Please update your browser and try again.',
+    }
+  }
+  let uploadId: string
+  try {
+    uploadId = randomUUID.call(globalThis.crypto)
+  } catch {
+    return {
+      ok: false,
+      reason: 'failed',
+      message: 'A secure upload ID could not be created. Please try again.',
+    }
+  }
+
   const uid = (await ensureGuestUid().catch(() => null)) || 'demo'
 
   const path = proofObjectPath({
@@ -44,6 +67,7 @@ export async function uploadPaymentProof(input: {
     bookingRefId: input.bookingRefId,
     filename: input.file.name,
     attempt: input.attempt ?? 1,
+    uploadId,
   })
 
   const stored = await uploadPaymentProofFile({ file: input.file, path })
