@@ -8,6 +8,7 @@ vi.mock('firebase/firestore', () => ({
   addDoc: vi.fn(),
   collection: (_db: unknown, ...path: string[]) => ({ path: path.join('/') }),
   doc: (_db: unknown, ...path: string[]) => ({ path: path.join('/') }),
+  documentId: () => '__name__',
   getDoc: vi.fn(),
   getDocs: vi.fn(),
   limit: vi.fn((value: number) => ({ limit: value })),

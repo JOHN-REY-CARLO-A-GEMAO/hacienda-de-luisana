@@ -20,7 +20,7 @@ export function Reviews() {
   const empty = REVIEWS.length === 0
 
   return (
-    <section id="reviews" className="section-full bg-cream-100/40">
+    <section id="reviews" className="section-full bg-cream-100/40 dark:bg-forest-950">
       <Container width="content">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
           <SceneHeader
@@ -41,7 +41,7 @@ export function Reviews() {
             target="_blank"
             rel="noreferrer"
             className="reveal group rounded-3xl bg-white border border-forest-900/5 shadow-card p-6 flex items-center gap-5 hover:shadow-depth hover:-translate-y-0.5 transition"
-            aria-label={`Rated ${AIRBNB_RATING.rating.toFixed(1)} out of 5 from ${AIRBNB_RATING.reviewCount} reviews on Airbnb — open the listing`}
+            aria-label={`Rated ${AIRBNB_RATING.rating.toFixed(1)} out of 5 from ${AIRBNB_RATING.reviewCount} reviews on Airbnb — open the listing in a new tab`}
           >
             <div className="text-center">
               <div className="font-serif text-5xl text-forest-900 leading-none">{AIRBNB_RATING.rating.toFixed(1)}</div>
@@ -68,7 +68,7 @@ export function Reviews() {
                 )}
               </div>
               <div className="mt-2 text-[11px] text-forest-700/60">
-                As of {monthYear(AIRBNB_RATING.checkedOn)} · open the listing
+                As of {monthYear(AIRBNB_RATING.checkedOn)} · open the listing in a new tab
                 <ArrowRight size={11} className="inline ml-1 -mt-0.5 transition-transform group-hover:translate-x-0.5" />
               </div>
             </div>
@@ -92,19 +92,23 @@ export function Reviews() {
         ) : (
           <>
             {/* Editorial layout: the most recent review runs large, the rest as cards */}
-            <div className="mt-14 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <h3 className="mt-14 font-serif text-2xl text-forest-900 dark:text-cream-50">Airbnb reviews</h3>
+            <p className="mt-2 text-sm text-forest-700 dark:text-cream-100/75">
+              Showing {REVIEWS.length} of {AIRBNB_RATING.reviewCount} reviews from the {monthYear(AIRBNB_RATING.checkedOn)} snapshot.
+            </p>
+            <div className="mt-6 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {REVIEWS.map((r, i) => (
                 <ReviewCard key={`${r.name}-${r.date}`} review={r} delay={i * 40} featured={i === 0} />
               ))}
             </div>
 
-            <div className="mt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-forest-700/70 reveal">
+            <div className="mt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-forest-700/70 dark:text-cream-100/75 reveal">
               <p className="max-w-xl leading-relaxed">
                 Reviews are shown word for word as guests published them on Airbnb, with the guest's first name
                 and the month of the review.
               </p>
-              <a href={AIRBNB_RATING.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-medium text-forest-800 hover:text-forest-950">
-                Read all {AIRBNB_RATING.reviewCount} on Airbnb <ArrowRight size={13} />
+              <a href={AIRBNB_RATING.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-medium text-forest-800 hover:text-forest-950 dark:text-cream-100 dark:hover:text-white">
+                Read all {AIRBNB_RATING.reviewCount} on Airbnb (opens in a new tab) <ArrowRight size={13} />
               </a>
             </div>
 
@@ -141,58 +145,67 @@ export function Reviews() {
 function StayReviews() {
   const [reviews, setReviews] = useState<PublicReview[] | null>(null)
   const [summary, setSummary] = useState<ReviewSummary | null>(null)
+  const [reviewsFailed, setReviewsFailed] = useState(false)
+  const [summaryFailed, setSummaryFailed] = useState(false)
 
   useEffect(() => {
     let alive = true
-    // Two reads, and neither of them is the whole collection: the testimonials
-    // are a page, and the average is a single document the Admin publishes.
-    void Promise.all([listPublicReviews(), getPublicReviewSummary()]).then(([shown, counted]) => {
-      if (!alive) return
-      setReviews(shown)
-      setSummary(counted)
-    })
-    return () => {
-      alive = false
-    }
+    // Load independently so a missing summary never hides available reviews.
+    void listPublicReviews().then(
+      (shown) => { if (alive) setReviews(shown) },
+      () => { if (alive) setReviewsFailed(true) },
+    )
+    void getPublicReviewSummary().then(
+      (counted) => { if (alive) setSummary(counted) },
+      () => { if (alive) setSummaryFailed(true) },
+    )
+    return () => { alive = false }
   }, [])
 
-  // Nothing published yet: the section says nothing, rather than showing an
-  // empty frame where testimonials would be.
-  if (!reviews || reviews.length === 0) return null
-
+  // This block is mounted asynchronously, after the page's reveal observer is
+  // installed, so it must not depend on the scroll-reveal class for visibility.
   return (
-    <div className="reveal mt-14" data-testid="stay-reviews">
+    <div className="mt-14" data-testid="stay-reviews">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 font-semibold">
+          <div className="text-[10px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-400 font-semibold">
             Stayed with us
           </div>
-          <h3 className="mt-1.5 font-serif text-2xl lg:text-3xl text-forest-900">
+          <h3 className="mt-1.5 font-serif text-2xl lg:text-3xl text-forest-900 dark:text-cream-50">
             Rated here, by Guests who stayed
           </h3>
         </div>
         {summary?.average != null && (
           <div className="text-right">
-            <div className="font-serif text-3xl text-forest-900 leading-none">
+            <div className="font-serif text-3xl text-forest-900 dark:text-cream-50 leading-none">
               {summary.average.toFixed(1)}
               <span className="text-olive-400 text-lg ml-1" aria-hidden="true">
                 ★
               </span>
             </div>
-            <div className="mt-1 text-[11px] uppercase tracking-eyebrow text-forest-600">
+            <div className="mt-1 text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
               {summary.count} review{summary.count === 1 ? '' : 's'}
             </div>
           </div>
         )}
       </div>
 
-      <div className="mt-6 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {reviews.map((review) => (
-          <StayReviewCard key={review.review_id} review={review} />
-        ))}
-      </div>
+      {reviewsFailed ? (
+        <p role="status" className="mt-6 text-sm text-forest-800 dark:text-cream-100/85">On-site reviews could not be loaded. Please try again later.</p>
+      ) : reviews === null ? (
+        <p role="status" className="mt-6 text-sm text-forest-800 dark:text-cream-100/85">Loading on-site reviews…</p>
+      ) : reviews.length === 0 ? (
+        <p className="mt-6 text-sm text-forest-800 dark:text-cream-100/85">No on-site reviews have been published yet.</p>
+      ) : (
+        <div className="mt-6 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {reviews.map((review) => (
+            <StayReviewCard key={review.review_id} review={review} />
+          ))}
+        </div>
+      )}
+      {summaryFailed && <p className="mt-3 text-sm text-forest-800 dark:text-cream-100/85">The on-site rating summary is temporarily unavailable.</p>}
 
-      <p className="mt-5 text-[11px] text-forest-700/60 leading-relaxed">
+      <p className="mt-5 text-[11px] text-forest-700/60 dark:text-cream-100/75 leading-relaxed">
         Written by Guests after their stay, shown as they wrote it, under a first name or “Guest” at their
         request. Reviews are published only after the Admin has read them.
       </p>

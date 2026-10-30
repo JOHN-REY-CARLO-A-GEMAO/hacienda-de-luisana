@@ -22,6 +22,7 @@ export function PageShell({
   lead,
   children,
   cta,
+  darkMode = false,
   width = 'narrow',
 }: {
   eyebrow: string
@@ -30,20 +31,22 @@ export function PageShell({
   children: ReactNode
   /** Overrides the default "Check Availability" invitation at the foot. */
   cta?: ReactNode
+  /** Opt in when the page's sections support the dark theme. */
+  darkMode?: boolean
   /** The reading column for the header and footer band. */
   width?: Extract<Width, 'narrow' | 'content'>
 }) {
   return (
-    <Page>
+    <Page className={darkMode ? 'dark:bg-forest-950 dark:text-cream-50' : ''}>
       <Container width={width}>
         <PageHeader eyebrow={eyebrow} title={title} lead={lead} />
       </Container>
 
       {children}
 
-      <Container width={width} className="mt-16 border-t border-forest-900/10 pt-10">
+      <Container width={width} className={`mt-16 border-t border-forest-900/10 pt-10 ${darkMode ? 'dark:border-cream-100/15' : ''}`}>
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-md text-sm leading-relaxed text-forest-800/80">
+          <p className={`max-w-md text-sm leading-relaxed text-forest-800/80 ${darkMode ? 'dark:text-cream-100/80' : ''}`}>
             Ready when you are — pick your dates and the Hacienda confirms availability and the final
             quote with you before anything is reserved.
           </p>

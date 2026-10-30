@@ -91,6 +91,10 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
   const lastFixRef = useRef<{ at: LatLng; atMs: number } | null>(null)
   const seqRef = useRef(0)
   const watchRef = useRef<number | null>(null)
+  const currentSubject = useRef(input)
+  currentSubject.current = input
+  const mounted = useRef(true)
+  const startGeneration = useRef(0)
 
   const convoId = input.convoId
   const uid = input.uid
@@ -112,11 +116,12 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
       setPhase(why ? 'error' : 'idle')
       setMessage(why)
       setLastSentAtMs(null)
-      if (current && convoId) {
-        await stopSharing({ convoId, uid: current.guest_uid, nowMs: Date.now() })
+      startGeneration.current += 1
+      if (current) {
+        await stopSharing({ convoId: current.conversation_id, uid: current.guest_uid, nowMs: Date.now() }).catch(() => {})
       }
     },
-    [convoId, teardownWatch, uid],
+    [teardownWatch],
   )
 
   const openWatch = useCallback(
@@ -182,9 +187,14 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
         setMessage(startFailureMessage(unavailable))
         return
       }
+      const generation = ++startGeneration.current
       setPhase('starting')
       setMessage(null)
       const result = await startSharing({ convoId, uid, minutes, nowMs: Date.now() })
+      if (!mounted.current || generation !== startGeneration.current || currentSubject.current.convoId !== convoId || currentSubject.current.uid !== uid) {
+        if (result.ok) void stopSharing({ convoId: result.session.conversation_id, uid: result.session.guest_uid, nowMs: Date.now() }).catch(() => {})
+        return
+      }
       if (!result.ok) {
         setPhase('error')
         setMessage(startFailureMessage(result.reason))
@@ -236,13 +246,13 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
     if (!session || typeof window === 'undefined') return
     const onPageHide = () => {
       const current = sessionRef.current
-      if (!current || !convoId) return
+      if (!current) return
       // `sendBeacon` cannot carry a Firestore write, so the end is best-effort
       // here. Two things still cover the case where this never runs: the rules
       // refuse to show anyone a position past `expires_at_ms`, and the server-side
       // `onDisconnect` registered in startSharing deletes the node when this tab's
       // connection goes away.
-      void stopSharing({ convoId, uid: current.guest_uid, nowMs: Date.now() })
+      void stopSharing({ convoId: current.conversation_id, uid: current.guest_uid, nowMs: Date.now() }).catch(() => {})
     }
     window.addEventListener('pagehide', onPageHide)
     return () => window.removeEventListener('pagehide', onPageHide)
@@ -262,15 +272,28 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
     }
   }, [])
 
+  // Invalidate an unfinished start when the selected subject changes.
+  useEffect(() => () => { startGeneration.current += 1 }, [convoId, uid])
+  useEffect(() => { setPhase((value) => value === 'starting' ? 'idle' : value) }, [convoId, uid])
+
   // A different conversation (or a signed-out Guest) is a different subject:
   // the old session is ended rather than left running.
   useEffect(() => {
-    if (!session) return
-    if (session.conversation_id === convoId && session.guest_uid === uid) return
-    void endSession(null)
+    if (session && session.conversation_id === convoId && session.guest_uid === uid) return
+    if (session) void endSession(null)
   }, [convoId, endSession, session, uid])
 
-  useEffect(() => teardownWatch, [teardownWatch])
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      startGeneration.current += 1
+      teardownWatch()
+      const current = sessionRef.current
+      sessionRef.current = null
+      if (current) void stopSharing({ convoId: current.conversation_id, uid: current.guest_uid, nowMs: Date.now() }).catch(() => {})
+    }
+  }, [teardownWatch])
 
   return {
     ...IDLE,

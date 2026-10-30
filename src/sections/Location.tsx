@@ -16,7 +16,7 @@ export function Location() {
   ]
 
   return (
-    <section id="location" className="relative section-full bg-cream-50 overflow-hidden">
+    <section id="location" className="relative section-full bg-cream-50 dark:bg-forest-950 overflow-hidden">
       <Container width="wide">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
           <SceneHeader
@@ -30,7 +30,7 @@ export function Location() {
               </>
             }
           />
-          <p className="reveal max-w-md text-forest-800/80 leading-relaxed lg:pb-2">
+          <p className="reveal max-w-md text-forest-800/80 dark:text-cream-100/80 leading-relaxed lg:pb-2">
             Along the Luisiana–Lucban Road in Brgy. San Isidro, with the waterfalls, lakes and heritage
             towns of Laguna and Quezon within reach.
           </p>
@@ -56,7 +56,7 @@ export function Location() {
                 {BUSINESS.address.formatted}
               </div>
               <div className="mt-3 text-cream-100/70 text-sm">
-                Approx. {BUSINESS.coordinates.lat.toFixed(4)}, {BUSINESS.coordinates.lng.toFixed(4)}
+                Approximate map location: {BUSINESS.coordinates.lat.toFixed(4)}, {BUSINESS.coordinates.lng.toFixed(4)}. Confirm the exact pin with the Hacienda before travelling.
               </div>
 
               <a
@@ -68,15 +68,16 @@ export function Location() {
                 <MapPin size={16} /> Get Directions
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
               </a>
+              <p className="mt-2 text-xs text-cream-100/70">Opens Google Maps in a new tab.</p>
             </div>
           </div>
 
-          <div className="mt-6 bg-white rounded-[28px] p-8 border border-forest-900/5 shadow-card">
+          <div className="mt-6 bg-white dark:bg-forest-900 rounded-[28px] p-8 border border-forest-900/5 dark:border-cream-100/10 shadow-card">
             <div className="eyebrow">Nearby Landmarks</div>
-            <ul className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-forest-800">
+            <ul className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-forest-800 dark:text-cream-100/85">
               {landmarks.map((l) => (
                 <li key={l} className="flex items-start gap-3">
-                  <MapPin size={16} className="mt-1 text-forest-600 shrink-0" />
+                  <MapPin size={16} className="mt-1 text-forest-600 dark:text-sage-400 shrink-0" />
                   <span>{l}</span>
                 </li>
               ))}
@@ -85,21 +86,21 @@ export function Location() {
         </div>
 
         {/* Getting here — the landmark and the two standard routes, no invented travel times */}
-        <div id="getting-here" className="mt-8 grid md:grid-cols-3 gap-6">
+        <div id="getting-here" className="scroll-mt-24 lg:scroll-mt-28 mt-8 grid md:grid-cols-3 gap-6">
           <div className="reveal card p-7 lg:p-8">
             <div className="w-11 h-11 rounded-xl bg-forest-50 border border-forest-900/5 flex items-center justify-center text-forest-700 mb-4">
               <Compass size={20} />
             </div>
             <div className="eyebrow">Getting here</div>
-            <h3 className="font-serif text-2xl text-forest-900 mt-2">{GETTING_HERE.landmark.title}</h3>
-            <p className="mt-3 text-sm text-forest-800/85 leading-relaxed">{GETTING_HERE.landmark.body}</p>
+            <h3 className="font-serif text-2xl text-forest-900 dark:text-cream-50 mt-2">{GETTING_HERE.landmark.title}</h3>
+            <p className="mt-3 text-sm text-forest-800/85 dark:text-cream-100/85 leading-relaxed">{GETTING_HERE.landmark.body}</p>
           </div>
 
           <RouteCard icon={Car} title={GETTING_HERE.byCar.title} steps={GETTING_HERE.byCar.steps} />
           <RouteCard icon={Navigation} title={GETTING_HERE.byCommute.title} steps={GETTING_HERE.byCommute.steps} />
         </div>
 
-        <p className="mt-6 text-xs text-forest-700/70 max-w-2xl reveal">
+        <p className="mt-6 text-xs text-forest-700/70 dark:text-cream-100/75 max-w-2xl reveal">
           Travel times depend on the day and the traffic, so we don't quote one. If you're unsure about the last
           stretch, message the Hacienda before you set off.
         </p>
@@ -123,10 +124,10 @@ function RouteCard({
         <Icon size={20} />
       </div>
       <div className="eyebrow">Route</div>
-      <h3 className="font-serif text-2xl text-forest-900 mt-2">{title}</h3>
+      <h3 className="font-serif text-2xl text-forest-900 dark:text-cream-50 mt-2">{title}</h3>
       <ol className="mt-4 space-y-3">
         {steps.map((step, i) => (
-          <li key={step} className="flex items-start gap-3 text-sm text-forest-800/85 leading-relaxed">
+          <li key={step} className="flex items-start gap-3 text-sm text-forest-800/85 dark:text-cream-100/85 leading-relaxed">
             <span className="mt-0.5 w-6 h-6 rounded-full bg-forest-900 text-cream-50 text-[11px] font-medium flex items-center justify-center shrink-0">
               {i + 1}
             </span>

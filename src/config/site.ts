@@ -125,12 +125,13 @@ export type Fee = {
 export type FAQ = {
   q: string
   a: string
+  link?: { to: string; label: string }
 }
 
 export type GalleryImage = {
   id: string
   url: string
-  category: 'Hacienda' | 'Main House' | 'Camping' | 'Outdoors' | 'Food & Gatherings' | 'Nearby Adventures'
+  category: 'Hacienda' | 'Main House' | 'Annex' | 'Camping' | 'Outdoors' | 'Food & Gatherings' | 'Nearby Adventures'
   caption: string
   aspect?: 'tall' | 'wide' | 'square'
 }
@@ -297,8 +298,7 @@ export const ACCOMMODATIONS: Accommodation[] = [
     shortName: 'Main House',
     description:
       'A private countryside home designed for groups and families looking for a comfortable place to stay together.',
-    capacity: 10,
-    capacityLabel: 'Up to 10 guests',
+    capacityLabel: '10 guests included in the base rate',
     // No nightly figure is published anywhere the website can cite (the Airbnb
     // price only appears once dates are chosen). The Published rates document
     // supplies it when the Admin publishes one; until then the page says
@@ -338,8 +338,7 @@ export const ACCOMMODATIONS: Accommodation[] = [
     name: 'HDL Annex',
     shortName: 'Annex',
     description: 'A separate Hacienda stay option with 6 guests included and a per-guest excess rate under the weekday/weekend-holiday schedule.',
-    capacity: 6,
-    capacityLabel: 'Up to 6 guests',
+    capacityLabel: '6 guests included in the base rate',
     priceLabel: 'From ₱4,000 / standard stay',
     priceSource: 'Official Hacienda rate card',
     amenities: [
@@ -444,11 +443,13 @@ export const NEARBY: NearbyAttraction[] = [
 export const FAQS: FAQ[] = [
   {
     q: 'How many guests can stay?',
-    a: `The Main House base rate includes ${BUSINESS.policies.mainHouseIncludedGuests} guests and the Annex base rate includes ${BUSINESS.policies.annexIncludedGuests}; additional guests are priced at ₱500 each under the published schedule. These included counts are not absolute caps. Each A-House is one unit for up to 3 guests; contact the Hacienda to discuss large groups or multiple units.`,
+    a: 'The Main House and Annex rates include a set number of guests; additional guests may incur a charge. Included counts are not absolute caps. Each A-House holds up to 3 guests. See Rates & Fees for the current schedule, or contact the Hacienda about large groups or multiple units.',
+    link: { to: '/rates', label: 'View rates and fees' },
   },
   {
     q: 'Are pets allowed?',
-    a: 'Yes. Pets are welcome for an additional ₱300 cleaning and sanitizing fee — see Rates & Fees. Mention your pet in the special requests when you book.',
+    a: 'Yes. Pets are welcome and a cleaning and sanitizing fee applies. See Rates & Fees for the current charge, and mention your pet in the special requests when you book.',
+    link: { to: '/rates', label: 'View rates and fees' },
   },
   { q: 'Is parking available?', a: 'Yes, free parking is available on-site.' },
   { q: 'Is Wi-Fi available?', a: 'Yes, Wi-Fi is free for guests.' },
@@ -462,7 +463,8 @@ export const FAQS: FAQ[] = [
   },
   {
     q: 'Do you offer camping?',
-    a: 'Yes. There are 2 A-Houses, each priced at ₱1,000 per unit for up to 3 guests. One online booking holds one A-House; message the Hacienda if you need more than one unit.'
+    a: 'Yes. There are 2 A-Houses, each for up to 3 guests. One online booking holds one A-House; message the Hacienda if you need more than one unit. See Rates & Fees for the current price.',
+    link: { to: '/rates', label: 'View rates and fees' },
   },
   {
     q: 'What time is check-in?',
@@ -474,15 +476,18 @@ export const FAQS: FAQ[] = [
   },
   {
     q: 'How much does it cost?',
-    a: 'Rates depend on the property, guest count, and the check-in night: Sunday through Thursday is weekday, Friday and Saturday are weekend, and any Admin-configured holiday uses the weekend/holiday rate. A Saturday stay checks out Sunday at noon. The Rates & Fees section shows the current schedule and optional charges.',
+    a: 'Rates depend on the property, guest count, and the check-in night: Sunday through Thursday is weekday, Friday and Saturday are weekend, and any Admin-configured holiday uses the weekend/holiday rate. A Saturday stay checks out Sunday at noon. The Rates & Fees page shows the current schedule and optional charges.',
+    link: { to: '/rates', label: 'View rates and fees' },
   },
   {
     q: 'How do I reserve?',
     a: 'Browse the rooms and book without creating an account. Fill in your stay and contact details, then upload a screenshot of your downpayment. The booking is submitted as Pending and is not confirmed until the Hacienda approves that screenshot — or rejected if they decline it. You can also book through our Airbnb or Agoda listings.',
+    link: { to: '/book', label: 'Start a booking' },
   },
   {
     q: 'How do I get there?',
     a: 'The Hacienda is on the Luisiana–Lucban Road in Brgy. San Isidro, Luisiana. See Getting Here under Location for the landmark, the driving route and the commute via Sta. Cruz.',
+    link: { to: '/location#getting-here', label: 'View getting-here directions' },
   },
 ]
 
@@ -519,6 +524,9 @@ export const GALLERY: GalleryImage[] = [
   { id: 'g03', url: '/images/gmaps/img-03.jpg', category: 'Main House', caption: 'Loft bedroom with wooden floors and countryside views', aspect: 'wide' },
   { id: 'g04', url: '/images/gmaps/img-04.jpg', category: 'Main House', caption: 'Dining area with warm pendant lights and open windows', aspect: 'tall' },
 
+  // Annex
+  { id: 'g21', url: '/images/gmaps/annex_night_lit.jpg', category: 'Annex', caption: 'The Annex lit up at night', aspect: 'tall' },
+
   // Camping
   { id: 'g02', url: '/images/gmaps/img-02.jpg', category: 'Camping', caption: 'A-frame camping units under the trees', aspect: 'tall' },
   { id: 'g09', url: '/images/gmaps/img-09.jpg', category: 'Camping', caption: 'Two A-frame cabins with stepping-stone path', aspect: 'square' },
@@ -536,9 +544,7 @@ export const GALLERY: GalleryImage[] = [
 //
 // Same rule as GALLERY: `image` must resolve to a file under `public/`. A card
 // whose image fails renders as a gradient tile carrying nothing but its title,
-// so a dead URL costs the card its photograph. These four were removed with the
-// expired Facebook hotlinks they pointed at — Family Bonding, Small Gatherings,
-// Nature Escape and Quiet Retreat. Re-add them once real photos exist for them.
+// so each experience must use an available property photograph.
 // -----------------------------------------------------------------------------
 export const EXPERIENCES = [
   {
@@ -546,12 +552,21 @@ export const EXPERIENCES = [
     title: 'Camping',
     body: 'Experience the outdoors without completely giving up comfort.',
     image: '/images/gmaps/img-02.jpg',
+    imageAlt: 'A-frame camping units under the trees',
   },
   {
     id: 'team-building',
     title: 'Team Building',
     body: 'A relaxed countryside environment for small team activities.',
     image: '/images/gmaps/img-05.jpg',
+    imageAlt: 'Garden pathway beside the main house with views of the countryside',
+  },
+  {
+    id: 'campfire',
+    title: 'Campfire Evenings',
+    body: 'Gather around the fire and enjoy a peaceful evening outdoors.',
+    image: '/images/gmaps/img-13.jpg',
+    imageAlt: 'Campfire in front of the main house at blue hour',
   },
 ]
 
@@ -629,17 +644,17 @@ export const HOUSE_RULES: HouseRule[] = [
   {
     id: 'times',
     title: 'Check-in and check-out',
-    body: `The standard 22-hour stay checks in at ${BUSINESS.policies.checkIn} and checks out by ${BUSINESS.policies.checkOut} for cleaning before the next guest. A longer stay is simply successive standard stays, one per night. Late checkout is by request and approval, at ₱250 per hour after noon.`,
+    body: `The standard 22-hour stay checks in at ${BUSINESS.policies.checkIn} and checks out by ${BUSINESS.policies.checkOut} for cleaning before the next guest. A longer stay is simply successive standard stays, one per night. Late checkout is by request and approval; confirm the charge when booking.`,
   },
   {
     id: 'capacity',
     title: 'Headcount and included occupancy',
-    body: `The Main House base rate includes ${BUSINESS.policies.mainHouseIncludedGuests} guests and the Annex base rate includes ${BUSINESS.policies.annexIncludedGuests}; each additional guest is ₱500 under the published schedule. Those included counts are not stated as absolute caps. Each A-House is one unit for up to 3 guests; ask the Admin about large groups or multiple units.`,
+    body: 'The Main House and Annex rates include a set number of guests; additional guests may incur a charge. Included counts are not absolute caps. Each A-House is one unit for up to 3 guests; ask the Hacienda about large groups or multiple units.',
   },
   {
     id: 'pets',
     title: 'Pets',
-    body: 'Pets are welcome. The sanitation fee is ₱300 per pet and is not added unless a guest declares a pet.',
+    body: 'Pets are welcome. A sanitation fee applies per pet; declare pets when booking and confirm the current charge.',
   },
   {
     id: 'claygo',
@@ -649,7 +664,7 @@ export const HOUSE_RULES: HouseRule[] = [
   {
     id: 'kitchen',
     title: 'Kitchen, ihawan and bonfire',
-    body: 'Free use of the gas stove, kitchen utensils, BBQ grill and bonfire pit. An optional bonfire wood set is ₱150 and is not automatically added.',
+    body: 'Free use of the gas stove, kitchen utensils, BBQ grill and bonfire pit. A bonfire wood set is optional and is not automatically added; confirm the current charge when booking.',
   },
   {
     id: 'parking',
@@ -780,7 +795,7 @@ export const GETTING_HERE = {
       'Take SLEX and exit at Calamba.',
       'Follow the national highway through Los Baños, Bay, Pila, Sta. Cruz and Pagsanjan.',
       'Turn onto the Cavinti–Luisiana Road, continue into Luisiana, then follow the Luisiana–Lucban Road to Brgy. San Isidro.',
-      'Use the Get Directions button for turn-by-turn navigation to the pin.',
+      'Use Get Directions for navigation to the approximate pin, and confirm the exact location with the Hacienda before travelling.',
     ],
   },
   byCommute: {

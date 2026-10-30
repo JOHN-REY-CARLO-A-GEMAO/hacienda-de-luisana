@@ -30,10 +30,8 @@ secret store — never in web JS, the Flutter APK, public config, or Git.
 `functions/` exists and holds the Booking quote, money-verification, availability
 and submit callables; it holds no OCR. Guests confirm or type the reference and amount either way, and
 **OCR never sets `payment_status` to verified**: `canAutoVerifyFromOcr()` returns
-`false`. The same engine is offered on its own at `/receipt-scan` so a Guest can
-see what is read (and which field each value lands in) before any money moves;
-that page also writes nothing and uploads nothing, and is kept out of every index
-and of `robots.txt`. See `docs/RECEIPT_OCR_GUIDE.md`.
+`false`. The extraction remains available within the payment proof forms;
+the standalone receipt reader has been removed. See `docs/RECEIPT_OCR_GUIDE.md`.
 
 ## Rate limiting
 

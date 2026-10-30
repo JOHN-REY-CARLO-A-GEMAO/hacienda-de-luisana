@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState, useCallback, type RefObject } fro
 import { GALLERY, GalleryImage } from '../config/site'
 import { asset } from '../lib/asset'
 import { SmartImage } from '../components/SmartImage'
+import { SceneHeader } from '../components/Scene'
 import { Close, ArrowRight } from '../lib/icons'
 
-const CATEGORIES = ['All', 'Hacienda', 'Main House', 'Camping', 'Outdoors', 'Food & Gatherings', 'Nearby Adventures'] as const
+const CATEGORIES = ['All', 'Hacienda', 'Main House', 'Annex', 'Camping', 'Outdoors', 'Food & Gatherings', 'Nearby Adventures'] as const
 
 // A filter a guest can click that then shows nothing is a dead end, so the row
 // carries only the categories the Gallery actually holds. "Food & Gatherings"
@@ -49,32 +50,22 @@ export function Gallery() {
   useOverlay(openIdx !== null, close, lightboxRef)
 
   return (
-    <section id="gallery" className="section-full bg-cream-50">
+    <section id="gallery" className="section-full bg-cream-50 dark:bg-forest-950 transition-colors duration-300">
       <Container width="wide">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 reveal">
-          <div>
-            <div className="flex items-center gap-4">
-              <span className="scene-index text-forest-400" aria-hidden="true">04</span>
-              <span className="h-px w-8 bg-forest-900/15" aria-hidden="true" />
-              <div className="eyebrow">Gallery</div>
-            </div>
-            <h2 className="display text-4xl sm:text-5xl lg:text-6xl mt-5 text-forest-900">
-              A Glimpse of the
-              <br />
-              <span className="italic font-normal">Hacienda</span>
-            </h2>
-          </div>
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+          <SceneHeader index="04" eyebrow="Gallery" title={<>A Glimpse of the<br /><span className="italic font-normal">Hacienda</span></>} />
 
-          <div className="-mx-5 lg:mx-0 overflow-x-auto no-scrollbar">
+          <div className="-mx-5 min-w-0 lg:mx-0 overflow-x-auto no-scrollbar">
             <div className="px-5 lg:px-0 flex gap-2 min-w-max">
               {TABS.map((c) => (
                 <button
                   key={c}
                   onClick={() => setCat(c)}
+                  aria-pressed={cat === c}
                   className={`px-4 py-2 rounded-full text-xs uppercase tracking-eyebrow border transition ${
                     cat === c
-                      ? 'bg-forest-800 text-cream-50 border-forest-800'
-                      : 'bg-white text-forest-800 border-forest-900/10 hover:border-forest-800/50'
+                      ? 'bg-forest-800 text-cream-50 border-forest-800 dark:bg-cream-100 dark:text-forest-950 dark:border-cream-100'
+                      : 'bg-white text-forest-800 border-forest-900/10 hover:border-forest-800/50 dark:bg-forest-900 dark:text-cream-100 dark:border-cream-100/20 dark:hover:border-cream-100/60'
                   }`}
                 >
                   {c}
@@ -89,7 +80,7 @@ export function Gallery() {
             <button
               key={g.id}
               onClick={() => setOpenIdx(i)}
-              className="block w-full overflow-hidden rounded-2xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 aspect-[4/3] bg-white shadow-card lg:hover:shadow-depth lg:hover:-translate-y-1 transition-all duration-700 ease-out-expo"
+              className="block w-full overflow-hidden rounded-2xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 dark:focus-visible:ring-brass-400 aspect-[4/3] bg-white dark:bg-forest-900 shadow-card lg:hover:shadow-depth lg:hover:-translate-y-1 transition-all duration-700 ease-out-expo"
               aria-label={`Open ${g.caption}`}
             >
               <SmartImage
@@ -98,8 +89,8 @@ export function Gallery() {
                 aspect="4 / 3"
                 className="w-full h-full object-cover transition-transform duration-[1400ms] ease-out-expo group-hover:scale-[1.05]"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-forest-950/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition" />
-              <div className="absolute bottom-3 left-3 right-3 text-left text-cream-50 text-xs opacity-0 group-hover:opacity-100 transition">
+              <div className="absolute inset-0 bg-gradient-to-t from-forest-950/90 via-forest-950/10 to-transparent" />
+              <div className="absolute bottom-3 left-3 right-3 text-left text-cream-50 text-xs">
                 {g.caption}
               </div>
             </button>

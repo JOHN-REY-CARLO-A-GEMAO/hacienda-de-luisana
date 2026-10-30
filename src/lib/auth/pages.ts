@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // The website is the Guest's application (ADR-0007). Its one gated page is the
 // Guest's own account, and it is gated by the permission it exists to exercise:
-// `/account` is where a Guest reads their own Bookings, so it opens for whoever
+// `/mybookings` is where a Guest reads their own Bookings, so it opens for whoever
 // holds `booking:read:own`. The Admin's pages do not exist here at all — they
 // are screens in the Flutter app — so an Admin session on the website is a
 // person on the wrong front door, and is told so.
@@ -23,7 +23,8 @@ import { ROLES, can, type Permission, type Role } from './roles'
  * path wins.
  */
 const GATED_PAGES: ReadonlyArray<{ path: string; permission: Permission }> = [
-  { path: '/account', permission: 'booking:read:own' },
+  { path: '/mybookings', permission: 'booking:read:own' },
+  { path: '/profile', permission: 'booking:read:own' },
   { path: '/messages', permission: 'booking:read:own' },
 ]
 
@@ -34,7 +35,7 @@ const GATED_PAGES: ReadonlyArray<{ path: string; permission: Permission }> = [
  * sends them back to the landing page, where the gate explains as much.
  */
 const HOME_BY_ROLE: Record<Role, string> = {
-  guest: '/account',
+  guest: '/mybookings',
   admin: '/',
 }
 

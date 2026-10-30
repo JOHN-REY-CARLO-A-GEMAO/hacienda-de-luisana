@@ -51,16 +51,16 @@ export function Experience() {
           </p>
         </div>
 
-        <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="mt-14 grid gap-6 lg:grid-cols-3">
           {EXPERIENCES.map((e, i) => (
             <article
               key={e.id}
-              className={`reveal group relative ${i % 3 === 1 ? 'lg:mt-10' : ''}`}
+              className={`reveal group relative mx-auto w-full max-w-lg lg:max-w-none ${i % 3 === 1 ? 'lg:mt-10' : ''}`}
               style={{ transitionDelay: `${i * 40}ms` }}
             >
               <ParallaxImage
                 src={e.image}
-                alt={e.title}
+                alt={e.imageAlt}
                 range={0.06}
                 className="aspect-[4/5] rounded-[24px] bg-forest-800 shadow-depth transition-transform duration-700 ease-out-expo lg:group-hover:-translate-y-2"
               >

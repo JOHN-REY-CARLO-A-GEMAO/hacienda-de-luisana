@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LoginForm } from '../components/Auth/LoginForm'
 import { AuthLayout } from '../components/Auth/AuthShell'
@@ -18,23 +18,25 @@ import { LoadingPanel } from '../components/ui'
  * is deliberately no second page title above it.
  *
  * Once a Guest is signed in there is nothing left to do here: they are sent
- * straight to `/book`. An Admin who signs in on the website is turned away with
+ * to `/mybookings`, or back to `/book` when requested by the booking form. An Admin who signs in on the website is turned away with
  * the same notice every gated page gives, pointing at the mobile app that is
  * theirs (ADR-0007). There is no Admin sign-in page on the website.
  */
 export function GuestAuthPage() {
   const { user, role, loading } = useAuth()
+  const [params] = useSearchParams()
+  const destination = params.get('returnTo') === 'book' ? '/book' : '/mybookings'
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cream-50 px-5 pt-28">
+      <div className="flex min-h-screen items-center justify-center bg-cream-50 dark:bg-forest-950 px-5 pt-28">
         <LoadingPanel label="Checking authentication…" className="max-w-sm" />
       </div>
     )
   }
 
   if (user && role === 'guest') {
-    return <Navigate to="/book" replace />
+    return <Navigate to={destination} replace />
   }
 
   if (user) {

@@ -75,7 +75,7 @@ describe('what each role may do', () => {
 
   it('does not give the Admin a Guest’s own-Booking permissions', () => {
     // An Admin does not book through the website, and the website's one gated
-    // page is a Guest's. This is what turns an Admin away from /account and
+    // page is a Guest's. This is what turns an Admin away from /mybookings and
     // points them at the app.
     expect(can('admin', 'booking:create')).toBe(false)
     expect(can('admin', 'booking:read:own')).toBe(false)
@@ -131,10 +131,15 @@ describe('what each role may do', () => {
 
 describe('which pages a role may open', () => {
   it('gives a Guest their own account page, and keeps everybody else out of it', () => {
-    expect(pageRoles('/account')).toEqual(['guest'])
-    expect(canOpenPage('guest', '/account')).toBe(true)
-    expect(canOpenPage('admin', '/account')).toBe(false)
-    expect(canOpenPage(null, '/account')).toBe(false)
+    expect(pageRoles('/mybookings')).toEqual(['guest'])
+    expect(canOpenPage('guest', '/mybookings')).toBe(true)
+    expect(canOpenPage('admin', '/mybookings')).toBe(false)
+    for (const path of ['/mybookings', '/profile']) {
+      expect(canOpenPage('guest', path)).toBe(true)
+      expect(canOpenPage('admin', path)).toBe(false)
+      expect(canOpenPage(null, path)).toBe(false)
+    }
+    expect(canOpenPage(null, '/mybookings')).toBe(false)
   })
 
   it('has no Admin page: the old dashboards are public signposts to the app', () => {
@@ -155,14 +160,14 @@ describe('which pages a role may open', () => {
   })
 
   it('ignores a trailing slash, casing and any query string', () => {
-    expect(canOpenPage('guest', '/account/')).toBe(true)
-    expect(canOpenPage('guest', '/Account?tab=history')).toBe(true)
-    expect(canOpenPage('admin', '/account#top')).toBe(false)
-    expect(canOpenPage(null, '/account/anything')).toBe(false)
+    expect(canOpenPage('guest', '/mybookings/')).toBe(true)
+    expect(canOpenPage('guest', '/Mybookings?tab=history')).toBe(true)
+    expect(canOpenPage('admin', '/mybookings#top')).toBe(false)
+    expect(canOpenPage(null, '/mybookings/anything')).toBe(false)
   })
 
   it('sends each role to the page that is theirs', () => {
-    expect(homeForRole('guest')).toBe('/account')
+    expect(homeForRole('guest')).toBe('/mybookings')
     // The Admin's home is the mobile app; on the website that is the landing
     // page, where the gate explains as much.
     expect(homeForRole('admin')).toBe('/')

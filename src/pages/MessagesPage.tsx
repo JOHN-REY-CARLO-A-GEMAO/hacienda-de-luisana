@@ -52,6 +52,7 @@ export function MessagesPage() {
   const [cursor, setCursor] = useState<MessageCursor | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
+  const [olderError, setOlderError] = useState<string | null>(null)
 
   const [text, setText] = useState('')
   const [pendingImage, setPendingImage] = useState<PendingChatImage | null>(null)
@@ -63,6 +64,9 @@ export function MessagesPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const pendingImageRef = useRef<PendingChatImage | null>(null)
+  const draftByConversation = useRef(new Map<string, { text: string; image: PendingChatImage | null; pendingSend: { fingerprint: string; id: string } | null }>())
+  const currentConversationRef = useRef<string | null>(null)
+  const pendingSendRef = useRef<{ fingerprint: string; id: string } | null>(null)
 
   useEffect(() => {
     pendingImageRef.current = pendingImage
@@ -71,9 +75,11 @@ export function MessagesPage() {
   // Revoke any dangling object URL when unmounting.
   useEffect(() => {
     return () => {
-      if (pendingImageRef.current) {
-        URL.revokeObjectURL(pendingImageRef.current.previewUrl)
+      if (pendingImageRef.current) URL.revokeObjectURL(pendingImageRef.current.previewUrl)
+      for (const draft of draftByConversation.current.values()) {
+        if (draft.image) URL.revokeObjectURL(draft.image.previewUrl)
       }
+      draftByConversation.current.clear()
     }
   }, [])
 
@@ -134,6 +140,7 @@ export function MessagesPage() {
   }, [conversations, searchQuery])
 
   const activeConvoId = selectedConvo?.conversationId ?? null
+  currentConversationRef.current = activeConvoId
   const activeBookingId = selectedConvo?.bookingId ?? null
   const activeGuestName = selectedConvo?.guestName ?? (profileFullName || user?.displayName || 'Guest')
   const activeBookingRef = selectedConvo?.bookingReference ?? null
@@ -158,6 +165,8 @@ export function MessagesPage() {
     setMessages([])
     setCursor(null)
     setHasMore(false)
+    setLoadingOlder(false)
+    setOlderError(null)
     setComposerError(null)
     setThreadState('loading')
 
@@ -269,6 +278,23 @@ export function MessagesPage() {
     user?.uid,
   ])
 
+  const conversationIds = useMemo(() => conversations.map((item) => item.conversationId).sort().join('\n'), [conversations])
+  useEffect(() => {
+    const ids = conversationIds ? conversationIds.split('\n').filter((id) => id !== activeConvoId) : []
+    const unsubscribers = ids.map((id) => subscribeConversationMeta(id, (meta) => {
+      setConversations((previous) => previous.map((item) => item.conversationId === id ? {
+        ...item,
+        unreadCount: meta.unreadGuest,
+        unreadAdminCount: meta.unreadAdmin,
+        adminLastReadAt: meta.adminLastReadAt,
+        retentionExpiresAt: meta.retentionExpiresAt,
+        latestMessageText: meta.lastMessage || item.latestMessageText,
+        latestMessageAt: meta.updatedAtMs ?? item.latestMessageAt,
+      } : item))
+    }))
+    return () => { unsubscribers.forEach((unsubscribe) => unsubscribe()) }
+  }, [conversationIds, activeConvoId])
+
   const sharing = useLiveLocation({
     convoId: activeConvoId,
     uid: user?.uid,
@@ -313,20 +339,23 @@ export function MessagesPage() {
 
   const handleLoadOlder = useCallback(async () => {
     if (!user?.uid || !activeConvoId || !hasMore || loadingOlder) return
+    const requestConvoId = activeConvoId
     setLoadingOlder(true)
+    setOlderError(null)
     try {
       const page = await loadMessagePage({
         convoId: activeConvoId,
         uid: user.uid,
         before: cursor,
       })
+      if (currentConversationRef.current !== requestConvoId) return
       setMessages((prev) => mergeMessages(page.messages, prev))
       setCursor(page.cursor)
       setHasMore(page.hasMore)
     } catch {
-      setComposerError('Could not load earlier messages. Check your connection and try again.')
+      if (currentConversationRef.current === requestConvoId) setOlderError('Could not load earlier messages. Check your connection and try again.')
     } finally {
-      setLoadingOlder(false)
+      if (currentConversationRef.current === requestConvoId) setLoadingOlder(false)
     }
   }, [activeConvoId, cursor, hasMore, loadingOlder, user?.uid])
 
@@ -354,6 +383,11 @@ export function MessagesPage() {
         return
       }
 
+      const fingerprint = JSON.stringify([selectedConvo.conversationId, draftText.trim(), imageDraft?.id ?? null])
+      if (pendingSendRef.current?.fingerprint !== fingerprint) {
+        pendingSendRef.current = { fingerprint, id: imageDraft?.id ?? crypto.randomUUID() }
+      }
+      const messageId = pendingSendRef.current.id
       setComposerError(null)
       setSendStage(imageDraft ? 'uploading' : 'sending')
 
@@ -386,7 +420,7 @@ export function MessagesPage() {
           uid: user.uid,
           text: draftText,
           attachment: uploadedAttachment,
-          messageId: imageDraft?.id,
+          messageId,
         })
 
         if (!result.ok) {
@@ -394,6 +428,7 @@ export function MessagesPage() {
           return
         }
 
+        pendingSendRef.current = null
         setText('')
         clearPendingImage()
       } catch (err) {
@@ -415,10 +450,22 @@ export function MessagesPage() {
   }, [])
 
   const handleSelectConversation = useCallback((summary: ConversationSummary) => {
+    if (sendStage !== 'idle') return
+    if (activeConvoId !== summary.conversationId) {
+      if (activeConvoId) draftByConversation.current.set(activeConvoId, { text, image: pendingImage, pendingSend: pendingSendRef.current })
+      const draft = draftByConversation.current.get(summary.conversationId)
+      draftByConversation.current.delete(summary.conversationId)
+      setText(draft?.text ?? '')
+      setPendingImage(draft?.image ?? null)
+      pendingSendRef.current = draft?.pendingSend ?? null
+      currentConversationRef.current = summary.conversationId
+      setOlderError(null)
+      setLoadingOlder(false)
+    }
     setSelectedConvoId(summary.conversationId)
     setMobileView('conversation')
     setComposerError(null)
-  }, [])
+  }, [activeConvoId, pendingImage, sendStage, text])
 
   const hasMultipleThreads = conversations.length > 1
   const retentionStamp = selectedConvo?.retentionExpiresAt ?? null
@@ -447,7 +494,7 @@ export function MessagesPage() {
           }
           actions={
             conversations.length > 0 ? (
-              <Link to="/account" className="btn-quiet btn-sm">
+              <Link to="/mybookings" className="btn-quiet btn-sm">
                 My reservations
               </Link>
             ) : undefined
@@ -534,6 +581,7 @@ export function MessagesPage() {
                         key={summary.conversationId}
                         summary={summary}
                         selected={summary.conversationId === selectedConvo?.conversationId}
+                        disabled={sendStage !== 'idle'}
                         onSelect={handleSelectConversation}
                       />
                     ))
@@ -592,6 +640,11 @@ export function MessagesPage() {
                   </div>
                 )}
 
+                {olderError && (
+                  <Alert tone="danger" className="mx-4 mt-3 text-xs" actions={<button type="button" className="btn-quiet btn-sm" onClick={() => void handleLoadOlder()}>Retry loading earlier messages</button>}>
+                    {olderError}
+                  </Alert>
+                )}
                 {threadState === 'error' ? (
                   <div className="messages-thread-wrap flex items-center justify-center p-6">
                     <Alert
@@ -659,7 +712,7 @@ export function MessagesPage() {
                   onRetry={() => void handleSend()}
                   quickRepliesSlot={
                     <QuickReplyActions
-                      disabled={sendStage !== 'idle' || retentionSwept}
+                      disabled={sendStage !== 'idle' || threadState !== 'ready' || retentionSwept}
                       onSelect={handleQuickReply}
                     />
                   }

@@ -28,7 +28,7 @@ export function Hero() {
   return (
     <section
       ref={section}
-      className="hero relative min-h-[100svh] w-full overflow-hidden bg-forest-950 text-cream-50 lg:h-[100svh]"
+      className="hero relative min-h-[100svh] w-full overflow-hidden bg-forest-950 text-cream-50"
       data-motion={reducedMotion ? 'reduced' : 'full'}
     >
       {/* Layer 0 — sky & photograph (moves slowest) */}
@@ -64,11 +64,10 @@ export function Hero() {
       </div>
 
       {/* Layer 1 — content */}
-      <div className="relative z-10 flex flex-col min-h-[100svh] lg:h-full lg:min-h-0">
-        {/* `pt` clears the fixed bar: below `lg` the hero grows with its own
-            copy instead of squeezing it into 100svh, so the location chip and
-            the headline can never slide up under the navbar. */}
-        <div className="flex-1 flex items-start lg:items-center pt-[86px] pb-10 lg:py-0">
+      <div className="relative z-10 flex min-h-[100svh] flex-col">
+        {/* Reserve space for the fixed navigation at every viewport height.
+            Let the hero grow when its content cannot fit in one screen. */}
+        <div className="flex flex-1 items-start pt-[86px] pb-10 lg:items-center lg:pt-[104px]">
           <Container width="wide" className="w-full">
             <div ref={content} className="hero-layer max-w-2xl animate-fade-in" data-hero-layer="content">
               <div className="inline-flex items-center gap-2 rounded-full border border-cream-100/30 bg-forest-950/55 px-3.5 py-2 text-sm text-cream-100 font-medium backdrop-blur-md">
@@ -114,7 +113,7 @@ export function Hero() {
                 )}
               </a>
               <Link
-                to="/account"
+                to="/mybookings"
                 className="mt-5 sm:ml-4 inline-flex lg:hidden text-sm text-cream-100/90 underline underline-offset-4"
               >
                 My Bookings

@@ -5,6 +5,7 @@ import { GuestAvatar } from './GuestAvatar'
 export type ConversationListItemProps = {
   summary: ConversationSummary
   selected: boolean
+  disabled?: boolean
   /** When 'guest' (website default), rows highlight the stay property & reference; when 'admin', rows lead with the Guest name. */
   perspective?: 'guest' | 'admin'
   onSelect: (summary: ConversationSummary) => void
@@ -44,6 +45,7 @@ export function formatConversationTimestamp(atMs: number | null): string {
 export function ConversationListItem({
   summary,
   selected,
+  disabled = false,
   perspective = 'guest',
   onSelect,
 }: ConversationListItemProps) {
@@ -81,6 +83,7 @@ export function ConversationListItem({
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={() => onSelect(summary)}
       data-active={selected ? 'true' : 'false'}
       aria-current={selected ? 'true' : undefined}

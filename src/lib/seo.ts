@@ -72,7 +72,7 @@ export function scriptJson(value: unknown): string {
  * Open Graph / Twitter pairs that make a pasted link look like the Hacienda
  * rather than like a URL.
  *
- * `noindex` pages still get a title and a description — a Guest on `/account`
+ * `noindex` pages still get a title and a description — a Guest on `/mybookings`
  * sees them in the tab, and a shared link still previews correctly — but they
  * ask not to be listed.
  */
@@ -346,7 +346,7 @@ export function llmsTxt(routes: readonly RouteMeta[] = indexableRoutes()): strin
 
 /** The robots.txt body. `*` only: a named group would silently drop the Disallow list. */
 export function robotsTxt(): string {
-  const disallow = ['/account', '/messages', '/booking/status', '/book/pay', '/receipt-scan', '/review', '/guest/auth', '/login', '/admin', '/app']
+  const disallow = ['/mybookings', '/profile', '/messages', '/booking/status', '/book/pay', '/review', '/guest/auth', '/login', '/admin', '/app']
   return [
     '# Hacienda de LuisAna — public pages are open to every crawler, including',
     '# assistants that summarise rather than index. Signed-in pages are not.',

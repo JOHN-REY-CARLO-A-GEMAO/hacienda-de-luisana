@@ -67,6 +67,12 @@ describe('the canonical Accommodation set', () => {
     }
   })
 
+  it('does not confuse included occupancy with a physical cap', () => {
+    expect(ACCOMMODATIONS.find((a) => a.id === 'main-house')?.capacity).toBeUndefined()
+    expect(ACCOMMODATIONS.find((a) => a.id === 'annex')?.capacity).toBeUndefined()
+    expect(ACCOMMODATIONS.find((a) => a.id === 'house-a-camping')?.capacity).toBe(3)
+  })
+
   it('takes one A-House unit per Booking, from an inventory of two, for three guests', () => {
     const aHouse = OFFICIAL_ACCOMMODATION_RATES['house-a-camping']
     expect(aHouse.available_units).toBe(2)

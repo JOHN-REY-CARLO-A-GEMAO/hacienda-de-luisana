@@ -36,7 +36,7 @@ export async function ensureGuestUid(): Promise<string | null> {
   if (!isFirebaseConfigured || !auth) {
     // Demo mode has no anonymous sign-in to make, but a Guest who signed up here
     // still gets the Booking attached to the account they signed in with, so
-    // /account can show it back to them. Nobody signed in, nobody to attach it to:
+    // /mybookings can show it back to them. Nobody signed in, nobody to attach it to:
     // the Booking is still made, exactly as before.
     return appSession().getState().user?.uid ?? null
   }

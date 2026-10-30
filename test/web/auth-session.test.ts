@@ -553,6 +553,22 @@ describe('who decides which role a person has', () => {
     expect('signInAsRole' in session).toBe(false)
   })
 
+  it('refreshes the same anonymous identity after it is linked', async () => {
+    const provider = createFakeProvider()
+    const anonymous = user('anon-linked', null, { isAnonymous: true, provider: 'anonymous' })
+    provider.signInNow(anonymous)
+    const session = createSession(provider.port, createFakeProfiles().port)
+    await session.refresh()
+    provider.port.current = () => user('anon-linked', 'guest@example.com', { isAnonymous: false, provider: 'password' })
+    await session.refresh()
+    expect(session.getState().user).toMatchObject({ uid: 'anon-linked', email: 'guest@example.com', isAnonymous: false })
+    // A provider switching to another person cannot replace the session via refresh.
+    provider.port.current = () => user('different-uid', 'other@example.com')
+    await session.refresh()
+    expect(session.getState().user?.uid).toBe('anon-linked')
+    session.destroy()
+  })
+
   it('picks up a role written for you elsewhere, on refresh', async () => {
     const provider = createFakeProvider()
     const profiles = createFakeProfiles([{ uid: 'uid-ben', role: 'guest', email: 'ben@hacienda.test' }])

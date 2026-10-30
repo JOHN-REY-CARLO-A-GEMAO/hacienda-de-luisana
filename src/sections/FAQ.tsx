@@ -1,5 +1,6 @@
 import { Container } from '../components/ui'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { FAQS } from '../config/site'
 import { Chevron } from '../lib/icons'
 
@@ -19,9 +20,9 @@ export function FAQ() {
   const [open, setOpen] = useState<number | null>(0)
 
   return (
-    <section id="faqs" className="section-full bg-cream-50">
+    <section id="faqs" className="bg-cream-50 dark:bg-forest-950 pt-10 pb-16 lg:pb-20">
       <Container width="narrow">
-        <div className="divide-y divide-forest-900/10 border-t border-b border-forest-900/10 reveal">
+        <div className="divide-y divide-forest-900/10 dark:divide-cream-100/15 border-t border-b border-forest-900/10 dark:border-cream-100/15 reveal">
           {FAQS.map((f, i) => {
             const isOpen = open === i
             return (
@@ -30,18 +31,18 @@ export function FAQ() {
                   type="button"
                   id={`faq-question-${i}`}
                   onClick={() => setOpen(isOpen ? null : i)}
-                  className="w-full flex items-start justify-between gap-6 text-left py-6 group"
+                  className="w-full flex items-start justify-between gap-6 text-left py-6 group focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest-600 dark:focus-visible:outline-brass-400"
                   aria-expanded={isOpen}
                   aria-controls={`faq-answer-${i}`}
                 >
-                  <span className="font-serif text-lg lg:text-xl text-forest-900 pr-2">
+                  <span className="font-serif text-lg lg:text-xl text-forest-900 dark:text-cream-50 pr-2">
                     {f.q}
                   </span>
                   <Chevron
                     size={20}
                     aria-hidden="true"
-                    className={`text-forest-600 mt-1 shrink-0 transition-transform ${
-                      isOpen ? 'rotate-180 text-forest-800' : ''
+                    className={`text-forest-600 dark:text-sage-400 mt-1 shrink-0 transition-transform ${
+                      isOpen ? 'rotate-180' : ''
                     }`}
                   />
                 </button>
@@ -61,7 +62,12 @@ export function FAQ() {
                   }`}
                 >
                   <div className="overflow-hidden">
-                    <p className="text-forest-800/85 leading-relaxed max-w-3xl">{f.a}</p>
+                    <p className="text-forest-800/85 dark:text-cream-100/85 leading-relaxed max-w-3xl">{f.a}</p>
+                    {f.link && (
+                      <Link to={f.link.to} className="text-link mt-3 inline-block font-medium text-forest-800 dark:text-cream-100">
+                        {f.link.label}
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>

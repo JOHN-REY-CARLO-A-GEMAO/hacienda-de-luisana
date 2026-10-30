@@ -15,7 +15,7 @@ export function ExperiencePage() {
   return (
     <PageShell
       eyebrow="Experience"
-      title="More than a place to stay"
+      title="Experience the Hacienda"
       lead={
         <p>
           Long meals, quiet mornings, and the kind of conversation that only happens away from the

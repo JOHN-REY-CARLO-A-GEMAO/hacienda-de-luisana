@@ -142,7 +142,7 @@ export function LoginFormOnly({
             />
           </Field>
           <div className="mt-1 text-right">
-            <button type="button" onClick={onSwitchToReset} className="text-xs text-link text-forest-600">
+            <button type="button" onClick={onSwitchToReset} className="text-xs text-link text-forest-600 dark:text-cream-100">
               Forgot password?
             </button>
           </div>
@@ -160,9 +160,9 @@ export function LoginFormOnly({
       {isConfigured && (
         <>
           <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-forest-900/10" />
-            <span className="text-[11px] uppercase tracking-eyebrow text-forest-600">or continue with</span>
-            <div className="h-px flex-1 bg-forest-900/10" />
+            <div className="h-px flex-1 bg-forest-900/10 dark:bg-cream-100/20" />
+            <span className="text-[11px] uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">or continue with</span>
+            <div className="h-px flex-1 bg-forest-900/10 dark:bg-cream-100/20" />
           </div>
 
           <button

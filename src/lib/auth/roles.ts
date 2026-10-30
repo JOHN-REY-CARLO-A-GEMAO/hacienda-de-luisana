@@ -108,7 +108,7 @@ const GUEST_PERMISSIONS: readonly Permission[] = ['booking:create', 'booking:rea
  * The Admin holds everything that operates the place. The Guest holds their own
  * Booking and nothing of anybody else's. The Admin does not hold the Guest's
  * own-Booking permissions: an Admin does not book through the website, and the
- * one page here that needs a permission (`/account`) is a Guest's page.
+ * one page here that needs a permission (`/mybookings`) is a Guest's page.
  */
 const GRANTS: Record<Role, readonly Permission[]> = {
   guest: GUEST_PERMISSIONS,

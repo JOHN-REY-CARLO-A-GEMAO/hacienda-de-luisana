@@ -21,6 +21,7 @@ export function Field({
   required,
   className = '',
   tour,
+  controlId,
   children,
 }: {
   label: ReactNode
@@ -30,10 +31,12 @@ export function Field({
   className?: string
   /** Optional tour anchor (`data-tour`) for the interactive Guest tutorial. */
   tour?: string
+  /** For a control nested inside a wrapper, connect its explicit id and message. */
+  controlId?: string
   children: ReactNode
 }) {
   const id = useId()
-  const messageId = `${id}-message`
+  const messageId = `${controlId ?? id}-message`
   const control = isValidElement<{
     'aria-describedby'?: string
     'aria-invalid'?: boolean | 'false' | 'true'
@@ -43,7 +46,7 @@ export function Field({
     control?.props['aria-describedby'],
     error || hint ? messageId : null,
   ].filter(Boolean).join(' ') || undefined
-  const enhancedControl = control
+  const enhancedControl = control && !controlId
     ? cloneElement(control, {
         'aria-describedby': describedBy,
         ...(required ? { 'aria-required': true as const } : {}),
@@ -52,7 +55,7 @@ export function Field({
     : children
 
   return (
-    <label className={`block ${className}`}>
+    <label htmlFor={controlId} className={`block ${className}`}>
       <span className="label">
         {label}
         {required && (

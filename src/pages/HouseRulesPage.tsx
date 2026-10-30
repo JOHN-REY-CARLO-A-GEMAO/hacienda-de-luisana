@@ -19,6 +19,7 @@ export function HouseRulesPage() {
     <PageShell
       eyebrow="House Rules"
       title="Before you arrive"
+      darkMode
       lead={
         <p>
           The few things every guest should know: the Hacienda&rsquo;s own house rules first, then

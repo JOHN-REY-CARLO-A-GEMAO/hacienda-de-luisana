@@ -75,6 +75,13 @@ describe('guest booking rule preflight', () => {
     }
   })
 
+  it('prices guests above the included count without inventing a capacity', () => {
+    const result = validateBookingSelection({ ...selection, guests: 25 }, { published, checkLeadTime: false })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.quote.stayTotal).toBe(6000 + 15 * 500)
+    expect(validateBookingSelection({ ...selection, guests: 101 }, { published, checkLeadTime: false })).toMatchObject({ ok: false, failure: { code: 'GUEST_COUNT_NOT_SUPPORTED' } })
+  })
+
   it('does not invent a two-night weekend minimum', () => {
     const result = validateBookingSelection(selection, {
       published,

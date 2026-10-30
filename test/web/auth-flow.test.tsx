@@ -158,13 +158,13 @@ async function signUp(page: Page, email: string, name = 'Maria Santos') {
 
 describe('arriving at a page that is not public', () => {
   it('asks who you are before it shows anything', () => {
-    const account = openAt('/account')
+    const account = openAt('/mybookings')
     expect(account.text()).toContain('Sign in')
     expect(account.text()).not.toContain('No bookings on this account yet')
   })
 
   it('says the site is in demo mode, and offers no role to step into', () => {
-    const page = openAt('/account')
+    const page = openAt('/mybookings')
 
     expect(page.text()).toContain('Demo mode')
     expect(page.text()).toContain('Signing up here makes you a Guest')
@@ -188,7 +188,7 @@ describe('the retired web dashboards', () => {
 
 describe('the Admin', () => {
   it('is recognised by address, turned away from the Guest page, and pointed at the app', async () => {
-    const page = openAt('/account')
+    const page = openAt('/mybookings')
 
     await signUp(page, ADMIN_ADDRESS, 'Ana Luisana')
     await page.wait('This website is for Guests')
@@ -203,10 +203,11 @@ describe('the Admin', () => {
   }, TIMEOUT_MS)
 
   it('is signed out again, and the notice goes with the session', async () => {
-    const page = openAt('/account')
+    const page = openAt('/mybookings')
     await signUp(page, ADMIN_ADDRESS, 'Ana Luisana')
     await page.wait('This website is for Guests')
 
+    click(page, /Admin account$/)
     click(page, /^Sign out$/)
     await page.wait('Sign in')
 
@@ -216,7 +217,7 @@ describe('the Admin', () => {
 
 describe('a Guest', () => {
   it('signs up from the form and lands on their own bookings', async () => {
-    const page = openAt('/account')
+    const page = openAt('/mybookings')
     expect(page.text()).toContain('Sign in')
 
     await signUp(page, 'maria@example.com')
@@ -228,7 +229,7 @@ describe('a Guest', () => {
   }, TIMEOUT_MS)
 
   it('keeps a Booking they made while signed in, and shows it back to them', async () => {
-    const page = openAt('/account')
+    const page = openAt('/mybookings')
     await signUp(page, 'maria@example.com')
     await page.wait('Your stay · Guest')
     const uid = JSON.parse(localStorage.getItem('hdl:auth:session') ?? 'null').uid as string
@@ -265,7 +266,7 @@ describe('a Guest', () => {
   }, TIMEOUT_MS)
 
   it('is not shown somebody else’s Booking', async () => {
-    const page = openAt('/account')
+    const page = openAt('/mybookings')
     await signUp(page, 'maria@example.com')
     await page.wait('Your stay · Guest')
 
@@ -315,18 +316,41 @@ describe('the public website', () => {
     await page.wait('Sign in as Guest')
   }, TIMEOUT_MS)
 
-  it('offers Sign in on /guest/auth while signed out, and books the Guest straight in', async () => {
+  it('opens the protected profile page', async () => {
+    const page = openAt('/profile')
+    await signUp(page, 'profile@example.com')
+    await page.wait('Keep your details up to date')
+    expect(page.container.querySelector('input[autocomplete="given-name"]')).not.toBeNull()
+    expect(page.container.querySelector('[role="tablist"]')).toBeNull()
+    expect(page.container.querySelector('a[href="/mybookings"]')).not.toBeNull()
+    expect(document.title).toContain('My Profile')
+    type(page, 'input[autocomplete="given-name"]', 'Luna')
+    type(page, 'input[autocomplete="family-name"]', 'Santos')
+    type(page, 'input[autocomplete="tel"]', '09171234567')
+    await submit(page)
+    await page.settle()
+    expect(page.text()).toContain('Your profile details have been saved successfully!')
+    expect(page.container.querySelector<HTMLInputElement>('input[autocomplete="given-name"]')?.value).toBe('Luna')
+    expect(JSON.parse(localStorage.getItem('hdl:auth:profiles') || '[]')).toEqual(expect.arrayContaining([expect.objectContaining({ email: 'profile@example.com', first_name: 'Luna' })]))
+    const bookingsLink = page.container.querySelector<HTMLAnchorElement>('main a[href="/mybookings"]')!
+    act(() => bookingsLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })))
+    await page.wait('No bookings on this account yet')
+    expect(page.container.querySelector('input[autocomplete="given-name"]')).toBeNull()
+
+  }, TIMEOUT_MS)
+
+  it('offers Sign in on /guest/auth while signed out, and sends the Guest to their account', async () => {
     const page = openAt('/guest/auth')
     await page.wait('Sign in as Guest')
 
     await signUp(page, 'maria@example.com')
     // This page has nothing left to say once a Guest is signed in: it sends
-    // them to the booking form, which is what they came here to start.
-    await page.wait('Plan Your Stay')
+    // them to their account, where their bookings can be viewed.
+    await page.wait('My bookings')
     expect(page.text()).not.toContain('Sign in as Guest')
 
     // The Nav points a Guest at their own page, and at nothing else.
-    expect(page.html()).toContain('href="/account"')
+    expect(page.html()).toContain('href="/mybookings"')
     expect(page.html()).not.toContain('href="/admin"')
     expect(page.html()).not.toContain('href="/app"')
   }, TIMEOUT_MS)

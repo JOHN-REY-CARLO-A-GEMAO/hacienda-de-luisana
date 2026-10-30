@@ -21,7 +21,7 @@ export function ContactDetails() {
   const cards = [
     {
       icon: Phone,
-      label: 'Call / Message',
+      label: 'Call',
       value: BUSINESS.contact.phoneDisplay,
       href: `tel:${tel}`,
     },
@@ -51,9 +51,15 @@ export function ContactDetails() {
     },
     {
       icon: House,
-      label: 'Also on',
-      value: `${LISTINGS.airbnb.label} · ${LISTINGS.agoda.label}`,
+      label: 'Airbnb',
+      value: 'View our Airbnb listing',
       href: LISTINGS.airbnb.url,
+    },
+    {
+      icon: House,
+      label: 'Agoda',
+      value: 'View our Agoda listing',
+      href: LISTINGS.agoda.url,
     },
   ]
 
@@ -61,13 +67,13 @@ export function ContactDetails() {
     <div className="grid lg:grid-cols-2 gap-14 lg:gap-24 items-center">
       <div className="reveal">
         <div className="eyebrow">Contact</div>
-        <h2 className="display text-4xl sm:text-5xl mt-4 text-forest-900">
-          Talk to Your <br />
-          <span className="italic font-normal">Admin</span>
+        <h2 className="display text-4xl sm:text-5xl mt-4 text-forest-900 dark:text-cream-50">
+          How to <br />
+          <span className="italic font-normal">Reach Us</span>
         </h2>
-        <p className="mt-6 text-forest-800/75 leading-relaxed max-w-md">
-          Have a question, planning a special gathering, or want to check dates? Send us a
-          message — we usually reply within the day.
+        <p className="mt-6 text-forest-800/75 dark:text-cream-100/80 leading-relaxed max-w-md">
+          Choose the contact method that works best for you, or use the official channels below
+          to verify where you are booking.
         </p>
 
         <div className="mt-10 flex flex-wrap gap-3">
@@ -88,6 +94,11 @@ export function ContactDetails() {
             Get Directions
           </a>
         </div>
+
+        <p className="mt-4 max-w-md text-sm text-forest-700 dark:text-cream-100/75">
+          Messenger and Google Maps open in a new tab. The map pin is approximate; confirm the exact
+          location with the Hacienda before travelling.
+        </p>
 
         <div className="mt-10">
           <OfficialChannelsNotice />
@@ -110,6 +121,9 @@ export function ContactDetails() {
             <div className="mt-1 min-w-0 break-words font-serif text-lg text-forest-900 group-hover:underline underline-offset-4">
               {c.value}
             </div>
+            {c.href.startsWith('http') && (
+              <div className="mt-2 text-xs text-forest-700">Opens in a new tab</div>
+            )}
           </a>
         ))}
       </div>

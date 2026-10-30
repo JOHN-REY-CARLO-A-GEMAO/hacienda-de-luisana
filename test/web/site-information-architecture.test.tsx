@@ -31,8 +31,8 @@ const PAGES: ReadonlyArray<{ path: string; heading: string }> = [
   { path: '/stay', heading: 'Accommodations at the Hacienda' },
   { path: '/rates', heading: 'What a stay costs' },
   { path: '/gallery', heading: 'The Hacienda in photographs' },
-  { path: '/experience', heading: 'More than a place to stay' },
-  { path: '/location', heading: 'Getting to the Hacienda' },
+  { path: '/experience', heading: 'Experience the Hacienda' },
+  { path: '/location', heading: 'Location & arrival' },
   { path: '/reviews', heading: 'Reviews' },
   { path: '/faqs', heading: 'Common questions' },
   { path: '/house-rules', heading: 'Before you arrive' },
@@ -54,7 +54,8 @@ const LINKED_PATHS = [
   '/house-rules',
   '/legal',
   '/book',
-  '/account',
+  '/mybookings',
+  '/profile',
   '/messages',
 ]
 
@@ -121,6 +122,22 @@ afterEach(() => {
 })
 
 describe('the homepage previews and the pages behind them', () => {
+  it('no longer serves the old account routes', () => {
+    for (const path of ['/account', '/account?tab=profile', '/account/profile']) {
+      const page = open(path)
+      expect(page.text()).toContain('Page not found')
+      expect(page.container.querySelector('a[href="/account"]')).toBeNull()
+    }
+  })
+
+  it('does not expose the retired standalone receipt reader', () => {
+    const home = open('/')
+    expect(home.container.querySelector('a[href="/receipt-scan"]')).toBeNull()
+    const retired = open('/receipt-scan')
+    expect(retired.text()).toContain('Page not found')
+    expect(retired.container.querySelector('a[href="/receipt-scan"]')).toBeNull()
+  })
+
   it('gives every dedicated page exactly one heading, and it is the right one', () => {
     for (const { path, heading } of PAGES) {
       const page = open(path)

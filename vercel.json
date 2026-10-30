@@ -3,7 +3,8 @@
   "rewrites": [
     { "source": "/login", "destination": "/404.html" },
     { "source": "/guest/auth", "destination": "/404.html" },
-    { "source": "/account", "destination": "/404.html" },
+    { "source": "/mybookings", "destination": "/404.html" },
+    { "source": "/profile", "destination": "/404.html" },
     { "source": "/messages", "destination": "/404.html" },
     { "source": "/book/pay", "destination": "/404.html" },
     { "source": "/receipt-scan", "destination": "/404.html" },

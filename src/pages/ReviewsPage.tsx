@@ -14,6 +14,7 @@ export function ReviewsPage() {
     <PageShell
       eyebrow="Guest Experiences"
       title="Reviews"
+      darkMode
       lead={
         <p>
           Reviews published by guests on the Hacienda's own listing, shown word for word, alongside

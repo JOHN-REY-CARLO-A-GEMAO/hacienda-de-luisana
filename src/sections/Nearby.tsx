@@ -65,8 +65,8 @@ export function Nearby() {
                   rel="noreferrer"
                   className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-forest-800 hover:text-forest-950 group/l"
                 >
-                  Explore
-                  <ArrowRight size={14} className="transition-transform group-hover/l:translate-x-1" />
+                  View {n.name} on Google Maps (opens in a new tab)
+                  <ArrowRight size={14} className="shrink-0 transition-transform group-hover/l:translate-x-1" aria-hidden="true" />
                 </a>
               </div>
             </article>

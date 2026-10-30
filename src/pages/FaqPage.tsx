@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { PageShell } from '../components/PageShell'
 import { FAQ } from '../sections/FAQ'
 
@@ -15,10 +16,11 @@ export function FaqPage() {
     <PageShell
       eyebrow="FAQs"
       title="Common questions"
+      darkMode
       lead={
         <p>
-          The questions guests ask most before booking. For anything not answered here, message the
-          Hacienda — we are happy to help.
+          The questions guests ask most before booking. For anything not answered here,{' '}
+          <Link to="/contact" className="text-link">contact the Hacienda</Link> — we are happy to help.
         </p>
       }
     >
