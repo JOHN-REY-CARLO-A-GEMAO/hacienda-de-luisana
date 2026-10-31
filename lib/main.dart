@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -75,6 +77,12 @@ void main() async {
     } catch (_) {}
   }
 
+  // 3. Remote push notifications (FCM foreground/background/cold-start +
+  //    pending-intent capture; safe no-op when Firebase is unconfigured).
+  try {
+    await NotificationService().initializeRemoteMessaging();
+  } catch (_) {}
+
   runApp(
     ProviderScope(
       child: legacy.ChangeNotifierProvider(
@@ -135,6 +143,10 @@ class _AuthGateState extends ConsumerState<AuthGate>
   /// to reveal and a re-lock has something to cover.
   bool _shellBuilt = false;
 
+  String? _lastSyncedUid;
+  bool? _lastSyncedIsAdmin;
+  bool? _lastSyncedIsResolving;
+
   @override
   void initState() {
     super.initState();
@@ -151,7 +163,13 @@ class _AuthGateState extends ConsumerState<AuthGate>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       ref.read(pinGateProvider).clearTicket();
+      NotificationService().intentCoordinator.setPinUnlocked(false);
+      // Dismiss any pushed detail route or sheet above AuthGate (route.isFirst)
+      // so protected screens can never remain exposed above PinGateScreen on resume.
+      TourKeys.rootNavigator.currentState?.popUntil((route) => route.isFirst);
       if (mounted && _unlocked) setState(() => _unlocked = false);
+    } else if (state == AppLifecycleState.resumed) {
+      unawaited(NotificationService().refreshTokenRegistration());
     }
   }
 
@@ -161,20 +179,72 @@ class _AuthGateState extends ConsumerState<AuthGate>
       _unlocked = true;
       _shellBuilt = true;
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_unlocked) return;
+      NotificationService().intentCoordinator.setPinUnlocked(true);
+    });
+  }
+
+  void _syncNotificationAuthIfChanged(AuthStore auth) {
+    final uid = auth.uid;
+    final isAdmin = auth.isAdmin;
+    final isResolving = auth.isResolving;
+    if (_lastSyncedUid == uid &&
+        _lastSyncedIsAdmin == isAdmin &&
+        _lastSyncedIsResolving == isResolving) {
+      return;
+    }
+    _lastSyncedUid = uid;
+    _lastSyncedIsAdmin = isAdmin;
+    _lastSyncedIsResolving = isResolving;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        NotificationService().syncAdminSession(
+          uid: uid,
+          isAdmin: isAdmin,
+          isResolving: isResolving,
+        ),
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthStore>();
+    _syncNotificationAuthIfChanged(auth);
+
     if (auth.isResolving) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    if (!auth.isAdmin) return const AdminLoginScreen();
+    if (!auth.isAdmin) {
+      if (_unlocked || _shellBuilt) {
+        _unlocked = false;
+        _shellBuilt = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          TourKeys.rootNavigator.currentState
+              ?.popUntil((route) => route.isFirst);
+        });
+      }
+      NotificationService().intentCoordinator.setPinUnlocked(false);
+      return const AdminLoginScreen();
+    }
     return Stack(
       children: [
-        if (_shellBuilt) const MainShellScreen(),
+        if (_shellBuilt)
+          ExcludeSemantics(
+            excluding: !_unlocked,
+            child: ExcludeFocus(
+              excluding: !_unlocked,
+              child: IgnorePointer(
+                ignoring: !_unlocked,
+                child: const MainShellScreen(),
+              ),
+            ),
+          ),
         if (!_unlocked)
           Positioned.fill(
             child: PinGateScreen(onUnlocked: _unlock),

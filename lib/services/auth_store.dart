@@ -6,6 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import 'notification_service.dart';
+
 class AuthException implements Exception {
   final String message;
   const AuthException(this.message);
@@ -63,14 +65,22 @@ class AuthStore extends ChangeNotifier {
   static bool isAllowlisted(String? email) =>
       email != null && kAdminEmails.contains(email.trim().toLowerCase());
 
-  /// Is this session the Admin? The only authorization question the app asks.
-  bool get isAdmin =>
-      isSignedIn && (isAllowlisted(sessionEmail) || _profileIsAdmin);
+  bool get _isVerifiedAllowlisted =>
+      isAllowlisted(sessionEmail) && (_firebaseUser?.emailVerified ?? false);
 
-  /// True while the Profile lookup for a non-allowlisted account is in flight.
-  bool get isResolving => isSignedIn && !isAllowlisted(sessionEmail) && !_profileChecked;
+  /// Is this session the Admin? Matches `firestore.rules` (`tokenEmailVerified`)
+  /// and `functions/src/notifications.ts` (`isVerifiedAdmin`): an allowlisted
+  /// bootstrap address must have `emailVerified == true`, otherwise Admin
+  /// status requires `profiles/{uid}.role == 'admin'`.
+  bool get isAdmin =>
+      isSignedIn && (_isVerifiedAllowlisted || _profileIsAdmin);
+
+  /// True while the Profile lookup for a non-bootstrap-verified account is in flight.
+  bool get isResolving =>
+      isSignedIn && !_isVerifiedAllowlisted && !_profileChecked;
 
   StreamSubscription<User?>? _authSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _profileSub;
   bool _googleInitialized = false;
 
   AuthStore() {
@@ -102,28 +112,55 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
-  /// Reads `profiles/{uid}.role` for accounts not on the allowlist, so an
-  /// Admin promoted in Firestore can use the app without a rebuild.
+  /// Reads and watches `profiles/{uid}.role` for accounts not satisfied by a
+  /// verified bootstrap email, so live role revocation immediately demotes
+  /// the client session instead of leaving a stale Admin flag in memory.
   Future<void> _resolveProfileRole() async {
+    await _profileSub?.cancel();
+    _profileSub = null;
+
     final user = _firebaseUser;
     if (user == null) return;
-    if (isAllowlisted(user.email)) {
+    if (isAllowlisted(user.email) && user.emailVerified) {
       _profileIsAdmin = true;
       _profileChecked = true;
       notifyListeners();
       return;
     }
+
+    final targetUid = user.uid;
+    final docRef =
+        FirebaseFirestore.instance.collection('profiles').doc(targetUid);
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('profiles')
-          .doc(user.uid)
-          .get();
+      final snap = await docRef.get();
+      if (_firebaseUser?.uid != targetUid) return;
       _profileIsAdmin = (snap.data()?['role'] ?? '') == 'admin';
     } catch (_) {
+      if (_firebaseUser?.uid != targetUid) return;
       _profileIsAdmin = false;
     }
     _profileChecked = true;
     notifyListeners();
+
+    _profileSub = docRef.snapshots().listen(
+      (snap) {
+        if (_firebaseUser?.uid != targetUid) return;
+        final nextAdmin =
+            snap.exists && (snap.data()?['role'] ?? '') == 'admin';
+        if (_profileIsAdmin != nextAdmin || !_profileChecked) {
+          _profileIsAdmin = nextAdmin;
+          _profileChecked = true;
+          notifyListeners();
+        }
+      },
+      onError: (_) {
+        if (_firebaseUser?.uid != targetUid) return;
+        if (_profileIsAdmin) {
+          _profileIsAdmin = false;
+          notifyListeners();
+        }
+      },
+    );
   }
 
   /// One-tap Google sign-in. Returns the signed-in email.
@@ -214,6 +251,10 @@ class AuthStore extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    final signingOutAdminUid = isAdmin ? _firebaseUser?.uid : null;
+    try {
+      await NotificationService().onBeforeSignOut(uid: signingOutAdminUid);
+    } catch (_) {}
     try {
       await GoogleSignIn.instance.signOut();
     } catch (_) {}
@@ -222,6 +263,8 @@ class AuthStore extends ChangeNotifier {
         await FirebaseAuth.instance.signOut();
       }
     } catch (_) {}
+    await _profileSub?.cancel();
+    _profileSub = null;
     _firebaseUser = null;
     _profileIsAdmin = false;
     _profileChecked = false;
@@ -230,6 +273,7 @@ class AuthStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _profileSub?.cancel();
     _authSub?.cancel();
     super.dispose();
   }
