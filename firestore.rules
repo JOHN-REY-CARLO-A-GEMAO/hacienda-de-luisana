@@ -1823,9 +1823,71 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Admin FCM push device registrations.
+    //
+    // Dedicated collection for rotating installation tokens (never stored on
+    // `profiles/{uid}`). Strict invariants:
+    //   - Admin-only (`isAdmin()`); Guests and signed-out callers get nothing.
+    //   - Strictly own-account (`uid == request.auth.uid`): no user — not even
+    //     an Admin — may read, register, update, or delete a token for another
+    //     account.
+    //   - Trusted Cloud Functions (`functions/src/notifications.ts`) also
+    //     re-verify `getAuth().getUser(uid)` and `profiles/{uid}.role == 'admin'`
+    //     at send time and prune invalid, stale, or demoted tokens.
+    match /admin_device_tokens/{tokenId} {
+      function ownsAdminDeviceTokenId() {
+        let parts = tokenId.split(':');
+        return tokenId.size() <= 165
+          && parts.size() == 2
+          && parts[0] == request.auth.uid
+          && parts[1].matches('[0-9a-f]{32}');
+      }
+
+      function isAdminDeviceTokenShape() {
+        let data = request.resource.data;
+        return data.keys().hasAll(['uid', 'token', 'platform', 'enabled', 'created_at', 'updated_at', 'last_seen_at'])
+          && data.keys().hasOnly(['uid', 'token', 'platform', 'enabled', 'app_version', 'created_at', 'updated_at', 'last_seen_at'])
+          && data.uid == request.auth.uid
+          && data.token is string
+          && data.token.size() >= 20
+          && data.token.size() <= 1024
+          && data.platform in ['android', 'ios']
+          && data.enabled is bool
+          && (!data.keys().hasAny(['app_version'])
+              || (data.app_version is string && data.app_version.size() <= 64))
+          && data.created_at is timestamp
+          && data.updated_at == request.time
+          && data.last_seen_at == request.time;
+      }
+
+      allow get: if isAdmin()
+        && ownsAdminDeviceTokenId();
+
+      allow list: if isAdmin()
+        && resource.data.get('uid', '') == request.auth.uid;
+
+      allow create: if isAdmin()
+        && ownsAdminDeviceTokenId()
+        && isAdminDeviceTokenShape()
+        && request.resource.data.created_at == request.time;
+
+      allow update: if isAdmin()
+        && ownsAdminDeviceTokenId()
+        && resource.data.get('uid', '') == request.auth.uid
+        && isAdminDeviceTokenShape()
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.token == resource.data.token
+        && request.resource.data.created_at == resource.data.created_at;
+
+      allow delete: if isAdmin()
+        && ownsAdminDeviceTokenId()
+        && resource.data.get('uid', '') == request.auth.uid;
+    }
+
     // Server-only collections (`booking_quotes`, `booking_inventory_locks`,
-    // `callable_rate_limits`) are written exclusively by Cloud Functions via
-    // the Admin SDK and denied to every client by the catch-all below.
+    // `callable_rate_limits`, `notification_dispatches`) are written
+    // exclusively by Cloud Functions via the Admin SDK and denied to every
+    // client by the catch-all below.
     // Deny all other collections by default unless explicitly allowed
     match /{document=**} {
       allow read, write: if false;

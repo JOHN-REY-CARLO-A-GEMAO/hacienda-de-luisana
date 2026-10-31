@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as legacy;
 import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
+import '../models/booking_model.dart';
 import '../services/auth_store.dart';
+import '../services/notification_contract.dart';
 import '../services/notification_service.dart';
 import '../providers/app_providers.dart';
 import 'security/secure_action_sheet.dart';
@@ -15,8 +17,12 @@ import '../widgets/animated_badge.dart';
 import '../widgets/animated_tab_page.dart';
 import '../widgets/hacienda_card.dart';
 import 'dashboard/dashboard_screen.dart';
+import 'bookings/booking_detail_screen.dart';
 import 'bookings/bookings_screen.dart';
+import 'bookings/payment_verification_queue_screen.dart';
+import 'bookings/refund_management_screen.dart';
 import 'inbox/inbox_screen.dart';
+import 'notifications/notifications_screen.dart';
 import 'payments/payment_refs_screen.dart';
 import 'reviews/reviews_screen.dart';
 import 'stays/stay_duration_screen.dart';
@@ -47,6 +53,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   @override
   void initState() {
     super.initState();
+    NotificationService()
+        .intentCoordinator
+        .attachExecutor(_executePendingNotificationRoute);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _tutorial = ref.read(tutorialControllerProvider);
@@ -58,8 +67,93 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
 
   @override
   void dispose() {
+    NotificationService()
+        .intentCoordinator
+        .detachExecutor(_executePendingNotificationRoute);
     _tutorial?.detachTabNavigator(_navigateToTab);
     super.dispose();
+  }
+
+  /// Executes a validated notification destination strictly after `AuthGate`,
+  /// Admin role verification, and `PinGateScreen` unlock have all succeeded.
+  Future<void> _executePendingNotificationRoute(
+    ValidatedNotificationPayload payload,
+  ) async {
+    if (!mounted) return;
+    final auth = legacy.Provider.of<AuthStore>(context, listen: false);
+    if (auth.isResolving || !auth.isAdmin || auth.uid == null) {
+      return;
+    }
+
+    final rootNav = TourKeys.rootNavigator.currentState;
+    if (rootNav == null) return;
+
+    // Clear any open modal sheets or stacked detail routes so the destination
+    // is never obscured and Back returns cleanly to MainShellScreen.
+    rootNav.popUntil((route) => route.isFirst);
+    if (!mounted) return;
+
+    final dest = payload.destination;
+    switch (dest) {
+      case BookingDetailDestination(:final bookingId):
+        _navigateToTab(1);
+        await rootNav.push<void>(
+          MaterialPageRoute(
+            builder: (_) => BookingDetailScreen(bookingId: bookingId),
+          ),
+        );
+      case PaymentVerificationQueueDestination():
+        _navigateToTab(1);
+        await rootNav.push<void>(
+          MaterialPageRoute(
+            builder: (_) => const PaymentVerificationQueueScreen(),
+          ),
+        );
+      case RefundManagementDestination():
+        _navigateToTab(1);
+        await rootNav.push<void>(
+          MaterialPageRoute(
+            builder: (_) => const RefundManagementScreen(),
+          ),
+        );
+      case ChatThreadDestination(
+          :final conversationId,
+          :final bookingId,
+          :final guestUid,
+        ):
+        _navigateToTab(2);
+        BookingModel? matched;
+        final cachedBookings = ref.read(bookingsStreamProvider).valueOrNull;
+        if (cachedBookings != null && bookingId != null) {
+          for (final b in cachedBookings) {
+            if (b.id == bookingId) {
+              matched = b;
+              break;
+            }
+          }
+        }
+        await rootNav.push<void>(
+          MaterialPageRoute(
+            builder: (_) => ThreadScreen(
+              convoId: conversationId,
+              guestUid: guestUid ?? matched?.uid ?? '',
+              guestName: matched?.guestName ?? 'Guest',
+              bookingId: bookingId ?? matched?.id,
+              bookingReference: matched?.refId,
+              propertyName: matched?.accommodation,
+            ),
+          ),
+        );
+      case SmartLockDestination():
+        _navigateToTab(5);
+      case NotificationsCenterDestination():
+        _navigateToTab(0);
+        await rootNav.push<void>(
+          MaterialPageRoute(
+            builder: (_) => const NotificationsScreen(),
+          ),
+        );
+    }
   }
 
   @override
@@ -221,23 +315,56 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     );
   }
 
-  /// Ask Android for notifications, out loud, and then say what it decided.
+  /// Inspects notification permission, presents a plain-language rationale
+  /// before the first OS prompt, and avoids repetitive dead prompts when
+  /// Android 13+ / iOS permission has already been denied.
   Future<void> _askForNotificationPermission(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    final outcome = await NotificationService().requestPermission();
+    final service = NotificationService();
+    final existing = await service.currentPermission();
+    if (!context.mounted) return;
+
+    NotificationPermission outcome = existing;
+    if (existing == NotificationPermission.notAsked) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Enable booking & security alerts?'),
+          content: const Text(kNotificationRationale),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Enable alerts'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !context.mounted) return;
+      outcome = await service.requestPermission();
+    } else if (existing == NotificationPermission.granted ||
+        existing == NotificationPermission.provisional) {
+      await service.refreshTokenRegistration();
+    }
+
+    if (!context.mounted) return;
     final String message;
     switch (outcome) {
       case NotificationPermission.granted:
+      case NotificationPermission.provisional:
         message =
-            'Alerts are on. This device will tell you about a new Booking or a refused door.';
+            'Alerts are active on this device for bookings, payment proofs, guest messages, and smart-lock security events.';
       case NotificationPermission.denied:
         message =
-            'Notifications are turned off for this app, so nothing will interrupt you. You can turn them on in Android Settings, then Apps, then Hacienda Admin, then Notifications.';
+            'Push notifications are turned off for Hacienda Admin. You can re-enable them anytime in Android Settings > Apps > Hacienda Admin > Notifications; your in-app Notifications list remains active.';
       case NotificationPermission.unknown:
         message =
-            'This device did not answer the request. Alerts stay off until it does.';
+            'This platform could not verify push notification status. In-app notifications remain available.';
       case NotificationPermission.notAsked:
-        message = 'This platform does not ask for notification permission.';
+        message = 'Push alerts remain off for now.';
     }
     messenger.showMaterialBanner(MaterialBanner(
       content: Text(message, style: AppTheme.body(fontSize: 13)),

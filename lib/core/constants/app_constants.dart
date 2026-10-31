@@ -104,6 +104,9 @@ class AppConstants {
   /// written from scratch, in a collection a signed-out visitor may read. Not
   /// a copy of `reviews` with fields removed — see docs/REVIEWS.md.
   static const String colPublicReviews = 'public_reviews';
+  /// Dedicated Admin push device-token registrations (`firestore.rules`
+  /// `admin_device_tokens/{tokenId}` + `functions/src/notifications.ts`).
+  static const String colAdminDeviceTokens = 'admin_device_tokens';
   /// The append-only log inside each Booking.
   static const String subActivity = 'activity';
 

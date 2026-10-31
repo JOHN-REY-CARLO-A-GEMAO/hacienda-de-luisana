@@ -4,6 +4,15 @@ import { initializeApp } from 'firebase-admin/app';
 // retired dispute/case handlers and scheduler deliberately have no exports here.
 export { quoteBooking, verifyBookingMoney } from './quotes';
 export { bookingAvailability, submitBooking } from './availability';
+export {
+  registerAdminDeviceToken,
+  unregisterAdminDeviceToken,
+  onBookingCreatedNotifyAdmin,
+  onBookingUpdatedNotifyAdmin,
+  onGuestMessageCreatedNotifyAdmin,
+  onAccessLogCreatedNotifyAdmin,
+} from './notifications';
 
-// The Booking modules resolve Firestore lazily, after this initialization.
+// The Booking and Notification modules resolve Admin SDK services lazily, after
+// this initialization.
 initializeApp();
