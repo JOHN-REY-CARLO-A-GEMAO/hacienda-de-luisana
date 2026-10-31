@@ -417,6 +417,8 @@ class FirebaseRemoteMessagingGateway implements RemoteMessagingGateway {
         return NotificationPermission.denied;
       case AuthorizationStatus.notDetermined:
         return NotificationPermission.notAsked;
+      default:
+        return NotificationPermission.denied;
     }
   }
 }

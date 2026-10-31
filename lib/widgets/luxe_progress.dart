@@ -21,7 +21,6 @@ class LuxeProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     final progress = value.clamp(0.0, 1.0);
     return Semantics(
-      progressBar: true,
       value: '${(progress * 100).round()}%',
       label: semanticLabel,
       child: ClipRRect(

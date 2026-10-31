@@ -169,30 +169,30 @@ class ReceiptExtraction {
   /// either side survives.
   ReceiptExtraction mergedWith(ReceiptExtraction fallback) {
     String pick(String a, String b) => a.isNotEmpty ? a : b;
-    final reference = pick(reference, fallback.reference);
-    final amount = pick(amount, fallback.amount);
-    final dateIso = pick(paymentDateIso, fallback.paymentDateIso);
+    final ref = pick(this.reference, fallback.reference);
+    final amt = pick(this.amount, fallback.amount);
+    final dateIso = pick(this.paymentDateIso, fallback.paymentDateIso);
     // A warning about a value that the *other* extraction supplied is no longer
     // true — "no reference could be read" must not sit above a reference the
     // previous read found. Everything else (a disagreement between two printed
     // amounts, an ambiguous date) still applies and is kept.
     final notes = <String>[
       for (final note in this.notes)
-        if (_noteStillApplies(note, reference, amount, dateIso)) note,
+        if (_noteStillApplies(note, ref, amt, dateIso)) note,
     ];
     for (final note in fallback.notes) {
-      if (!_noteStillApplies(note, reference, amount, dateIso)) continue;
+      if (!_noteStillApplies(note, ref, amt, dateIso)) continue;
       if (!notes.contains(note)) notes.add(note);
     }
     final amounts = this.amounts.isNotEmpty ? this.amounts : fallback.amounts;
-    final confidence = reference.isNotEmpty && amount.isNotEmpty
+    final confidence = ref.isNotEmpty && amt.isNotEmpty
         ? ReceiptConfidence.high
-        : (reference.isNotEmpty || amount.isNotEmpty)
+        : (ref.isNotEmpty || amt.isNotEmpty)
             ? ReceiptConfidence.low
             : ReceiptConfidence.none;
     return ReceiptExtraction(
-      reference: reference,
-      amount: amount,
+      reference: ref,
+      amount: amt,
       amounts: amounts,
       senderName: pick(senderName, fallback.senderName),
       recipientName: pick(recipientName, fallback.recipientName),

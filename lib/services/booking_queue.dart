@@ -1,4 +1,5 @@
 import '../models/booking_model.dart';
+import 'booking_lifecycle.dart';
 
 /// Stable values for the existing booking-list filters. Dashboard queue cards
 /// open these same filters, so a count and the list behind it cannot drift into

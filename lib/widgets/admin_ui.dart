@@ -462,7 +462,7 @@ class AdminInlineNotice extends StatelessWidget {
       case AdminNoticeTone.caution:
         return Icons.error_outline;
       case AdminNoticeTone.danger:
-        return Icons.report_problem_outline;
+        return Icons.report_problem;
       case AdminNoticeTone.info:
         return Icons.info_outline;
     }

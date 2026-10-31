@@ -346,7 +346,7 @@ class FirestoreService implements PinSecurityRemote {
     try {
       return await _firestore!.runTransaction((tx) async {
         final ref =
-            _firestore!.collection(AppConstants.colBookings).doc(booking.id);
+            _firestore.collection(AppConstants.colBookings).doc(booking.id);
         final snap = await tx.get(ref);
         if (!snap.exists) {
           return ActionResult.refused('No Booking with that id.');
@@ -384,7 +384,7 @@ class FirestoreService implements PinSecurityRemote {
         // sequence is taken inside the transaction, so a logged approval can
         // never outlive an aborted write.
         final log = ref.collection('activity');
-        final written = await tx.get(log);
+        final written = await log.get();
         var seq = -1;
         for (final d in written.docs) {
           final v = d.data()['seq'];
@@ -412,8 +412,10 @@ class FirestoreService implements PinSecurityRemote {
     String accommodation,
     String excludeId,
   ) async {
-    final snap = await tx.get(_firestore!.collection(AppConstants.colBookings)
-        .where('accommodation', isEqualTo: accommodation));
+    final snap = await _firestore!
+        .collection(AppConstants.colBookings)
+        .where('accommodation', isEqualTo: accommodation)
+        .get();
     return snap.docs
         .where((d) => d.id != excludeId)
         .map((d) => BookingModel.fromJson(
@@ -647,7 +649,7 @@ class FirestoreService implements PinSecurityRemote {
           }
 
           final log = ref.collection('activity');
-          final written = await tx.get(log);
+          final written = await log.get();
           var seq = -1;
           for (final d in written.docs) {
             final v = d.data()['seq'];
