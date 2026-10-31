@@ -913,30 +913,46 @@ class FirestoreService implements PinSecurityRemote {
   /// swallowing it, and the call sites await this and surface it.
   /// Record an Accommodation's operational status.
   ///
-  /// Status only. This used to accept a `newPrice` and write
+  /// Status only. If this is the first status for a canonical Accommodation,
+  /// the minimal register document is initialized here; otherwise only its
+  /// status changes. This used to accept a `newPrice` and write
   /// `rooms.pricePerNight`, behind a dialog labelled "Peak Season Rate
   /// Override" — a control that looked like it changed what a Guest pays and
   /// changed nothing, because no booking, website page or availability check ever
   /// read that field. Rates are published on `site_config/rates` and read by the
   /// booking system; `firestore.rules` refuses any other field on this document.
-  Future<String?> updateRoomStatus(String roomId, RoomStatus status) async {
+  Future<String?> updateRoomStatus(
+    String roomId,
+    RoomStatus status, {
+    String? accommodationId,
+    bool createIfMissing = false,
+  }) async {
     final index = _rooms.indexWhere((r) => r.id == roomId);
-    if (index != -1) {
-      _rooms[index] = _rooms[index].copyWith(status: status);
-      _roomsController.add(List.unmodifiable(_rooms));
-    }
 
     if (isCloud) {
       try {
         await _firestore!
             .collection(AppConstants.colRooms)
             .doc(roomId)
-            .update({'status': status.name});
+            .set({
+          'status': status.name,
+          if (createIfMissing) 'accommodationId': accommodationId ?? roomId,
+        }, SetOptions(merge: true));
       } catch (e) {
-        return 'Could not save the status (${e.toString().split('\n').first}). '
-            'It shows the new status here only.';
+        return 'Could not save the status (${e.toString().split('\n').first}).';
       }
     }
+
+    if (index == -1) {
+      _rooms.add(RoomModel(
+        id: roomId,
+        accommodationId: accommodationId ?? roomId,
+        status: status,
+      ));
+    } else {
+      _rooms[index] = _rooms[index].copyWith(status: status);
+    }
+    _roomsController.add(List.unmodifiable(_rooms));
     return null;
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as legacy;
@@ -61,8 +63,26 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       _tutorial = ref.read(tutorialControllerProvider);
       _tutorial?.attachTabNavigator(_navigateToTab);
       TourBus.tab(_currentIndex);
-      _tutorial?.maybeOfferTutorial();
+      unawaited(_runFirstOpenPrompts());
     });
+  }
+
+  /// Requests the native phone notification permission once after the Admin
+  /// first opens the unlocked app. Android/iOS owns the Allow/Don't allow dialog.
+  Future<void> _runFirstOpenPrompts() async {
+    final notifications = NotificationService();
+    final wasRequested = await notifications.hasPromptedForPermission();
+    final permission = await notifications.currentPermission();
+
+    if (!mounted) return;
+    if (!wasRequested &&
+        permission == NotificationPermission.notAsked &&
+        !notifications.intentCoordinator.hasPendingIntent) {
+      await _askForNotificationPermission(context);
+    }
+
+    if (!mounted) return;
+    await _tutorial?.maybeOfferTutorial();
   }
 
   @override
@@ -315,35 +335,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     );
   }
 
-  /// Inspects notification permission, presents a plain-language rationale
-  /// before the first OS prompt, and avoids repetitive dead prompts when
-  /// Android 13+ / iOS permission has already been denied.
+  /// Requests the native phone notification permission and refreshes the
+  /// Admin's FCM token. Once denied, Android/iOS requires changing permission
+  /// in system settings rather than repeating the OS prompt indefinitely.
   Future<void> _askForNotificationPermission(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final service = NotificationService();
     final existing = await service.currentPermission();
     if (!context.mounted) return;
 
-    NotificationPermission outcome = existing;
+    var outcome = existing;
     if (existing == NotificationPermission.notAsked) {
-      final proceed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Enable booking & security alerts?'),
-          content: const Text(kNotificationRationale),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Not now'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Enable alerts'),
-            ),
-          ],
-        ),
-      );
-      if (proceed != true || !context.mounted) return;
       outcome = await service.requestPermission();
     } else if (existing == NotificationPermission.granted ||
         existing == NotificationPermission.provisional) {
@@ -355,16 +357,14 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     switch (outcome) {
       case NotificationPermission.granted:
       case NotificationPermission.provisional:
-        message =
-            'Alerts are active on this device for bookings, payment proofs, guest messages, and smart-lock security events.';
+        message = 'Phone notifications are allowed on this device.';
       case NotificationPermission.denied:
         message =
-            'Push notifications are turned off for Hacienda Admin. You can re-enable them anytime in Android Settings > Apps > Hacienda Admin > Notifications; your in-app Notifications list remains active.';
+            'Phone notifications are blocked. Re-enable them in Android Settings → Apps → Hacienda Admin → Notifications.';
       case NotificationPermission.unknown:
-        message =
-            'This platform could not verify push notification status. In-app notifications remain available.';
+        message = 'This phone could not report notification permission status.';
       case NotificationPermission.notAsked:
-        message = 'Push alerts remain off for now.';
+        message = 'Phone notifications are not enabled yet.';
     }
     messenger.showMaterialBanner(MaterialBanner(
       content: Text(message, style: AppTheme.body(fontSize: 13)),
@@ -515,8 +515,8 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.notifications_active_outlined),
-                      title: const Text('Booking & door alerts'),
-                      subtitle: const Text('Choose whether Android interrupts you'),
+                      title: const Text('Phone notifications'),
+                      subtitle: const Text('Manage this app’s phone notification permission'),
                       onTap: () async {
                         Navigator.pop(sheetContext);
                         await _askForNotificationPermission(context);

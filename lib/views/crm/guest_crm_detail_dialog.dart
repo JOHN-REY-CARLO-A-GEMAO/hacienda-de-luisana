@@ -178,7 +178,7 @@ class _GuestCrmDetailDialogState extends ConsumerState<GuestCrmDetailDialog> {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                                 children: [
-                                  _statCol('Total stays', '${guestBookings.length}'),
+                                  _statCol('Total bookings', '${guestBookings.length}'),
                                   _statCol('Completed', '$completedCount'),
                                   _statCol('Lifetime value', currencyFmt.format(lifetimeVal)),
                                   _statCol('Outstanding', currencyFmt.format(outstanding), isWarning: outstanding > 0),

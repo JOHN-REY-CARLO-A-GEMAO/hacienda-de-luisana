@@ -53,15 +53,6 @@ class RoomsScreen extends ConsumerWidget {
             )
           : roomsAsync.when(
               data: (rooms) {
-                if (rooms.isEmpty) {
-                  return const EmptyState(
-                    icon: Icons.hotel_outlined,
-                    title: 'No status recorded',
-                    subtitle:
-                        'Nothing has been marked available or occupied yet. Use the control on an Accommodation to record its status.',
-                  );
-                }
-
                 // One card per canonical Accommodation, in published order. A
                 // status document naming an Accommodation that is no longer
                 // published is not shown, and an Accommodation with no status
@@ -117,10 +108,9 @@ class RoomsScreen extends ConsumerWidget {
     RoomModel? record,
     FirestoreService firestoreService,
   ) {
-    // With no status document the Accommodation reads as under maintenance:
-    // it is the state that refuses rather than the state that sells.
-    final current = status ?? RoomStatus.maintenance;
-    final statusColor = StatusStyle.room(current);
+    final statusColor = status == null
+        ? AppColors.textMuted
+        : StatusStyle.room(status);
 
     // Occupancy and money belong to the published rates document, so they are
     // shown from there. Nothing here computes or defaults a figure.
@@ -156,24 +146,35 @@ class RoomsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 8),
                     StatusPill(
-                      label: current.displayName,
+                      label: status?.displayName ?? 'Not recorded',
                       color: statusColor,
                       radius: 14,
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
-                Row(
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 6,
                   children: [
-                    const Icon(Icons.people_outline, size: 14, color: AppColors.textMuted),
-                    const SizedBox(width: 4),
-                    Text(occupancy,
-                        style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
-                    const SizedBox(width: 14),
-                    const Icon(Icons.meeting_room_outlined, size: 14, color: AppColors.textMuted),
-                    const SizedBox(width: 4),
-                    Text(units,
-                        style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.people_outline, size: 14, color: AppColors.textMuted),
+                        const SizedBox(width: 4),
+                        Text(occupancy,
+                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
+                      ],
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.meeting_room_outlined, size: 14, color: AppColors.textMuted),
+                        const SizedBox(width: 4),
+                        Text(units,
+                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
+                      ],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -191,11 +192,14 @@ class RoomsScreen extends ConsumerWidget {
                 const SizedBox(height: 10),
 
                 DropdownButtonFormField<RoomStatus>(
-                      value: current,
+                      value: status,
                       isExpanded: true,
-                      decoration: const InputDecoration(
+                      hint: const Text('Select a status'),
+                      decoration: InputDecoration(
                         labelText: 'Operational status',
-                        helperText: 'Every change is confirmed before it is written.',
+                        helperText: status == null
+                            ? 'No status is recorded yet. Choose one to create the first record.'
+                            : 'Every change is confirmed before it is written.',
                       ),
                       items: RoomStatus.values.map((s) {
                         return DropdownMenuItem(
@@ -204,7 +208,7 @@ class RoomsScreen extends ConsumerWidget {
                         );
                       }).toList(),
                       onChanged: (newStatus) async {
-                        if (newStatus == null || newStatus == current) return;
+                        if (newStatus == null || newStatus == status) return;
                         // Confirm-tier in the gate (ADR-0015). The write is
                         // awaited and its failure said out loud — a silent drop
                         // used to leave the card lying.
@@ -216,17 +220,12 @@ class RoomsScreen extends ConsumerWidget {
                           confirm: 'Set status',
                         );
                         if (!ok || !context.mounted) return;
-                        if (record == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                            backgroundColor: AppColors.statusAlert,
-                            content: Text(
-                                'No status record exists for this Accommodation yet, so there is nothing to update.'),
-                            duration: Duration(seconds: 6),
-                          ));
-                          return;
-                        }
-                        final problem =
-                            await firestoreService.updateRoomStatus(record.id, newStatus);
+                        final problem = await firestoreService.updateRoomStatus(
+                          record?.id ?? accommodation.id,
+                          newStatus,
+                          accommodationId: accommodation.id,
+                          createIfMissing: record == null,
+                        );
                         if (problem != null && context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                             backgroundColor: AppColors.statusAlert,

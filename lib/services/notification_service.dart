@@ -33,13 +33,6 @@ enum NotificationPermission {
   unknown,
 }
 
-/// Plain-language rationale presented before requesting OS notification permission.
-const String kNotificationRationale =
-    'Enable push alerts to receive instant updates for new bookings, uploaded '
-    'payment proofs, guest messages, stay modification requests, and smart-lock '
-    'security events. Your in-app Notifications center continues working even '
-    'if push alerts remain off.';
-
 const String _kDisplayedEventIdsPrefKey = 'hdl_notif_displayed_ids_v1';
 const String _kConsumedTapEventIdsPrefKey = 'hdl_notif_consumed_taps_v1';
 const String _kPermissionPromptedPrefKey = 'hdl_notif_permission_prompted_v1';
@@ -762,10 +755,11 @@ class NotificationService {
     return _permission;
   }
 
-  /// Requests OS notification permission ONLY after an explicit user gesture.
+  /// Requests OS notification permission from the first-open flow or the
+  /// explicit Phone notifications setting.
   ///
-  /// Marks the prompt as shown so the app never nags repeatedly on startup or
-  /// future sessions, and syncs the Admin device token when granted.
+  /// Marks the prompt as shown so the app does not repeat the native dialog on
+  /// every launch, and syncs the Admin device token when permission is granted.
   Future<NotificationPermission> requestPermission() async {
     await initialize();
     if (!_isSupportedMobilePlatform) {

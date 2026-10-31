@@ -451,6 +451,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
         height: edge,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.none,
+        errorBuilder: (_, __, ___) => _qrAssetFallback(edge),
       );
     } else if (value == AppConstants.bdoQrPublishedPath || value == AppConstants.bdoQrAsset) {
       image = Image.asset(
@@ -459,6 +460,7 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
         height: edge,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.none,
+        errorBuilder: (_, __, ___) => _qrAssetFallback(edge),
       );
     } else if (value.startsWith('https://')) {
       image = Image.network(
@@ -510,6 +512,19 @@ class _RatesScreenState extends ConsumerState<RatesScreen> {
       ),
     );
   }
+
+  Widget _qrAssetFallback(double edge) => SizedBox(
+        width: edge,
+        height: edge,
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.qr_code_2, size: 42, color: AppColors.textMuted),
+            SizedBox(height: 6),
+            Text('QR asset unavailable', textAlign: TextAlign.center),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {

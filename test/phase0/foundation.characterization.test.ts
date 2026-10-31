@@ -80,8 +80,9 @@ it('F28-SOURCE: mobile totalAmount uses recorded money or the saved rate snapsho
   expect(model).not.toContain('(nights * 12000.0)')
 })
 it('F29-SOURCE: room-status writes are separate from rates/sellable-unit configuration', () => {
-  const method = source('lib/services/firestore_service.dart').split('Future<void> updateRoomStatus')[1].split('void dispose()')[0]
-  expect(method).toContain("{'status': status.name}")
+  const method = source('lib/services/firestore_service.dart').split('Future<String?> updateRoomStatus')[1].split('void dispose()')[0]
+  expect(method).toContain("'status': status.name")
+  expect(method).toContain("'accommodationId': accommodationId ?? roomId")
   expect(method).not.toContain('colSiteConfig')
   expect(method).not.toContain('availableUnits')
 })

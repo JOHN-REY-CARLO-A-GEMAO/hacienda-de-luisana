@@ -8,15 +8,15 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/guest_crm_model.dart';
 import '../../providers/app_providers.dart';
+import '../../services/guest_crm_aggregation.dart';
 import '../../widgets/admin_ui.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/loading_state.dart';
 import 'guest_crm_detail_dialog.dart';
 
-/// Guest directory: one entry per Guest, aggregated from the Booking history
-/// the profiles are synced from (see the historical backfill script and
-/// `FirestoreService.streamGuestProfiles`).
+/// Guest directory: one entry per Guest, aggregated from Booking history and
+/// enriched by optional VIP/private-note fields in `guest_profiles`.
 class GuestCrmScreen extends ConsumerStatefulWidget {
   const GuestCrmScreen({super.key});
 
@@ -91,6 +91,7 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
   @override
   Widget build(BuildContext context) {
     final profilesAsync = ref.watch(guestProfilesStreamProvider);
+    final bookingsAsync = ref.watch(bookingsStreamProvider);
     final currencyFmt = NumberFormat.currency(locale: 'en_PH', symbol: '₱', decimalDigits: 0);
 
     return Scaffold(
@@ -123,66 +124,89 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
           ),
           const Divider(height: 1, color: AppColors.cardBorder),
 
-          // Profiles list
+          // Guest identity comes from booking history; the profiles collection
+          // only enriches those records with VIP and private-note fields.
           Expanded(
             child: profilesAsync.when(
-              data: (profiles) {
-                final ordered = _ordered(profiles);
-                final filtered = ordered.where((p) {
-                  if (_searchQuery.isEmpty) return true;
-                  final phone = p.phone.replaceAll(' ', '');
-                  return p.name.toLowerCase().contains(_searchQuery) ||
-                      phone.contains(_searchQuery) ||
-                      p.email.toLowerCase().contains(_searchQuery);
-                }).toList();
+              data: (profiles) => bookingsAsync.when(
+                data: (bookings) {
+                  final ordered = _ordered(aggregateGuestRecords(
+                    profiles: profiles,
+                    bookings: bookings,
+                  ));
+                  final filtered = ordered.where((p) {
+                    if (_searchQuery.isEmpty) return true;
+                    final phone = p.phone.replaceAll(RegExp(r'\D'), '');
+                    final queryPhone = _searchQuery.replaceAll(RegExp(r'\D'), '');
+                    return p.name.toLowerCase().contains(_searchQuery) ||
+                        (queryPhone.isNotEmpty && phone.contains(queryPhone)) ||
+                        p.email.toLowerCase().contains(_searchQuery);
+                  }).toList();
 
-                if (filtered.isEmpty) {
-                  return const EmptyState(
-                    icon: Icons.person_search,
-                    title: 'No guest profiles found',
-                    subtitle: 'Try searching with a different name, number or email.',
-                  );
-                }
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 14),
-                  itemBuilder: (context, i) {
-                    final guest = filtered[i];
-                    return InkWell(
-                      onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (_) => GuestCrmDetailDialog(guest: guest),
-                        );
-                      },
-                      child: _buildCrmCard(guest, currencyFmt),
+                  if (filtered.isEmpty) {
+                    return EmptyState(
+                      icon: Icons.person_search,
+                      title: _searchQuery.isEmpty
+                          ? 'No guest records yet'
+                          : 'No guest records match that search',
+                      subtitle: _searchQuery.isEmpty
+                          ? 'Guest records are built from submitted Bookings. They will appear here as soon as a Guest books.'
+                          : 'Try another guest name, phone number or email.',
                     );
-                  },
-                );
-              },
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 14),
+                    itemBuilder: (context, i) {
+                      final guest = filtered[i];
+                      return InkWell(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (_) => GuestCrmDetailDialog(guest: guest),
+                          );
+                        },
+                        child: _buildCrmCard(guest, currencyFmt),
+                      );
+                    },
+                  );
+                },
+                loading: () => const LoadingState(
+                  label: 'Reading guest records…',
+                  detail: 'Loading booking history and saved guest notes.',
+                ),
+                error: (err, _) => _readError(
+                  err,
+                  onRetry: () => ref.invalidate(bookingsStreamProvider),
+                ),
+              ),
               loading: () => const LoadingState(
-                    label: 'Reading guest records…',
-                    detail: 'Loading profiles and past stay history.',
-                  ),
-              error: (err, _) => EmptyState(
-                    icon: Icons.cloud_off_outlined,
-                    title: 'Guest records could not be read',
-                    subtitle:
-                        'Check the connection and try again. ${err.toString().split('\n').first}',
-                    action: OutlinedButton.icon(
-                      onPressed: () => ref.invalidate(guestProfilesStreamProvider),
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Try again'),
-                    ),
-                  ),
+                label: 'Reading guest records…',
+                detail: 'Loading booking history and saved guest notes.',
+              ),
+              error: (err, _) => _readError(
+                err,
+                onRetry: () => ref.invalidate(guestProfilesStreamProvider),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _readError(Object error, {required VoidCallback onRetry}) => EmptyState(
+        icon: Icons.cloud_off_outlined,
+        title: 'Guest records could not be read',
+        subtitle: 'Check the connection and try again. ${error.toString().split('\n').first}',
+        action: OutlinedButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text('Try again'),
+        ),
+      );
 
   Widget _buildCrmCard(GuestCrmModel guest, NumberFormat currencyFmt) {
     final hasPhone = guest.phone.trim().isNotEmpty;
@@ -213,12 +237,16 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          guest.name.isNotEmpty ? guest.name : 'Name not recorded',
-                          style: GoogleFonts.inter(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textDark,
+                        Expanded(
+                          child: Text(
+                            guest.name.isNotEmpty ? guest.name : 'Name not recorded',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textDark,
+                            ),
                           ),
                         ),
                         if (guest.isVip) ...[
@@ -244,6 +272,8 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                     ),
                     Text(
                       '${guest.phone.isNotEmpty ? guest.phone : 'No phone'} · ${guest.email.isNotEmpty ? guest.email : 'No email'}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
                     ),
                     if (guest.lastStayDate != null)
@@ -271,8 +301,11 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                     children: [
                       Column(
                         children: [
-                          Text('Total visits', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
-                          Text('${guest.totalBookings} stays', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700)),
+                          Text('Total bookings', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
+                          Text(
+                            '${guest.totalBookings} booking${guest.totalBookings == 1 ? '' : 's'}',
+                            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+                          ),
                         ],
                       ),
                       Container(height: 20, width: 1, color: AppColors.cardBorder),
@@ -286,7 +319,7 @@ class _GuestCrmScreenState extends ConsumerState<GuestCrmScreen> {
                     ],
                   )
                 : Text(
-                    'No recorded stays yet.',
+                    'No completed stays recorded yet.',
                     style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
                   ),
           ),

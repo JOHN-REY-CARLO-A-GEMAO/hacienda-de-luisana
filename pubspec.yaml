@@ -108,3 +108,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
+    # Flutter does not recursively bundle files in nested directories from
+    # the parent directory entry. The payment previews use these by exact path.
+    - assets/images/payment/
