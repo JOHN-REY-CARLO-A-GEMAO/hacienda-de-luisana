@@ -352,7 +352,6 @@ void main() {
       remote.permissionStatus = NotificationPermission.denied;
       expect(await service.hasPromptedForPermission(), isFalse);
       expect(await service.currentPermission(), NotificationPermission.notAsked);
-
       remote.requestResult = NotificationPermission.denied;
       final deniedOutcome = await service.requestPermission();
       expect(deniedOutcome, NotificationPermission.denied);

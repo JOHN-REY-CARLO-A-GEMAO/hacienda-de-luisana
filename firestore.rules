@@ -1800,10 +1800,20 @@ service cloud.firestore {
     // ids existed keeps working; a document carrying one must carry a real id.
     match /rooms/{roomId} {
       allow read: if isAdmin();
+      // The Admin can initialize one minimal status record for each canonical
+      // Accommodation; without this first create, the status dropdown on an
+      // empty register could never do anything. The document id and reference
+      // must be the same canonical id, and no catalogue fields are admitted.
+      allow create: if isAdmin()
+        && isCanonicalAccommodation(roomId)
+        && request.resource.data.keys().hasAll(['accommodationId', 'status'])
+        && request.resource.data.keys().hasOnly(['accommodationId', 'status'])
+        && request.resource.data.accommodationId == roomId
+        && request.resource.data.status in ['available', 'occupied', 'maintenance'];
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
         && request.resource.data.status in ['available', 'occupied', 'maintenance'];
-      allow create, delete: if false;
+      allow delete: if false;
     }
 
     match /guest_profiles/{profileId} {

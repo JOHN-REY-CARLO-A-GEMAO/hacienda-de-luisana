@@ -173,16 +173,25 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  item.title,
-                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold),
+                                Expanded(
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold),
+                                  ),
                                 ),
-                                Text(
-                                  DateFormatter.timeAgo(item.createdAt),
-                                  style: GoogleFonts.inter(fontSize: 10, color: AppColors.textMuted),
+                                const SizedBox(width: 8),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    DateFormatter.timeAgo(item.createdAt),
+                                    maxLines: 1,
+                                    style: GoogleFonts.inter(fontSize: 10, color: AppColors.textMuted),
+                                  ),
                                 ),
                               ],
                             ),

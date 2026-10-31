@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../services/live_location_service.dart';
+import 'osm_tile.dart';
 
 /// The Guest is sharing live location — what the Admin sees, inside the
 /// thread the Guest is writing in.
@@ -272,48 +273,98 @@ class _Map extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final zoom = fix.accuracyM > 200 ? 12 : (fix.accuracyM > 60 ? 14 : 16);
+    final point = projectOsmCoordinate(
+      latitude: fix.lat,
+      longitude: fix.lng,
+      zoom: zoom,
+    );
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Image.network(
-            _tile(fix),
-            width: double.infinity,
-            height: 168,
-            fit: BoxFit.cover,
-            // A tile that will not load leaves the coordinate line below as the
-            // whole of the information, rather than an empty grey box.
-            errorBuilder: (_, __, ___) => Container(
-              height: 168,
-              color: Colors.black12,
-              alignment: Alignment.center,
-              child: const Icon(Icons.map_outlined, color: Colors.white70, size: 32),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const height = 168.0;
+          const tileSize = osmTileSize;
+          final width = constraints.maxWidth;
+          final left = point.x - width / 2;
+          final top = point.y - height / 2;
+          final firstX = (left / tileSize).floor();
+          final lastX = ((left + width) / tileSize).floor();
+          final firstY = (top / tileSize).floor();
+          final lastY = ((top + height) / tileSize).floor();
+          final tileCount = 1 << zoom;
+          final tiles = <Widget>[];
+
+          for (var x = firstX; x <= lastX; x++) {
+            for (var y = firstY; y <= lastY; y++) {
+              if (y < 0 || y >= tileCount) continue;
+              final wrappedX = ((x % tileCount) + tileCount) % tileCount;
+              final url = osmTileUrl(zoom: zoom, x: wrappedX, y: y);
+              tiles.add(Positioned(
+                left: x * tileSize - left,
+                top: y * tileSize - top,
+                width: tileSize,
+                height: tileSize,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.fill,
+                  headers: const {
+                    'User-Agent': 'HaciendaDeLuisana/1.0 (live location map)',
+                  },
+                  // Keep the coordinate visible if a tile server is offline or
+                  // the device has no data connection.
+                  errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFE0E0E0)),
+                ),
+              ));
+            }
+          }
+
+          return SizedBox(
+            width: width,
+            height: height,
+            child: Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+                const Positioned.fill(child: ColoredBox(color: Color(0xFFE0E0E0))),
+                ...tiles,
+                Positioned(
+                  left: width / 2 - 11,
+                  top: height / 2 - 11,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      color: AppColors.primaryForest,
+                      boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Text(
+                        '© OpenStreetMap contributors',
+                        style: TextStyle(fontSize: 9, color: Colors.black87),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            loadingBuilder: (context, child, progress) =>
-                progress == null ? child : Container(height: 168, color: Colors.black12),
-          ),
-          Container(
-            width: 22,
-            height: 22,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              color: AppColors.primaryForest,
-              boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
-  }
-
-  /// An OpenStreetMap raster tile centred on the position, with the zoom
-  /// chosen so the accuracy circle is legible at phone width.
-  String _tile(LiveFix fix) {
-    final zoom = fix.accuracyM > 200 ? 12 : (fix.accuracyM > 60 ? 14 : 16);
-    return 'https://tile.openstreetmap.org/$zoom/${fix.lat.toStringAsFixed(5)}/'
-        '${fix.lng.toStringAsFixed(5)}.png';
   }
 }
 

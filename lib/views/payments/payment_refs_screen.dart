@@ -17,6 +17,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/loading_state.dart';
 import '../bookings/payment_proof_viewer.dart';
+import '../bookings/payment_verification_queue_screen.dart';
 import '../security/secure_action_sheet.dart';
 
 /// Admin's view of payment references.
@@ -462,11 +463,20 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
               const Divider(height: 1, color: AppColors.cardBorder),
               Expanded(
                 child: filtered.isEmpty
-                    ? const EmptyState(
+                    ? EmptyState(
                         icon: Icons.receipt_long_outlined,
                         title: 'No payment records yet',
                         subtitle:
-                            'Verified payment proofs appear here, linked to their Booking. Add catalog references by hand below.',
+                            'Verified payment proofs appear here, linked to their Booking. Review submitted proofs in the verification queue, or add a catalog reference below.',
+                        action: OutlinedButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const PaymentVerificationQueueScreen(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.fact_check_outlined, size: 18),
+                          label: const Text('Open verification queue'),
+                        ),
                       )
                     : ListView.separated(
                         padding: const EdgeInsets.all(16),

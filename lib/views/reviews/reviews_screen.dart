@@ -225,9 +225,14 @@ class _StatisticsBar extends StatelessWidget {
                     child: Icon(Icons.star, color: AppColors.accentGold, size: 22),
                   ),
                   const Spacer(),
-                  Text(
-                    '$stats.published published',
-                    style: GoogleFonts.inter(fontSize: 12, color: Colors.white70),
+                  Flexible(
+                    child: Text(
+                      '${stats.published} published',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: GoogleFonts.inter(fontSize: 12, color: Colors.white70),
+                    ),
                   ),
                 ],
               ),

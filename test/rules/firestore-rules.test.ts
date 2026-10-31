@@ -2584,8 +2584,20 @@ describe('collections with no rule', () => {
       })).toBe(true)
     }
 
-    // And it cannot grow or be pruned into the list of Accommodations.
-    expect(deny({ path: 'rooms/new', method: 'create', auth: allowlistedAdmin(), requestData: { status: 'available', accommodationId: 'annex' } })).toBe(true)
+    // The first status can be initialized, but only as a minimal record keyed
+    // by one canonical Accommodation. This is not a way to grow the catalogue.
+    expect(allow({
+      path: 'rooms/annex', method: 'create', auth: allowlistedAdmin(),
+      requestData: { status: 'available', accommodationId: 'annex' },
+    })).toBe(true)
+    for (const invalid of [
+      { path: 'rooms/new', data: { status: 'available', accommodationId: 'annex' } },
+      { path: 'rooms/annex', data: { status: 'available', accommodationId: 'main-house' } },
+      { path: 'rooms/annex', data: { status: 'available', accommodationId: 'annex', pricePerNight: 5000 } },
+      { path: 'rooms/annex', data: { status: 'unknown', accommodationId: 'annex' } },
+    ]) {
+      expect(deny({ path: invalid.path, method: 'create', auth: allowlistedAdmin(), requestData: invalid.data })).toBe(true)
+    }
     expect(deny({ path: 'rooms/1', method: 'delete', auth: allowlistedAdmin() })).toBe(true)
   })
 })
