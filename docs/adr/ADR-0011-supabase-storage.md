@@ -44,7 +44,10 @@ stays Firestore. Only the **file bytes** move.
   demo-mode posture the site takes for Firebase itself: no secret, no cloud, and
   nothing that pretends to reach the Hacienda.
 - **OCR runs before the upload.** When the Guest picks the screenshot,
-  `tesseract.js` reads it *client-side* and pre-fills the reference input
+  `tesseract.js` reads it *client-side* (or, on a build that opts in, the
+  `readReceiptText` function reads it with OCR.space — ADR-0024; that call is
+  made with the image the Guest just chose, not with the stored object) and
+  pre-fills the reference input
   (10–13 digit GCash / Maya / bank references, see `payments/ocr.ts`); the
   extracted value is stored on the document as `extractedRefNumber`. OCR is
   never verification — the Admin still matches reference and amount.

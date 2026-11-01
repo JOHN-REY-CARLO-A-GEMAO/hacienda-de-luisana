@@ -16,6 +16,13 @@ interface ImportMetaEnv {
    * verification — see `src/lib/turnstile.ts`.
    */
   readonly VITE_CLOUDFLARE_TURNSTILE_SITE_KEY?: string
+  /**
+   * `ocrspace` sends a Guest's payment screenshot to the `readReceiptText`
+   * callable, which reads it with OCR.space (ADR-0024). Unset or any other value
+   * keeps every read inside the Guest's browser with tesseract.js. The API key is
+   * the *function's* (`OCR_SPACE_API_KEY`); it must never appear as a `VITE_*`.
+   */
+  readonly VITE_RECEIPT_OCR_CLOUD?: string
   readonly BASE_URL: string
   readonly MODE: string
   readonly DEV: boolean

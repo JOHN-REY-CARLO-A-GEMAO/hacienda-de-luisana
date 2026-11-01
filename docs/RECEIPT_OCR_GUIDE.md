@@ -3,10 +3,20 @@
 Sagot sa tanong na: *"paano ko magagawa na ma-extract yung details ng payment receipt at mapunta
 doon sa payment reference ng app?"*
 
-**Maikling sagot:** nakagawa na ito. Nasa `src/lib/payments/ocr.ts` ang engine, at awtomatikong
+**Maikling sagot:** nakagawa na ito. Nasa `src/lib/payments/ocr.ts` ang parser, at awtomatikong
 tumatakbo pag pumili ka ng screenshot sa `/book/pay` (bagong booking) o sa `/account` (muling
 pagpapadala ng proof). Napupunta ang nabasa sa `payment_reference` ng Booking, at pag na-verify ng
 Admin, nagiging row sa `payment_references` collection.
+
+Dalawang engine ang nagbabasa ng larawan (ADR-0024):
+
+| Engine | Saan tumatakbo | Kailan gamit | Kailangan |
+| --- | --- | --- | --- |
+| **OCR.space** | Sa `readReceiptText` function, gamit ang `OCR_SPACE_API_KEY` | **Una**, kapag naka-set ang `VITE_RECEIPT_OCR_CLOUD=ocrspace` | Deployed na function + key; internet |
+| **tesseract.js** | Sa browser ng Guest | Default, at fallback kapag bigo ang OCR.space | Internet sa unang pagbasa (dina-download ang engine) |
+
+Pareho lang ang binabasa ng dalawa: PHP parser sa `src/lib/payments/ocr.ts` ang humahati ng text
+sa reference, amount, sender at petsa. **Hindi nagbe-verify ang kahit alin sa kanila.**
 
 Makikita at makokorek ang mga nabasang detalye sa mga payment proof form. Inalis na ang
 standalone receipt-reader page; nananatili ang OCR sa booking at account flows.
@@ -25,7 +35,9 @@ standalone receipt-reader page; nananatili ang OCR sa booking at account flows.
 
 ```
 screenshot (Guest's browser)
-        ↓  tesseract.js  — tumatakbo sa browser, walang upload
+        ↓  resize → JPEG ≤ 1 MB (ocr-space.ts)   ← kapag naka-on ang cloud read
+        ↓  readReceiptText callable  →  OCR.space  (key sa function lang)
+        ↓  kapag pumalya: tesseract.js sa browser — walang upload
    OCR text
         ↓  ocr.ts: extractReceiptFields()
    { reference, amounts[], senderName, paymentDate, paymentDateIso, confidence, notes }
@@ -79,7 +91,9 @@ Dart), kaya hindi ito ma-doble kahit dalawang Admin ang mag-verify nang sabay.
 npm install                 # kung wala pang node_modules
 npx vitest run --config vitest.local.config.ts     # buong web suite (1190 tests)
 npx vitest run test/web/receipt-ocr.test.ts test/web/receipt-preview.test.ts \
+  test/web/receipt-ocr-cloud.test.ts test/web/receipt-ocr-cloud-run.test.ts \
   --config vitest.local.config.ts
+npm --prefix functions test  # kasama ang functions/test/ocr.test.ts (walang network)
 npm run dev                 # subukan ang screenshot sa payment proof form
 ```
 
@@ -95,17 +109,64 @@ Ref No. 7044 357 Aug 26, 2026 10:23
 Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa dalawang linya.
 
 > **Note sa dev:** dina-download ng tesseract.js ang engine at English language data sa unang
-> pagbasa ng larawan. Kailangan ng internet sa browser mo. Ang parser tests ay walang network call.
+> pagbasa ng larawan. Kailangan ng internet sa browser mo. Kung naka-on ang OCR.space
+> (`VITE_RECEIPT_OCR_CLOUD=ocrspace`) at deployed ang function, hindi na umaabot sa download na
+> iyon ang normal na daloy — pero nasa code pa rin ito bilang fallback. Ang parser tests, at ang
+> buong functions suite, ay walang network call.
 
 ## 5. Ano ang sinasadyang hindi ginagawa
 
 - **Hindi kailanman nagma-mark ng "paid"**. `canAutoVerifyFromOcr()` ay hard-coded na `false`.
   Ang Admin, na tumitingin sa screenshot, ang nagpapa-verify.
-- **Walang cloud OCR call at walang upload ng larawan** para sa pagbasa. Sa browser lang.
-- **Walang server-side OCR** — kaya walang API key na kailangang itago, at walang gastos.
-- **Walang OCR sa Flutter admin app.** Ang mobile app ay Admin-only (ADR-0007/0008); wala itong
-  Tesseract at hindi nito kailangan: ang Guest sa website ang nag-e-extract, at ang admin ang
-  nagbe-verify sa pamamagitan ng pagtingin sa proof at sa `ocr_*` fields.
+- **Walang API key sa browser.** Kapag naka-on ang OCR.space, ang key ay nasa `functions/.env`
+  (hindi naka-commit) at ang browser ay tumatawag lang sa `readReceiptText`. Walang `VITE_*`
+  variable na may key — kung meron, makikita ito ng kahit sinong nagbukas ng DevTools.
+- **Walang iniimbak na larawan o text sa function.** Base64 papasok, text pabalik, tapos wala na.
+  Ang log ay failure code lang — walang pangalan, numero, reference o OCR text.
+- **Walang OCR sa Flutter admin app.** Ang mobile app ay Admin-only (ADR-0007/0008); ML Kit ang
+  fallback nito sa device (ADR-0023), at hindi ito tumatawag sa `readReceiptText`.
+
+### Ang privacy na kapalit ng bilis
+
+Ang resibo ay may pangalan, numero at reference ng Guest. Kapag naka-on ang
+`VITE_RECEIPT_OCR_CLOUD=ocrspace`, **lumalabas ito sa device at dumadaan sa OCR.space**. Iyon ang
+presyo ng mabilis na pagbasa, at ito ang mitigasyon:
+
+- Opt-in kada build: walang flag, walang ipinapadala — tesseract.js lang sa browser.
+- Ang tanging tumatawag sa third party ay ang `readReceiptText` function. Walang ibang code path.
+- Hindi iniimbak ng project na ito ang larawan o ang text; failure code lang ang naka-log.
+- Nasa [terms ng OCR.space](https://ocr.space/ocrapi) ang retention nila — hindi natin kontrolado,
+  kaya kailangang malaman ito bago i-on.
+
+### Quota (libreng key)
+
+| Limitasyon | Halaga | Bakit mahalaga |
+| --- | --- | --- |
+| Requests/buwan | 25,000 | Sapat para sa maliit na hacienda. |
+| Requests/araw | 500 **kada IP** | Iisa ang egress IP ng function, kaya **hati ang buong site** sa 500/araw. |
+| Laki ng file | 1 MB | Kayang i-resize ng browser pababa; refusal, hindi truncation, kapag lumagpas. |
+
+Pag kulang, bumili ng PRO key ($30/buwan) at ilagay sa `OCR_SPACE_ENDPOINT` + `OCR_SPACE_API_KEY`.
+Kapag naubos ang quota, `resource-exhausted` ang sagot ng function at tesseract.js ang gagamitin —
+hindi tumitigil ang booking.
+
+## 5b. Paano i-on ang OCR.space
+
+```bash
+# 1. Kunin ang libreng key: https://ocr.space/ocrapi/freekey
+cp functions/.env.example functions/.env    # gitignored
+#    ilagay ang OCR_SPACE_API_KEY=... sa functions/.env
+
+# 2. I-deploy ang function (kailangan ito; kung wala, tesseract ang gagamitin)
+firebase deploy --only functions:readReceiptText
+
+# 3. Sabihin sa website na unahin ang cloud read, tapos i-redeploy
+#    Vercel → Settings → Environment Variables (o .env.local sa dev)
+VITE_RECEIPT_OCR_CLOUD=ocrspace
+```
+
+Walang key o walang deploy? Walang problema: `failed-precondition` ang isasagot ng function at
+tahimik na babalik sa tesseract.js. Ganito rin ang dev build — kaya walang network call ang tests.
 
 ## 6. Kung may resibong hindi mabasa
 
@@ -131,14 +192,20 @@ Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa
 | `src/components/Booking/PaymentStep.tsx` | OCR + pag-submit ng apat na field sa `/account`. |
 | `lib/views/bookings/payment_verification_queue_screen.dart` | Admin verification, at ang pagsulat ng `payment_references` row. |
 | `lib/views/payments/payment_refs_screen.dart` | Admin listahan ng references; dito nakikita at naitatama ang extraction. |
+| `src/lib/payments/ocr-space.ts` | Bagong (ADR-0024): ginagawang ≤ 1 MB JPEG ang screenshot, ipinapadala sa `readReceiptText`, at ginagawang `CloudOcrUnavailableError` ang bawat refusal para may fallback. |
+| `functions/src/ocr.ts` | Bagong (ADR-0024): ang `readReceiptText` callable — nagbabasa ng `OCR_SPACE_API_KEY`, nagpapadala sa OCR.space, may 1 MB cap at per-Guest/IP na rate limit. Walang iniimbak, walang ini-log na text. |
 | `test/web/receipt-ocr.test.ts`, `receipt-amounts.test.ts`, `receipt-preview.test.ts` | Mga test para sa OCR at field mapping. |
+| `test/web/receipt-ocr-cloud.test.ts`, `receipt-ocr-cloud-run.test.ts`, `functions/test/ocr.test.ts` | Bagong: ano ang lumalabas sa device, kailan tumatakbo ang bawat engine, at ang error mapping ng callable. |
 
 ## 8. Kung gusto mong ilagay din ito sa Flutter app
 
-Hindi kasama ngayon, at may dahilan. Kailangan ng OCR package (`google_mlkit_text_recognition`) sa
-device, o isang server function na may Vision API key — parehong bagong dependency at bagong
-paggastos. Bago gawin iyon, sagutin muna: **sino ang mag-e-extract?**
+May ML Kit na ito sa device (ADR-0023) para sa kasong hindi mabasa ng website: proof na luma, browser
+na hindi naka-load ang engine, o muling pinadalang proof. Kung gusto mong **OCR.space din sa admin
+app**, posible na — nandoon na ang `readReceiptText` callable — pero kailangan muna ng Admin-only na
+auth check sa function (hindi puwedeng pampublikong callable para sa admin path) at ng bagong
+`https` client sa Dart. Bago gawin iyon, sagutin muna: **sino ang mag-e-extract?**
 
-- Kung **Guest**, website na ang tamang lugar — nandoon na, at libre (browser engine).
-- Kung **Admin**, hindi kailangan ng OCR: nakikita na niya ang larawan at ang `ocr_*` fields. Ang
+- Kung **Guest**, website na ang tamang lugar — nandoon na, at libre (browser engine) o mabilis
+  (OCR.space kapag naka-on).
+- Kung **Admin**, may ML Kit na sa device: libre, walang key, at hindi lumalabas ang resibo. Ang
   kulang lang doon ay editing UI, hindi bagong engine.

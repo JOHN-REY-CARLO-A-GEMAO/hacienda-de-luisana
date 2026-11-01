@@ -487,47 +487,97 @@ export function extractReceiptFields(text: string): OcrExtract {
 }
 
 /**
- * Run OCR on the downpayment screenshot, client-side (task: OCR runs in the
- * Guest's browser the moment the screenshot is chosen, before any upload).
+ * Whether this build sends receipts to OCR.space first (ADR-0024).
  *
- * tesseract.js is imported lazily so bundling, tests and demo pages never pay
- * for the engine — only a Guest picking an image does. Extraction is a hint for
- * the Guest to confirm or correct in the reference input; it never verifies
- * anything (`canAutoVerifyFromOcr` is hard-coded off).
+ * Default off. The value is baked in at build time by Vite (`VITE_` prefix), so
+ * turning the cloud read on or off is a deploy — not something a page can flip,
+ * and not something a Guest can claim. `ocr-space.ts` takes the same literal
+ * (`ocrspace`) as the only value that means "on".
+ */
+export function cloudReceiptOcrConfigured(): boolean {
+  try {
+    const raw = import.meta.env?.VITE_RECEIPT_OCR_CLOUD
+    return typeof raw === 'string' && raw.trim().toLowerCase() === 'ocrspace'
+  } catch {
+    return false
+  }
+}
+
+/** The "nothing could be read" shape, shared by both engines' empty replies. */
+function noText(message: string): OcrExtract {
+  return {
+    reference: '',
+    amount: '',
+    amounts: [],
+    senderName: '',
+    paymentDate: '',
+    paymentDateIso: '',
+    confidence: 'none',
+    notes: [message],
+  }
+}
+
+/**
+ * Read the screenshot with OCR.space, through the `readReceiptText` callable
+ * (ADR-0024), or return `null` so the browser engine gets its turn.
+ *
+ * Imported lazily for the same reason tesseract is: a deployment that never
+ * turned the cloud read on, and every test that stubs this function, must not
+ * pull the Firebase Functions SDK into the payment screen for nothing.
+ */
+async function readWithOcrSpace(file: File): Promise<OcrExtract | null> {
+  try {
+    const { readReceiptTextWithOcrSpace } = await import('./ocr-space')
+    const text = await readReceiptTextWithOcrSpace(file)
+    if (text.trim()) return extractReceiptFields(text)
+    // A blank screenshot is not a broken deployment: say so and let the Guest type.
+    return noText('No text found on the receipt. Enter the details yourself.')
+  } catch (error) {
+    // A deployment with no key, no network, or a spent quota. Not the Guest's
+    // problem to solve in a dialog — the on-device engine is right there.
+    console.warn('[OCR] OCR.space could not read this image; using the browser engine instead', error)
+    return null
+  }
+}
+
+/**
+ * Run OCR on the downpayment screenshot the moment the screenshot is chosen,
+ * before any upload.
+ *
+ * Two engines, in this order:
+ *
+ *  1. **OCR.space**, through the server-side proxy in `functions/src/ocr.ts`,
+ *     when the build sets `VITE_RECEIPT_OCR_CLOUD=ocrspace`. It reads a receipt
+ *     in about a second instead of downloading a WASM engine first, which is
+ *     what makes the field feel instant on a phone. The key is the server's;
+ *     the image leaves the device only when this is switched on.
+ *  2. **tesseract.js in the Guest's browser** — the default, and always the
+ *     fallback. It is free, needs no key and sends nothing anywhere, but it has
+ *     to fetch its engine and English data on first use.
+ *
+ * Extraction from either engine is a hint for the Guest to confirm or correct in
+ * the reference input; it never verifies anything (`canAutoVerifyFromOcr` is
+ * hard-coded off).
  */
 export async function runReceiptOcr(file: File): Promise<OcrExtract> {
   if (file.type.startsWith('text/') || file.name.endsWith('.txt')) {
     return extractReceiptFields(await file.text())
+  }
+  if (cloudReceiptOcrConfigured()) {
+    const cloud = await readWithOcrSpace(file)
+    if (cloud) return cloud
   }
   try {
     const { recognize } = await import('tesseract.js')
     const { data } = await recognize(file, 'eng')
     const text = data?.text ?? ''
     if (text.trim()) return extractReceiptFields(text)
-    return {
-      reference: '',
-      amount: '',
-      amounts: [],
-      senderName: '',
-      paymentDate: '',
-      paymentDateIso: '',
-      confidence: 'none',
-      notes: ['No text found on the receipt. Enter the details yourself.'],
-    }
+    return noText('No text found on the receipt. Enter the details yourself.')
   } catch (e) {
     console.warn('[OCR] tesseract could not read this image', e)
-    return {
-      reference: '',
-      amount: '',
-      amounts: [],
-      senderName: '',
-      paymentDate: '',
-      paymentDateIso: '',
-      confidence: 'none',
-      notes: [
-        'OCR could not read this image automatically. Enter the reference number and amount from your receipt, then submit for Admin verification.',
-      ],
-    }
+    return noText(
+      'OCR could not read this image automatically. Enter the reference number and amount from your receipt, then submit for Admin verification.',
+    )
   }
 }
 

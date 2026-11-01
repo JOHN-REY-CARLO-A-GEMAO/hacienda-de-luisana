@@ -17,21 +17,31 @@ end-to-end scenario ran the website's real modules on their offline adapters.
 
 ## OCR
 
-Receipt OCR runs **in the browser**: `src/lib/payments/ocr.ts` lazily imports
-`tesseract.js` (`recognize`) so the bundle, the tests and the demo pages never pay
-for it until a Guest actually uploads a screenshot, and `extractReceiptFields`
-then parses whatever text comes back — a text sidecar or a filename-shaped string
-parses the same way, and prose mis-captures (a receipt that says "Transaction
-Receipt" yields the word, not the number). There is no cloud Vision API and no
-function that reads the image: nothing that runs where a key could be kept. A
-hosted pipeline would be image → function → engine → text → reference + amount →
-confirmation → submission → Admin verification, with the key in the function's
-secret store — never in web JS, the Flutter APK, public config, or Git.
-`functions/` exists and holds the Booking quote, money-verification, availability
-and submit callables; it holds no OCR. Guests confirm or type the reference and amount either way, and
+Receipt OCR has **two engines, and neither can verify a payment** (ADR-0024).
+
+- **Default — in the browser.** `src/lib/payments/ocr.ts` lazily imports
+  `tesseract.js` (`recognize`) so the bundle, the tests and the demo pages never
+  pay for it until a Guest actually uploads a screenshot, and
+  `extractReceiptFields` then parses whatever text comes back — a text sidecar or
+  a filename-shaped string parses the same way, and prose mis-captures (a receipt
+  that says "Transaction Receipt" yields the word, not the number).
+- **Opt-in — through a function.** When the build sets
+  `VITE_RECEIPT_OCR_CLOUD=ocrspace`, `runReceiptOcr` first sends the screenshot to
+  the `readReceiptText` callable (`functions/src/ocr.ts`), which posts it to
+  OCR.space with a key read from `functions/.env` — never a `VITE_*` variable, so
+  never in the bundle, the APK, public config or Git. The image is resized to
+  ≤ 1 MB in the browser, capped again in the function, and the function stores and
+  logs neither the image nor the text. Every failure — no key, no deploy, offline,
+  spent quota (`resource-exhausted`) — falls back to tesseract.js.
+  **What this changes is privacy, not authority:** with the flag on, a Guest's
+  receipt leaves the device and reaches a third party. The free plan is 500 reads
+  a day per IP, shared by the whole site because all callers egress from the
+  function. That is the trade; it is off unless a deployment turns it on.
+
+Guests confirm or type the reference and amount either way, and
 **OCR never sets `payment_status` to verified**: `canAutoVerifyFromOcr()` returns
-`false`. The extraction remains available within the payment proof forms;
-the standalone receipt reader has been removed. See `docs/RECEIPT_OCR_GUIDE.md`.
+`false`. The extraction remains available within the payment proof forms; the
+standalone receipt reader has been removed. See `docs/RECEIPT_OCR_GUIDE.md`.
 
 ## Rate limiting
 
