@@ -1,6 +1,5 @@
-import { httpsCallable } from 'firebase/functions'
 import type { CalendarAvailabilityDay } from './booking'
-import { functionsClient } from './functionsClient'
+import { backendCallable } from './functionsClient'
 
 export type AvailabilityQuery = {
   accommodation: string
@@ -156,10 +155,7 @@ export async function requestBookingAvailability(
 
   const work = (async () => {
     try {
-      const result = await httpsCallable<AvailabilityQuery, unknown>(
-        functionsClient(),
-        'bookingAvailability',
-      )(input)
+      const result = await backendCallable<AvailabilityQuery, unknown>('bookingAvailability')(input)
       const value = validateReply(input, result.data)
       // Month navigation has no reason to retain an unbounded history. Refresh
       // this key's insertion order and evict the oldest projections once the
@@ -187,10 +183,10 @@ export async function submitGuestBooking(
   booking: Record<string, unknown>,
 ): Promise<SubmittedBookingReceipt> {
   try {
-    const result = await httpsCallable<
+    const result = await backendCallable<
       { booking: Record<string, unknown> },
       SubmittedBookingReceipt
-    >(functionsClient(), 'submitBooking')({ booking })
+    >('submitBooking')({ booking })
     const reply = result.data
     if (!reply || typeof reply.id !== 'string' || reply.status !== 'Pending'
         || typeof reply.created_at !== 'string' || typeof reply.hold_expires_at !== 'string'

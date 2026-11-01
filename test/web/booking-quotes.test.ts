@@ -29,6 +29,7 @@ vi.mock('firebase/functions', () => ({
   getFunctions: sdk.getFunctions,
   connectFunctionsEmulator: sdk.connectFunctionsEmulator,
   httpsCallable: (_functions: unknown, name: string) => (payload: unknown) => sdk.call(name, payload),
+  httpsCallableFromURL: (_functions: unknown, url: string) => (payload: unknown) => sdk.call(url.split('/').at(-1), payload),
 }))
 
 vi.mock('../../src/lib/firebase', () => ({

@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hacienda-de-luisana-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "FIREBASE_PROJECT_ID": "hacienda-de-luisana",
+    "FIREBASE_DATABASE_ID": "(default)",
+    "BOOKING_QUOTES_ENABLED": "true",
+    "QUOTE_TTL_MINUTES": "30",
+    "QUOTE_RATE_LIMIT_PER_MINUTE": "12",
+    "VERIFY_RATE_LIMIT_PER_MINUTE": "30",
+    "SUBMIT_RATE_LIMIT_PER_MINUTE": "8",
+    "ALLOWED_ORIGINS": "https://haciendadeluisana.com,https://www.haciendadeluisana.com,https://hacienda-de-luisana.vercel.app"
+  }
+}

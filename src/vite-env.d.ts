@@ -16,6 +16,8 @@ interface ImportMetaEnv {
    * verification — see `src/lib/turnstile.ts`.
    */
   readonly VITE_CLOUDFLARE_TURNSTILE_SITE_KEY?: string
+  /** Public Cloudflare Worker base URL for booking callables; unset keeps Firebase. */
+  readonly VITE_WORKER_API_URL?: string
   readonly BASE_URL: string
   readonly MODE: string
   readonly DEV: boolean

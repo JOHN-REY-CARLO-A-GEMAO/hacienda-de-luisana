@@ -38,6 +38,14 @@ vi.mock('firebase/functions', () => ({
     }
     return handler(input)
   },
+  httpsCallableFromURL: (_fns: unknown, url: string) => (input: unknown) => {
+    const name = url.split('/').at(-1) ?? ''
+    const handler = mockState.callableHandlers.get(name)
+    if (!handler) {
+      return Promise.reject(Object.assign(new Error('internal'), { code: 'functions/internal' }))
+    }
+    return handler(input)
+  },
 }))
 
 vi.mock('firebase/firestore', () => ({

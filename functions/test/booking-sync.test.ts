@@ -76,8 +76,10 @@ describe('the mirrored pricing module is the website’s, byte for byte', () => 
     for (const file of ['rates', 'money', 'leadTime']) {
       assert.match(pricing, new RegExp(`from '\\./booking/${file}'`), `pricing.ts does not import ./booking/${file}`)
     }
+    const quotesCore = readFileSync(path.resolve(MIRROR_DIR, '..', 'quotesCore.ts'), 'utf8')
+    assert.match(quotesCore, /from '\.\/pricing'/, 'quotesCore.ts does not use the pricing module')
     const quotes = readFileSync(path.resolve(MIRROR_DIR, '..', 'quotes.ts'), 'utf8')
-    assert.match(quotes, /from '\.\/pricing'/, 'quotes.ts does not use the pricing module')
+    assert.match(quotes, /createQuotesCore/, 'quotes.ts does not host the shared pricing core')
     // The rest of the mirror is the closure those three pull in. If a mirrored file
     // is reachable from nothing, it is not a dependency — it is a second copy of
     // something nobody reads, and it should be deleted rather than kept fresh.
