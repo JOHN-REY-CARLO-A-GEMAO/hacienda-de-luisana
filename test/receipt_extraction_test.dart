@@ -89,6 +89,36 @@ void main() {
       );
     });
 
+    test('reads a peso sign misread as the letter P', () {
+      // A recognizer with no `₱` prints `P` for it. Without the misread being
+      // recognised, every figure on this receipt was unlabelled and dropped.
+      expect(
+        extractReceiptAmounts('Total Amount Sent\nP1,020.00'),
+        const [ReceiptAmount('Total Amount Sent', '1020.00')],
+      );
+      expect(
+        extractReceiptAmounts('GCash\nP7,500.00\nRef No. 8159662488150'),
+        const [ReceiptAmount('Amount', '7500.00')],
+      );
+    });
+
+    test('does not turn a bare P before a plain integer into money', () {
+      // The misread-peso fallback only fires for money-shaped figures: a bare
+      // year or a name initial stays what it is.
+      expect(extractReceiptAmounts('Total Amount Sent\nP2026'), isEmpty);
+      expect(extractReceiptAmounts('P. Tuazon\n0917 555 1234'), isEmpty);
+    });
+
+    test('strips a printed PHP when inheriting the label above', () {
+      // A bank receipt: label on its own row, `PHP figure` below it. The PHP
+      // has to be stripped before the row reads as "only currency", or the
+      // figure never inherits the label.
+      expect(
+        extractReceiptAmounts('Total Amount Sent\nPHP 1,020.00'),
+        const [ReceiptAmount('Total Amount Sent', '1020.00')],
+      );
+    });
+
     test('the reference digits are never read as money', () {
       expect(
         extractReceiptAmounts('GCash\nRef No. 7044357122304\nSent successfully'),
@@ -110,6 +140,16 @@ void main() {
       expect(date, isNotNull);
       expect(date!.iso, '2026-08-26');
       expect(date.ambiguous, isFalse);
+    });
+
+    test('reads a day-first month-name date', () {
+      // The month in the middle, as several bank apps print it — unambiguous,
+      // and previously invisible.
+      final date = extractPaymentDate('1 November 2026 3:47 PM');
+      expect(date, isNotNull);
+      expect(date!.iso, '2026-11-01');
+      expect(date.ambiguous, isFalse);
+      expect(extractPaymentDate('Date 26 Aug 2026')!.iso, '2026-08-26');
     });
 
     test('reads a day-first slash date', () {

@@ -1174,6 +1174,7 @@ service cloud.firestore {
                       'policy_version', 'policy_effective_date', 'refund_policy_snapshot',
                       'payment_reference', 'ocr_reference', 'ocr_amount',
                       'ocr_sender_name', 'ocr_payment_date',
+                      'ocr_proof_url', 'ocr_engine', 'ocr_confidence',
                       'payment_sender_name', 'payment_date',
                       'terms_version', 'terms_accepted_at'])
           // Choosing/changing a plan is permitted only when every financial

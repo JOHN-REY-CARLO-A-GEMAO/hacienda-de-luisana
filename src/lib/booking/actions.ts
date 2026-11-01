@@ -63,6 +63,17 @@ export type BookingState = {
   ocr_sender_name?: string | null
   /** What OCR read as the payment date, normalized YYYY-MM-DD (never verified). */
   ocr_payment_date?: string | null
+  /**
+   * The proof object the stored OCR read describes (never verified). A re-send
+   * is a new object under a new path, so the Admin app treats a read whose
+   * `ocr_proof_url` no longer matches `payment_proof_url` as stale instead of
+   * showing one screenshot's read beside another.
+   */
+  ocr_proof_url?: string | null
+  /** Which engine read the proof — `tesseract` here, `mlkit-latin` in the Admin app. */
+  ocr_engine?: string | null
+  /** How much of the receipt that engine could read: `high`, `low` or `none`. */
+  ocr_confidence?: string | null
   /** Sender name the Guest confirmed from the receipt. */
   payment_sender_name?: string | null
   /** Payment date the Guest confirmed from the receipt. */
@@ -164,6 +175,12 @@ export type BookingAction =
       ocr_sender_name?: string
       /** OCR-extracted payment date, normalized to YYYY-MM-DD (never verified). */
       ocr_payment_date?: string
+      /** The proof object that OCR read describes, stamped with the upload (never verified). */
+      ocr_proof_url?: string
+      /** Which engine read the proof (never verified). */
+      ocr_engine?: string
+      /** How much of the receipt that engine could read: `high`, `low` or `none` (never verified). */
+      ocr_confidence?: string
       /** Sender name the Guest confirmed from the receipt. */
       payment_sender_name?: string
       /** Payment date the Guest confirmed from the receipt. */
@@ -483,6 +500,12 @@ export function applyAction(booking: BookingState, action: BookingAction, actor:
       if (action.ocr_amount) patch.ocr_amount = action.ocr_amount
       if (action.ocr_sender_name) patch.ocr_sender_name = action.ocr_sender_name
       if (action.ocr_payment_date) patch.ocr_payment_date = action.ocr_payment_date
+      // Provenance travels with the read: a new proof object re-stamps which
+      // image the OCR values describe, so the Admin app's stale-read check
+      // (`ocr_proof_url` vs the attached proof) sees this read as current.
+      if (action.ocr_proof_url) patch.ocr_proof_url = action.ocr_proof_url
+      if (action.ocr_engine) patch.ocr_engine = action.ocr_engine
+      if (action.ocr_confidence) patch.ocr_confidence = action.ocr_confidence
       if (action.payment_sender_name) patch.payment_sender_name = action.payment_sender_name
       if (action.payment_date) patch.payment_date = action.payment_date
       if (booking.payment_reject_reason) patch.payment_reject_reason = null

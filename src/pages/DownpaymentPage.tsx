@@ -25,7 +25,7 @@ import { AddonFeeSummary } from '../components/Booking/StayRequestsSection'
 import { uploadPaymentProof } from '../lib/payments'
 import { usePaymentInformation } from '../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from '../components/Booking/PaymentInformationPanel'
-import { amountMismatchNote, claimAgainstReceipt, runReceiptOcr, suggestedAmount, type ReceiptAmount } from '../lib/payments/ocr'
+import { amountMismatchNote, claimAgainstReceipt, runReceiptOcr, suggestedAmount, type OcrExtract, type ReceiptAmount } from '../lib/payments/ocr'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
@@ -66,6 +66,15 @@ export function DownpaymentPage() {
   const [amount, setAmount] = useState('')
   /** Every distinct peso figure the screenshot prints, when it prints more than one. */
   const [amountCandidates, setAmountCandidates] = useState<ReceiptAmount[]>([])
+  /**
+   * The full OCR read of the attached screenshot, as the engine read it. The
+   * form below only borrows it (the reference and amount inputs the Guest can
+   * correct are their *claim*); the read itself travels on the Booking as
+   * evidence, so the Admin app opens the payment with the receipt's own
+   * reference, amount, sender and date on screen instead of "Hindi nabasa"
+   * next to a reference nobody can trace to the image.
+   */
+  const [ocrExtract, setOcrExtract] = useState<OcrExtract | null>(null)
   const [reference, setReference] = useState('')
   const [ocrNote, setOcrNote] = useState('')
   /**
@@ -168,6 +177,7 @@ export function DownpaymentPage() {
     amountEdited.current = false
     setError('')
     setOcrNote('')
+    setOcrExtract(null)
     setAmountCandidates([])
     setClaimOffReceipt(false)
     setReference('')
@@ -188,6 +198,9 @@ export function DownpaymentPage() {
     try {
       const fields = await runReceiptOcr(file)
       if (scan !== scanGeneration.current) return
+      // Kept whole, not just the two fields the form borrows: `submit` writes
+      // the read onto the Booking as `ocr_*` evidence for the Admin.
+      setOcrExtract(fields)
       if (fields.reference) setReference((current) => current || fields.reference)
       // Every distinct figure the screenshot prints, kept so a receipt whose
       // `Amount` and `Total Amount Sent` disagree asks the Guest which one they
@@ -408,6 +421,27 @@ refund_policy_snapshot: published.refund ?? null,
       const bonfireSets = requests.bonfire_wood_sets ?? 0
       const roundPeso = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
        const effectiveUid = uid || uploaded.uid
+      // The OCR read of this screenshot, stored as evidence *beside* the
+      // Guest's claim — `payment_reference` / `amount_claimed` below stay the
+      // Guest's statement, `ocr_*` stay the machine's read of the image, and
+      // the Admin app shows the two against each other (a claim that matches
+      // no figure on the receipt is a warning, not a shrug). `ocr_proof_url`
+      // binds the read to *this* proof object, so a later re-send makes this
+      // read read as stale rather than as describing the new image. A scan
+      // that read nothing stamps nothing: there is no evidence to file, and
+      // the Admin app re-reads the proof on the Admin's own device on demand.
+      const ocrEvidence = ocrExtract
+        && (ocrExtract.reference || ocrExtract.amount || ocrExtract.senderName || ocrExtract.paymentDateIso)
+        ? {
+            ...(ocrExtract.reference ? { ocr_reference: ocrExtract.reference, extractedRefNumber: ocrExtract.reference } : {}),
+            ...(ocrExtract.amount ? { ocr_amount: ocrExtract.amount } : {}),
+            ...(ocrExtract.senderName ? { ocr_sender_name: ocrExtract.senderName } : {}),
+            ...(ocrExtract.paymentDateIso ? { ocr_payment_date: ocrExtract.paymentDateIso } : {}),
+            ocr_proof_url: uploaded.url,
+            ocr_engine: 'tesseract',
+            ocr_confidence: ocrExtract.confidence,
+          }
+        : {}
        const booking = await cloudBookingsDB.add(
          {
            guest_name: draft.name.trim(),
@@ -453,6 +487,7 @@ refund_policy_snapshot: published.refund ?? null,
            payment_status: 'pending',
            amount_claimed: claimed,
            ...(reference.trim() ? { payment_reference: reference.trim() } : {}),
+           ...ocrEvidence,
            nights,
            stay_total: stayTotal,
            amount_due: dueNow,

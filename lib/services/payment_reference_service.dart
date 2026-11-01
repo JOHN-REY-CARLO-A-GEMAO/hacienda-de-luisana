@@ -18,15 +18,19 @@
 //     Admin says, on the record, that they have looked at both.
 //
 // Firestore, not a Cloud Function, because the Admin app already writes Bookings
-// directly under `adminUpdate()` in `firestore.rules`; the new fields
-// (`ocr_proof_url`, `ocr_engine`, `ocr_confidence`, `ocr_extracted_at`,
-// `ocr_recipient_name`, `payment_reference_source`,
-// `payment_reference_corrected_at/by`, `payment_reference_previous`) are outside
-// the Guest's `hasOnly` vocabulary, so a Guest can neither write nor clear them.
+// directly under `adminUpdate()` in `firestore.rules`. The correction metadata
+// (`ocr_extracted_at`, `ocr_recipient_name`, `payment_reference_source`,
+// `payment_reference_corrected_at/by`, `payment_reference_previous`) is outside
+// the Guest's `hasOnly` vocabulary, so a Guest can neither write nor clear it;
+// the provenance triple (`ocr_proof_url`, `ocr_engine`, `ocr_confidence`) is
+// deliberately inside it, because the Guest website stamps its own read with
+// them at submit and re-send so this app can tell which proof object that read
+// describes. The verified-money fields stay the Admin's either way (ADR-0012).
 // ---------------------------------------------------------------------------
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../core/constants/app_constants.dart';
 import '../models/booking_model.dart';
@@ -222,7 +226,12 @@ class PaymentReferenceService {
       return null;
     } on _StaleProof {
       return 'Nagpalit ang patunay habang binabasa ito. Buksan muli ang patunay at basahin ulit — hindi na-save ang lumang resulta.';
-    } catch (_) {
+    } catch (error, stack) {
+      // The Admin gets the next step; the log gets the cause. A swallowed
+      // exception here is the difference between "the save button is broken"
+      // and a `permission-denied` somebody can act on.
+      debugPrint('[PaymentReference] OCR read could not be filed: $error');
+      debugPrint('$stack');
       return 'Hindi na-save ang nabasang detalye. Subukan muli, o i-type na lang ang reference.';
     }
   }

@@ -811,6 +811,31 @@ describe('bookings: what a Guest may change', () => {
     expect(allow({ ...own, requestData: guestPaymentPatch() })).toBe(true)
   })
 
+  it('accepts the OCR provenance a Guest stamps on their own read, and nothing beyond it', () => {
+    // The website stamps which proof its browser read (`ocr_proof_url`) and
+    // how much it read (`ocr_engine` / `ocr_confidence`) with every re-send, so
+    // the Admin app can tell whether a stored read describes the attached
+    // image. The Admin-only OCR metadata stays refused.
+    expect(
+      allow({
+        ...own,
+        requestData: guestPaymentPatch({
+          ocr_sender_name: 'JUAN DELA CRUZ',
+          ocr_payment_date: '2026-08-26',
+          ocr_proof_url: 'https://storage.example/payments/guest-uid-1/booking-1/proof.jpg',
+          ocr_engine: 'tesseract',
+          ocr_confidence: 'high',
+        }),
+      }),
+    ).toBe(true)
+    expect(
+      deny({ ...own, requestData: guestPaymentPatch({ ocr_recipient_name: 'MARIA SANTOS' }) }),
+    ).toBe(true)
+    expect(
+      deny({ ...own, requestData: guestPaymentPatch({ ocr_extracted_at: '2026-08-26T00:00:00Z' }) }),
+    ).toBe(true)
+  })
+
   /**
    * Was FINDING (high) in the first verification pass: the self-serve key list
    * included `payment_status` and the rule checked *which* keys a Guest touched,
@@ -965,6 +990,37 @@ describe('bookings: what a Guest may change', () => {
 
 describe('bookings: what the Admin may change', () => {
   const pending = bookingDoc()
+
+  it('accepts the OCR-only patch the Admin app files after an on-device read', () => {
+    // `PaymentReferenceService._storeExtraction` in the Admin app: `ocr_*`
+    // evidence only, no status, no money. The rule must accept it on a Pending
+    // Booking — a refusal here is the app reading the receipt aloud and then
+    // only being able to tell the Admin "Hindi na-save".
+    const withProof = bookingDoc({
+      payment_proof_url: 'payments/guest-uid-1/booking-1/proof.jpg',
+      payment_status: 'pending',
+      amount_claimed: 8500,
+    })
+    expect(
+      allow({
+        path: `bookings/${BOOKING_ID}`,
+        method: 'update',
+        auth: allowlistedAdmin(),
+        resourceData: withProof,
+        requestData: {
+          ...withProof,
+          ocr_reference: '8159662488150',
+          ocr_amount: '7500.00',
+          ocr_sender_name: 'JUAN DELA CRUZ',
+          ocr_recipient_name: 'MARIA SANTOS',
+          ocr_payment_date: '2026-11-01',
+          ocr_proof_url: 'payments/guest-uid-1/booking-1/proof.jpg',
+          ocr_engine: 'mlkit-latin',
+          ocr_confidence: 'high',
+        },
+      }),
+    ).toBe(true)
+  })
 
   it('accepts the Admin patch that verifies a payment and reserves the stay', () => {
     expect(allow({ path: `bookings/${BOOKING_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: guestPaymentPatch(), requestData: adminVerifyPatch({ status: 'Reserved' }) })).toBe(true)

@@ -91,3 +91,37 @@ an extraction whose proof changed mid-read is discarded rather than filed.
 - OCR stays a hint engine. Nothing in this change flips
   `canAutoVerifyFromOcr()`, and ADR-0012's rule — the Admin decides, with the
   Security PIN in front of it — is unchanged.
+
+## Amendment — 2026-11-01: the website's read now reaches the Admin whole
+
+The "What was already there" section above described the website writing its
+read onto the Booking on every upload. That was only true of `/mybookings`:
+`/book/pay` ran the same OCR but kept only the two form fields it pre-fills, so
+a Booking born there carried the Guest's `payment_reference` claim and **no**
+`ocr_*` evidence at all — the Admin app opened it with "Hindi nabasa" beside
+the amount and date, and "Walang naitalang pinagmulan" for its provenance.
+`/book/pay` now files the read it already computed (`ocr_reference`,
+`ocr_amount`, `ocr_sender_name`, `ocr_payment_date`) plus its provenance
+(`ocr_proof_url`, `ocr_engine: 'tesseract'`, `ocr_confidence`), and the
+`submitBooking` callable admits those keys with strict shape bounds.
+
+Point 4 also narrows accordingly. The Guest's `hasOnly` vocabulary already
+carried the four evidence fields for the website's re-send; it now carries the
+provenance triple too, because only the Guest's write can re-stamp which proof
+object a re-sent read describes — point 1's staleness rule has nothing to
+compare without it. The correction metadata (`ocr_recipient_name`,
+`ocr_extracted_at`, `payment_reference_source`, `payment_reference_*`) stays
+Admin-only, and nothing about who may verify money moves.
+
+What the browser read was also thinner than the receipt: the website parser
+required an amount label on the figure's own row (GCash prints the label and
+the `₱figure` on separate rows), its bare-`PHP` marker test could never fire,
+and tesseract's `eng` model has no `₱` and usually returns `P` for it. The
+reference — a digit-group read — survived all three, which is why only it
+showed. The website parser now takes the label from the row above when a row
+is only currency (as the Dart parser always did), recognises the misread `P`
+for decimalled or comma-grouped figures, and admits day-first month names
+(`1 November 2026`); both parsers were kept in step. Finally, when the Admin
+app cannot *file* a read it took on-device, the panel shows the read anyway
+and says so — an error above four fields still reading "Hindi nabasa" was the
+other half of the same screenshot.
