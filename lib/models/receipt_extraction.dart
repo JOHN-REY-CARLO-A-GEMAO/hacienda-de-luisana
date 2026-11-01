@@ -493,12 +493,27 @@ List<ReceiptAmount> extractReceiptAmounts(String text) {
   /// but only when nothing else is on its row. `Ref No. ` is not "only
   /// currency", which is what stops a reference's digits inheriting an amount
   /// label from the row above.
-  bool beforeIsOnlyCurrency(String text) {
+  /// A lone `P` counts as a currency marker when the figure carries a decimal
+  /// point or a thousands comma: a recognizer with no `₱` (the website's
+  /// tesseract `eng` model mostly, a rare ML Kit misread here) prints `P` for
+  /// it, so `P1,020.00` is the same sign misread. The shape guard is what
+  /// keeps a name initial (`P. Tuazon`) or a bare year from turning into
+  /// money — a real peso figure almost always carries one of the two.
+  bool beforeIsOnlyCurrency(String text, String rawFigure) {
     final withoutCurrency = text
-        .replaceAll(RegExp(r'₱|PHP', caseSensitive: false), '')
+        .replaceAll(RegExp(r'₱|\bPHP\b', caseSensitive: false), '')
         .replaceAll(RegExp(r'[\s:.,;\-]'), '')
         .trim();
-    return withoutCurrency.isEmpty;
+    if (withoutCurrency.isEmpty) return true;
+    return RegExp(r'^p$', caseSensitive: false).hasMatch(withoutCurrency) &&
+        (rawFigure.contains('.') || rawFigure.contains(','));
+  }
+
+  /// A `₱`/`PHP` before the figure, or the misread `P` before a money-shaped one.
+  bool hasCurrencyMarker(String before, String rawFigure) {
+    if (currencyBeforeRe.hasMatch(before)) return true;
+    return RegExp(r'^\s*p\s*$', caseSensitive: false).hasMatch(before) &&
+        (rawFigure.contains('.') || rawFigure.contains(','));
   }
 
   for (var index = 0; index < lines.length; index++) {
@@ -535,14 +550,14 @@ List<ReceiptAmount> extractReceiptAmounts(String text) {
 
       labelFrom(before);
       if (label.isEmpty &&
-          beforeIsOnlyCurrency(before) &&
+          beforeIsOnlyCurrency(before, raw) &&
           index > 0 &&
           lines[index - 1].trim().isNotEmpty) {
         // The label printed on its own row, the figure below it.
         labelFrom(lines[index - 1]);
       }
       // A bare ₱ or PHP with no word at all is still an amount worth offering.
-      if (label.isEmpty && currencyBeforeRe.hasMatch(before)) {
+      if (label.isEmpty && hasCurrencyMarker(before, raw)) {
         label = 'Amount';
         rank = _amountLabels.length;
       }
@@ -641,11 +656,13 @@ String extractSenderName(String text) =>
 String extractRecipientName(String text) =>
     _nameAfterLabel(text.split(RegExp(r'\r?\n')), _recipientLabelRe);
 
-/// `Aug 26, 2026`, `26/08/2026`, `2026-08-26`, `08/26/2026`, `26-08-2026`.
+/// `Aug 26, 2026`, `26/08/2026`, `2026-08-26`, `08/26/2026`, `26-08-2026`,
+/// `26 Aug 2026`.
 final _printedDateRe = RegExp(
   r'(?:(\d{1,2})[/\-](\d{1,2})[/\-](\d{4}))'
   r'|((\d{4})[/\-](\d{1,2})[/\-](\d{1,2}))'
-  r'|(([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4}))',
+  r'|(([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4}))'
+  r'|((\d{1,2})\s+([A-Za-z]{3,9}),?\s+(\d{4}))',
   caseSensitive: false,
 );
 
@@ -688,6 +705,14 @@ PrintedDate? extractPaymentDate(String text) {
       year = int.tryParse(m.group(11)!);
       month = _monthOf(m.group(9)!);
       day = int.tryParse(m.group(10)!);
+      if (month == null) continue;
+    } else if (m.group(12) != null) {
+      // `26 Aug 2026` — the month in the middle, as several bank apps print it;
+      // unambiguous. Group 12 is the whole match; 13 the day, 14 the month
+      // name, 15 the year.
+      year = int.tryParse(m.group(15)!);
+      month = _monthOf(m.group(14)!);
+      day = int.tryParse(m.group(13)!);
       if (month == null) continue;
     } else {
       // `26/08/2026` or `08/26/2026` — both orders fit when each part ≤ 12.

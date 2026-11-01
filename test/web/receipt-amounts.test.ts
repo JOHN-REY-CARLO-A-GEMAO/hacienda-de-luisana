@@ -56,6 +56,45 @@ describe('extractReceiptAmounts', () => {
     ])
   })
 
+  it('reads figures whose labels sit on the row above', () => {
+    // GCash prints the label on one row and the `₱figure` below it. The figure's
+    // own row carries nothing but the currency sign, so the label has to come
+    // from the row immediately above — where the receipt itself puts it.
+    expect(
+      extractReceiptAmounts('Amount\n₱2,500.00\nTotal Amount Sent\n₱1,020.00'),
+    ).toEqual([
+      { label: 'Total Amount Sent', value: '1020.00' },
+      { label: 'Amount', value: '2500.00' },
+    ])
+  })
+
+  it('reads a peso sign tesseract misread as the letter P', () => {
+    // Tesseract's `eng` model has no `₱` and prints `P` for it. Without the
+    // misread being recognised, every figure on this receipt was unlabelled and
+    // dropped — the Guest got "Could not read an amount" off a clear screenshot.
+    expect(extractReceiptAmounts('Total Amount Sent\nP1,020.00')).toEqual([
+      { label: 'Total Amount Sent', value: '1020.00' },
+    ])
+    expect(extractReceiptAmounts('GCash\nP7,500.00\nRef No. 8159662488150')).toEqual([
+      { label: 'Amount', value: '7500.00' },
+    ])
+  })
+
+  it('does not turn a bare P before a plain integer into money', () => {
+    // The misread-peso fallback only fires for money-shaped figures: a bare
+    // year or a name initial stays what it is.
+    expect(extractReceiptAmounts('Total Amount Sent\nP2026')).toEqual([])
+    expect(extractReceiptAmounts('P. Tuazon\n0917 555 1234')).toEqual([])
+  })
+
+  it('reads a figure a bank receipt introduces with PHP and no label word', () => {
+    // The old marker fallback anchored `PHP` to the end of the OCR match, where
+    // the digits sit, so `PHP 1,020.00` on its own row was never offered.
+    expect(extractReceiptAmounts('Bank Transfer\nPHP 1,020.00')).toEqual([
+      { label: 'Amount', value: '1020.00' },
+    ])
+  })
+
   it('does not read the reference as an amount', () => {
     // `7044 357 122304` sits under a reference label, never an amount one.
     expect(extractReceiptAmounts('Amount 1,000.00\nRef No. 7044357122304')).toEqual([

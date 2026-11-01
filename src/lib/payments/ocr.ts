@@ -193,9 +193,9 @@ export function extractSenderName(text: string): string {
   return ''
 }
 
-/** `Aug 26, 2026`, `26/08/2026`, `2026-08-26`, `08/26/2026`, `26-08-2026`. */
+/** `Aug 26, 2026`, `26/08/2026`, `2026-08-26`, `08/26/2026`, `26-08-2026`, `26 Aug 2026`. */
 const PRINTED_DATE_RE =
-  /(?:(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}))|((\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2}))|((\w{3,9})\s+(\d{1,2}),?\s+(\d{4}))/gi
+  /(?:(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}))|((\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2}))|((\w{3,9})\s+(\d{1,2}),?\s+(\d{4}))|((\d{1,2})\s+(\w{3,9}),?\s+(\d{4}))/gi
 
 const MONTH_INDEX: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
@@ -242,6 +242,14 @@ export function extractPaymentDate(text: string): {
       y = Number(m[11])
       mo = monthOf(m[9])
       d = Number(m[10])
+      if (mo == null) continue
+    } else if (m[12] !== undefined) {
+      // `26 Aug 2026` — the month in the middle, as several bank apps print it;
+      // unambiguous. Group 12 is the whole match; 13 the day, 14 the month
+      // name, 15 the year.
+      y = Number(m[15])
+      mo = monthOf(m[14])
+      d = Number(m[13])
       if (mo == null) continue
     } else {
       // `26/08/2026` or `08/26/2026` — both orders fit when each part ≤ 12.
@@ -305,24 +313,64 @@ export function extractReceiptAmounts(text: string): ReceiptAmount[] {
     ['Paid', /paid/i],
   ]
 
-  /** Is this text only what a reference prints between its label and its digits? */
-function referenceBetweenIsOneRun(between: string): boolean {
-  return between
-    .split(/\s+/)
-    .filter(Boolean)
-    .every(
-      (token) =>
-        /^[.,:;#\-/]+$/.test(token) || // punctuation between the groups
-        /^\d+$/.test(token) || // another group of the reference
-        MONTH_RE.test(token) || // the date column a two-column receipt interleaves
-        MERIDIEM_RE.test(token) ||
-        DATE_TOKEN_RE.test(token),
-    )
-}
+  // The figure alone, without its currency prefix: the prefix belongs to the
+  // text *before* the run, which is exactly where a label is looked for. A
+  // pattern that swallowed `PHP` used to leave `before` empty for a line reading
+  // `PHP 1,020.00`, so a receipt that prints its currency instead of a word had
+  // an amount nobody could see — and the `run[0]` marker fallback that was meant
+  // to catch it anchored `PHP` to the *end* of the match, where the digits sit,
+  // so it never fired for `PHP 1,020.00` either.
+  const FIGURE_RE = /(\d[\d,]*(?:\.\d{1,2})?)/g
+  const CURRENCY_BEFORE_RE = /(?:₱|\bPHP\b)\s*$/i
+  const LONE_PESO_LETTER_RE = /^p$/i
 
-const found: Array<ReceiptAmount & { rank: number }> = []
+  /** Is this text only what a reference prints between its label and its digits? */
+  function referenceBetweenIsOneRun(between: string): boolean {
+    return between
+      .split(/\s+/)
+      .filter(Boolean)
+      .every(
+        (token) =>
+          /^[.,:;#\-/]+$/.test(token) || // punctuation between the groups
+          /^\d+$/.test(token) || // another group of the reference
+          MONTH_RE.test(token) || // the date column a two-column receipt interleaves
+          MERIDIEM_RE.test(token) ||
+          DATE_TOKEN_RE.test(token),
+      )
+  }
+
+  /**
+   * Is this text only a currency marker, spacing and punctuation?
+   *
+   * GCash prints its amount labels and their figures on separate rows
+   * (`Total Amount Sent` then `₱1,020.00`), so a figure whose own row says
+   * nothing about money may take the label of the row immediately above it —
+   * but only when nothing else is on its row. `Ref No. ` is not "only
+   * currency", which is what stops a reference's digits inheriting an amount
+   * label from the row above.
+   *
+   * A lone `P` counts as a currency marker when the figure carries a decimal
+   * point or a thousands comma: tesseract's `eng` model has no `₱` and usually
+   * prints `P` for it, so `P1,020.00` is the same sign misread. The shape guard
+   * is what keeps a name initial (`P. Tuazon`) or a bare year from turning into
+   * money — a real peso figure almost always carries one of the two.
+   */
+  function beforeIsOnlyCurrency(before: string, rawFigure: string): boolean {
+    const stripped = before.replace(/₱|\bPHP\b/gi, '').replace(/[\s:.,;-]/g, '')
+    if (!stripped) return true
+    return LONE_PESO_LETTER_RE.test(stripped) && /[.,]/.test(rawFigure)
+  }
+
+  /** A `₱`/`PHP` before the figure, or the misread `P` before a money-shaped one. */
+  function hasCurrencyMarker(before: string, rawFigure: string): boolean {
+    if (CURRENCY_BEFORE_RE.test(before)) return true
+    return /^\s*p\s*$/i.test(before) && /[.,]/.test(rawFigure)
+  }
+
+  const found: Array<ReceiptAmount & { rank: number }> = []
   // Scanned in receipt order so the figures come back the way a Guest reads them.
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
     // The reference's own digits are not money. A two-column receipt interleaves
     // them with the date (`Ref No. 7044 357 Aug 26, 2026 10:23`), so the figures
     // that belong to the reference are the ones with nothing but a reference's
@@ -332,7 +380,7 @@ const found: Array<ReceiptAmount & { rank: number }> = []
     const refMatch = REF_LABEL_RE.exec(line)
     const refLabelEnd = refMatch ? refMatch.index + refMatch[0].length : Infinity
 
-    for (const run of line.matchAll(/(?:₱|\bPHP\b)?\s*([\d][\d,]*(?:\.\d{1,2})?)/gi)) {
+    for (const run of line.matchAll(FIGURE_RE)) {
       const raw = run[1]
       if (run.index === undefined) continue
       // Only the text before this figure, on this line, can be its label.
@@ -344,17 +392,24 @@ const found: Array<ReceiptAmount & { rank: number }> = []
       // `LABELS` is ordered most-specific-first, and the patterns overlap —
       // `/total\s*amount/i` also matches `Total Amount Sent`. So the winner is
       // the lowest matching index, which means the loop may not break early.
-      for (const [name, re] of LABELS) {
-        if (re.test(before)) {
-          const r = LABELS.findIndex(([, candidate]) => candidate === re)
-          if (r < rank) {
-            label = name
-            rank = r
+      const labelFrom = (scope: string) => {
+        for (const [name, re] of LABELS) {
+          if (re.test(scope)) {
+            const r = LABELS.findIndex(([, candidate]) => candidate === re)
+            if (r < rank) {
+              label = name
+              rank = r
+            }
           }
         }
       }
+      labelFrom(before)
+      if (!label && beforeIsOnlyCurrency(before, raw) && index > 0 && lines[index - 1].trim()) {
+        // The label printed on its own row, the figure below it.
+        labelFrom(lines[index - 1])
+      }
       // A bare ₱ or PHP with no word at all is still an amount worth offering.
-      if (!label && /₱|\bPHP\b\s*$/i.test(run[0])) {
+      if (!label && hasCurrencyMarker(before, raw)) {
         label = 'Amount'
         rank = LABELS.length
       }

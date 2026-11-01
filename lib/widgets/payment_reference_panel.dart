@@ -305,6 +305,16 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
   ReferenceLookup? _lookup;
   String _lookupFor = '';
 
+  /// A read taken on this device that has not landed on the Booking — the save
+  /// failed, or the stream has not delivered it yet. Shown in place so the
+  /// Admin still sees the amount and date they just read, instead of an error
+  /// above four rows that still say "Hindi nabasa".
+  ReceiptExtraction? _freshExtraction;
+
+  /// The proof [_freshExtraction] describes. A different path means the Guest
+  /// replaced the image, and the read must not stand beside it.
+  String _freshForPath = '';
+
   @override
   void initState() {
     super.initState();
@@ -317,6 +327,14 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
     if (oldWidget.booking.effectivePaymentReference !=
         widget.booking.effectivePaymentReference) {
       _refreshLookup();
+    }
+    // The attached proof changed underneath an on-device read: the read
+    // describes an image that is no longer on screen and must not be merged
+    // into what the Admin sees.
+    final currentPath = widget.booking.paymentProofUrl?.trim() ?? '';
+    if (_freshExtraction != null && _freshForPath != currentPath) {
+      _freshExtraction = null;
+      _freshForPath = '';
     }
   }
 
@@ -368,7 +386,12 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
       case ReceiptOcrStatus.extracted:
         if (result.writeError != null) {
           tone = AdminNoticeTone.danger;
-          message = result.writeError;
+          // The read is shown below anyway (see `_freshExtraction`): the Admin
+          // can decide with it, they only need to know it will not be there
+          // when the screen reloads.
+          message = '${result.writeError} '
+              'Makikita pa rin sa ibaba ang nabasang detalye para sa desisyon ngayon — '
+              'hindi lang ito mananatili pagkaalis sa screen na ito.';
         } else {
           tone = extraction != null &&
                   extraction.confidence == ReceiptConfidence.high
@@ -403,6 +426,10 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
       _busy = false;
       _noticeTone = tone;
       _notice = message;
+      if (extraction != null && result.outcome.producedValues) {
+        _freshExtraction = extraction;
+        _freshForPath = widget.booking.paymentProofUrl?.trim() ?? '';
+      }
     });
     await _refreshLookup();
   }
@@ -528,7 +555,17 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
     final verified = booking.paymentIsVerified;
     final reference = booking.effectivePaymentReference;
     final machineRead = booking.paymentReferenceIsMachineRead;
-    final extraction = ReceiptExtraction.fromBooking(booking);
+    final storedExtraction = ReceiptExtraction.fromBooking(booking);
+    // A read taken on this device whose save failed (or whose write has not
+    // streamed back yet) still belongs on screen. Fresh values win and the
+    // stored ones fill the gaps — the same merge the service would have filed.
+    final freshExtraction = (_freshExtraction != null &&
+            _freshForPath == (booking.paymentProofUrl?.trim() ?? ''))
+        ? _freshExtraction!
+        : null;
+    final extraction = freshExtraction == null
+        ? storedExtraction
+        : freshExtraction.mergedWith(storedExtraction);
     final hasProof = (booking.paymentProofUrl?.trim() ?? '').isNotEmpty;
     final readFor = booking.ocrEngine?.isNotEmpty == true
         ? booking.ocrEngine!
@@ -580,7 +617,10 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
       );
     }
 
-    final receiptAmount = double.tryParse(booking.ocrAmount ?? '');
+    // The merged read, not just the stored field: when the on-device read could
+    // not be filed, its figure is the only receipt evidence there is to compare
+    // the Guest's claim against.
+    final receiptAmount = double.tryParse(extraction.amount);
     final claimed = booking.amountClaimed;
     if (receiptAmount != null && claimed != null && claimed > 0) {
       if ((receiptAmount - claimed).abs() > 0.005) {
@@ -597,6 +637,16 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
         'sa hinihinging bayad (₱${due.toStringAsFixed(2)}).',
       );
     }
+    // What the evidence rows show, most trusted first: a name a human confirmed
+    // beats the machine's read, and the read taken on this device beats a row
+    // that would otherwise only say "Hindi nabasa".
+    final shownSender = booking.paymentSenderName?.trim().isNotEmpty == true
+        ? booking.paymentSenderName!.trim()
+        : extraction.senderName;
+    final shownRecipient = extraction.recipientName.isNotEmpty
+        ? extraction.recipientName
+        : (booking.ocrRecipientName ?? '');
+
     final lookup = _lookup;
     if (lookup != null && lookup.isDuplicate) {
       warnings.add(
@@ -630,10 +680,17 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
                   style: AppTheme.serif(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
-              StatusPill(label: statusLabel, color: statusColor, fontSize: 10.5),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
+          // The pill sits under the title, not beside it: on a phone the long
+          // labels ("MULA SA BISITA — HINDI PA BERIPIKADO") squeezed the title
+          // into a column a few letters wide.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StatusPill(label: statusLabel, color: statusColor, fontSize: 10.5),
+          ),
+          const SizedBox(height: 8),
           Text(
             verified
                 ? 'Na-verify na ang bayad na ito. Ang reference sa ibaba ang pinagbatayan ng desisyon.'
@@ -688,28 +745,27 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
           const SizedBox(height: 12),
           _row(
             'Halaga sa resibo',
-            booking.ocrAmount?.isNotEmpty == true
-                ? '₱${booking.ocrAmount}'
+            extraction.amount.isNotEmpty
+                ? '₱${extraction.amount}'
                     '${extraction.amounts.length > 1 ? ' · ${extraction.amountLabel}' : ''}'
                 : 'Hindi nabasa',
-            muted: booking.ocrAmount?.isNotEmpty != true,
+            muted: extraction.amount.isEmpty,
           ),
           _row(
             'Petsa ng transaksyon',
             _dateLine(booking, extraction),
-            muted: (booking.paymentDate ?? booking.ocrPaymentDate ?? '').isEmpty,
+            muted: (booking.paymentDate ?? '').trim().isEmpty &&
+                (booking.ocrPaymentDate ?? '').trim().isEmpty &&
+                extraction.paymentDateIso.isEmpty,
           ),
           if (!widget.dense)
-            _row(
-              'Sender',
-              booking.paymentSenderName ?? booking.ocrSenderName ?? 'Hindi nabasa',
-              muted: (booking.paymentSenderName ?? booking.ocrSenderName ?? '').isEmpty,
-            ),
+            _row('Sender', shownSender.isEmpty ? 'Hindi nabasa' : shownSender,
+                muted: shownSender.isEmpty),
           if (!widget.dense)
             _row(
               'Recipient / merchant',
-              booking.ocrRecipientName ?? 'Hindi nabasa',
-              muted: (booking.ocrRecipientName ?? '').isEmpty,
+              shownRecipient.isEmpty ? 'Hindi nabasa' : shownRecipient,
+              muted: shownRecipient.isEmpty,
             ),
           if (hasProof)
             _row(
@@ -812,7 +868,12 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
 
   String _dateLine(BookingModel booking, ReceiptExtraction extraction) {
     final confirmed = booking.paymentDate?.trim() ?? '';
-    final read = booking.ocrPaymentDate?.trim() ?? '';
+    // The stored read first, then the read taken on this device: when the
+    // latest one could not be filed it is still the date the Admin is
+    // deciding with.
+    final read = (booking.ocrPaymentDate?.trim().isNotEmpty == true)
+        ? booking.ocrPaymentDate!.trim()
+        : extraction.paymentDateIso;
     final time = extraction.paymentTime;
     if (confirmed.isNotEmpty) {
       return time.isEmpty ? confirmed : '$confirmed · $time';

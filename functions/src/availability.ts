@@ -218,7 +218,9 @@ const ALLOWED_BOOKING_KEYS = new Set([
   'special_requests', 'pet_count', 'pet_request', 'late_checkout_hours',
   'late_checkout_request', 'bonfire_wood_sets', 'event_purpose', 'event_purpose_detail',
   'uid', 'source', 'payment_proof_url', 'paymentProofUrl', 'payment_plan',
-  'payment_status', 'amount_claimed', 'payment_reference', 'ocr_reference', 'ocr_amount',
+  'payment_status', 'amount_claimed', 'payment_reference', 'extractedRefNumber',
+  'ocr_reference', 'ocr_amount', 'ocr_sender_name', 'ocr_payment_date',
+  'ocr_proof_url', 'ocr_engine', 'ocr_confidence',
   'nights', 'stay_total', 'amount_due', 'security_deposit', 'balance_due',
   'rate_amount', 'rate_unit', 'rate_classification', 'policy_version',
   'policy_effective_date', 'refund_policy_snapshot', 'quote_id',
@@ -285,6 +287,31 @@ export function validateGuestBookingShape(raw: unknown, authUid: string): Record
     throw new HttpsError('invalid-argument', 'Enter the amount shown on the Payment proof.')
   }
   if (input.payment_reference !== undefined) requireString(input, 'payment_reference', { max: 200, optional: true })
+  // OCR evidence is bounded like every other client-controlled field: the
+  // reference and its twin are short identifiers, the figure is a plain decimal,
+  // the date an ISO calendar date, the names not essays. A value outside these
+  // shapes is not evidence from a receipt and has no business on the document.
+  if (input.extractedRefNumber !== undefined) requireString(input, 'extractedRefNumber', { max: 40, optional: true })
+  if (input.ocr_reference !== undefined) requireString(input, 'ocr_reference', { max: 40, optional: true })
+  if (input.ocr_amount !== undefined) {
+    const value = requireString(input, 'ocr_amount', { max: 16, optional: true })
+    if (value && !/^\d+(\.\d{1,2})?$/.test(value)) {
+      throw new HttpsError('invalid-argument', 'The Booking ocr_amount is invalid.')
+    }
+  }
+  if (input.ocr_sender_name !== undefined) requireString(input, 'ocr_sender_name', { max: 160, optional: true })
+  if (input.ocr_payment_date !== undefined) {
+    const value = requireString(input, 'ocr_payment_date', { max: 10, optional: true })
+    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new HttpsError('invalid-argument', 'The Booking ocr_payment_date is invalid.')
+    }
+  }
+  if (input.ocr_proof_url !== undefined) requireString(input, 'ocr_proof_url', { max: 1000, optional: true })
+  if (input.ocr_engine !== undefined) requireString(input, 'ocr_engine', { max: 40, optional: true })
+  if (input.ocr_confidence !== undefined
+      && !['high', 'low', 'none'].includes(typeof input.ocr_confidence === 'string' ? input.ocr_confidence : '')) {
+    throw new HttpsError('invalid-argument', 'The Booking ocr_confidence is invalid.')
+  }
   if (input.event_purpose !== undefined) requireString(input, 'event_purpose', { max: 80, optional: true })
   if (input.event_purpose_detail !== undefined) requireString(input, 'event_purpose_detail', { max: 500, optional: true })
   for (const key of ['pet_count', 'late_checkout_hours', 'bonfire_wood_sets']) {

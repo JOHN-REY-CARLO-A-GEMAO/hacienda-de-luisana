@@ -65,6 +65,8 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   const [paymentDate, setPaymentDate] = useState('')
   /** The date OCR normalized — stored as-is so the Admin sees what the receipt said. */
   const [ocrPaymentDate, setOcrPaymentDate] = useState('')
+  /** How much of the receipt OCR could read — stamped with the read as provenance. */
+  const [ocrConfidence, setOcrConfidence] = useState<'high' | 'low' | 'none'>('none')
   const [ocrNotes, setOcrNotes] = useState<string[]>([])
   const [ocrBusy, setOcrBusy] = useState(false)
   const [extractedRef, setExtractedRef] = useState('')
@@ -187,6 +189,13 @@ export function PaymentStep({ booking }: { booking: Booking }) {
           ocr_amount: amtCheck.value,
           ocr_sender_name: ocrSenderName,
           ocr_payment_date: ocrPaymentDate,
+          // Provenance for the read above: it describes *this* freshly
+          // uploaded proof object and nothing older, so the Admin app treats
+          // it as current instead of warning that the read came from the
+          // proof the Guest just replaced.
+          ocr_proof_url: uploaded.url,
+          ocr_engine: 'tesseract',
+          ocr_confidence: ocrConfidence,
           payment_sender_name: senderName,
           payment_date: paymentDate,
         },
@@ -209,6 +218,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       setOcrSenderName('')
       setPaymentDate('')
       setOcrPaymentDate('')
+      setOcrConfidence('none')
       setAmountCandidates([])
       setOcrNotes([])
       setSent(true)
@@ -347,6 +357,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                 setOcrSenderName('')
                 setPaymentDate('')
                 setOcrPaymentDate('')
+                setOcrConfidence('none')
                 setAmountCandidates([])
                 setOcrNotes([])
                     if (!file) return
@@ -374,6 +385,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                           setOcrPaymentDate(extracted.paymentDateIso)
                           setPaymentDate(extracted.paymentDateIso)
                         }
+                        setOcrConfidence(extracted.confidence)
                         // Every distinct figure the receipt prints, so a receipt
                         // whose `Amount` and `Total Amount Sent` disagree asks the
                         // Guest which one they sent instead of silently picking

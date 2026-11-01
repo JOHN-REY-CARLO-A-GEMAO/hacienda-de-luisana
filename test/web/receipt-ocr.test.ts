@@ -232,6 +232,17 @@ describe('extractPaymentDate', () => {
     expect(found).toEqual({ display: 'Aug 26, 2026', iso: '2026-08-26', ambiguous: false })
   })
 
+  it('normalizes a day-first month name date', () => {
+    // The month in the middle, as several bank apps (and some GCash receipt
+    // variants) print it — unambiguous, and previously invisible.
+    expect(extractPaymentDate('Date 26 Aug 2026')).toEqual({
+      display: '26 Aug 2026',
+      iso: '2026-08-26',
+      ambiguous: false,
+    })
+    expect(extractPaymentDate('1 November 2026 3:47 PM')?.iso).toBe('2026-11-01')
+  })
+
   it('normalizes an ISO date', () => {
     const found = extractPaymentDate('Date 2026-08-26')
     expect(found).toEqual({ display: '2026-08-26', iso: '2026-08-26', ambiguous: false })
@@ -262,6 +273,33 @@ describe('extractPaymentDate', () => {
 
   it('ignores references and amounts that look like numbers', () => {
     expect(extractPaymentDate('Ref No. 1234567890123 Amount 1,000.00')).toBeNull()
+  })
+})
+
+describe('extractReceiptFields with a tesseract-mangled GCash receipt', () => {
+  // The receipt behind the bug: GCash prints each label on its own row with
+  // the `₱figure` below it, tesseract has no `₱` and returns `P`, and the date
+  // is printed day-first. The reference read fine (it is a digit-group read)
+  // while the amount and the date both came back empty, so the Admin app
+  // showed "Hindi nabasa" for the two fields the receipt plainly carried.
+  const MANGLED = `GCash
+Sent to
+JOHN REY CARLO G.
+09** *** 1234
+Amount
+P7,500.00
+Total Amount Sent
+P7,500.00
+Ref No.
+8159 662 488150
+1 November 2026 3:47 PM`
+
+  it('reads reference, amount and date', () => {
+    const out = extractReceiptFields(MANGLED)
+    expect(out.reference).toBe('8159662488150')
+    expect(out.amount).toBe('7500.00')
+    expect(out.paymentDateIso).toBe('2026-11-01')
+    expect(out.confidence).toBe('high')
   })
 })
 
