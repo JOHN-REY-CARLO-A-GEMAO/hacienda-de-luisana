@@ -9,7 +9,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { CallableError } from './callable'
+import { CallableError, describeErrorForLog } from './callable'
 import { SERVER_TIMESTAMP, type FirestoreLike } from './firestoreLike'
 import type { MinuteBudget } from './pricing'
 
@@ -161,7 +161,7 @@ export async function spendCallableQuota(options: SpendCallableQuotaOptions): Pr
     })
   } catch (error) {
     if (error instanceof CallableError) throw error
-    console.error(`[rate-limit] ${options.scope} quota check failed`, error instanceof Error ? error.name : 'unknown')
+    console.error(`[rate-limit] ${options.scope} quota check failed`, describeErrorForLog(error))
     throw new CallableError(
       'unavailable',
       'Service is temporarily busy. Please try again shortly.',
