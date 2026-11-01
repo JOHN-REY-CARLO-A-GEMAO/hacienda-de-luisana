@@ -48,3 +48,30 @@ export interface CallableContext {
   /** Best-effort client IP for public-read rate limiting. */
   ip?: string | null
 }
+
+/**
+ * One-line, operator-facing description of an upstream failure.
+ *
+ * Server logs need more than an error class name when Google rejects a call:
+ * `FirestoreRestError` alone cannot distinguish `PERMISSION_DENIED` from a
+ * missing index. Include the machine-readable status/HTTP code when a
+ * transport supplies them, flatten and cap the message, and redact bearer
+ * tokens if an upstream ever echoes one. Request bodies and headers are not
+ * included.
+ */
+export function describeErrorForLog(error: unknown): string {
+  if (!(error instanceof Error)) return 'unknown'
+
+  const record = error as { status?: unknown; httpStatus?: unknown }
+  const statusParts: string[] = []
+  if (typeof record.status === 'string' && record.status) statusParts.push(record.status)
+  if (typeof record.httpStatus === 'number') statusParts.push(`HTTP ${record.httpStatus}`)
+  const status = statusParts.length > 0 ? ` [${statusParts.join(' ')}]` : ''
+
+  const flattened = error.message
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const message = flattened.length > 600 ? `${flattened.slice(0, 597)}...` : flattened
+  return `${error.name}${status}${message ? `: ${message}` : ''}`
+}

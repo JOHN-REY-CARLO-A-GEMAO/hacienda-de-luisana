@@ -10,7 +10,7 @@
  * overlap query.
  */
 
-import { CallableError, type CallableContext } from './callable'
+import { CallableError, describeErrorForLog, type CallableContext } from './callable'
 import {
   SERVER_TIMESTAMP,
   type DocumentData,
@@ -373,7 +373,7 @@ export function createAvailabilityCore(deps: AvailabilityCoreDependencies): Avai
       }
     } catch (error) {
       if (error instanceof CallableError) throw error
-      console.error('[availability] read failed', error instanceof Error ? error.name : 'unknown')
+      console.error('[availability] read failed', describeErrorForLog(error))
       throw availabilityFailure()
     }
   }
@@ -500,7 +500,7 @@ export function createAvailabilityCore(deps: AvailabilityCoreDependencies): Avai
       })
     } catch (error) {
       if (error instanceof CallableError) throw error
-      console.error('[availability] submit failed', error instanceof Error ? error.name : 'unknown')
+      console.error('[availability] submit failed', describeErrorForLog(error))
       throw new CallableError('unavailable', 'The Booking could not be submitted right now. Nothing was saved; please try again.', { cause: 'SUBMIT_UNAVAILABLE' })
     }
   }
