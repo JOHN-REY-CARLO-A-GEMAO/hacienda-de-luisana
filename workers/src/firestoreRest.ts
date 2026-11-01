@@ -20,6 +20,7 @@ import {
   type WhereOperator,
 } from '../../functions/src/firestoreLike'
 import { base64ToBytes, bytesToBase64 } from './encoding'
+import { bindGlobalFetch } from './fetch'
 import type { AccessTokenProvider } from './googleAuth'
 
 type RestValue = Record<string, unknown>
@@ -286,7 +287,7 @@ export class FirestoreRestClient implements FirestoreLike {
     private readonly tokenProvider: AccessTokenProvider,
     options: FirestoreRestClientOptions = {},
   ) {
-    this.fetchFn = options.fetchFn ?? fetch
+    this.fetchFn = bindGlobalFetch(options.fetchFn)
     this.baseUrl = (options.baseUrl ?? 'https://firestore.googleapis.com/v1').replace(/\/$/, '')
     this.timeoutMs = options.timeoutMs ?? 15_000
     this.maxTransactionAttempts = Math.max(1, Math.min(10, options.maxTransactionAttempts ?? 5))

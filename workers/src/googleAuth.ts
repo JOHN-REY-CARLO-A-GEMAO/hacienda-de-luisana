@@ -8,6 +8,7 @@
 
 import { base64ToBytes, bytesToBase64Url, stringToBase64Url } from './encoding'
 import type { ServiceAccountCredentials } from './env'
+import { bindGlobalFetch } from './fetch'
 
 const DEFAULT_SCOPES = [
   'https://www.googleapis.com/auth/datastore',
@@ -51,7 +52,7 @@ export class GoogleAccessTokenProvider implements AccessTokenProvider {
     private readonly credentials: ServiceAccountCredentials,
     options: GoogleAccessTokenProviderOptions = {},
   ) {
-    this.fetchFn = options.fetchFn ?? fetch
+    this.fetchFn = bindGlobalFetch(options.fetchFn)
     this.now = options.now ?? Date.now
     this.tokenUrl = options.tokenUrl ?? DEFAULT_TOKEN_URL
     this.scopes = options.scopes ?? DEFAULT_SCOPES
