@@ -2,6 +2,11 @@
 
 **Status**: accepted, 2026-10-29. Extends ADR-0011 (private proof storage) and
 ADR-0012 (a screenshot is required before a Booking exists); changes neither.
+**Amended in part by ADR-0024 (2026-11-02)**: the *Admin app* still reads with
+ML Kit on the device, but the *Guest website* now prefers OCR.space through the
+`readReceiptText` callable, with tesseract.js as its fallback. The reasoning
+below about why a phone should not ship a cloud key still holds; what changed is
+that a server can hold the key instead of the APK or the bundle.
 
 ## What was already there
 

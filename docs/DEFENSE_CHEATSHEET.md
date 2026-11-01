@@ -221,10 +221,12 @@ truncated-fast."*
 
 **Current implementation — this one is genuinely partial, so lead with the split**
 What runs **without a human**:
-- OCR reads the screenshot in the browser (tesseract.js) and **extracts the
-  reference number** — labelled refs first, then a digit-group walker that
-  reassembles GCash's two-column layout, deliberately refusing 14–16 digit card
-  numbers.
+- OCR reads the screenshot — tesseract.js in the browser by default, or OCR.space
+  through the `readReceiptText` function on a build that opts in (ADR-0024) — and
+  **extracts the reference number**: labelled refs first, then a digit-group
+  walker that reassembles GCash's two-column layout, deliberately refusing 14–16
+  digit card numbers. Both engines only return text; the parsing is the same code
+  either way.
 - It **extracts the amount**, and where a receipt printed two different figures
   (a fee makes "Total Sent" differ from "Amount") it returns *every* peso figure
   with its label and refuses to guess — `suggestedAmount` returns `null` on a
@@ -244,9 +246,11 @@ requires the Security PIN.
 - `canAutoVerifyFromOcr` is hard-coded off, so nothing marks a reference spent:
   the catalogue is curated, and duplicate detection stays a human comparing two
   screens. It is **not** an automatic match-and-settle workflow.
-- OCR runs client-side, so a determined Guest controls what gets extracted.
-  (`src/lib/payments/ocr.ts` loads Tesseract.js in the browser — there is no
-  server-side OCR and no cloud Vision call.)
+- OCR is a hint, so a determined Guest controls what gets extracted — even with
+  the cloud engine. (`src/lib/payments/ocr.ts` runs Tesseract.js in the browser
+  by default. A build may opt into OCR.space through the `readReceiptText`
+  function, ADR-0024, which reads the image and returns text with the key kept in
+  the function's environment; it still writes nothing and verifies nothing.)
 - **The screenshot is still the only thing a Guest's number is compared with** until
   attestation is deployed and switched on. What changed on 2026-10-21 is that there
   is now an independent record to compare it with: `verifyBookingMoney` (Admin-only)

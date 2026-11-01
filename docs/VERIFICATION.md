@@ -436,6 +436,22 @@ Implemented as a client-side pipeline (2026-09-27), documented, and still
   The Guest-side engine remains `tesseract.js` in the browser. The payment proof forms display the extracted values for confirmation;
   the former standalone receipt-reader page has since been removed. See
   `docs/RECEIPT_OCR_GUIDE.md`. `canAutoVerifyFromOcr()` is still `false`.
+- **Amended 2026-11-02 — the hosted pipeline exists, and is opt-in (ADR-0024).**
+  `functions/src/ocr.ts` now exports `readReceiptText`: image → function →
+  OCR.space → text, with `OCR_SPACE_API_KEY` in the function's environment
+  (`functions/.env`, gitignored) and **no `VITE_*` variable anywhere near the
+  key**. That satisfies this section's original rule — the key lives where it can
+  be kept, never in web JS, the APK or Git — at the price of the receipt reaching
+  a third party when the flag is on. What is true today:
+  - The website sends receipts to the function **only** when the build sets
+    `VITE_RECEIPT_OCR_CLOUD=ocrspace`; otherwise `tesseract.js` runs in the
+    browser and nothing leaves the device.
+  - The function caps the payload at 1 MB (free-plan limit), rate-limits per
+    Guest/IP, stores nothing, and logs a failure **code** only.
+  - Every failure falls back to `tesseract.js`; a blank cloud read does not.
+  - Free-plan ceiling: 500 reads/day **per IP**, shared by the whole site.
+  - `canAutoVerifyFromOcr()` is still `false`, and the callable returns text — no
+    Booking field is written by OCR, cloud or local.
 
 ## 7. P5 — server-side rate limiting
 
