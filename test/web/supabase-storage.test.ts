@@ -15,6 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PROOF_IMAGE_EXTENSIONS, proofObjectPath } from '../../src/lib/payments'
+import { PROOF_EXTENSIONS, normalizeProofPath } from '../../supabase/functions/_shared/proof-path'
 
 const sql = readFileSync(join(__dirname, '../../supabase/01-storage.sql'), 'utf8')
 const fn = readFileSync(
@@ -103,9 +104,19 @@ describe('the read that must not exist', () => {
 })
 
 describe('the Admin read path', () => {
-  /** The validator lifted out of the function, so the test runs the real one. */
-  const pattern = fn.match(/const PROOF_PATH = \/(.+)\/([a-z]*)$/m)
-  const proofPath = new RegExp(pattern?.[1] ?? 'a^', pattern?.[2] ?? '')
+  // The validator itself, not a copy of its regex: a copy drifts from the
+  // function and then tests a rule the deployed code no longer has.
+  const open = (path: unknown) => normalizeProofPath(path)
+  const accepted = (path: string) => {
+    const check = open(path)
+    expect(check.ok, `${path} should be signable`).toBe(true)
+    return check.ok ? check.path : ''
+  }
+  const refused = (path: unknown) => {
+    const check = open(path)
+    expect(check.ok, `${String(path)} must not be signable`).toBe(false)
+    return check.ok ? '' : check.problem
+  }
 
   it('accepts every path the website can write', () => {
     // If the function refused a path `proofObjectPath` produces, the Admin
@@ -116,22 +127,110 @@ describe('the Admin read path', () => {
           uid: 'uid-abc_123', bookingRefId: ref, filename: `shot.${ext}`, attempt: 1,
           uploadId: '00000000-0000-4000-8000-000000000001',
         })
-        expect(proofPath.test(path), `${path} should be openable by the Admin`).toBe(true)
+        expect(accepted(path), `${path} should be openable by the Admin`).toBe(path)
       }
     }
   })
 
-  it('refuses anything that is not one proof at the documented shape', () => {
+  it('accepts the shapes earlier clients wrote, which are still on Bookings', () => {
+    // The regression this module was written for: a Booking whose proof was
+    // uploaded before the per-attempt naming still has to open, because the
+    // Admin is being asked to verify it either way. Every shape below has been
+    // written by this codebase at some point (ADR-0011, storage.rules,
+    // `nextProofAttempt`'s legacy branch).
     for (const path of [
-      'payments/uid/REF/proof.png/../../other/secret.png',
-      'gallery/uid/REF/proof.png',
-      'payments/uid/REF/kyc.png',
-      'payments/uid/proof.png',
-      'proof.png',
-      '',
+      'payments/uid-abc/HDL-4821/proof.png',
+      'payments/uid-abc/HDL-4821/proof-2.png',
+      'payments/uid-abc/HDL-4821/receipt_1.jpg',
+      'payments/uid-abc/HDL-4821/proof-1-00000000-0000-4000-8000-000000000001.jpeg',
+      'payments/uid-abc/HDL-4821/2026/proof.PNG',
     ]) {
-      expect(proofPath.test(path), `${path} must not be signable`).toBe(false)
+      expect(accepted(path)).toBe(path)
     }
+  })
+
+  it('reduces a stored address to the key it names', () => {
+    // A value can be an address rather than a key: copied out of the
+    // dashboard, or a URL that was written by an older record. All four name
+    // the same object, and all four have to end up signing it.
+    const key = 'payments/uid-abc/HDL-4821/proof-1.png'
+    for (const path of [
+      '/payments/uid-abc/HDL-4821/proof-1.png',
+      'payment-proofs/payments/uid-abc/HDL-4821/proof-1.png',
+      'payments%2Fuid-abc%2FHDL-4821%2Fproof-1.png',
+      'https://project.supabase.co/storage/v1/object/public/payment-proofs/payments/uid-abc/HDL-4821/proof-1.png',
+      'https://project.supabase.co/storage/v1/object/sign/payment-proofs/payments/uid-abc/HDL-4821/proof-1.png?token=abc.def',
+      ' https://project.supabase.co/payments/uid-abc/HDL-4821/proof-1.png ',
+    ]) {
+      expect(accepted(path), `${path} names ${key}`).toBe(key)
+    }
+  })
+
+  it('refuses anything that is not one proof inside this bucket', () => {
+    // What must not be signable is anything outside `payments/` in the proofs
+    // bucket, and anything that walks out of it. The *filename* is no longer
+    // part of the rule: `payments/uid/REF/kyc.png` used to be refused as "not
+    // the documented shape", but nothing about that name is what makes a path
+    // safe once the prefix, the bucket and the caller are all checked.
+    expect(refused('payments/uid/REF/proof.png/../../other/secret.png')).toBe('unsafe')
+    expect(refused('payments/uid/REF/proof%2F..%2F..%2Fsecret.png')).toBe('unsafe')
+    expect(refused('gallery/uid/REF/proof.png')).toBe('foreign-bucket')
+    expect(refused('payments/proof.png')).toBe('not-an-image')
+    expect(refused('payments/uid/REF/notes.txt')).toBe('not-an-image')
+    expect(refused('proof.png')).toBe('foreign-bucket')
+    expect(refused('pending-proof')).toBe('foreign-bucket')
+    expect(refused('')).toBe('empty')
+    expect(refused(null)).toBe('empty')
+  })
+
+  it('names a Firebase-era receipt rather than calling it absent', () => {
+    // The old receipts live in a bucket this function has no key for. Signing
+    // cannot help, and "no proof is stored at that path" would send the Admin
+    // looking in the right bucket for a file that was never put there.
+    expect(
+      refused(
+        'https://firebasestorage.googleapis.com/v0/b/hacienda.appspot.com/o/payments%2Fuid%2FREF%2Fproof.jpg?alt=media&token=abc',
+      ),
+    ).toBe('legacy-storage')
+  })
+
+  it('accepts exactly the extensions the website can write', () => {
+    // The website refuses anything outside its list at upload time, so an
+    // object with an extension the function does not know cannot be a proof —
+    // and an extension the function knows but the website refuses would be a
+    // shape nothing can ever write. Asserted by behaviour, not by comparing two
+    // constants: the pattern is a literal, and a literal is what drifts.
+    expect([...PROOF_EXTENSIONS].sort()).toEqual([...PROOF_IMAGE_EXTENSIONS].sort())
+    for (const ext of PROOF_IMAGE_EXTENSIONS) {
+      expect(accepted(`payments/uid/REF/proof.${ext}`)).toBe(`payments/uid/REF/proof.${ext}`)
+    }
+    for (const ext of ['gif', 'txt', 'pdf', 'svg', 'png.exe']) {
+      expect(refused(`payments/uid/REF/proof.${ext}`)).toBe('not-an-image')
+    }
+  })
+
+  it('keeps the verified token in scope for the allowlist check', () => {
+    // The deployed bundle is not type-checked, so a `const` declared inside the
+    // `try` block is invisible to the bootstrap-allowlist check sixty lines
+    // below it. It was written that way, and every request that got past the
+    // path check died on `decoded is not defined` — a 500 behind a button
+    // labelled "open the receipt". Order and declaration, asserted on the text.
+    const hoist = fnCode.indexOf('let decoded')
+    expect(hoist).toBeGreaterThan(0)
+    expect(fnCode).not.toMatch(/const decoded = await getAuth/)
+    expect(fnCode.indexOf('verifyIdToken')).toBeGreaterThan(hoist)
+    expect(fnCode.indexOf('bootstrapAdminEmails.includes')).toBeGreaterThan(hoist)
+  })
+
+  it('is the validator the function actually calls', () => {
+    // Otherwise this file could pass while the function signs something else.
+    expect(fnCode).toContain('normalizeProofPath')
+    const validate = fnCode.indexOf('normalizeProofPath(')
+    const admin = fnCode.indexOf("role !== 'admin'")
+    const sign = fnCode.indexOf('createSignedUrl')
+    expect(validate).toBeGreaterThan(0)
+    expect(admin).toBeGreaterThan(validate)
+    expect(sign).toBeGreaterThan(admin)
   })
 
   it('checks the caller is an Admin before signing anything', () => {

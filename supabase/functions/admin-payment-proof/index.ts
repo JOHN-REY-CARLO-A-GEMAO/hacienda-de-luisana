@@ -49,27 +49,38 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 // `cert is not a function`. `/auth` exports `getAuth` and the token classes,
 // and nothing else.
 import { cert, initializeApp, getApps, type App } from 'npm:firebase-admin@11/app'
-import { getAuth } from 'npm:firebase-admin@11/auth'
+import { getAuth, type DecodedIdToken } from 'npm:firebase-admin@11/auth'
 import { getFirestore } from 'npm:firebase-admin@11/firestore'
+// `../_shared` rather than a sibling file: the validator is pure, and a pure
+// module is the one part of this function a test can actually run. Deno needs
+// the explicit `.ts` extension on a relative import.
+import { normalizeProofPath, PROOF_BUCKET, type ProofPathProblem } from '../_shared/proof-path.ts'
 
 /** How long a signed URL stays usable. Long enough to open, not to share. */
 const EXPIRY_SECONDS = 60
 
 /** The one bucket that exists. */
-const BUCKET = 'payment-proofs'
+const BUCKET = PROOF_BUCKET
 
 /** Warn once per instance, not once per request, when the allowlist secret is unset. */
 let warnedMissingBootstrap = false
 
 /**
- * The stored address of a proof, and the only one this function will sign.
+ * What the Admin's screen shows for each refusal, in the function's own words.
  *
- * Rebuilt from the caller's Booking rather than trusted from the request body:
- * a caller who can ask for `payments/anyone-elses-uid/REF/proof.png` must not
- * be able to walk out with someone else's receipt by editing a string. The
- * Firestore read below is what makes the `{uid}` in the path mean something.
+ * These reach a phone, so they say what is wrong with the *record* rather than
+ * what is wrong with the request: an Admin can act on "the receipt is in the
+ * old storage" and on "there is no proof recorded yet", and can act on neither
+ * of "400 Bad Request" nor on a regex.
  */
-const PROOF_PATH = /^payments\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\/proof(-\d+)?(?:-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})?\.[A-Za-z0-9]+$/i
+const PATH_REFUSAL: Record<ProofPathProblem, string> = {
+  empty: 'No payment proof is recorded on this Booking yet.',
+  'foreign-bucket': 'That is not a payment proof path.',
+  'not-an-image': 'That stored file is not a payment proof image.',
+  unsafe: 'That path is not a payment proof path.',
+  'legacy-storage':
+    'This receipt is stored in the previous (Firebase) storage. Ask the Guest to send it again so it lands in the current bucket.',
+}
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -103,13 +114,20 @@ Deno.serve(async (request) => {
   if (!token) return json({ error: 'No Firebase ID token.' }, 401)
 
   // ---- who is asking -------------------------------------------------------
+  // `decoded` is declared here, not inside the `try`: the bootstrap-allowlist
+  // check further down reads its `email` and `email_verified`, and a `const`
+  // in the block above is not in scope there. It was written inside the block,
+  // which the bundler does not type-check — so every call that got past the
+  // path check threw `decoded is not defined` and answered 500. Hoisting it is
+  // the whole fix; the `catch` returns, so it is certainly assigned below.
   let uid: string
+  let decoded: DecodedIdToken
   let firestore: ReturnType<typeof getFirestore>
   try {
     const projectId = Deno.env.get('FIREBASE_PROJECT_ID')
     if (!projectId) throw new Error('FIREBASE_PROJECT_ID is not set')
     const app = firebaseApp(projectId)
-    const decoded = await getAuth(app).verifyIdToken(token)
+    decoded = await getAuth(app).verifyIdToken(token)
     uid = decoded.uid
     firestore = getFirestore(app)
   } catch (error) {
@@ -120,13 +138,32 @@ Deno.serve(async (request) => {
   }
 
   // ---- what are they asking for -------------------------------------------
+  // The value is whatever `payment_proof_url` holds on the Booking, and that
+  // field has carried more than one shape over time. `normalizeProofPath` turns
+  // an address back into a key and refuses anything outside this bucket's
+  // `payments/` prefix; the reasoning is in `../_shared/proof-path.ts`.
   let path: string
   try {
     const { path: asked } = await request.json()
-    if (typeof asked !== 'string' || !PROOF_PATH.test(asked)) {
-      return json({ error: 'Not a payment proof path.' }, 400)
+    const check = normalizeProofPath(asked)
+    if (!check.ok) {
+      // The stored value is logged and echoed back: it is the one thing that
+      // makes a second report of this diagnosable without opening Firestore.
+      // The app decides how much of it a phone screen should carry.
+      console.warn(
+        `[admin-payment-proof] refused path (${check.problem}): ${check.recorded}`,
+      )
+      return json(
+        {
+          error: PATH_REFUSAL[check.problem],
+          code: 'NOT_A_PROOF_PATH',
+          problem: check.problem,
+          recorded: check.recorded,
+        },
+        400,
+      )
     }
-    path = asked
+    path = check.path
   } catch {
     return json({ error: 'Send {"path": "payments/…/proof.png"}.' }, 400)
   }
