@@ -95,5 +95,12 @@ android/app/google-services.json
 # Real-browser QA output (docs/qa/*.mjs) — screenshots and reports are local evidence, never committed
 docs/qa/screenshots/
 
+# Cloudflare Worker local state, compiled tests, and secrets
+workers/lib/
+workers/.wrangler/
+workers/.dev.vars
+workers/.dev.vars.*
+!workers/.dev.vars.example
+
 # Phase 0 isolated scratch/tool downloads/reports (never datasets or release artifacts)
 .cache/

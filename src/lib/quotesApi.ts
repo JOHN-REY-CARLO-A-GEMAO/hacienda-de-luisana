@@ -20,10 +20,9 @@
  * old path; with it on, no quote means no Booking, and the Guest is told why.
  */
 import { doc, getDocFromServer } from 'firebase/firestore'
-import { httpsCallable, type Functions } from 'firebase/functions'
 import type { AuthoritativeMoney, QuoteRequest } from '../../functions/src/pricing'
 import { app, auth, db, isFirebaseConfigured } from './firebase'
-import { functionsClient } from './functionsClient'
+import { backendCallable, functionsClient } from './functionsClient'
 
 /** What the page may show and the write may carry: the id, the figures, and how long they hold. */
 export type AttestedQuote = {
@@ -53,7 +52,7 @@ export class QuoteRefusedError extends Error {
   }
 }
 
-function backend(): Functions {
+function requireBackendIdentity(): void {
   if (!app) throw new QuoteRefusedError('BACKEND_UNAVAILABLE', 'Prices cannot be confirmed in demo mode. Use a connected Firebase project to book.', { retryable: false })
   // The attestation is bound to an identity, and `firestore.rules` now refuses one
   // that is not bound to the writer — so asking without a signed-in user would only
@@ -62,7 +61,7 @@ function backend(): Functions {
   if (!auth?.currentUser) {
     throw new QuoteRefusedError('AUTH_REQUIRED', 'We need to reconnect you before we can confirm a price. Please try again in a moment.', { retryable: true })
   }
-  return functionsClient()
+  functionsClient()
 }
 
 type CallableError = { code?: string; message?: string; details?: unknown }
@@ -100,7 +99,8 @@ type QuoteReply = {
 export async function requestQuote(stay: QuoteableStay): Promise<AttestedQuote> {
   let data: QuoteReply
   try {
-    data = (await httpsCallable<QuoteRequest, QuoteReply>(backend(), 'quoteBooking')(quoteRequestFor(stay))).data
+    requireBackendIdentity()
+    data = (await backendCallable<QuoteRequest, QuoteReply>('quoteBooking')(quoteRequestFor(stay))).data
   } catch (error) {
     const failure = error as CallableError
     if (isMissingFunction(failure)) {
@@ -181,5 +181,6 @@ export async function attestationForStay(stay: QuoteableStay, enforce: boolean):
  * needs to see *which* figure moved.
  */
 export async function verifyBookingMoney(bookingId: string): Promise<unknown> {
-  return (await httpsCallable<unknown, unknown>(backend(), 'verifyBookingMoney')({ bookingId })).data
+  requireBackendIdentity()
+  return (await backendCallable<unknown, unknown>('verifyBookingMoney')({ bookingId })).data
 }
