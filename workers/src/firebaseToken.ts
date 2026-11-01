@@ -8,6 +8,7 @@
  */
 
 import { base64UrlToBytes, base64UrlToString } from './encoding'
+import { bindGlobalFetch } from './fetch'
 
 const DEFAULT_JWKS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'
 const DEFAULT_CLOCK_SKEW_SECONDS = 300
@@ -76,7 +77,7 @@ export class FirebaseTokenVerifier {
     private readonly projectId: string,
     options: FirebaseTokenVerifierOptions = {},
   ) {
-    this.fetchFn = options.fetchFn ?? fetch
+    this.fetchFn = bindGlobalFetch(options.fetchFn)
     this.now = options.now ?? Date.now
     this.jwksUrl = options.jwksUrl ?? DEFAULT_JWKS_URL
     this.clockSkewSeconds = options.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS

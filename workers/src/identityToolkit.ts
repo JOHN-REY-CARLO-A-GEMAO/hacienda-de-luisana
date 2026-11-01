@@ -5,6 +5,7 @@
  */
 
 import type { AuthUserLookup, AuthUserRecordLike } from '../../functions/src/quotesCore'
+import { bindGlobalFetch } from './fetch'
 import type { AccessTokenProvider } from './googleAuth'
 
 export interface IdentityToolkitOptions {
@@ -21,7 +22,7 @@ export class IdentityToolkitAuthUsers implements AuthUserLookup {
     private readonly tokenProvider: AccessTokenProvider,
     options: IdentityToolkitOptions = {},
   ) {
-    this.fetchFn = options.fetchFn ?? fetch
+    this.fetchFn = bindGlobalFetch(options.fetchFn)
     this.baseUrl = (options.baseUrl ?? 'https://identitytoolkit.googleapis.com/v1').replace(/\/$/, '')
   }
 
