@@ -65,11 +65,11 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "check_out",
+          "fieldPath": "check_in",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "check_in",
+          "fieldPath": "check_out",
           "order": "ASCENDING"
         }
       ]

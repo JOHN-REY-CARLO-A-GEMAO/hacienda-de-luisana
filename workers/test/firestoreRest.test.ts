@@ -5,6 +5,7 @@ import {
   decodeFirestoreValue,
   encodeFirestoreValue,
   FirestoreRestClient,
+  FirestoreRestError,
 } from '../src/firestoreRest'
 import type { AccessTokenProvider } from '../src/googleAuth'
 
@@ -126,6 +127,57 @@ test('builds the overlap query under the bookings collection', async () => {
   assert.equal(snapshot.docs[0]?.data().check_in, '2027-01-01')
   assert.equal(body.structuredQuery.from[0].collectionId, 'bookings')
   assert.equal(body.structuredQuery.where.compositeFilter.filters.length, 3)
+  assert.deepEqual(
+    body.structuredQuery.orderBy.map((order: Record<string, any>) => order.field.fieldPath),
+    ['check_in', 'check_out', '__name__'],
+  )
+})
+
+test('preserves an array-shaped Firestore query error for operator logs', async () => {
+  const fetchFn = async () => jsonResponse([{
+    error: {
+      code: 9,
+      message: 'The query requires an index. You can create it here: https://example.test/index',
+    },
+  }], 400)
+  const db = new FirestoreRestClient('demo', '(default)', tokenProvider, {
+    fetchFn: fetchFn as typeof fetch,
+    baseUrl: 'https://firestore.test/v1',
+  })
+
+  await assert.rejects(
+    db.collection('bookings').where('check_out', '>', '2027-01-01').get(),
+    (error: unknown) => {
+      assert.ok(error instanceof FirestoreRestError)
+      assert.equal(error.status, 'FAILED_PRECONDITION')
+      assert.equal(error.httpStatus, 400)
+      assert.match(error.message, /POST \/documents:runQuery failed/)
+      assert.match(error.message, /query requires an index/)
+      return true
+    },
+  )
+})
+
+test('maps an embedded runQuery status to its canonical Firestore error', async () => {
+  const fetchFn = async () => jsonResponse([{
+    error: { code: 9, message: 'The query requires an index.' },
+  }])
+  const db = new FirestoreRestClient('demo', '(default)', tokenProvider, {
+    fetchFn: fetchFn as typeof fetch,
+    baseUrl: 'https://firestore.test/v1',
+  })
+
+  await assert.rejects(
+    db.collection('bookings').where('check_out', '>', '2027-01-01').get(),
+    (error: unknown) => {
+      assert.ok(error instanceof FirestoreRestError)
+      assert.deepEqual(
+        { status: error.status, httpStatus: error.httpStatus, message: error.message },
+        { status: 'FAILED_PRECONDITION', httpStatus: 400, message: 'The query requires an index.' },
+      )
+      return true
+    },
+  )
 })
 
 test('turns nested server timestamps into same-commit REQUEST_TIME transforms', async () => {
