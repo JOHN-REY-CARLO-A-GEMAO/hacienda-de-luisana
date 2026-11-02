@@ -13,8 +13,8 @@
 1. **Answer §1 and §2 first.** Everything below them assumes those are settled.
 2. Write the answer in the **Sagot** line (or in the Filipino form in [Appendix A](#appendix-a--tanong-sa-may-ari-one-page-form)).
 3. Bring the answers back to the repo: [Appendix B](#appendix-b--where-each-answer-gets-written-down) says which file or screen changes for each one. An answer that reaches no file is an answer the system never hears.
-4. **Do not re-ask what is already settled** — see [§7](#7-already-settled--huwag-nang-itanong).
-5. **Gusto ng Google Form?** Patakbuhin ang [`scripts/google-form/Code.gs`](../scripts/google-form/Code.gs) sa <https://script.google.com> at bubuo ito ng form at ng response sheet — 55 tanong, Taglish, anim na seksyon. Nasa [`scripts/google-form/README.md`](../scripts/google-form/README.md) ang mga hakbang. Ang dokumentong ito pa rin ang English na record.
+4. **Do not re-ask what is already settled** — see [§8](#8-already-settled--huwag-nang-itanong).
+5. **Gusto ng Google Form?** Patakbuhin ang [`scripts/google-form/v2/Code.gs`](../scripts/google-form/v2/Code.gs) sa <https://script.google.com> at bubuo ito ng form at ng response sheet — 101 tanong, Taglish, pitong seksyon. Nasa [`scripts/google-form/README.md`](../scripts/google-form/README.md) ang mga hakbang at ang pagkakaiba ng v1 at v2. Ang dokumentong ito pa rin ang English na record.
 
 ### Priority key
 
@@ -86,13 +86,23 @@ Every 🔴 question in one place. These are the ones to answer before the websit
 
 ### Q3 🔴 What is the absolute maximum number of guests?
 
-**Today.** Main House and Annex have **no hard cap**. The guest field accepts any number from 1 to 100; every guest above 10 (Main House) or 6 (Annex) is simply charged ₱500 more. A-House is capped at 3.
+**Today.** Three different numbers get read as one, which is why this question has to be split:
 
-**Bakit.** Without an answer the website will accept 25 guests in the Main House and charge them ₱500 each. A cap is also a safety/fire-code statement, not a pricing one — and it needs a model change: the rates validator currently refuses `max_guests` for anything but the A-House.
+| Concept | Today |
+|---|---|
+| **Included guests** — covered by the base rate | Main House 10, Annex 6, A-House 3 |
+| **Maximum capacity** — the most people allowed inside | **No cap** for Main House and Annex; the form accepts 1–100. A-House: 3 |
+| **Extra-guest charge** — price of each guest beyond the included count | ₱500 each (Main House and Annex); A-House prices no one beyond 3 |
+
+**Bakit.** Without an answer the website will accept 25 guests in the Main House and charge them ₱500 each. A cap is a safety and comfort statement, not a pricing one — and it needs a model change: the rates validator currently refuses `max_guests` for anything but the A-House, and `firestore.rules` mirrors that refusal.
 
 **Sagot.**
 
-- Main House maximum: ______ guests   Annex maximum: ______ guests
+- Main House — included: 10 · maximum: ______ guests
+- Annex — included: 6 · maximum: ______ guests
+- A-House — included: 3 per unit · maximum: ______ per unit
+- May a guest go beyond the included count? ☐ Yes, with a charge ☐ Yes, with Admin approval ☐ No
+- How is the maximum enforced? ☐ Reminder only ☐ Fine ☐ Turned away
 - Do children count in the guest count? ☐ Yes ☐ Only above age ____ ☐ No
 - Do pets count? ☐ Yes ☐ No
 
@@ -115,9 +125,17 @@ Every 🔴 question in one place. These are the ones to answer before the websit
 
 ### Q5 🔴 What is the cancellation, refund and no-show policy?
 
-**Today.** The Admin publishes flat or tiered percentages (minimum days before check-in → percent refunded) plus a deposit-refund percent (default 100%). **If nothing is published, a cancellation refunds ₱0.** No-show and force majeure (typhoon, flood, road closure) are **not modelled at all**.
+**Today.** The Admin publishes flat or tiered percentages (minimum days before check-in → percent refunded) plus a deposit-refund percent (default 100%). No-show and force majeure (typhoon, flood, road closure) are **not modelled at all**. When the Admin has published nothing, `settleRefund` computes **₱0** — that is the system's fallback arithmetic for a missing policy, **not a policy the owner has chosen**, and it is the harshest possible reading of silence.
 
-**Bakit.** This is the policy the Guest reads on `/legal` before paying, and the one stamped on the Booking. A missing policy is legally and commercially the harshest possible one ("no refund"), which is probably not what the owner means.
+**Bakit.** This is the policy the Guest reads on `/legal` before paying, and the one stamped on the Booking. It also has to say *what the percentage applies to*: the down payment actually received, everything received, or the whole stay total. The system currently applies it to the stay total and caps the result at the money verified — a difference of thousands of pesos on a partly-paid booking, and the second of these three readings can refund more than the Guest ever sent.
+
+**Sagot.**
+
+- Refund percentage applies to: ☐ Down payment received ☐ All money received ☐ Whole stay total
+- Reschedule: ☐ Free ☐ With a fee ☐ Not allowed ☐ Once only
+- Shortened stay / early departure: ☐ No refund ☐ Pro-rated ☐ Case by case
+- Cancelled by the Hacienda: ☐ Full refund ☐ Full refund + rebooking help ☐ Rebook only
+- Deposit after a cancellation: ____ %
 
 **Sagot.** Fill or tick:
 
@@ -197,9 +215,13 @@ Missing charges to publish: __________
 
 ---
 
-### Q11 🔴 Who reviews a Pending booking, and within 24 hours?
+### Q11 🔴 Who reviews a Pending booking, and how long is the hold?
 
-**Today.** Each Pending Booking holds its dates for **24 hours**; after that it expires and the dates free themselves. Nothing assigns the review to a person or a time of day.
+**Today.** Each Pending Booking holds its dates for **24 hours** (`DATE_HOLD_MS` = one day, written to `hold_expires_at` at submission, read by ADR-0002's read-time rule). After that it expires and the dates free themselves. Nothing assigns the review to a person or a time of day.
+
+> **Careful with "22 hours".** In this repository 22 hours is the length of a **standard stay** (2:00 PM to 12:00 NN), not the hold. The hold is 24 hours from submission. They are different numbers and the policy documents name both, so the question asks which one the Hacienda means — if the answer is a 22-hour hold, the code changes; if it is a 24-hour hold, the answer is "no change".
+>
+> The countdown also has a start point to confirm: it runs from **submission**, not from approval or from the payment request.
 
 **Bakit.** If the owner cannot check the app on a Sunday evening, the Guest's hold dies and the Booking is lost — and the Guest has already sent money. The hold and the reply habit must match.
 
@@ -207,7 +229,9 @@ Missing charges to publish: __________
 
 - Who watches the queue: __________
 - Realistic maximum response time: ____ hours
-- Should the hold be: ☐ 24 h ☐ 48 h ☐ 72 h
+- Hold length: ☐ 22 h ☐ 24 h (today) ☐ 48 h ☐ 72 h ☐ ____
+- Countdown starts at: ☐ Submission ☐ Approval ☐ Payment request
+- When the hold runs out: ☐ Expire silently ☐ Message the Guest ☐ Warn the Admin first
 
 ---
 
@@ -308,7 +332,12 @@ Missing charges to publish: __________
 
 **Bakit.** The fee is per **stay**, not per night — confirm that is intended. An unlimited pet count on a sofa bed is a damage risk the Security deposit may not cover.
 
-**Sagot.** Allowed in: ☐ Main House ☐ Annex ☐ A-House. Max pets: ____. Rule: __________. Fee ☐ per stay ☐ per night
+**Sagot.**
+
+- Allowed in (one answer only — this is the question v1 of the form got wrong, because checkboxes let "Main House" and "no pets anywhere" both be ticked): ☐ All ☐ Main House only ☐ Annex only ☐ A-House only ☐ No pets anywhere ☐ Depends — __________
+- Fee basis: ☐ Per pet, once per stay ☐ Per pet, per night ☐ Per stay, however many pets
+- Maximum pets: ____   Size or breed rule: __________
+- Not allowed in: __________
 
 ---
 
@@ -452,6 +481,7 @@ Backup power: ☐ Yes ☐ No. Outages per month: ____
 **Sagot.**
 
 - Contact for privacy requests (name + email/phone): __________
+- Retention is asked per record type: bookings, payment records, guest contact details, chat, access logs, ID records
 - Keep Bookings/CRM: ☐ forever ☐ ____ years ☐ until ____
 - Deletion requests handled by: __________
 
@@ -473,6 +503,8 @@ Photos: ☐ ours ☐ need new photos. Review quotes: ☐ fine ☐ ask each Guest
 **Today.** The Firebase project is `hacienda-de-luisana`; the site's canonical origin is `https://haciendadeluisana.com`; the booking callables can run on Firebase or on a Cloudflare Worker (ADR-0024); the code lives in a GitHub repository; hosting config exists for both Firebase Hosting and Vercel.
 
 **Bakit.** At turnover the owner (or the team, on her behalf) must hold: the domain registrar, the Firebase project owner, the Cloudflare account, the GitHub repo and the hosting account. If the student's personal account is the owner of all five, the business stops when the account does.
+
+> **Never collect credentials in a form, a chat or an email.** What is recorded is **who owns each account, the registered owner email, and whether the Hacienda already has authorized administrator access** — never a password, recovery code, API key or one-time code. Ownership moves through each service's own *invite* and *transfer ownership* flow, and the two-factor recovery codes stay with the owner.
 
 **Sagot.** Domain owner: __________ Firebase owner: __________ Cloudflare: __________ GitHub: __________ Will accounts be transferred? ☐ Yes, when: __________ ☐ No
 
@@ -511,7 +543,36 @@ Who is trained before launch: __________. Rollback (turn booking off) decided by
 
 ---
 
-## 7. Already settled — huwag nang itanong
+## 7. Added in v2 of the form
+
+These came out of the review of v1. They are operational rules rather than open questions — the team can pick a sane default, but the owner's answer is what the system should record. Full wording lives in the form; this is the index.
+
+| Decision | Why it matters | Lands in |
+|---|---|---|
+| Check-in 2:00 PM / check-out 12:00 NN confirmed (`other` option for a different time) | It is the 22-hour stay the rate is priced on; changing it changes every quote | `BUSINESS.policies` in `src/config/site.ts`, `OFFICIAL_STAY_POLICIES`, `docs/BOOKING_POLICY.md` |
+| Early check-in: free, charged, or refused | A charge that is not published cannot be collected online | `optional_charges`, `FEES` |
+| Late-checkout grace period; arriving early without approval; leaving late without approval | "Approved late checkout ₱250/hour" has no rule for the unapproved case | `optional_charges`, `HOUSE_RULES` |
+| Quiet hours | A house rule a Guest accepts, and one a complaint can be judged against | `HOUSE_RULES` in `src/config/site.ts` |
+| Smoking: nowhere / outdoors / an area | Currently only `smokingAllowed: false`, with no "where" | `BUSINESS.policies`, `HOUSE_RULES` |
+| Parties and visitors; events | The listings advertise gatherings; the website sells stays only | `FEES.optional`, `manual_review_notice` |
+| Children and infants: charge and age threshold | Decides whether the guest count and the price move together | Rates schedule, `HOUSE_RULES` |
+| Extra beds or mattresses | An unpriced extra is a charge nobody can collect | `optional_charges` |
+| Damage: deposit only, or a separate charge after inspection | Determines whether the deposit is the ceiling | `settleRefund`, Admin inspection step |
+| Cleaning responsibility | "Clean as you go" is published; a cleaning fee is not | `HOUSE_RULES`, `FEES` |
+| Maximum-stay length and how far ahead a Guest may book | The system caps at 20 nights; the booking horizon is unlimited | `MAX_STAY_NIGHTS`, `availability.ts` |
+| Same-day, short-notice and walk-in bookings, asked as three separate questions | v1 mixed them; a walk-in at the gate and a same-day web booking are different risks | `minimumBookingLeadTimeDays`, `docs/BOOKING_POLICY.md` |
+| Changing dates after payment | The Admin app reschedules; the Guest cannot, and the rules refuse the write | `actions.ts` (`Cancel` + a new `Reschedule`), `firestore.rules` |
+| When the hold starts and what happens when it runs out | Today it expires silently, with no message to the Guest or warning to the Admin | `DATE_HOLD_MS`, `hold_expires_at`, a notification |
+| OTA sync level (manual / iCal / full API) and who wins a conflict | "Import and export" implies automation the repo does not have | New ADR + `docs/LIMITATIONS.md` |
+| Admin access tiers (owner / manager / caretaker) | Today one role sees revenue, refunds, guest data and chat | ADR-0007 is the decision to revisit; `firestore.rules` role vocabulary |
+| Who handles check-in, complaints, emergencies, payment confirmation, refunds, overrides, and the backup contact | The system has one Admin; the household behind it does not | Operations note in `docs/ANDROID.md` / a new `docs/RUNBOOK.md` |
+| Smart-lock workflow: who issues a code, when it activates and expires, manual unlock, power/Wi-Fi failure, backup key, who gets alerts | `docs/SMART_LOCK.md` defines a payload, not an operating procedure | `docs/SMART_LOCK.md`, then firmware |
+| Retention **per record type** (booking, payment, guest contact, chat, access log, ID) | One answer for everything over-retains some records and under-retains others | `docs/LIMITATIONS.md`, a scheduled sweep, Privacy notice |
+| Whether a testimonial needs fresh Guest consent each time, and what may be shown | Reviewing a stay and publishing a name are two permissions | `docs/REVIEWS.md`, `src/lib/legal.ts` |
+
+---
+
+## 8. Already settled — huwag nang itanong
 
 These are already in the repo and should be **confirmed, not re-negotiated**:
 
@@ -527,7 +588,7 @@ These are already in the repo and should be **confirmed, not re-negotiated**:
 
 ---
 
-## 8. Not the client's to answer — the team's own gaps
+## 9. Not the client's to answer — the team's own gaps
 
 These look like client questions and are not. They must be fixed by the team, and each one is visible in a demo if left alone.
 
@@ -547,7 +608,9 @@ These look like client questions and are not. They must be fixed by the team, an
 
 ---
 
-## Appendix A — Tanong sa may-ari (one-page form)
+## Appendix A — the short version (22 tanong, ~10 minuto)
+
+This is the printable first pass: the decisions that block go-live, one page, for a conversation or a Messenger thread. It is **not** a copy of the 101-question Google Form; it is the subset to settle first, and the full instrument follows.
 
 **Pangalan:** ______________________ **Petsa:** ____________
 
@@ -573,7 +636,8 @@ These look like client questions and are not. They must be fixed by the team, an
 18. **Smart lock.** May totoong lock na ba? ☐ Wala pa ☐ Meron — brand: ________ pinto: ____ Wi-Fi: ☐ Oo ☐ Wala
 19. **Reviews.** Sino ang magmo-moderate? ____________ Pwede bang ilathala sa website ang review na may first name? ☐ Oo, magtanong muna ☐ Oo, basta't first name ☐ Hindi
 20. **Privacy.** Para sa data requests, sino ang kokontakin? Pangalan at email: ______________________. Gaano katagal itatago ang booking at guest records? ____ taon
-21. **Accounts at bayad.** Kanino ang domain, Firebase, Cloudflare, GitHub? ______________________. Sino ang magbabayad ng domain/hosting/email? ____________
+21. **Accounts at bayad.** Kanino nakapangalan ang domain, Firebase, Cloudflare, GitHub? ______________________. May admin access na ba ang Hacienda? ☐ Oo ☐ Hindi. Sino ang magbabayad ng domain/hosting/email? ____________
+    *Huwag isulat ang password, recovery code, o API key dito o sa kahit anong mensahe. Ang paglilipat ay sa official na invite o transfer ownership ng bawat serbisyo.*
 22. **Go-live.** Kailan? ____________ Sino ang i-train? ____________. May i-import ba na lumang guest/booking? ☐ Oo ☐ Wala
 
 ---
@@ -618,3 +682,12 @@ These look like client questions and are not. They must be fixed by the team, an
 | Q33 privacy/retention | `src/lib/legal.ts` (new LEGAL_VERSION), `docs/LIMITATIONS.md`, retention job |
 | Q35–Q36 ownership | Outside the repo: registrar, Firebase, Cloudflare, GitHub, Play Console |
 | Q37 go-live | New `docs/GO_LIVE.md` checklist |
+| Check-in/out times, quiet hours, smoking, parties, cleaning, damage | `src/config/site.ts` (`BUSINESS.policies`, `HOUSE_RULES`), `OFFICIAL_STAY_POLICIES`, `docs/BOOKING_POLICY.md` |
+| Same-day / short-notice / walk-in | `site_config/booking.minimumBookingLeadTimeDays`; Admin manual booking for the rest |
+| Maximum stay and booking horizon | `MAX_STAY_NIGHTS` in `src/lib/booking/availability.ts`; a new horizon constant + rules |
+| Change of dates after payment | A new Guest `Reschedule` action in `src/lib/booking/actions.ts`, mirrored in `lib/services/booking_lifecycle.dart`, plus `firestore.rules` |
+| OTA sync level | New ADR + Worker cron or iCal endpoint; otherwise `docs/LIMITATIONS.md` |
+| Admin access tiers | `firestore.rules` role vocabulary, `lib/services/auth_store.dart`, `docs/adr/0007` successor |
+| Who does what, and the backup contact | `docs/ANDROID.md`, or a new `docs/RUNBOOK.md` |
+| Smart-lock operating procedure | `docs/SMART_LOCK.md`, then firmware |
+| Retention per record type | `docs/LIMITATIONS.md`, a scheduled sweep, Privacy notice in `src/lib/legal.ts` |
