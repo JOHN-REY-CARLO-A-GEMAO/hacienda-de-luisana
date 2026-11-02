@@ -112,6 +112,30 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
+  /// Refresh the ID token when the local user says "verified" but the token
+  /// the rules will read does not.
+  ///
+  /// Firebase Auth refreshes tokens on its own about once an hour; a Guest who
+  /// verified the bootstrap address on another device can therefore spend that
+  /// hour signed into an Admin app whose writes Firestore refuses. Only a
+  /// verified, allowlisted session needs this — a Profile-promoted Admin's role
+  /// lives in `profiles/{uid}`, which the rules read directly, and an unverified
+  /// address must not be turned into an Admin by a client-side refresh anyway.
+  Future<void> _alignAdminIdToken(User user) async {
+    if (!isAllowlisted(user.email) || !user.emailVerified) return;
+    try {
+      final result = await user.getIdTokenResult();
+      if (result.claims?['email_verified'] == true) return;
+      await user.getIdToken(true);
+      debugPrint('[Auth] refreshed the Admin ID token: firestore.rules now '
+          'sees email_verified=true');
+    } catch (error) {
+      // Offline is not a reason to refuse a session; Firestore will refresh the
+      // token itself when the write leaves the device's queue.
+      debugPrint('[Auth] Admin ID token could not be refreshed: $error');
+    }
+  }
+
   /// Reads and watches `profiles/{uid}.role` for accounts not satisfied by a
   /// verified bootstrap email, so live role revocation immediately demotes
   /// the client session instead of leaving a stale Admin flag in memory.
@@ -121,6 +145,16 @@ class AuthStore extends ChangeNotifier {
 
     final user = _firebaseUser;
     if (user == null) return;
+
+    // `firestore.rules` reads `email_verified` from the ID token, not from
+    // `User.emailVerified`. A session restored from disk may carry a token
+    // minted before the bootstrap address was verified: the app then opens the
+    // Admin shell while every Firestore write comes back `permission-denied`
+    // (an OCR read is the first thing the Admin tries to file). Align the token
+    // before any screen offers a write. An explicit sign-in already has a fresh
+    // token, so the claim check keeps that path free of a second round trip.
+    await _alignAdminIdToken(user);
+
     if (isAllowlisted(user.email) && user.emailVerified) {
       _profileIsAdmin = true;
       _profileChecked = true;

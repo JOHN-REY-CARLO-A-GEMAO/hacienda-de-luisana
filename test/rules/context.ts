@@ -95,6 +95,30 @@ export const guestPaymentPatch = (overrides: DocData = {}): DocData => ({
 })
 
 /**
+ * `PaymentReferenceService._storeExtraction`'s patch (lib/, ADR-0023): the nine
+ * `ocr_*` keys an on-device receipt read is allowed to file, and nothing else.
+ * Spread over a stored Booking to build `request.resource.data`; the reference
+ * and amount here are the ones from the 2026-11-02 device log that came back
+ * `permission-denied` (`8159662488150`, ₱5000.00). `ocr_extracted_at` is a
+ * server timestamp in the app, which the rules see as `request.time`.
+ *
+ * The Admin-only metadata (`ocr_recipient_name`, `ocr_extracted_at`) is here
+ * deliberately: the Guest's self-serve vocabulary excludes both.
+ */
+export const adminOcrEvidencePatch = (overrides: DocData = {}): DocData => ({
+  ocr_reference: '8159662488150',
+  ocr_amount: '5000.00',
+  ocr_sender_name: null,
+  ocr_recipient_name: null,
+  ocr_payment_date: '2026-11-01',
+  ocr_proof_url: `payments/${GUEST_UID}/${BOOKING_ID}/proof.jpg`,
+  ocr_engine: 'mlkit-latin',
+  ocr_confidence: 'high',
+  ocr_extracted_at: ruleTimestamp(DEFAULT_REQUEST_TIME),
+  ...overrides,
+})
+
+/**
  * The Admin patch of `applyAdminAction(verifyPayment)` — the web's
  * `src/lib/booking/actions.ts` and the app's `booking_lifecycle.dart`, which
  * write the same four fields: the status money buys, the amount, the instant,

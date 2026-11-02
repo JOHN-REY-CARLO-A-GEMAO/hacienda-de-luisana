@@ -185,3 +185,48 @@ on belongs. A receipt that could not be read is likewise still said once, in
 naitalang pinagmulan" string is gone with the row it described, and amount and
 transaction date keep their "Hindi nabasa": those two are the fields the decision
 turns on, so their absence *is* the signal.
+
+## Amendment — 2026-11-02: the evidence write has its own rule, and the refusal names its writer
+
+A device log reported ML Kit reading `Ref: 8159662488150` / `₱5000.00` and
+`_storeExtraction()`'s `update(bookings/EFWlBlZN72rBnVjfaLFK)` coming back
+`PERMISSION_DENIED`. Point 4 above said "`firestore.rules` already allows the
+Admin to write any Booking field (`adminUpdate()` has no allowlist)" — true of
+the field list, but not the whole story. The general `allow update` also binds
+every write to `reservedIsPaidFor()`, which asks about the **stored** status: a
+historical `Reserved` Booking whose `payment_status` is not `verified` fails it
+even when the patch changes nothing but OCR evidence. Firestore reports that as
+the same bare `permission-denied` a role refusal produces. Two other causes
+produce the same
+line: a ruleset deployed from a different commit/project, and a session the
+rules read as Guest (`profiles/{uid}` missing, or an allowlisted address whose
+`email_verified` **ID-token claim** is stale — the app read `User.emailVerified`
+instead).
+
+Changes, none of which move money:
+
+1. **`firestore.rules` now decides evidence writes on their own.** Inside
+   `match /bookings/{bookingId}`, `adminOcrEvidenceUpdate()` is an OR branch
+   ahead of the general update rule: at least one `ocr_*` key must change,
+   **only** the nine `ocr_*` keys from `_storeExtraction` may change, and
+   `isAdmin()` must hold. Because the key list is closed, the lifecycle and
+   money invariants are vacuous for this write; every other write still pays
+   for them first, and the Guest's seven-key self-serve vocabulary is
+   unchanged. This lifts "extraction never moves money" from a Dart-only
+   guarantee into the rule layer.
+2. **The Admin session aligns its token.** `AuthStore` refreshes the ID token
+   on session restore when a verified allowlisted address carries a stale
+   `email_verified: false` claim, so the app's idea of Admin cannot run an hour
+   ahead of the rules'. A Profile-promoted Admin needs no token claim.
+3. **A refusal is diagnosable.** `logReceiptWriterIdentity()` prints the uid,
+   email, `User.emailVerified`, and the token's `email`/`email_verified` claims
+   to the device log; `receiptWriteAdvice()` now names the deployed rules,
+   `profiles/<uid>.role`, the verified allowlist address and a token refresh.
+   `docs/FIREBASE_SETUP.md` § 4 has the deployment/identity checklist.
+
+A generic `allow read, write: if isAdmin()` built on `users/{uid}`,
+`resource.data.userId`, `admin` custom claims or camelCase receipt fields was
+**rejected**: this project has no `users` collection, no `admin` custom claim,
+and stores a Booking's Guest as `uid`. Installing that snippet would replace
+the Guest, lifecycle and money invariants of ADR-0001/0012/0018 with a
+two-line rule and would still not help a session the rules read as Guest.
