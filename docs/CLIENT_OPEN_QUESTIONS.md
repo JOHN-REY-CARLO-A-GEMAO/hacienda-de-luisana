@@ -14,7 +14,8 @@
 2. Write the answer in the **Sagot** line (or in the Filipino form in [Appendix A](#appendix-a--tanong-sa-may-ari-one-page-form)).
 3. Bring the answers back to the repo: [Appendix B](#appendix-b--where-each-answer-gets-written-down) says which file or screen changes for each one. An answer that reaches no file is an answer the system never hears.
 4. **Do not re-ask what is already settled** — see [§8](#8-already-settled--huwag-nang-itanong).
-5. **Gusto ng Google Form?** Patakbuhin ang [`scripts/google-form/v2/Code.gs`](../scripts/google-form/v2/Code.gs) sa <https://script.google.com> at bubuo ito ng form at ng response sheet — 124 tanong, Taglish, pitong seksyon. Nasa [`scripts/google-form/README.md`](../scripts/google-form/README.md) ang mga hakbang at ang pagkakaiba ng v1 at v2. Ang dokumentong ito pa rin ang English na record.
+5. **Gusto ng Google Form?** Patakbuhin ang [`scripts/google-form/v2.1/Code.gs`](../scripts/google-form/v2.1/Code.gs) sa <https://script.google.com> at bubuo ito ng form at ng response sheet — 126 tanong (73 required, 53 optional), Taglish, pitong seksyon. **Ito ang bersyong ipapadala:** v2.1 lang ang nagtataglay ng mga pagwawasto ng ikatlong review; ang [`v2/Code.gs`](../scripts/google-form/v2/Code.gs) (124 tanong) ay pinananatiling hindi ginagalaw para may rekord ng kung ano ang sinuri. Nasa [`scripts/google-form/README.md`](../scripts/google-form/README.md) ang mga hakbang at ang pagkakaiba ng v1, v2 at v2.1. Ang dokumentong ito pa rin ang English na record.
+6. **Pagkatapos ng sagot:** ilipat sa **Sagot** line ng bawat tanong. Ang mga tanong na nadagdag o nabago sa v2.1 (occupancy, A-House flat rate, permission grid) ay hindi pa desisyon — kailangan pa rin silang sagutan ng may-ari.
 
 ### Priority key
 
@@ -625,7 +626,7 @@ These look like client questions and are not. They must be fixed by the team, an
 
 ## Appendix A — the short version (22 tanong, ~10 minuto)
 
-This is the printable first pass: the decisions that block go-live, one page, for a conversation or a Messenger thread. It is **not** a copy of the 124-question Google Form; it is the subset to settle first, and the full instrument follows.
+This is the printable first pass: the decisions that block go-live, one page, for a conversation or a Messenger thread. It is **not** a copy of the 126-question Google Form; it is the subset to settle first, and the full instrument follows.
 
 **Pangalan:** ______________________ **Petsa:** ____________
 

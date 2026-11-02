@@ -67,13 +67,16 @@ function check(label, condition, detail = '') {
  * the "do not delete the record" path.
  */
 function loadBuilder(source, options = {}) {
-  const { failAtItem = 0, missingForms = [] } = options
+  const { failAtItem = 0, missingForms = [], lockHeld = false, stateOverride = null } = options
   const questions = []
   let createdForms = 0
   let createdSheets = 0
   let itemCount = 0
   const properties = new Map()
+  if (stateOverride !== null) properties.set(options.stateKey ?? 'HDL_CLIENT_FORM_V21_STATE', stateOverride)
   const form = { id: 'FORM-1', destination: null }
+  let lockHeldNow = lockHeld
+  let validationsBuilt = 0
 
   function item(kind) {
     itemCount += 1
@@ -81,7 +84,10 @@ function loadBuilder(source, options = {}) {
       throw new Error(`simulated failure while adding question ${itemCount}`)
     }
 
-    const record = { kind, title: '', help: null, required: false, choices: null, other: false, rows: null, columns: null }
+    const record = {
+      kind, title: '', help: null, required: false, choices: null, other: false,
+      rows: null, columns: null, validation: null,
+    }
     questions.push(record)
 
     const strings = (values, label) => {
@@ -127,6 +133,13 @@ function loadBuilder(source, options = {}) {
       },
       setColumns(values) {
         record.columns = strings(values, 'setColumns')
+        return chain
+      },
+      setValidation(validation) {
+        if (!validation || typeof validation !== 'object') {
+          throw new TypeError(`${kind} "${record.title}": setValidation needs a built validation`)
+        }
+        record.validation = validation
         return chain
       },
     }
@@ -178,6 +191,39 @@ function loadBuilder(source, options = {}) {
         return form
       },
       DestinationType: { SPREADSHEET: 'spreadsheet' },
+      createTextValidation() {
+        const built = { kind: 'text' }
+        const builder = {
+          requireNumber() {
+            built.requiresNumber = true
+            return builder
+          },
+          setHelpText(text) {
+            if (typeof text !== 'string' || !text.trim()) throw new TypeError('validation setHelpText needs a string')
+            built.helpText = text
+            return builder
+          },
+          build() {
+            if (!built.requiresNumber) throw new Error('validation was built without a rule')
+            validationsBuilt += 1
+            return built
+          },
+        }
+        return builder
+      },
+    },
+    LockService: {
+      getScriptLock: () => ({
+        tryLock() {
+          return !lockHeldNow
+        },
+        waitLock() {
+          if (lockHeldNow) throw new Error('lock is held')
+        },
+        releaseLock() {
+          lockHeldNow = false
+        },
+      }),
     },
     SpreadsheetApp: {
       create(name) {
@@ -206,7 +252,7 @@ function loadBuilder(source, options = {}) {
     form,
     questions,
     properties,
-    stats: () => ({ createdForms, createdSheets }),
+    stats: () => ({ createdForms, createdSheets, validationsBuilt }),
   }
 }
 
@@ -408,6 +454,257 @@ check('a build that fails halfway records the form id', brokenState.formId === '
 check('a build that fails halfway is marked incomplete', brokenState.status === 'incomplete')
 
 // ---------------------------------------------------------------------------
+// v2.1 — the revision that answers the audit of v2
+// ---------------------------------------------------------------------------
+
+console.log('\ngoogle-form builder — v2.1 (the audit revision)\n')
+
+const v21source = readFileSync(join(here, 'v2.1', 'Code.gs'), 'utf8')
+const v21 = loadBuilder(v21source)
+let v21result
+try {
+  v21result = v21.sandbox.createClientFormV2()
+} catch (error) {
+  console.error('  FAIL the builder threw:', error.message)
+  process.exit(1)
+}
+
+const q21 = v21.questions.filter((q) => q.kind !== 'section')
+const s21 = v21.questions.filter((q) => q.kind === 'section')
+const t21 = q21.map((q) => q.title)
+const text21 = [
+  v21.form.description ?? '',
+  ...q21.flatMap((q) => [q.title, q.help ?? '', ...(q.choices ?? []), ...(q.rows ?? []), ...(q.columns ?? [])]),
+].join('\n')
+
+check('v2.1 keeps the seven sections', s21.length === 7, `got ${s21.length}`)
+check('v2.1 has no duplicate titles', new Set(t21).size === t21.length,
+  t21.filter((t, i) => t21.indexOf(t) !== i).join(' | '))
+check('v2.1 builds a form, a sheet and the three links',
+  v21.stats().createdForms === 1 && v21.stats().createdSheets === 1
+  && /spreadsheets/.test(v21result?.sheetUrl ?? ''))
+
+// --- Critical: duplicate protection ---------------------------------------
+check('createClientFormV2Again() is gone', !/function createClientFormV2Again/.test(v21source))
+check('a second form needs an explicit confirmation step',
+  /function confirmNewClientFormV2/.test(v21source)
+  && /function createNewClientFormV2/.test(v21source))
+
+const noConfirm = loadBuilder(v21source)
+let refusedNew = false
+try {
+  noConfirm.sandbox.createNewClientFormV2()
+} catch (error) {
+  refusedNew = true
+}
+check('createNewClientFormV2() refuses without confirmation', refusedNew)
+check('an unconfirmed new form creates nothing', noConfirm.stats().createdForms === 0)
+
+const confirmed = loadBuilder(v21source)
+confirmed.sandbox.confirmNewClientFormV2()
+confirmed.sandbox.createNewClientFormV2()
+check('a confirmed new form is created once', confirmed.stats().createdForms === 1)
+let secondUse = false
+try {
+  confirmed.sandbox.createNewClientFormV2()
+} catch (error) {
+  secondUse = true
+}
+check('one confirmation buys exactly one form', secondUse && confirmed.stats().createdForms === 1)
+
+const staleConfirm = loadBuilder(v21source)
+staleConfirm.properties.set('HDL_CLIENT_FORM_V21_CONFIRM', String(Date.now() - 11 * 60 * 1000))
+let staleRefused = false
+try {
+  staleConfirm.sandbox.createNewClientFormV2()
+} catch (error) {
+  staleRefused = true
+}
+check('a confirmation older than ten minutes does not count',
+  staleRefused && staleConfirm.stats().createdForms === 0)
+
+// --- Critical: corrupted state fails closed -------------------------------
+const corrupt = loadBuilder(v21source, {
+  stateKey: 'HDL_CLIENT_FORM_V21_STATE',
+  stateOverride: '{not json',
+})
+let corruptThrew = false
+try {
+  corrupt.sandbox.createClientFormV2()
+} catch (error) {
+  corruptThrew = true
+}
+check('a corrupted saved record stops the run', corruptThrew)
+check('a corrupted saved record creates nothing', corrupt.stats().createdForms === 0)
+check('a corrupted saved record is not deleted',
+  corrupt.properties.get('HDL_CLIENT_FORM_V21_STATE') === '{not json')
+
+// --- Critical: execution lock ---------------------------------------------
+const locked = loadBuilder(v21source, { lockHeld: true })
+let lockedThrew = false
+try {
+  locked.sandbox.createClientFormV2()
+} catch (error) {
+  lockedThrew = true
+}
+check('a held script lock stops a second run', lockedThrew)
+check('a held script lock creates nothing', locked.stats().createdForms === 0)
+check('the lock is used around the check-create-save workflow',
+  v21source.includes('LockService.getScriptLock()') && v21source.includes('tryLock('))
+
+// --- Critical: v2's own form must not be duplicated ----------------------
+const legacyRecord = JSON.stringify({
+  formId: 'legacy-form-id',
+  status: 'ready',
+  editUrl: 'https://docs.google.com/forms/d/legacy/edit',
+  liveUrl: 'https://docs.google.com/forms/d/e/legacy/viewform',
+  sheetUrl: 'https://docs.google.com/spreadsheets/d/legacy/edit',
+})
+const legacy = loadBuilder(v21source, {
+  stateKey: 'HDL_CLIENT_FORM_V2_STATE',
+  stateOverride: legacyRecord,
+})
+let legacyThrew = false
+try {
+  legacy.sandbox.createClientFormV2()
+} catch (error) {
+  legacyThrew = true
+}
+check('a form made by v2 stops v2.1 from building a second one', legacyThrew)
+check('a form made by v2 is not duplicated', legacy.stats().createdForms === 0)
+check('a form made by v2 is left in place',
+  legacy.properties.get('HDL_CLIENT_FORM_V2_STATE') === legacyRecord)
+
+const legacyCorrupt = loadBuilder(v21source, {
+  stateKey: 'HDL_CLIENT_FORM_V2_STATE',
+  stateOverride: '{oops',
+})
+let legacyCorruptThrew = false
+try {
+  legacyCorrupt.sandbox.createClientFormV2()
+} catch (error) {
+  legacyCorruptThrew = true
+}
+check('an unreadable v2 record stops the run', legacyCorruptThrew)
+check('an unreadable v2 record creates nothing', legacyCorrupt.stats().createdForms === 0)
+
+// --- High: numeric occupancy ----------------------------------------------
+const mainMax21 = asks(q21, /maximum na papayagan sa Main House/i)
+const annexMax21 = asks(q21, /maximum na papayagan sa Annex/i)
+const campMax21 = asks(q21, /maximum na papayagan sa A-House/i)
+check('the three occupancy questions require a number',
+  [mainMax21, annexMax21, campMax21].every((q) => q?.validation?.requiresNumber === true))
+check('the occupancy questions stay optional, so blank records "not decided"',
+  [mainMax21, annexMax21, campMax21].every((q) => q && q.required === false))
+check('a fallback rule is asked while the maximum is undecided',
+  Boolean(asks(q21, /Habang wala pang desisyon sa maximum/i)))
+
+// --- High: the ambiguous weekend question is gone -------------------------
+check('the Friday-to-Sunday question is removed',
+  !q21.some((q) => /Biyernes hanggang Linggo/i.test(q.title)))
+check('the Thursday-to-Saturday example stays',
+  /Huwebes hanggang Sabado/i.test(asks(q21, /paano sisingilin ang bawat gabi/i)?.help ?? ''))
+
+// --- High: save-and-return needs a sign-in --------------------------------
+check('the draft promise states the sign-in condition',
+  /mag-sign in/i.test(v21.form.description ?? '') && /30 araw/i.test(v21.form.description ?? ''))
+
+// --- High: permission grid has no "none" column ---------------------------
+const permGrid = q21.find((q) => q.kind === 'checkboxGrid')
+check('the permission grid has no "Wala sa lahat" column',
+  permGrid && !permGrid.columns.some((c) => /wala sa lahat/i.test(c)))
+check('the permission grid says a blank row means no permission',
+  /walang tsek/i.test(permGrid?.help ?? ''))
+
+// --- Iba pa duplication ---------------------------------------------------
+const bothIbaPa = q21.filter((q) => q.other && (q.choices ?? []).includes('Iba pa'))
+check('no question offers both a literal "Iba pa" and Google’s Other box',
+  bothIbaPa.length === 0, bothIbaPa.map((q) => q.title).join(' | '))
+
+// --- Account ownership ----------------------------------------------------
+const ownershipGrid = asks(q21, /Kanino nakapangalan ang bawat account/i)
+check('ownership is asked as a grid of services',
+  ownershipGrid?.kind === 'grid')
+const services = (ownershipGrid?.rows ?? []).join(' | ')
+check('the grid covers the services this project runs on',
+  ['Domain registrar', 'Firebase', 'Supabase', 'Vercel', 'GitHub'].every((svc) => services.includes(svc)),
+  services)
+check('the registered owner email is asked separately',
+  Boolean(asks(q21, /registered owner email/i)))
+check('the credential prohibition is still stated on the ownership question',
+  /HUWAG ilagay ang password/i.test(ownershipGrid?.help ?? ''))
+
+// --- Refund example arithmetic -------------------------------------------
+const refundBase = asks(q21, /refund percentage ay base sa ano/i)
+check('the refund example no longer claims 5,000 is greater than 5,000',
+  !/mas malaki kaysa sa binayad/i.test(refundBase?.help ?? ''))
+check('the refund example states the cap',
+  /hindi pwedeng lumampas ang refund sa perang tunay na natanggap/i.test(refundBase?.help ?? ''))
+
+// --- Neutral deposit definition ------------------------------------------
+check('the security deposit definition no longer assumes one is collected',
+  !/perang hawak muna ng Hacienda/i.test(v21.form.description ?? '')
+  && /maaaring kolektahin/i.test(v21.form.description ?? ''))
+
+// --- OTA wording ---------------------------------------------------------
+const ota21 = asks(q21, /antas ng koneksyon sa OTA/i)
+check('the OTA help no longer quotes a fixed delay in minutes',
+  !/15 minuto hanggang ilang oras/i.test(ota21?.help ?? ''))
+check('the OTA help still says feeds are delayed and cannot prevent clashes',
+  /HINDI real-time/i.test(ota21?.help ?? '') && /kayang garantiyahin/i.test(ota21?.help ?? ''))
+
+// --- Content improvements ------------------------------------------------
+const perNight = asks(q21, /Bawat gabi ba ang mga presyo/i)
+check('the per-night question names all three accommodations',
+  /Main House/.test(perNight?.title ?? '') && /Annex/.test(perNight?.title ?? '')
+  && /A-House/.test(perNight?.title ?? ''))
+check('the A-House flat rate is confirmed across weekday, weekend and holiday',
+  Boolean(asks(q21, /₱1,000 ng A-House/i)))
+const receipt = asks(q21, /proseso ng resibo o invoice/i)
+check('the receipt question asks for a process, not a yes/no',
+  (receipt?.choices ?? []).length >= 4)
+check('the smart-lock answers are not treated as hardware confirmation',
+  /HINDI kumpirmasyon/i.test(asks(q21, /may totoong smart lock/i)?.help ?? ''))
+const requiredCount21 = q21.filter((q) => q.required).length
+check('fewer answers are required than in v2 (90)', requiredCount21 < 90, `v2.1 has ${requiredCount21}`)
+
+// --- Answer quality still holds ------------------------------------------
+check('every required list question can still be answered "not decided yet"',
+  q21.filter((q) => q.required && q.choices && !hasEscape(q)).length === 0,
+  q21.filter((q) => q.required && q.choices && !hasEscape(q)).map((q) => q.title).join(' | '))
+check('every required grid can still be answered "not decided yet"',
+  q21.filter((q) => q.required && q.kind === 'grid'
+    && !(q.columns ?? []).some((c) => /napagdesisyunan|hindi ko alam/i.test(c))).length === 0)
+
+// --- Builder behaviour ---------------------------------------------------
+const forms21 = v21.stats().createdForms
+const items21 = v21.questions.length
+v21.sandbox.createClientFormV2()
+check('running v2.1 twice does not create a second form', v21.stats().createdForms === forms21)
+check('running v2.1 twice does not add questions', v21.questions.length === items21)
+
+const state21 = JSON.parse(v21.properties.get('HDL_CLIENT_FORM_V21_STATE') ?? '{}')
+check('v2.1 saves its own record, apart from v2',
+  state21.formId === 'FORM-1' && state21.status === 'ready')
+
+// A build that dies halfway must leave an honest record.
+const broken21 = loadBuilder(v21source, { failAtItem: 6 })
+let brokeDown21 = false
+try {
+  broken21.sandbox.createClientFormV2()
+} catch (error) {
+  brokeDown21 = true
+}
+const brokenState21 = JSON.parse(broken21.properties.get('HDL_CLIENT_FORM_V21_STATE') ?? '{}')
+check('a failed v2.1 build throws', brokeDown21)
+check('a failed v2.1 build records the form id and is marked incomplete',
+  brokenState21.formId === 'FORM-1' && brokenState21.status === 'incomplete')
+
+// The first save now sits inside the try, so it is reachable by the catch.
+check('the first saveState sits inside the try block',
+  v21source.includes('try {\n    saveState(state)'))
+
+// ---------------------------------------------------------------------------
 // v1 — kept for history, only checked that it still runs
 // ---------------------------------------------------------------------------
 
@@ -422,8 +719,10 @@ try {
 
 const required = items.filter((q) => q.required).length
 const optional = items.length - required
-console.log(`\n  v2: ${items.length} questions (${required} required, ${optional} optional), ${sections.length} sections`)
-console.log(`  v1: ${v1.questions.filter((q) => q.kind !== 'section').length} questions (left as it was)\n`)
+const required21 = q21.filter((q) => q.required).length
+console.log(`\n  v2.1: ${q21.length} questions (${required21} required, ${q21.length - required21} optional), ${s21.length} sections`)
+console.log(`  v2:   ${items.length} questions (${required} required, ${optional} optional), ${sections.length} sections — unchanged`)
+console.log(`  v1:   ${v1.questions.filter((q) => q.kind !== 'section').length} questions — unchanged\n`)
 
 if (failures > 0) {
   console.error(`${failures} check(s) failed\n`)

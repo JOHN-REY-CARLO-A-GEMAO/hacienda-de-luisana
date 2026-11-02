@@ -1,13 +1,14 @@
 # The client-decisions Google Form
 
-Two builders live here:
+Three builders live here:
 
 | File | What it is | Send it? |
 |---|---|---|
-| `v2/Code.gs` | **Version 2, revised** — 124 questions, seven sections, built from two reviews | **Yes** |
+| `v2.1/Code.gs` | **Version 2.1** — 126 questions, seven sections; v2 with a third audit's findings fixed | **Yes** |
+| `v2/Code.gs` | Version 2, revised — 124 questions, frozen at the state the third audit reviewed | No |
 | `Code.gs` | Version 1 — 55 questions, kept unchanged for history | No |
 
-Both build a Google Form for the questions in
+Each builds a Google Form for the questions in
 [`docs/CLIENT_OPEN_QUESTIONS.md`](../../docs/CLIENT_OPEN_QUESTIONS.md) — the business
 facts only the Hacienda's owner can decide — and link it to a spreadsheet of answers.
 
@@ -17,10 +18,10 @@ Drive, and you can edit any wording without a deploy.
 
 ---
 
-## Build v2 (once, about 3 minutes)
+## Build it (once, about 3 minutes)
 
 1. Open <https://script.google.com> → **New project**.
-2. Delete the sample `myFunction`, paste all of `v2/Code.gs`, and press **Save**.
+2. Delete the sample `myFunction`, paste all of `v2.1/Code.gs`, and press **Save**.
 3. In the function dropdown pick **`createClientFormV2`**, then **Run**.
 4. Approve the permissions. **Read the list Google shows on its own consent screen** rather
    than trusting any summary: the script uses Google Forms (create the form), Google Sheets
@@ -62,11 +63,20 @@ not against Google itself. One manual pass closes that gap:
   another form. Delete the half-built form and sheet in Drive, run
   **`forgetClientFormV2()`** (it clears the record and prints the links; it does not delete
   anything itself), then run `createClientFormV2` again.
-- `createClientFormV2Again` builds a fresh copy and leaves the earlier form and its answers
-  alone. `showClientFormV2Links` reprints the links.
+- A second form takes **two deliberate steps**: run `confirmNewClientFormV2()`, which prints
+  the links of the form that already exists, then run `createNewClientFormV2()` within ten
+  minutes. Each confirmation buys exactly one form, and v1's `createClientFormV2Again` — a
+  single click that made a duplicate — is gone.
+- The whole check-create-save workflow runs under `LockService`, so two windows pressing Run
+  at the same moment cannot both see an empty record and both build.
+- A saved record that cannot be read now **stops** the script instead of reading as "no form
+  yet". `showClientFormV2Links` reprints the links.
 
-> If an older v2 build was already run under the previous property name, it will not be
-> detected and a new form will be created. Delete the earlier form and sheet from Drive.
+> v2.1 also refuses if **v2's own record** (`HDL_CLIENT_FORM_V2_STATE`) names a form: that
+> form is listed, nothing is created. One real window remains — `FormApp.create()` runs
+> before the first `saveState()`, so a property write that fails at that exact moment leaves
+> a form in Drive with no record. It is documented, not hidden; check Drive before running
+> the script a second time.
 
 ---
 
@@ -122,9 +132,34 @@ also asks when the countdown starts and what happens when it runs out, which tod
 
 ---
 
+## What changed in v2.1
+
+The third audit approved v2 conditionally. Every finding below is fixed in `v2.1/Code.gs`
+and asserted in `build-check.mjs`; the seven sections and the rest of the questionnaire are
+v2's, unchanged. **`v2/Code.gs` is not edited.**
+
+| Finding | What v2.1 does |
+|---|---|
+| `createClientFormV2Again` made a duplicate in one click, corrupt state read as "no form", and two simultaneous runs could both build | A second form needs `confirmNewClientFormV2()` **then** `createNewClientFormV2()` inside ten minutes, one form per confirmation; unreadable state **throws** instead of counting as empty; the check-create-save path is under `LockService`. A v2 record is honoured as an existing form too. |
+| The first `saveState()` could fail outside the `try`, leaving a form with no record | Moved inside the `try`. `FormApp.create()` still precedes it — that window is stated in the header and the README rather than papered over. |
+| "Pwede mong i-save at balikan" promised an autosave that does not always happen | It now states the condition: same Google Account, same link, autosave up to 30 days; otherwise finish in one sitting. |
+| Occupancy was a menu of preset numbers, and a typed number could be blank text | Three number-validated fields, still **optional** — blank is the recorded "not decided" — plus a question on what the system should use while the maximum is undecided. |
+| The Friday-to-Sunday weekend question could not distinguish the two pricing models | Removed. The Thursday-to-Saturday example stays, and the per-night question names Main House, Annex, A-House and "Iba-iba bawat accommodation". A new question confirms the A-House's flat rate across weekday, weekend and holiday. |
+| The permission grid offered "Wala sa lahat" beside the real permissions | That column is gone; a blank row means no permission, and the help text says so. |
+| The refund example said ₱5,000 was capped at a greater ₱5,000 | The arithmetic is written out (₱2,500 vs ₱5,000), and the help states that a refund cannot exceed the money actually received. |
+| The security deposit was defined as if one is always collected | Redefined as an additional amount that **may** be collected; the question asks whether it is required at all. |
+| The OTA help quoted a fixed "15 minutes to a few hours" delay | It now says the delay depends on the provider and configuration, that iCal is not real-time, and that no feed can guarantee a clash-free calendar. |
+| Account ownership listed services the project does not run on, and never asked for the registered email | The grid covers domain registrar/DNS, Firebase/Google Cloud, Supabase, Vercel, GitHub and other services; a separate paragraph asks for the registered owner email. No password is ever requested. |
+| The receipt question was a yes/no dressed up as a list | It asks for the **process**: screenshot only, a simple admin invoice, a BIR official receipt, other, or not yet decided. |
+| Smart-lock answers could read as confirmation that hardware exists | The help states the answers choose intent, not hardware; the first answer remains "no lock, no brand chosen". |
+| Thirteen questions offered a literal "Iba pa" choice **and** Google's Other box | The literal choice is removed wherever Google's Other box is on. |
+| Too many answers were required to send the form at all | 18 questions moved to optional; required answers drop from **90 to 73**. The questions v2.1 adds are optional apart from two that offer "Pag-usapan natin". |
+
+---
+
 ## What Ms. Aida sees
 
-Seven pages, 124 questions (90 required, 34 optional), ~40–50 minutes, with a progress bar.
+Seven pages, 126 questions (73 required, 53 optional), ~40–50 minutes, with a progress bar.
 The questions are in Taglish on purpose: the form is read by the owner, not by the panel.
 
 1. **Bago magsimula** — who is answering, and whether these answers are final or need the
@@ -177,19 +212,21 @@ getting it wrong, and where each answer gets written into the repository.
 
 ## Checking the script without Google
 
-`build-check.mjs` runs both builders against a strict mock of the Forms, Sheets, Properties
-and Utilities services. It fails on anything the real API would refuse, asserts every fix
-from both reviews, and exercises the two failure paths:
+`build-check.mjs` runs all three builders against a strict mock of the Forms, Sheets,
+Properties and Utilities services. It fails on anything the real API would refuse, asserts
+every fix from all three reviews, and exercises the failure paths:
 
 - a form that cannot be opened must **not** lose its record and must create nothing;
-- a build that fails halfway must **throw**, keep the form id, and be marked `incomplete`.
+- a build that fails halfway must **throw**, keep the form id, and be marked `incomplete`;
+- an unreadable record, and a held lock, must both stop the run and create nothing;
+- a confirmation must be required, must expire after ten minutes, and must buy one form.
 
 ```bash
 npm run check:google-form
 ```
 
-v1 is only checked to still parse and run, so history stays readable without holding the
-old form to rules it was written before. This is a mock, not a Google execution: the dummy
+v1 and v2 are only checked to still parse and run, so history stays readable without
+holding older forms to rules written after them. This is a mock, not a Google execution: the dummy
 pass above is still required.
 
 The scripts are plain ES5-style Apps Script — no `const`, no arrow functions — because that
