@@ -1,10 +1,11 @@
 # The client-decisions Google Form
 
-Three builders live here:
+Four builders live here:
 
 | File | What it is | Send it? |
 |---|---|---|
-| `v2.1/Code.gs` | **Version 2.1** — 126 questions, seven sections; v2 with a third audit's findings fixed | **Yes** |
+| `v2.1.1/Code.gs` | **Version 2.1.1** — 126 questions, seven sections; v2.1 with the five code-review fixes | **Yes** |
+| `v2.1/Code.gs` | Version 2.1 — the same questions; its duplicate protection has a race and a state gap | No |
 | `v2/Code.gs` | Version 2, revised — 124 questions, frozen at the state the third audit reviewed | No |
 | `Code.gs` | Version 1 — 55 questions, kept unchanged for history | No |
 
@@ -21,7 +22,7 @@ Drive, and you can edit any wording without a deploy.
 ## Build it (once, about 3 minutes)
 
 1. Open <https://script.google.com> → **New project**.
-2. Delete the sample `myFunction`, paste all of `v2.1/Code.gs`, and press **Save**.
+2. Delete the sample `myFunction`, paste all of `v2.1.1/Code.gs`, and press **Save**.
 3. In the function dropdown pick **`createClientFormV2`**, then **Run**.
 4. Approve the permissions. **Read the list Google shows on its own consent screen** rather
    than trusting any summary: the script uses Google Forms (create the form), Google Sheets
@@ -65,18 +66,25 @@ not against Google itself. One manual pass closes that gap:
   anything itself), then run `createClientFormV2` again.
 - A second form takes **two deliberate steps**: run `confirmNewClientFormV2()`, which prints
   the links of the form that already exists, then run `createNewClientFormV2()` within ten
-  minutes. Each confirmation buys exactly one form, and v1's `createClientFormV2Again` — a
-  single click that made a duplicate — is gone.
+  minutes. The confirmation is read, checked and spent **inside the script lock**, so two
+  executions starting together cannot both act on it. A failed build still uses it up —
+  confirm again rather than trusting a stale one.
 - The whole check-create-save workflow runs under `LockService`, so two windows pressing Run
   at the same moment cannot both see an empty record and both build.
-- A saved record that cannot be read now **stops** the script instead of reading as "no form
-  yet". `showClientFormV2Links` reprints the links.
+- A saved record that cannot be read, **or that has no usable `formId`**, stops the script
+  instead of reading as "no form yet". `showClientFormV2Links` reprints the links.
+- `forgetClientFormV2()` reads the raw property, so a record too damaged to parse can still
+  be cleared — and its raw text is printed, because that text may be the only copy of the
+  form id.
+- `forgetLegacyClientFormV2()` clears **v2's** record and nothing else. It prints the old
+  links, warns in plain words, and never touches a Drive file.
 
-> v2.1 also refuses if **v2's own record** (`HDL_CLIENT_FORM_V2_STATE`) names a form: that
+> v2.1.1 also refuses if **v2's own record** (`HDL_CLIENT_FORM_V2_STATE`) names a form: that
 > form is listed, nothing is created. One real window remains — `FormApp.create()` runs
 > before the first `saveState()`, so a property write that fails at that exact moment leaves
 > a form in Drive with no record. It is documented, not hidden; check Drive before running
-> the script a second time.
+> the script a second time. That case is also the one where the recovery save can fail, and
+> v2.1.1 prints the original error, the form id and the second failure before re-throwing.
 
 ---
 
@@ -135,8 +143,9 @@ also asks when the countdown starts and what happens when it runs out, which tod
 ## What changed in v2.1
 
 The third audit approved v2 conditionally. Every finding below is fixed in `v2.1/Code.gs`
-and asserted in `build-check.mjs`; the seven sections and the rest of the questionnaire are
-v2's, unchanged. **`v2/Code.gs` is not edited.**
+(superseded by v2.1.1, which fixes defects in that file's duplicate protection) and asserted
+in `build-check.mjs`; the seven sections and the rest of the questionnaire are v2's,
+unchanged. **`v2/Code.gs` is not edited.**
 
 | Finding | What v2.1 does |
 |---|---|
@@ -154,6 +163,28 @@ v2's, unchanged. **`v2/Code.gs` is not edited.**
 | Smart-lock answers could read as confirmation that hardware exists | The help states the answers choose intent, not hardware; the first answer remains "no lock, no brand chosen". |
 | Thirteen questions offered a literal "Iba pa" choice **and** Google's Other box | The literal choice is removed wherever Google's Other box is on. |
 | Too many answers were required to send the form at all | 18 questions moved to optional; required answers drop from **90 to 73**. The questions v2.1 adds are optional apart from two that offer "Pag-usapan natin". |
+
+---
+
+## What changed in v2.1.1
+
+The code review of v2.1 found two critical and three lesser defects, all in the duplicate
+protection and the error path — none in the questions. v2.1.1 is a new file; **v2.1 is not
+edited**, so the reviewed source stays readable. Both use the same three property keys, so a
+form built by v2.1 is found and protected rather than duplicated.
+
+| Finding | What v2.1.1 does |
+|---|---|
+| The confirmation was read, checked and deleted **before** the lock, so two executions could both pass the check and the second could build after the first | The lock is taken first; the read, the check and the delete are inside it. Nothing is spent when the lock cannot be had. One confirmation = one form, and a failed build needs a fresh confirmation. |
+| `{"status":"ready"}` — valid JSON, no `formId` — was accepted as "no form yet", for both the v2.1 record and the v2 legacy record | Both readers require a non-empty string `formId`. Anything else — no id, an empty id, a number — **throws** and leaves the record in place. |
+| `forgetClientFormV2()` called the strict reader, so a record it existed to clear could make it throw | It reads the raw property, prints whatever is there (the raw text if unparseable, so the form id is not lost), then deletes only that key. |
+| No way to clear v2's legacy record, so a deleted v2 form still blocked creation | `forgetLegacyClientFormV2()` prints the v2 links, warns that it deletes a property and not a Drive file, then clears `HDL_CLIENT_FORM_V2_STATE` only. |
+| The recovery save in the catch could throw and bury the original error | It has its own `try`; the original error and the form id are printed first, the recovery failure second, and the original is re-thrown. |
+| The confirmation screen ignored v2's form | `confirmNewClientFormV2()` lists both records and warns that two forms and two sheets would remain. If the v2 record is unusable, it refuses to record the confirmation at all. |
+
+The question set is untouched: the checker asserts that v2.1.1 asks **exactly** the same
+titles, kinds and required flags as v2.1, in the same order — 126 questions, 73 required,
+seven sections.
 
 ---
 
@@ -212,21 +243,27 @@ getting it wrong, and where each answer gets written into the repository.
 
 ## Checking the script without Google
 
-`build-check.mjs` runs all three builders against a strict mock of the Forms, Sheets,
+`build-check.mjs` runs all four builders against a strict mock of the Forms, Sheets,
 Properties and Utilities services. It fails on anything the real API would refuse, asserts
 every fix from all three reviews, and exercises the failure paths:
 
 - a form that cannot be opened must **not** lose its record and must create nothing;
 - a build that fails halfway must **throw**, keep the form id, and be marked `incomplete`;
-- an unreadable record, and a held lock, must both stop the run and create nothing;
-- a confirmation must be required, must expire after ten minutes, and must buy one form.
+- an unreadable record, a record without a `formId`, and a held lock must all stop the run
+  and create nothing;
+- a confirmation must be required, must expire after ten minutes, must survive a run that
+  could not get the lock, and must buy exactly one form;
+- a failed recovery save must not replace the original error, and the form id must appear in
+  the log before the re-throw;
+- `forgetClientFormV2()` must clear a record it cannot parse, and
+  `forgetLegacyClientFormV2()` must clear only the v2 record.
 
 ```bash
 npm run check:google-form
 ```
 
-v1 and v2 are only checked to still parse and run, so history stays readable without
-holding older forms to rules written after them. This is a mock, not a Google execution: the dummy
+v1, v2 and v2.1 are only checked to still parse and run, so history stays readable without
+holding older forms to rules written after them. v2.1.1 is asserted question by question. This is a mock, not a Google execution: the dummy
 pass above is still required.
 
 The scripts are plain ES5-style Apps Script — no `const`, no arrow functions — because that

@@ -67,11 +67,15 @@ function check(label, condition, detail = '') {
  * the "do not delete the record" path.
  */
 function loadBuilder(source, options = {}) {
-  const { failAtItem = 0, missingForms = [], lockHeld = false, stateOverride = null } = options
+  const {
+    failAtItem = 0, missingForms = [], lockHeld = false, stateOverride = null, failSaveAt = 0,
+  } = options
   const questions = []
+  const logs = []
   let createdForms = 0
   let createdSheets = 0
   let itemCount = 0
+  let saveCount = 0
   const properties = new Map()
   if (stateOverride !== null) properties.set(options.stateKey ?? 'HDL_CLIENT_FORM_V21_STATE', stateOverride)
   const form = { id: 'FORM-1', destination: null }
@@ -235,13 +239,19 @@ function loadBuilder(source, options = {}) {
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (key) => (properties.has(key) ? properties.get(key) : null),
-        setProperty: (key, value) => properties.set(key, value),
+        setProperty: (key, value) => {
+          saveCount += 1
+          if (failSaveAt && saveCount === failSaveAt) {
+            throw new Error(`simulated property write failure ${saveCount}`)
+          }
+          properties.set(key, value)
+        },
         deleteProperty: (key) => properties.delete(key),
       }),
     },
     Utilities: { formatDate: () => '2026-11-02' },
     Session: { getScriptTimeZone: () => 'Asia/Manila' },
-    Logger: { log: () => {} },
+    Logger: { log: (message) => { logs.push(String(message)) } },
   }
 
   vm.createContext(sandbox)
@@ -252,7 +262,8 @@ function loadBuilder(source, options = {}) {
     form,
     questions,
     properties,
-    stats: () => ({ createdForms, createdSheets, validationsBuilt }),
+    logs,
+    stats: () => ({ createdForms, createdSheets, validationsBuilt, failedSaves: saveCount }),
   }
 }
 
@@ -705,6 +716,242 @@ check('the first saveState sits inside the try block',
   v21source.includes('try {\n    saveState(state)'))
 
 // ---------------------------------------------------------------------------
+// v2.1.1 — the five fixes, and nothing else
+// ---------------------------------------------------------------------------
+
+console.log('\ngoogle-form builder — v2.1.1 (the patch)\n')
+
+const v211source = readFileSync(join(here, 'v2.1.1', 'Code.gs'), 'utf8')
+const v211 = loadBuilder(v211source)
+let v211result
+try {
+  v211result = v211.sandbox.createClientFormV2()
+} catch (error) {
+  console.error('  FAIL the builder threw:', error.message)
+  process.exit(1)
+}
+
+const q211 = v211.questions.filter((q) => q.kind !== 'section')
+const s211 = v211.questions.filter((q) => q.kind === 'section')
+
+check('v2.1.1 builds a form, a sheet and the three links',
+  v211.stats().createdForms === 1 && v211.stats().createdSheets === 1
+  && /spreadsheets/.test(v211result?.sheetUrl ?? ''))
+check('v2.1.1 keeps the seven sections', s211.length === 7, `got ${s211.length}`)
+check('v2.1.1 asks exactly the questions v2.1 asks',
+  JSON.stringify(q211.map((q) => [q.title, q.kind, q.required]))
+  === JSON.stringify(q21.map((q) => [q.title, q.kind, q.required])))
+
+let v211SecondRun = false
+try {
+  v211.sandbox.createClientFormV2()
+} catch (error) {
+  v211SecondRun = true
+}
+check('running v2.1.1 twice does not create a second form',
+  !v211SecondRun && v211.stats().createdForms === 1)
+check('running v2.1.1 twice does not add questions', v211.questions.length === q211.length + s211.length)
+
+// --- Critical: the confirmation is spent under the lock -------------------
+const newFormBody = v211source.slice(
+  v211source.indexOf('function createNewClientFormV2'),
+  v211source.indexOf('function confirmNewClientFormV2'),
+)
+check('the confirmation is read only after the lock is taken',
+  newFormBody.indexOf('getScriptLock') !== -1
+  && newFormBody.indexOf('getScriptLock') < newFormBody.indexOf('getProperty(CONFIRM_KEY)'))
+check('the confirmation is consumed only after the lock is taken',
+  newFormBody.indexOf('getScriptLock') < newFormBody.indexOf('deleteProperty(CONFIRM_KEY)'))
+check('the lock is released in a finally', /finally \{\s*lock\.releaseLock\(\)/.test(newFormBody))
+
+// The old order deleted the confirmation before the lock and then gave up, so a
+// blocked run still burned the confirmation and the next run said "not
+// confirmed". With the check inside the lock the confirmation must survive.
+const strandedConfirm = loadBuilder(v211source, { lockHeld: true })
+strandedConfirm.properties.set('HDL_CLIENT_FORM_V21_CONFIRM', String(Date.now()))
+let lockBlockedNew = false
+try {
+  strandedConfirm.sandbox.createNewClientFormV2()
+} catch (error) {
+  lockBlockedNew = true
+}
+check('a held lock stops createNewClientFormV2()', lockBlockedNew)
+check('a held lock creates nothing even when confirmed', strandedConfirm.stats().createdForms === 0)
+check('a held lock does not spend the confirmation',
+  strandedConfirm.properties.has('HDL_CLIENT_FORM_V21_CONFIRM'))
+
+const confirmed211 = loadBuilder(v211source)
+confirmed211.properties.set('HDL_CLIENT_FORM_V21_CONFIRM', String(Date.now()))
+confirmed211.sandbox.createNewClientFormV2()
+check('a confirmation still buys a form once the lock is free',
+  confirmed211.stats().createdForms === 1)
+check('the confirmation is gone after it was spent',
+  !confirmed211.properties.has('HDL_CLIENT_FORM_V21_CONFIRM'))
+let second211 = false
+try {
+  confirmed211.sandbox.createNewClientFormV2()
+} catch (error) {
+  second211 = true
+}
+check('one confirmation still buys exactly one form', second211 && confirmed211.stats().createdForms === 1)
+
+// --- Critical: a record without a form id is not an empty slot -------------
+for (const bad of ['{"status":"ready"}', '{"formId":""}', '{"formId":42}']) {
+  const noId = loadBuilder(v211source, { stateOverride: bad })
+  let threw = false
+  try {
+    noId.sandbox.createClientFormV2()
+  } catch (error) {
+    threw = true
+  }
+  check(`a record without a usable form id stops the run — ${bad}`,
+    threw && noId.stats().createdForms === 0)
+  check(`a record without a usable form id is kept — ${bad}`,
+    noId.properties.get('HDL_CLIENT_FORM_V21_STATE') === bad)
+}
+
+const legacyNoId = loadBuilder(v211source, {
+  stateKey: 'HDL_CLIENT_FORM_V2_STATE',
+  stateOverride: '{"status":"ready"}',
+})
+let legacyNoIdThrew = false
+try {
+  legacyNoId.sandbox.createClientFormV2()
+} catch (error) {
+  legacyNoIdThrew = true
+}
+check('a v2 record without a form id stops the run',
+  legacyNoIdThrew && legacyNoId.stats().createdForms === 0)
+check('a v2 record without a form id is kept',
+  legacyNoId.properties.get('HDL_CLIENT_FORM_V2_STATE') === '{"status":"ready"}')
+
+// --- High: the legacy record can actually be cleared ----------------------
+const forgetLegacy = loadBuilder(v211source)
+forgetLegacy.properties.set('HDL_CLIENT_FORM_V2_STATE',
+  '{"formId":"legacy-form-id","editUrl":"https://docs.google.com/forms/d/legacy/edit"}')
+forgetLegacy.properties.set('HDL_CLIENT_FORM_V21_STATE', '{"formId":"FORM-1","status":"ready"}')
+forgetLegacy.sandbox.forgetLegacyClientFormV2()
+const forgetLegacyLogs = forgetLegacy.logs.join('\n')
+check('forgetLegacyClientFormV2 clears the v2 record',
+  !forgetLegacy.properties.has('HDL_CLIENT_FORM_V2_STATE'))
+check('forgetLegacyClientFormV2 leaves the v2.1 record alone',
+  forgetLegacy.properties.get('HDL_CLIENT_FORM_V21_STATE') === '{"formId":"FORM-1","status":"ready"}')
+check('forgetLegacyClientFormV2 prints the old links', forgetLegacyLogs.includes('legacy/edit'))
+check('forgetLegacyClientFormV2 warns that Drive files are not deleted',
+  /HINDI nito binubura ang form/.test(forgetLegacyLogs))
+check('forgetLegacyClientFormV2 creates and deletes nothing',
+  forgetLegacy.stats().createdForms === 0)
+
+const forgetLegacyCorrupt = loadBuilder(v211source, {
+  stateKey: 'HDL_CLIENT_FORM_V2_STATE',
+  stateOverride: '{oops',
+})
+let corruptLegacyForgetThrew = false
+try {
+  forgetLegacyCorrupt.sandbox.forgetLegacyClientFormV2()
+} catch (error) {
+  corruptLegacyForgetThrew = true
+}
+check('forgetLegacyClientFormV2 clears a v2 record it cannot parse',
+  !corruptLegacyForgetThrew && !forgetLegacyCorrupt.properties.has('HDL_CLIENT_FORM_V2_STATE'))
+check('forgetLegacyClientFormV2 prints the raw v2 record',
+  forgetLegacyCorrupt.logs.join('\n').includes('{oops'))
+
+const forgetLegacyEmpty = loadBuilder(v211source)
+let emptyForgetThrew = false
+try {
+  forgetLegacyEmpty.sandbox.forgetLegacyClientFormV2()
+} catch (error) {
+  emptyForgetThrew = true
+}
+check('forgetLegacyClientFormV2 does nothing when there is nothing to clear', !emptyForgetThrew)
+
+const afterLegacyForget = loadBuilder(v211source, {
+  stateKey: 'HDL_CLIENT_FORM_V2_STATE',
+  stateOverride: '{"formId":"legacy-form-id"}',
+})
+afterLegacyForget.sandbox.forgetLegacyClientFormV2()
+afterLegacyForget.sandbox.createClientFormV2()
+check('after clearing the v2 record, v2.1.1 builds again',
+  afterLegacyForget.stats().createdForms === 1)
+
+// --- High: the confirmation screen shows the legacy form ------------------
+const confirmLegacy = loadBuilder(v211source, {
+  stateKey: 'HDL_CLIENT_FORM_V2_STATE',
+  stateOverride: '{"formId":"legacy-form-id","editUrl":"https://docs.google.com/forms/d/legacy/edit"}',
+})
+confirmLegacy.sandbox.confirmNewClientFormV2()
+const confirmLegacyLogs = confirmLegacy.logs.join('\n')
+check('the confirmation lists the v2 form too', confirmLegacyLogs.includes('legacy/edit'))
+check('the confirmation warns that two forms would remain',
+  /DALAWANG form/.test(confirmLegacyLogs))
+check('the confirmation is still recorded after the warning',
+  confirmLegacy.properties.has('HDL_CLIENT_FORM_V21_CONFIRM'))
+
+const confirmBadLegacy = loadBuilder(v211source, {
+  stateKey: 'HDL_CLIENT_FORM_V2_STATE',
+  stateOverride: '{oops',
+})
+let confirmBlocked = false
+try {
+  confirmBadLegacy.sandbox.confirmNewClientFormV2()
+} catch (error) {
+  confirmBlocked = true
+}
+check('an unusable v2 record blocks the confirmation', confirmBlocked)
+check('a blocked confirmation is not recorded',
+  !confirmBadLegacy.properties.has('HDL_CLIENT_FORM_V21_CONFIRM'))
+
+// --- High: forget works on the record it exists to clear ------------------
+const forgetCorrupt = loadBuilder(v211source, { stateOverride: '{not json' })
+let forgetCorruptThrew = false
+try {
+  forgetCorrupt.sandbox.forgetClientFormV2()
+} catch (error) {
+  forgetCorruptThrew = true
+}
+check('forgetClientFormV2 clears a record it cannot parse',
+  !forgetCorruptThrew && !forgetCorrupt.properties.has('HDL_CLIENT_FORM_V21_STATE'))
+check('forgetClientFormV2 prints the raw record so the id is not lost',
+  forgetCorrupt.logs.join('\n').includes('{not json'))
+
+const forgetOnly = loadBuilder(v211source)
+forgetOnly.properties.set('HDL_CLIENT_FORM_V21_STATE', '{not json')
+forgetOnly.properties.set('HDL_CLIENT_FORM_V2_STATE', '{"formId":"legacy-form-id"}')
+forgetOnly.sandbox.forgetClientFormV2()
+check('forgetClientFormV2 leaves the v2 record alone',
+  forgetOnly.properties.get('HDL_CLIENT_FORM_V2_STATE') === '{"formId":"legacy-form-id"}')
+
+// --- High: a failed recovery save does not hide the original error --------
+const doubleFault = loadBuilder(v211source, { failAtItem: 6, failSaveAt: 2 })
+let originalError = ''
+try {
+  doubleFault.sandbox.createClientFormV2()
+} catch (error) {
+  originalError = error.message
+}
+const doubleFaultLogs = doubleFault.logs.join('\n')
+check('a build that fails still reports the original error when the recovery save fails',
+  /simulated failure while adding question 6/.test(originalError))
+check('the failed recovery save is reported separately',
+  /NABIGO rin ang pag-save ng status/.test(doubleFaultLogs))
+check('the form id is printed before the error is re-thrown',
+  /Form id:\s+FORM-1/.test(doubleFaultLogs))
+check('the record stays at "building" when the recovery save fails',
+  JSON.parse(doubleFault.properties.get('HDL_CLIENT_FORM_V21_STATE')).status === 'building')
+
+const recovered = loadBuilder(v211source, { failAtItem: 6 })
+let recoveredThrew = false
+try {
+  recovered.sandbox.createClientFormV2()
+} catch (error) {
+  recoveredThrew = true
+}
+check('an ordinary half-build still marks the record incomplete',
+  recoveredThrew
+  && JSON.parse(recovered.properties.get('HDL_CLIENT_FORM_V21_STATE')).status === 'incomplete')
+
+// ---------------------------------------------------------------------------
 // v1 — kept for history, only checked that it still runs
 // ---------------------------------------------------------------------------
 
@@ -720,7 +967,8 @@ try {
 const required = items.filter((q) => q.required).length
 const optional = items.length - required
 const required21 = q21.filter((q) => q.required).length
-console.log(`\n  v2.1: ${q21.length} questions (${required21} required, ${q21.length - required21} optional), ${s21.length} sections`)
+console.log(`\n  v2.1.1: ${q211.length} questions (${q211.filter((q) => q.required).length} required), ${s211.length} sections — same questions as v2.1`)
+console.log(`  v2.1: ${q21.length} questions (${required21} required, ${q21.length - required21} optional), ${s21.length} sections`)
 console.log(`  v2:   ${items.length} questions (${required} required, ${optional} optional), ${sections.length} sections — unchanged`)
 console.log(`  v1:   ${v1.questions.filter((q) => q.kind !== 'section').length} questions — unchanged\n`)
 
