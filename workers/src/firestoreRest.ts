@@ -58,6 +58,115 @@ function isAborted(error: unknown): boolean {
   return error instanceof FirestoreRestError && error.status === 'ABORTED'
 }
 
+interface RestErrorBody {
+  code?: unknown
+  status?: unknown
+  message?: unknown
+  details?: unknown
+}
+
+const GRPC_STATUS_BY_CODE: Record<number, string> = {
+  0: 'OK',
+  1: 'CANCELLED',
+  2: 'UNKNOWN',
+  3: 'INVALID_ARGUMENT',
+  4: 'DEADLINE_EXCEEDED',
+  5: 'NOT_FOUND',
+  6: 'ALREADY_EXISTS',
+  7: 'PERMISSION_DENIED',
+  8: 'RESOURCE_EXHAUSTED',
+  9: 'FAILED_PRECONDITION',
+  10: 'ABORTED',
+  11: 'OUT_OF_RANGE',
+  12: 'UNIMPLEMENTED',
+  13: 'INTERNAL',
+  14: 'UNAVAILABLE',
+  15: 'DATA_LOSS',
+  16: 'UNAUTHENTICATED',
+}
+
+const HTTP_STATUS_BY_GRPC_STATUS: Record<string, number> = {
+  CANCELLED: 499,
+  UNKNOWN: 500,
+  INVALID_ARGUMENT: 400,
+  DEADLINE_EXCEEDED: 504,
+  NOT_FOUND: 404,
+  ALREADY_EXISTS: 409,
+  PERMISSION_DENIED: 403,
+  RESOURCE_EXHAUSTED: 429,
+  FAILED_PRECONDITION: 400,
+  ABORTED: 409,
+  OUT_OF_RANGE: 400,
+  UNIMPLEMENTED: 501,
+  INTERNAL: 500,
+  UNAVAILABLE: 503,
+  DATA_LOSS: 500,
+  UNAUTHENTICATED: 401,
+}
+
+function restErrorFromPayload(payload: unknown): RestErrorBody | undefined {
+  if (Array.isArray(payload)) {
+    // Streaming Firestore methods such as runQuery can report an error as an
+    // entry in the JSON array rather than as the usual top-level API error.
+    for (const entry of payload) {
+      const error = restErrorFromPayload(entry)
+      if (error) return error
+    }
+    return undefined
+  }
+  if (!payload || typeof payload !== 'object') return undefined
+  const record = payload as Record<string, unknown>
+  if (record.error && typeof record.error === 'object' && !Array.isArray(record.error)) {
+    return record.error as RestErrorBody
+  }
+  if ('code' in record || 'status' in record || 'message' in record) {
+    return record as RestErrorBody
+  }
+  return undefined
+}
+
+function statusFromRestError(error: RestErrorBody | undefined, httpStatus: number): string {
+  if (typeof error?.status === 'string' && error.status) return error.status
+  if (typeof error?.code === 'number') {
+    return GRPC_STATUS_BY_CODE[error.code] ?? (error.code >= 100 ? `HTTP_${error.code}` : `GRPC_${error.code}`)
+  }
+  return `HTTP_${httpStatus}`
+}
+
+function httpStatusFromRestError(error: RestErrorBody | undefined, fallback: number): number {
+  if (typeof error?.code === 'number' && error.code >= 100) return error.code
+  const status = statusFromRestError(error, fallback)
+  return HTTP_STATUS_BY_GRPC_STATUS[status] ?? fallback
+}
+
+function messageFromRestError(error: RestErrorBody | undefined): string | undefined {
+  if (typeof error?.message === 'string' && error.message) return error.message
+  if (!Array.isArray(error?.details)) return undefined
+  const descriptions: string[] = []
+  for (const detail of error.details) {
+    if (!detail || typeof detail !== 'object' || Array.isArray(detail)) continue
+    const violations = (detail as { fieldViolations?: unknown }).fieldViolations
+    if (!Array.isArray(violations)) continue
+    for (const violation of violations) {
+      if (!violation || typeof violation !== 'object' || Array.isArray(violation)) continue
+      const description = (violation as { description?: unknown }).description
+      if (typeof description === 'string' && description) descriptions.push(description)
+    }
+  }
+  return descriptions.length > 0 ? descriptions.join('; ') : undefined
+}
+
+function operationFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname
+    const marker = '/documents'
+    const index = pathname.indexOf(marker)
+    return index >= 0 ? pathname.slice(index) : pathname
+  } catch {
+    return 'Firestore request'
+  }
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
@@ -333,10 +442,11 @@ export class FirestoreRestClient implements FirestoreLike {
 
   private async requestJson<T>(url: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
     let forceRefresh = false
+    const method = init.method ?? (init.body === undefined ? 'GET' : 'POST')
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const accessToken = await this.tokenProvider.getAccessToken(forceRefresh)
       const response = await this.fetchWithTimeout(url, {
-        method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
+        method,
         headers: {
           Authorization: `Bearer ${accessToken}`,
           ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -361,11 +471,14 @@ export class FirestoreRestClient implements FirestoreLike {
         continue
       }
 
-      const error = (payload as { error?: { status?: unknown; message?: unknown } } | undefined)?.error
-      const status = typeof error?.status === 'string' ? error.status : `HTTP_${response.status}`
-      const message = typeof error?.message === 'string'
-        ? error.message
-        : `Firestore REST request failed (${response.status}).`
+      const error = restErrorFromPayload(payload)
+      const status = statusFromRestError(error, response.status)
+      const rawDetail = payload === undefined && text.trim() ? text.replace(/\s+/g, ' ').trim().slice(0, 600) : undefined
+      const detail = messageFromRestError(error) ?? rawDetail
+      const operation = operationFromUrl(url)
+      const message = detail
+        ? `Firestore ${method} ${operation} failed: ${detail}`
+        : `Firestore ${method} ${operation} failed (${response.status}).`
       throw new FirestoreRestError(status, response.status, message)
     }
     throw new FirestoreRestError('UNAUTHENTICATED', 401, 'Firestore REST authentication failed.')
@@ -422,11 +535,29 @@ export class FirestoreRestClient implements FirestoreLike {
         ? fieldFilters[0]
         : { compositeFilter: { op: 'AND', filters: fieldFilters } }
 
-    const response = await this.requestJson<Array<{ document?: RestDocument; error?: { status?: string; message?: string } }>>(url, {
+    // Firestore requires every inequality field to be present in the query
+    // ordering. The Admin SDK's implicit ordering appends those fields by
+    // field-path name, then __name__. Make that ordering explicit in REST so
+    // the overlap query deterministically uses the matching composite index
+    // (equality field, check_in, check_out, __name__) instead of depending on
+    // backend normalization of an orderless StructuredQuery.
+    const inequalityFields = [...new Set(query.filters
+      .filter((filter) => ['<', '<=', '>', '>=', '!=', 'not-in'].includes(filter.operator))
+      .map((filter) => filter.field))]
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    const orderBy = inequalityFields.length > 0
+      ? [...new Set([...inequalityFields, '__name__'])].map((fieldPath) => ({
+          field: { fieldPath },
+          direction: 'ASCENDING',
+        }))
+      : undefined
+
+    const response = await this.requestJson<Array<{ document?: RestDocument; error?: RestErrorBody }>>(url, {
       body: {
         structuredQuery: {
           from: [{ collectionId, allDescendants: false }],
           ...(where ? { where } : {}),
+          ...(orderBy ? { orderBy } : {}),
         },
         ...(transaction ? { transaction } : {}),
       },
@@ -435,7 +566,12 @@ export class FirestoreRestClient implements FirestoreLike {
     const docs: Array<{ id: string; data(): DocumentData }> = []
     for (const entry of response) {
       if (entry.error) {
-        throw new FirestoreRestError(entry.error.status ?? 'INTERNAL', 500, entry.error.message ?? 'Firestore query failed.')
+        const status = statusFromRestError(entry.error, 500)
+        throw new FirestoreRestError(
+          status,
+          httpStatusFromRestError(entry.error, 500),
+          messageFromRestError(entry.error) ?? 'Firestore query failed.',
+        )
       }
       if (!entry.document?.name) continue
       const snapshot = this.snapshotFromDocument(entry.document, entry.document.name.split('/').at(-1) ?? '')

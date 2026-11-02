@@ -112,7 +112,7 @@ Proof storage and Firestore remain independent stores (ADR-0011). Client and ser
 
 This feature spans several deployable surfaces. A frontend-only release is not sufficient.
 
-1. Deploy `firestore.indexes.json` and wait until the `accommodation` + `check_out` + `check_in` composite index is ready.
+1. Deploy `firestore.indexes.json` and wait until the `accommodation` + `check_in` + `check_out` composite index is ready. Firestore orders the two inequality fields lexicographically and appends `__name__`; the field order in the index must match that query ordering.
 2. Deploy the new callable Functions.
 3. Deploy the callable-enabled website and verify a test projection/submission.
 4. Deploy `firestore.rules` to close direct Guest creation.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { bytesToBase64Url, stringToBase64Url } from '../src/encoding'
+import { base64UrlToBytes, bytesToBase64Url, stringToBase64Url } from '../src/encoding'
 import { FirebaseTokenError, FirebaseTokenVerifier } from '../src/firebaseToken'
 
 const NOW_SECONDS = 1_800_000_000
@@ -73,6 +73,12 @@ test('refuses wrong audience, expiry, and tampered signatures', async () => {
   await assert.rejects(verifier.verify(await sign({ exp: NOW_SECONDS - 1000 })), FirebaseTokenError)
 
   const token = await sign()
-  const tampered = `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`
+  const [header, claims, signature] = token.split('.')
+  const signatureBytes = base64UrlToBytes(signature!)
+  // Flip a significant signature byte. Changing only the final base64url
+  // character can alter discarded padding bits and leave the RSA signature
+  // byte-for-byte unchanged, which made this assertion flaky.
+  signatureBytes[0] = signatureBytes[0]! ^ 0x01
+  const tampered = `${header}.${claims}.${bytesToBase64Url(signatureBytes)}`
   await assert.rejects(verifier.verify(tampered), FirebaseTokenError)
 })

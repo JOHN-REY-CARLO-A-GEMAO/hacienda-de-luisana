@@ -70,5 +70,5 @@ It stores no date, status, capacity, availability, Booking ID, or Guest data. It
 ## Deployment order
 
 1. Deploy the website and `firestore.rules` safely at any time while `site_config/booking.callable_booking_required` is absent or `false`.
-2. When enabling Cloud Functions (Blaze), deploy `firestore.indexes.json` first and wait until the bounded-overlap composite index (`accommodation`, `check_out`, `check_in`) is ready.
+2. When enabling Cloud Functions (Blaze), deploy `firestore.indexes.json` first and wait until the bounded-overlap composite index (`accommodation`, `check_in`, `check_out`) is ready. Firestore appends `__name__` after the lexicographically ordered inequality fields.
 3. Deploy the callable Functions (`firebase deploy --only functions:bookingAvailability,functions:submitBooking,functions:attestQuote`), verify a test projection and submission, and then set `site_config/booking.callable_booking_required = true` (and `quotes_required = true` when enforcing ADR-0019).
