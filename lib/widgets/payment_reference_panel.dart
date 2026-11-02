@@ -66,6 +66,234 @@ class ReferenceCorrectionForm {
 ///
 /// A duplicate is checked here, before the Admin can save, so the warning is a
 /// second deliberate press rather than a toast after the write.
+///
+/// The TextEditingControllers live in [_PaymentReferenceCorrectionDialogState],
+/// not in the function scope. `showDialog` resolves when `Navigator.pop` is
+/// called — before the dialog widget is unmounted — so disposing controllers
+/// in the function scope races with `_onSave`'s `await service.checkReference`:
+/// the Admin taps outside the dialog while the duplicate check is running, the
+/// dialog closes, the controllers are disposed, and `_onSave` resumes to read
+/// `_senderController.text` off a dead controller. The State class owns them
+/// and disposes them in `dispose()`, which is the correct lifecycle.
+class _PaymentReferenceCorrectionDialog extends StatefulWidget {
+  final BookingModel booking;
+  final PaymentReferenceService service;
+  final String title;
+  final String? initialReference;
+  final bool requireReference;
+
+  const _PaymentReferenceCorrectionDialog({
+    required this.booking,
+    required this.service,
+    required this.title,
+    this.initialReference,
+    this.requireReference = false,
+  });
+
+  @override
+  State<_PaymentReferenceCorrectionDialog> createState() =>
+      _PaymentReferenceCorrectionDialogState();
+}
+
+class _PaymentReferenceCorrectionDialogState
+    extends State<_PaymentReferenceCorrectionDialog> {
+  late final TextEditingController _referenceController;
+  late final TextEditingController _senderController;
+  late final TextEditingController _dateController;
+
+  bool _busy = false;
+  String? _error;
+  String _duplicateWarning = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _referenceController = TextEditingController(
+      text: widget.initialReference ?? widget.booking.effectivePaymentReference ?? '',
+    );
+    _senderController = TextEditingController(
+      text: widget.booking.paymentSenderName ?? widget.booking.ocrSenderName ?? '',
+    );
+    _dateController = TextEditingController(
+      text: widget.booking.paymentDate ?? widget.booking.ocrPaymentDate ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _referenceController.dispose();
+    _senderController.dispose();
+    _dateController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onSave() async {
+    final reference = normalizeReference(_referenceController.text);
+    if (reference.isEmpty) {
+      setState(() => _error = widget.requireReference
+          ? 'Kailangan ang reference bago i-verify ang bayad.'
+          : 'Kailangan ang reference. I-type ito mula sa resibo.');
+      return;
+    }
+    if (!isValidReference(reference)) {
+      setState(() => _error =
+          'Ang reference ay 6–40 na letra, numero at hyphen lamang.');
+      return;
+    }
+    final date = _dateController.text.trim();
+    if (date.isNotEmpty && normalizeIsoDate(date) == null) {
+      setState(() =>
+          _error = 'Ilagay ang petsa sa YYYY-MM-DD (hal. 2026-08-26).');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final lookup = await widget.service.checkReference(
+      reference,
+      excludeBookingId: widget.booking.id,
+    );
+    if (!mounted) return;
+    if (lookup.isDuplicate && _duplicateWarning.isEmpty) {
+      final who = lookup.otherGuestName?.isNotEmpty == true
+          ? lookup.otherGuestName
+          : lookup.otherBookingId;
+      setState(() {
+        _busy = false;
+        _duplicateWarning =
+            'Nakatala na ang $reference para sa Booking ni $who. '
+            'Isang reference, isang bayad. Pindutin muli ang Save kung '
+            'nasuri mo na ang dalawang Booking.';
+      });
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      ReferenceCorrectionForm(
+        reference: reference,
+        senderName: _senderController.text.trim(),
+        paymentDateIso: date.isEmpty ? '' : normalizeIsoDate(date),
+        confirmDuplicate: _duplicateWarning.isNotEmpty,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title, style: AppTheme.serif(fontSize: 19)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.booking.ocrReference?.isNotEmpty == true &&
+                widget.booking.ocrReference !=
+                    (widget.booking.paymentReference ?? '')) ...[
+              Text(
+                'Nabasa ng OCR: ${widget.booking.ocrReference}. Ito ay hindi pa beripikado — ito ang pagkakataong itama ito.',
+                style: AppTheme.body(fontSize: 13, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 10),
+            ],
+            TextField(
+              controller: _referenceController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
+                LengthLimitingTextInputFormatter(referenceMaxLength),
+              ],
+              style: const TextStyle(fontSize: 17, letterSpacing: 0.5),
+              decoration: const InputDecoration(
+                labelText: 'Payment reference',
+                helperText: 'Tulad ng nakasulat sa resibo (6–40 characters)',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) {
+                final upper = value.toUpperCase();
+                if (upper != value) {
+                  _referenceController.value = TextEditingValue(
+                    text: upper,
+                    selection: TextSelection.collapsed(offset: upper.length),
+                  );
+                }
+                if (_error != null) setState(() => _error = null);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _senderController,
+              style: const TextStyle(fontSize: 16),
+              decoration: const InputDecoration(
+                labelText: 'Sender / account name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _dateController,
+              style: const TextStyle(fontSize: 16),
+              keyboardType: TextInputType.datetime,
+              decoration: const InputDecoration(
+                labelText: 'Transaction date (YYYY-MM-DD)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (widget.booking.ocrAmount?.isNotEmpty == true) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Halaga sa resibo: ₱${widget.booking.ocrAmount} (hindi na-editable — ito ang nabasa ng OCR; ang halagang ibinayad ay pinagpapasyahan sa Approve)',
+                style: AppTheme.body(fontSize: 12, color: AppColors.textMuted),
+              ),
+            ],
+            if (_duplicateWarning.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              AdminInlineNotice(
+                title: 'Possible duplicate',
+                message: _duplicateWarning,
+                tone: AdminNoticeTone.caution,
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: AppTheme.body(fontSize: 14, color: AppColors.statusAlert),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextButton(
+              onPressed: _busy ? null : () => Navigator.pop(context),
+              child: const Text('Bumalik'),
+            ),
+            ElevatedButton(
+              onPressed: _busy ? null : _onSave,
+              child: Text(
+                _busy
+                    ? 'Sinusuri…'
+                    : _duplicateWarning.isNotEmpty
+                        ? 'Ituloy pa rin'
+                        : 'I-save',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 Future<ReferenceCorrectionForm?> showPaymentReferenceCorrectionDialog(
   BuildContext context, {
   required BookingModel booking,
@@ -73,197 +301,18 @@ Future<ReferenceCorrectionForm?> showPaymentReferenceCorrectionDialog(
   String title = 'Itama ang Payment Reference',
   String? initialReference,
   bool requireReference = false,
-}) async {
-  final referenceController = TextEditingController(
-    text: initialReference ?? booking.effectivePaymentReference ?? '',
-  );
-  final senderController = TextEditingController(
-    text: booking.paymentSenderName ?? booking.ocrSenderName ?? '',
-  );
-  final dateController = TextEditingController(
-    text: booking.paymentDate ?? booking.ocrPaymentDate ?? '',
-  );
-
-  var duplicateWarning = '';
-  var busy = false;
-  String? error;
-
-  final result = await showDialog<ReferenceCorrectionForm>(
+}) {
+  return showDialog<ReferenceCorrectionForm>(
     context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (context, setDialogState) {
-        Future<void> onSave() async {
-          final reference = normalizeReference(referenceController.text);
-          if (reference.isEmpty) {
-            setDialogState(() => error = requireReference
-                ? 'Kailangan ang reference bago i-verify ang bayad.'
-                : 'Kailangan ang reference. I-type ito mula sa resibo.');
-            return;
-          }
-          if (!isValidReference(reference)) {
-            setDialogState(() => error =
-                'Ang reference ay 6–40 na letra, numero at hyphen lamang.');
-            return;
-          }
-          final date = dateController.text.trim();
-          if (date.isNotEmpty && normalizeIsoDate(date) == null) {
-            setDialogState(() =>
-                error = 'Ilagay ang petsa sa YYYY-MM-DD (hal. 2026-08-26).');
-            return;
-          }
-
-          setDialogState(() {
-            busy = true;
-            error = null;
-          });
-          final lookup = await service.checkReference(
-            reference,
-            excludeBookingId: booking.id,
-          );
-          if (!context.mounted) return;
-          if (lookup.isDuplicate && duplicateWarning.isEmpty) {
-            final who = lookup.otherGuestName?.isNotEmpty == true
-                ? lookup.otherGuestName
-                : lookup.otherBookingId;
-            setDialogState(() {
-              busy = false;
-              duplicateWarning =
-                  'Nakatala na ang $reference para sa Booking ni $who. '
-                  'Isang reference, isang bayad. Pindutin muli ang Save kung '
-                  'nasuri mo na ang dalawang Booking.';
-            });
-            return;
-          }
-
-          Navigator.pop(
-            ctx,
-            ReferenceCorrectionForm(
-              reference: reference,
-              senderName: senderController.text.trim(),
-              paymentDateIso: date.isEmpty ? '' : normalizeIsoDate(date),
-              confirmDuplicate: duplicateWarning.isNotEmpty,
-            ),
-          );
-        }
-
-        return AlertDialog(
-          title: Text(title, style: AppTheme.serif(fontSize: 19)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (booking.ocrReference?.isNotEmpty == true &&
-                    booking.ocrReference !=
-                        (booking.paymentReference ?? '')) ...[
-                  Text(
-                    'Nabasa ng OCR: ${booking.ocrReference}. Ito ay hindi pa beripikado — ito ang pagkakataong itama ito.',
-                    style: AppTheme.body(fontSize: 13, color: AppColors.textMuted),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                TextField(
-                  controller: referenceController,
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.characters,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
-                    LengthLimitingTextInputFormatter(referenceMaxLength),
-                  ],
-                  style: const TextStyle(fontSize: 17, letterSpacing: 0.5),
-                  decoration: const InputDecoration(
-                    labelText: 'Payment reference',
-                    helperText: 'Tulad ng nakasulat sa resibo (6–40 characters)',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (value) {
-                    final upper = value.toUpperCase();
-                    if (upper != value) {
-                      referenceController.value = TextEditingValue(
-                        text: upper,
-                        selection: TextSelection.collapsed(offset: upper.length),
-                      );
-                    }
-                    if (error != null) setDialogState(() => error = null);
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: senderController,
-                  style: const TextStyle(fontSize: 16),
-                  decoration: const InputDecoration(
-                    labelText: 'Sender / account name',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: dateController,
-                  style: const TextStyle(fontSize: 16),
-                  keyboardType: TextInputType.datetime,
-                  decoration: const InputDecoration(
-                    labelText: 'Transaction date (YYYY-MM-DD)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                if (booking.ocrAmount?.isNotEmpty == true) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    'Halaga sa resibo: ₱${booking.ocrAmount} (hindi na-editable — ito ang nabasa ng OCR; ang halagang ibinayad ay pinagpapasyahan sa Approve)',
-                    style: AppTheme.body(fontSize: 12, color: AppColors.textMuted),
-                  ),
-                ],
-                if (duplicateWarning.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  AdminInlineNotice(
-                    title: 'Possible duplicate',
-                    message: duplicateWarning,
-                    tone: AdminNoticeTone.caution,
-                  ),
-                ],
-                if (error != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    error!,
-                    style: AppTheme.body(fontSize: 14, color: AppColors.statusAlert),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextButton(
-                  onPressed: busy ? null : () => Navigator.pop(ctx),
-                  child: const Text('Bumalik'),
-                ),
-                ElevatedButton(
-                  onPressed: busy ? null : onSave,
-                  child: Text(
-                    busy
-                        ? 'Sinusuri…'
-                        : duplicateWarning.isNotEmpty
-                            ? 'Ituloy pa rin'
-                            : 'I-save',
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
+    builder: (ctx) => _PaymentReferenceCorrectionDialog(
+      booking: booking,
+      service: service,
+      title: title,
+      initialReference: initialReference,
+      requireReference: requireReference,
     ),
   );
-
-  referenceController.dispose();
-  senderController.dispose();
-  dateController.dispose();
-  return result;
 }
-
 /// The Payment Reference panel: OCR evidence, the accepted reference, and the
 /// two things an Admin may do with them — read the receipt, and correct the
 /// value. It never approves anything.
