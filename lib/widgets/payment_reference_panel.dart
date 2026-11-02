@@ -389,7 +389,14 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
           // The read is shown below anyway (see `_freshExtraction`): the Admin
           // can decide with it, they only need to know it will not be there
           // when the screen reloads.
+          //
+          // The cause decides the next step — a refused write needs the rules
+          // deployed, a dropped connection needs signal — so it is named rather
+          // than left as one sentence that reads the same for both.
+          final failure = result.writeFailure;
+          final advice = failure == null ? '' : receiptWriteAdvice(failure);
           message = '${result.writeError} '
+              '${advice.isEmpty ? '' : '$advice '}'
               'Makikita pa rin sa ibaba ang nabasang detalye para sa desisyon ngayon — '
               'hindi lang ito mananatili pagkaalis sa screen na ito.';
         } else {

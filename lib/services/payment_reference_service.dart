@@ -28,6 +28,8 @@
 // describes. The verified-money fields stay the Admin's either way (ADR-0012).
 // ---------------------------------------------------------------------------
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -36,6 +38,22 @@ import '../core/constants/app_constants.dart';
 import '../models/booking_model.dart';
 import '../models/receipt_extraction.dart';
 import 'receipt_ocr_service.dart';
+
+/// How long the queued second attempt waits for Firestore to acknowledge the
+/// write before treating it as filed.
+///
+/// A write made without a connection goes into Firestore's local queue and is
+/// sent when the signal returns; the SDK's acknowledgement can take as long as
+/// the network takes to come back. Waiting for it is not waiting for anything
+/// the Admin can decide about now, and it must never leave the panel spinning.
+const Duration receiptWriteAckTimeout = Duration(seconds: 12);
+
+/// How long the second attempt waits for its proof pre-check.
+///
+/// Shorter than the write: a read that has not answered in five seconds on a
+/// connection that just dropped is not going to settle the question, and the
+/// write carries the proof path anyway.
+const Duration receiptWritePrecheckTimeout = Duration(seconds: 5);
 
 /// Why a reference could not be stored.
 enum PaymentReferenceSaveStatus {
@@ -103,6 +121,77 @@ class ReferenceLookup {
   bool get catalogAlreadyUsed => catalogStatus == 'used';
 }
 
+/// Why filing a read on the Booking did not land.
+///
+/// The Admin is standing in front of a receipt and a decision; "hindi na-save"
+/// on its own tells them nothing they can act on. The cause is classified so
+/// the panel can say what to do — deploy the rules, wait for signal, refresh —
+/// instead of one sentence that reads the same for all of them.
+enum ReceiptWriteFailure {
+  /// Firestore refused the write: the rules, or an account that is not the
+  /// Admin's. Nothing the app can retry its way out of.
+  permissionDenied,
+
+  /// Firestore could not be reached. A plain write is queued and lands later;
+  /// a transaction is not, which is why the second attempt exists.
+  offline,
+
+  /// The Booking is gone. Refresh the list.
+  missingBooking,
+
+  /// The attached proof changed while it was being read.
+  staleProof,
+
+  /// No Firestore in this build (demo mode).
+  noDatabase,
+
+  /// Anything else. The device log holds the cause.
+  unknown,
+}
+
+/// The cause behind [ReceiptReadResult.writeError], read from the exception
+/// Firestore threw.
+///
+/// Kept as a free function, outside the service, so the mapping is testable
+/// without a database or a device — the same reason the parsers are.
+ReceiptWriteFailure receiptWriteFailureFor(Object error) {
+  final code = error is FirebaseException ? error.code : '';
+  switch (code) {
+    case 'permission-denied':
+    case 'unauthenticated':
+      return ReceiptWriteFailure.permissionDenied;
+    case 'unavailable':
+    case 'deadline-exceeded':
+    case 'network-request-failed':
+      return ReceiptWriteFailure.offline;
+    case 'not-found':
+      return ReceiptWriteFailure.missingBooking;
+    default:
+      return ReceiptWriteFailure.unknown;
+  }
+}
+
+/// What the Admin should do about [failure], in one sentence.
+///
+/// Empty when the failure message already carries the next step (a stale proof
+/// says to read the new image; demo mode has no database to save into), so the
+/// notice never repeats itself.
+String receiptWriteAdvice(ReceiptWriteFailure failure) {
+  switch (failure) {
+    case ReceiptWriteFailure.permissionDenied:
+      return 'Tinanggihan ng Firestore ang pagsulat (permission-denied): '
+          'i-deploy ang firestore.rules at tiyaking Admin account ang naka-sign in.';
+    case ReceiptWriteFailure.offline:
+      return 'Hindi naabot ang Firestore — subukan muli kapag may signal.';
+    case ReceiptWriteFailure.missingBooking:
+      return 'Wala na ang Booking na ito — i-refresh ang listahan.';
+    case ReceiptWriteFailure.staleProof:
+    case ReceiptWriteFailure.noDatabase:
+    case ReceiptWriteFailure.unknown:
+      return '';
+  }
+}
+
 /// The result of one OCR pass plus the write that followed it.
 class ReceiptReadResult {
   final ReceiptOcrOutcome outcome;
@@ -113,10 +202,14 @@ class ReceiptReadResult {
   /// Set when the read succeeded but saving it did not.
   final String? writeError;
 
+  /// The classified cause behind [writeError], for the panel's next step.
+  final ReceiptWriteFailure? writeFailure;
+
   const ReceiptReadResult({
     required this.outcome,
     this.wroteToBooking = false,
     this.writeError,
+    this.writeFailure,
   });
 
   ReceiptExtraction? get extraction => outcome.extraction;
@@ -130,6 +223,15 @@ class _StaleProof implements Exception {
 class _NeedsOverwriteConfirmation implements Exception {
   const _NeedsOverwriteConfirmation(this.currentReference);
   final String currentReference;
+}
+
+/// What happened to one extraction write: nothing on success, and otherwise the
+/// sentence the Admin reads plus the cause behind it.
+class _ExtractionWrite {
+  final String? error;
+  final ReceiptWriteFailure? failure;
+
+  const _ExtractionWrite({this.error, this.failure});
 }
 
 class PaymentReferenceService {
@@ -158,10 +260,9 @@ class PaymentReferenceService {
   /// Read the attached proof, and store what was read on the Booking.
   ///
   /// [force] re-reads even when a stored extraction already matches the attached
-  /// proof — the Admin's "basahin muli" after a bad read. The write is guarded by
-  /// a transaction that refuses to file the result if the proof was replaced
-  /// while the recognizer was running, so extraction can never be attached to
-  /// the wrong image.
+  /// proof — the Admin's "basahin muli" after a bad read. The write is guarded so
+  /// extraction can never be attached to a proof that was replaced while the
+  /// recognizer was running.
   Future<ReceiptReadResult> readAndStore(
     BookingModel booking, {
     bool force = false,
@@ -173,67 +274,156 @@ class PaymentReferenceService {
     if (outcome.status == ReceiptOcrStatus.alreadyProcessed) {
       return ReceiptReadResult(outcome: outcome, wroteToBooking: false);
     }
-    final error = await _storeExtraction(booking, outcome);
+    final write = await _storeExtraction(booking, outcome);
     return ReceiptReadResult(
       outcome: outcome,
-      wroteToBooking: error == null,
-      writeError: error,
+      wroteToBooking: write.error == null,
+      writeError: write.error,
+      writeFailure: write.failure,
     );
   }
 
-  Future<String?> _storeExtraction(
+  /// File one read on the Booking, twice if it must.
+  ///
+  /// **First attempt: a transaction.** It re-reads the Booking and refuses the
+  /// write if the attached proof is no longer the one the recognizer saw, so a
+  /// read can never be filed against an image that was replaced mid-read.
+  ///
+  /// **Second attempt: a plain update.** A Firestore transaction needs a live
+  /// connection and is *not* queued offline, while a normal write is; the Admin
+  /// reviews proofs in places where the signal comes and goes (ADR-0023 chose an
+  /// on-device recognizer partly for that reason), and the first version of this
+  /// method turned every dropped connection into "Hindi na-save ang nabasang
+  /// detalye" beside four fields the Admin had just watched the app read. The
+  /// staleness guard is kept by reading the proof path first, and it is also
+  /// carried *inside* the write: `ocr_proof_url` names the object this read
+  /// describes, so a read that lands after a re-send is shown as stale
+  /// (`BookingModel.ocrReadIsStale`) rather than believed.
+  ///
+  /// `update`, not `set(merge:)`, on the second path: a merge-set on a deleted
+  /// Booking would conjure a document holding nothing but OCR fields, while an
+  /// update fails honestly with `not-found`.
+  ///
+  /// Neither path touches `status`, `payment_status`, `amount_verified` or the
+  /// verification marker. A receipt still cannot approve itself.
+  Future<_ExtractionWrite> _storeExtraction(
     BookingModel booking,
     ReceiptOcrOutcome outcome,
   ) async {
     final db = _db;
     if (db == null) {
-      return 'Walang koneksyon sa database, kaya hindi na-save ang nabasa.';
+      return const _ExtractionWrite(
+        error: 'Walang koneksyon sa database, kaya hindi na-save ang nabasa.',
+        failure: ReceiptWriteFailure.noDatabase,
+      );
     }
     final extraction = outcome.extraction!;
     final expectedPath = booking.paymentProofUrl?.trim() ?? '';
     final doc = db.collection(AppConstants.colBookings).doc(booking.id);
 
+    // Merge-only, and only OCR evidence: no status, no verified amount, no
+    // reference the Guest or the Admin already stated. The reference the Admin
+    // accepts is written by `saveCorrection`, deliberately.
+    final patch = <String, dynamic>{
+      'ocr_reference': extraction.reference,
+      'ocr_amount': extraction.amount,
+      'ocr_sender_name': _blankToNull(extraction.senderName),
+      'ocr_recipient_name': _blankToNull(extraction.recipientName),
+      'ocr_payment_date': _blankToNull(extraction.paymentDateIso),
+      'ocr_proof_url': expectedPath,
+      'ocr_engine': outcome.engine.isEmpty ? 'mlkit-latin' : outcome.engine,
+      'ocr_confidence': extraction.confidence.name,
+      'ocr_extracted_at': FieldValue.serverTimestamp(),
+    };
+
+    Object? transactionError;
     try {
       await db.runTransaction((tx) async {
         final snap = await tx.get(doc);
         if (!snap.exists) throw const _StaleProof();
-        final fresh = snap.data() ?? const <String, dynamic>{};
-        final freshPath =
-            (fresh['payment_proof_url'] ?? fresh['paymentProofUrl'] ?? '')
-                .toString()
-                .trim();
-        if (freshPath != expectedPath) throw const _StaleProof();
-
-        // Merge-only, and only OCR evidence: no status, no verified amount, no
-        // reference the Guest or the Admin already stated. The reference the
-        // Admin accepts is written by `saveCorrection`, deliberately.
-        tx.set(
-          doc,
-          <String, dynamic>{
-            'ocr_reference': extraction.reference,
-            'ocr_amount': extraction.amount,
-            'ocr_sender_name': _blankToNull(extraction.senderName),
-            'ocr_recipient_name': _blankToNull(extraction.recipientName),
-            'ocr_payment_date': _blankToNull(extraction.paymentDateIso),
-            'ocr_proof_url': expectedPath,
-            'ocr_engine': outcome.engine.isEmpty ? 'mlkit-latin' : outcome.engine,
-            'ocr_confidence': extraction.confidence.name,
-            'ocr_extracted_at': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+        if (_proofPathIn(snap.data()) != expectedPath) throw const _StaleProof();
+        tx.set(doc, patch, SetOptions(merge: true));
       });
-      return null;
+      return const _ExtractionWrite();
     } on _StaleProof {
-      return 'Nagpalit ang patunay habang binabasa ito. Buksan muli ang patunay at basahin ulit — hindi na-save ang lumang resulta.';
+      return const _ExtractionWrite(
+        error: 'Nagpalit ang patunay habang binabasa ito. Buksan muli ang patunay '
+            'at basahin ulit — hindi na-save ang lumang resulta.',
+        failure: ReceiptWriteFailure.staleProof,
+      );
     } catch (error, stack) {
       // The Admin gets the next step; the log gets the cause. A swallowed
       // exception here is the difference between "the save button is broken"
       // and a `permission-denied` somebody can act on.
+      transactionError = error;
+      debugPrint('[PaymentReference] OCR read could not be filed in a '
+          'transaction: $error');
+      debugPrint('$stack');
+    }
+
+    try {
+      await _assertProofUnchanged(doc, expectedPath);
+      await doc.update(patch).timeout(receiptWriteAckTimeout);
+      debugPrint('[PaymentReference] OCR read filed without a transaction '
+          '(first attempt failed: $transactionError)');
+      return const _ExtractionWrite();
+    } on TimeoutException {
+      // Firestore took the write into its local queue; it lands when the signal
+      // returns. That is not a failure the Admin should have to read about —
+      // the read is on the device and on its way, not lost.
+      debugPrint('[PaymentReference] OCR read queued offline; it will be filed '
+          'when the connection returns (first attempt failed: $transactionError)');
+      return const _ExtractionWrite();
+    } on _StaleProof {
+      return const _ExtractionWrite(
+        error: 'Nagpalit ang patunay habang binabasa ito. Buksan muli ang patunay '
+            'at basahin ulit — hindi na-save ang lumang resulta.',
+        failure: ReceiptWriteFailure.staleProof,
+      );
+    } catch (error, stack) {
       debugPrint('[PaymentReference] OCR read could not be filed: $error');
       debugPrint('$stack');
-      return 'Hindi na-save ang nabasang detalye. Subukan muli, o i-type na lang ang reference.';
+      final failure = receiptWriteFailureFor(error);
+      return _ExtractionWrite(
+        error: failure == ReceiptWriteFailure.missingBooking
+            ? 'Wala na ang Booking na ito, kaya hindi na-save ang nabasa.'
+            : 'Hindi na-save ang nabasang detalye. Subukan muli, o i-type na '
+                'lang ang reference.',
+        failure: failure,
+      );
     }
+  }
+
+  /// The second attempt's staleness check: the same question the transaction
+  /// asked, asked once more before a queued write.
+  ///
+  /// Deliberately best effort. The guard is also carried *inside* the patch —
+  /// `ocr_proof_url` names the object the read describes, and
+  /// `BookingModel.ocrReadIsStale` is what the panel compares before believing
+  /// it — so a pre-check that cannot be made (nothing cached, no connection) is
+  /// not a reason to throw away a read the Admin is looking at.
+  Future<void> _assertProofUnchanged(
+    DocumentReference<Map<String, dynamic>> doc,
+    String expectedPath,
+  ) async {
+    DocumentSnapshot<Map<String, dynamic>> snap;
+    try {
+      snap = await doc.get().timeout(receiptWritePrecheckTimeout);
+    } catch (error) {
+      debugPrint('[PaymentReference] proof pre-check skipped: $error');
+      return;
+    }
+    if (!snap.exists) throw const _StaleProof();
+    if (_proofPathIn(snap.data()) != expectedPath) throw const _StaleProof();
+  }
+
+  /// The proof path a stored Booking carries, under either spelling the app and
+  /// the website have used for it.
+  static String _proofPathIn(Map<String, dynamic>? data) {
+    if (data == null) return '';
+    return (data['payment_proof_url'] ?? data['paymentProofUrl'] ?? '')
+        .toString()
+        .trim();
   }
 
   /// What the catalogue says about [reference], if anything.

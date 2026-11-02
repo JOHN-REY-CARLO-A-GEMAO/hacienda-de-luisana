@@ -427,6 +427,27 @@ Implemented as a client-side pipeline (2026-09-27), documented, and still
   against another Booking is refused unless the Admin confirms on the record, and
   changing the reference of a *verified* payment needs a second explicit
   confirmation.
+- **Amended 2026-11-02 — filing the read survives a lost connection, and says
+  why when it cannot.** `PaymentReferenceService._storeExtraction` filed the
+  read inside a Firestore transaction only. A transaction needs a live
+  connection and is never queued offline, so an Admin reviewing a proof on a
+  weak signal watched the app read the receipt correctly and then got one
+  sentence — "Hindi na-save ang nabasang detalye" — with no way to tell a
+  dropped connection from a `permission-denied` or from a deleted Booking. The
+  write is now attempted twice: the transaction first (the staleness guard), then
+  the same evidence-only patch as a plain `update`, which Firestore queues and
+  lands when the signal returns. `update` rather than `set(merge:)` on that
+  second path, so a Booking deleted mid-read fails with `not-found` instead of a
+  document conjured out of OCR fields. The staleness guard is kept by reading the
+  proof path before the queued write, and it also travels *inside* the patch
+  (`ocr_proof_url`), which is what `BookingModel.ocrReadIsStale` compares — so a
+  read that lands after a re-send is shown as stale, never believed. The cause of
+  a failure is now classified (`ReceiptWriteFailure`, mapped by the free function
+  `receiptWriteFailureFor`) and the panel prints the matching next step.
+  Unverified here: both attempts need a device and a live project, so this
+  amendment is reasoned from the plugin's documented offline behaviour, not
+  exercised. `_storeExtraction`'s patch is unchanged — `ocr_*` only, no status,
+  no money.
 - **Amended 2026-10-29 — what has and has not moved.** An earlier draft of this
   section required a server-side pipeline (image → function → engine → text) and
   recorded that `functions/` did not exist. `functions/` now exists

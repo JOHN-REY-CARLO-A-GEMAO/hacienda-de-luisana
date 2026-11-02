@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hacienda_de_luisana/models/booking_model.dart';
 import 'package:hacienda_de_luisana/models/receipt_extraction.dart';
@@ -167,6 +168,50 @@ void main() {
 
       const used = ReferenceLookup(catalogStatus: 'used');
       expect(used.catalogAlreadyUsed, isTrue);
+    });
+  });
+
+  group('a read that could not be filed', () {
+    // The panel used to show one sentence for every accident — a dropped
+    // connection, a refused write, a deleted Booking — which is why a screenshot
+    // was needed to tell them apart. These pin the mapping it now prints.
+    test('names the cause Firestore reported', () {
+      expect(
+        receiptWriteFailureFor(FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'permission-denied',
+          message: 'Missing or insufficient permissions.',
+        )),
+        ReceiptWriteFailure.permissionDenied,
+      );
+      expect(
+        receiptWriteFailureFor(
+            FirebaseException(plugin: 'cloud_firestore', code: 'unavailable')),
+        ReceiptWriteFailure.offline,
+      );
+      expect(
+        receiptWriteFailureFor(
+            FirebaseException(plugin: 'cloud_firestore', code: 'not-found')),
+        ReceiptWriteFailure.missingBooking,
+      );
+      expect(
+        receiptWriteFailureFor(StateError('not a Firebase error')),
+        ReceiptWriteFailure.unknown,
+      );
+    });
+
+    test('tells the Admin what to do, and stays quiet when the message says it', () {
+      expect(
+        receiptWriteAdvice(ReceiptWriteFailure.permissionDenied),
+        contains('firestore.rules'),
+      );
+      expect(receiptWriteAdvice(ReceiptWriteFailure.offline), isNotEmpty);
+      expect(receiptWriteAdvice(ReceiptWriteFailure.missingBooking), isNotEmpty);
+      // A stale proof and a demo build already explain themselves in the
+      // sentence the service returns; repeating it is noise on a phone screen.
+      expect(receiptWriteAdvice(ReceiptWriteFailure.staleProof), isEmpty);
+      expect(receiptWriteAdvice(ReceiptWriteFailure.noDatabase), isEmpty);
+      expect(receiptWriteAdvice(ReceiptWriteFailure.unknown), isEmpty);
     });
   });
 }
