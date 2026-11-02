@@ -389,7 +389,14 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
           // The read is shown below anyway (see `_freshExtraction`): the Admin
           // can decide with it, they only need to know it will not be there
           // when the screen reloads.
+          //
+          // The cause decides the next step — a refused write needs the rules
+          // deployed, a dropped connection needs signal — so it is named rather
+          // than left as one sentence that reads the same for both.
+          final failure = result.writeFailure;
+          final advice = failure == null ? '' : receiptWriteAdvice(failure);
           message = '${result.writeError} '
+              '${advice.isEmpty ? '' : '$advice '}'
               'Makikita pa rin sa ibaba ang nabasang detalye para sa desisyon ngayon — '
               'hindi lang ito mananatili pagkaalis sa screen na ito.';
         } else {
@@ -758,21 +765,26 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
                 (booking.ocrPaymentDate ?? '').trim().isEmpty &&
                 extraction.paymentDateIso.isEmpty,
           ),
-          if (!widget.dense)
-            _row('Sender', shownSender.isEmpty ? 'Hindi nabasa' : shownSender,
-                muted: shownSender.isEmpty),
-          if (!widget.dense)
-            _row(
-              'Recipient / merchant',
-              shownRecipient.isEmpty ? 'Hindi nabasa' : shownRecipient,
-              muted: shownRecipient.isEmpty,
-            ),
-          if (hasProof)
-            _row(
-              'Nabasa mula sa',
-              _proofLine(booking, readFor),
-              muted: booking.ocrProofUrl == null,
-            ),
+          // An evidence row appears only when it carries evidence.
+          //
+          // "Hindi nabasa" beside a field the recognizer was never going to
+          // fill reads as a fault in the app rather than as an answer: a GCash
+          // Express Send receipt prints no `Sender` label and an unlabelled,
+          // masked payee, so the commonest proof in the queue produced two rows
+          // of "could not read" above the notice that actually mattered. An
+          // empty row is not evidence of a bad read — an unreadable receipt is
+          // already said once, in `warnings`, where the Admin can act on it.
+          if (!widget.dense && shownSender.isNotEmpty)
+            _row('Sender', shownSender),
+          if (!widget.dense && shownRecipient.isNotEmpty)
+            _row('Recipient / merchant', shownRecipient),
+          // Which object the stored read describes, and which engine read it:
+          // this is how a read is pinned to a proof (ADR-0023 § 1), so it stays
+          // whenever there is something to pin. A read that has not been filed
+          // yet has nothing to pin, and announcing that in its own row was more
+          // noise on a phone screen.
+          if (hasProof && (booking.ocrProofUrl?.trim().isNotEmpty ?? false))
+            _row('Nabasa mula sa', _proofLine(booking, readFor)),
           if (warnings.isNotEmpty) ...[
             const SizedBox(height: 6),
             AdminInlineNotice(
@@ -884,10 +896,11 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
     return 'Hindi nabasa';
   }
 
+  /// The provenance line for a stored read. Only called when there is a path to
+  /// show — the caller decides whether the row exists at all.
   String _proofLine(BookingModel booking, String engine) {
     final path = booking.ocrProofUrl?.trim() ?? '';
-    if (path.isEmpty) return 'Walang naitalang pinagmulan';
-    final name = path.split('/').last;
+    final name = path.isEmpty ? '—' : path.split('/').last;
     final at = booking.ocrExtractedAt;
     final when = at == null ? '' : ' · ${DateFormatter.formatFull(at.toLocal())}';
     return '$name · $engine$when';

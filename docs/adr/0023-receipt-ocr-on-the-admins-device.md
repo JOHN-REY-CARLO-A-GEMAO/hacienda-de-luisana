@@ -125,3 +125,63 @@ for decimalled or comma-grouped figures, and admits day-first month names
 app cannot *file* a read it took on-device, the panel shows the read anyway
 and says so — an error above four fields still reading "Hindi nabasa" was the
 other half of the same screenshot.
+
+## Amendment — 2026-11-02: the write survives a lost connection, and names its cause
+
+The 2026-11-01 amendment fixed what the Admin *sees* when a read cannot be
+filed. It did not fix the filing. `_storeExtraction` wrote inside a Firestore
+transaction, and a transaction requires a live connection: it is not queued
+offline the way an ordinary write is. An Admin reviewing a proof on a weak
+signal therefore watched the recognizer read the receipt correctly and then got
+"Hindi na-save ang nabasang detalye" — the same sentence a `permission-denied`,
+a deleted Booking, or a bug in the patch would produce. The screenshot that
+started this read the reference, the amount and the date perfectly and filed
+none of them.
+
+Point 6's guard is unchanged; the write is now attempted twice:
+
+1. **The transaction.** It re-reads the Booking and refuses to file if the
+   attached proof is no longer the one the recognizer saw. This is the atomic
+   path and stays first, so the normal case keeps its guarantee.
+2. **A plain `update`,** if the transaction threw. Firestore queues a normal
+   write and lands it when the signal returns, which is the behavior an Admin
+   reviewing proofs away from the house needs; the patch is identical, so
+   `ocr_*` evidence is still all it can touch. The staleness guard is kept by
+   reading the proof path first and, more importantly, is carried *inside* the
+   patch: `ocr_proof_url` names the object the read describes, and
+   `BookingModel.ocrReadIsStale` is what the panel compares before believing it.
+   The pre-check is best effort — a read that cannot be made is not a reason to
+   discard a read the Admin is looking at.
+
+`update` rather than `set(merge: true)` on the second path, deliberately: a
+merge-set on a Booking deleted mid-read would create a document holding nothing
+but OCR fields, while an update fails honestly with `not-found`.
+
+The failure is also classified now (`ReceiptWriteFailure`, via the free function
+`receiptWriteFailureFor`) and the panel prints the matching next step: rules not
+deployed, no signal, Booking gone. One sentence for four different accidents was
+the reason this bug took a screenshot to diagnose.
+
+Both paths still touch `ocr_*` only. Nothing here moves money, and nothing here
+flips `canAutoVerifyFromOcr()`.
+
+## Amendment — 2026-11-02: an evidence row appears only when it carries evidence
+
+Point 1 put amount, transaction date, sender and recipient on the panel, each
+with where it came from, and the panel printed "Hindi nabasa" in any of them the
+recognizer could not fill. On the commonest proof in the queue — a GCash
+*Express Send* receipt, which prints no `Sender` label and an unlabelled, masked
+payee — that produced two rows of "could not read" above the notice that
+actually mattered, and read as a fault in the app rather than as an answer. The
+same screenshot that started the 2026-11-01 amendment shows three of them.
+
+Sender, recipient and the provenance line are now rendered **only when they have
+a value**. Nothing is thrown away: `ocr_sender_name`, `ocr_recipient_name` and
+`ocr_proof_url` are still written by the extraction, still pre-fill the
+correction dialog, and `ocr_proof_url` is still what pins a read to a proof —
+a stale one is reported in `warnings`, which is where a thing the Admin can act
+on belongs. A receipt that could not be read is likewise still said once, in
+`warnings`; it is no longer said three times in the evidence list. The "Walang
+naitalang pinagmulan" string is gone with the row it described, and amount and
+transaction date keep their "Hindi nabasa": those two are the fields the decision
+turns on, so their absence *is* the signal.
