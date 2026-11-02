@@ -213,12 +213,28 @@ describe('Bookings', () => {
   })
 
   it('let the Admin move a Booking through the lifecycle, inside the guard lines, and delete', () => {
-    // The Admin branch is parenthesised and comes after the invariant that binds
-    // every writer, so the money rule is checked before anything else.
+    // The Admin and Guest branches are parenthesised after the invariant that
+    // binds every writer, so the money rule is checked before either of them.
+    // The one exception is the evidence-only OCR door: its closed `ocr_*` key
+    // list makes the invariant vacuous, and a machine read must still be
+    // fileable on a historical Booking the general rule refuses to update.
     const update = allow(bookings, 'update:')
-    expect(update).toContain('if reservedIsPaidFor() && pricingSnapshotImmutable()')
+    expect(update).toContain('if adminOcrEvidenceUpdate()')
+    expect(update).toContain('reservedIsPaidFor() && pricingSnapshotImmutable()')
+    expect(update).toContain('(adminUpdate() || guestSelfServeUpdate())')
     expect(bookings).toContain('isAdmin()')
     expect(allow(bookings, 'delete:')).toBe('allow delete: if isAdmin();')
+  })
+
+  it('keeps the OCR evidence door closed to Guests and to every non-OCR field', () => {
+    const door = squash(block(bookings, 'function adminOcrEvidenceUpdate()'))
+    expect(door).toContain('affected.hasOnly(ocrEvidenceKeys())')
+    expect(door).toContain('isAdmin()')
+    const keys = squash(block(bookings, 'function ocrEvidenceKeys()'))
+    expect(keys).toContain("'ocr_extracted_at'")
+    expect(keys).not.toContain("'status'")
+    expect(keys).not.toContain("'payment_status'")
+    expect(keys).not.toContain("'amount_verified'")
   })
 
   it('let a Guest move their own Booking forward or out, never backwards', () => {

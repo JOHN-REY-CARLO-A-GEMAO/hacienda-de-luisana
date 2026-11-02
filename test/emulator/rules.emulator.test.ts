@@ -22,7 +22,7 @@ import {
   type RulesTestContext,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, where, serverTimestamp, Timestamp } from 'firebase/firestore'
 import { ref, uploadBytes, deleteObject, getBlob, getDownloadURL, getMetadata } from 'firebase/storage'
 import { conversationDocId } from '../../src/lib/chatCloud'
 
@@ -414,6 +414,42 @@ describe('bookings', () => {
     await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Reserved' }))
     // Approved from Payment Pending is not earned. From Pending, it needs the marker.
     await assertFails(updateDoc(doc(admin().firestore(), 'bookings', BOOKING_ID), { status: 'Approved' }))
+  })
+
+  it('files the Admin OCR evidence on its own, but not for a Guest or with a money change', async () => {
+    // Mirrors `test/rules/firestore-rules.test.ts`: the nine-key patch
+    // `PaymentReferenceService._storeExtraction()` writes. A verified
+    // allowlisted token is named explicitly because `firestore.rules` reads
+    // `email_verified` from the token, not just the email claim.
+    await seed(async (db) =>
+      setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({
+        payment_proof_url: 'payments/x/y/proof.jpg',
+        payment_status: 'pending',
+        amount_claimed: 5000,
+      })),
+    )
+    const verifiedAdmin = env.authenticatedContext('admin-uid-1', {
+      email: ADMIN_EMAIL,
+      email_verified: true,
+    })
+    const patch = {
+      ocr_reference: '8159662488150',
+      ocr_amount: '5000.00',
+      ocr_sender_name: null,
+      ocr_recipient_name: null,
+      ocr_payment_date: '2026-11-01',
+      ocr_proof_url: 'payments/x/y/proof.jpg',
+      ocr_engine: 'mlkit-latin',
+      ocr_confidence: 'high',
+      ocr_extracted_at: serverTimestamp(),
+    }
+    await assertSucceeds(updateDoc(doc(verifiedAdmin.firestore(), 'bookings', BOOKING_ID), patch))
+    await assertFails(updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), patch))
+    // One extra key must not ride through the evidence door.
+    await assertFails(updateDoc(doc(verifiedAdmin.firestore(), 'bookings', BOOKING_ID), {
+      ...patch,
+      payment_status: 'verified',
+    }))
   })
 
   it('records the verification the Admin makes, and refuses one nobody signed', async () => {

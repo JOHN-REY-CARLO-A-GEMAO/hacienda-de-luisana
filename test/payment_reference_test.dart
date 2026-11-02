@@ -201,10 +201,15 @@ void main() {
     });
 
     test('tells the Admin what to do, and stays quiet when the message says it', () {
-      expect(
-        receiptWriteAdvice(ReceiptWriteFailure.permissionDenied),
-        contains('firestore.rules'),
-      );
+      final denied = receiptWriteAdvice(ReceiptWriteFailure.permissionDenied);
+      // The advice has to name this project's role sources: profiles/{uid},
+      // a verified allowlisted email, and a token refresh. Pointing the Admin
+      // at users/{uid} or an `admin` custom claim sends them to a collection
+      // and a claim the rules never read.
+      expect(denied, contains('firestore.rules'));
+      expect(denied, contains('profiles/<uid>.role'));
+      expect(denied, contains('verified'));
+      expect(denied, contains('token'));
       expect(receiptWriteAdvice(ReceiptWriteFailure.offline), isNotEmpty);
       expect(receiptWriteAdvice(ReceiptWriteFailure.missingBooking), isNotEmpty);
       // A stale proof and a demo build already explain themselves in the

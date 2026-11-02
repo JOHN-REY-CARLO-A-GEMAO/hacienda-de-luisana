@@ -273,6 +273,78 @@ from the commit you intend. Rollback: Console → Firestore → Rules → versio
 history → restore the previous ruleset, or redeploy `firestore.rules` from the
 previous commit.
 
+#### `PERMISSION_DENIED` when the Admin app files a receipt read
+
+Symptom: ML Kit reads the receipt (for example `Ref: 8159662488150`,
+`₱5000.00`) and then
+
+```
+W/Firestore: Write failed at bookings/EFWlBlZN72rBnVjfaLFK:
+Status{code=PERMISSION_DENIED, description=Missing or insufficient permissions.}
+```
+
+comes from `PaymentReferenceService._storeExtraction()`'s `update()`. The read
+is fine; the write is being judged by the **deployed** rules and the
+**signed-in identity**.
+
+**Do not paste a generic `allow read, write: if isAdmin()` snippet into
+`firestore.rules`.** It does not describe this project:
+
+| Generic snippet | This repository |
+| --- | --- |
+| `users/{uid}.role`, `request.auth.token.admin` | No `users` collection and no `admin` custom claim. A role is `profiles/{uid}.role == 'admin'`, or a **verified** address in `adminEmails()` (`src/config/admin-roles.json`) — ADR-0005. |
+| `resource.data.userId` | A Booking's owner is `uid` (ADR-0004), and it is the **Guest's** uid, not the Admin's. |
+| `paymentReference`, `receiptAmount`, `paymentProofUrl`, `ocrData`, `updatedAt` | Snake case: `payment_reference`, `ocr_amount`, `payment_proof_url`, `ocr_*`. The OCR patch writes exactly nine `ocr_*` keys (ADR-0023). |
+| `allow read, write: if isAdmin()` | Would replace ~1,900 lines of Guest self-serve, lifecycle and money invariants (ADR-0001, 0012, 0018) with a two-line rule — and would still not help a session the rules read as Guest. |
+
+Work through these in order:
+
+1. **Deploy the ruleset from this commit, to the right project.**
+   ```bash
+   firebase deploy --only firestore:rules --project hacienda-de-luisana
+   ```
+   `.firebaserc`, `lib/firebase_options.dart` and
+   `src/lib/firebaseDefaults.ts` must all name the same `projectId`; rules
+   deployed to a different project change nothing the app can see. In Console →
+   Firestore → Rules, confirm the live text contains
+   `adminOcrEvidenceUpdate()`. A rules deploy replaces the whole file — a
+   stale or hand-edited console ruleset is the commonest cause.
+2. **Verify the signed-in account** — the app logs its uid, email,
+   `user.emailVerified` and the token's `email_verified` claim on a refused
+   write. For the UID in the Auth log (for example
+   `e3t0myCwUNSWDKpdhk4h42pOyt02`):
+   - Authentication → Users: if the address is the allowlisted one, make sure
+     **Email verified** is true. `firestore.rules` reads `email_verified` from
+     the ID **token**, not from `User.emailVerified`; after verifying, sign out
+     and back in (the app also refreshes a stale token when it restores a
+     session). An unverified allowlisted address is deliberately **not** Admin.
+   - Otherwise, create `profiles/<uid>` with
+     `{ "uid": "<uid>", "role": "admin" }`. `users/<uid>` is never read.
+     Custom claims grant nothing here; the rules never read `token.admin`.
+   - `bookings/<id>.uid` names the Guest. It will not equal the Admin's uid,
+     and that is correct — the Admin is recognised by role, not by ownership.
+3. **Check the rule that decides this write.** `match /bookings/{bookingId}`
+   has `adminOcrEvidenceUpdate()`: an Admin-only door that accepts a patch
+   changing **only** the nine `ocr_*` evidence keys. It exists because the
+   general Admin update rule also asks about the *stored* state —
+   `reservedIsPaidFor()` refuses every write to a historical `Reserved` Booking
+   whose `payment_status` is not `verified`, even for a patch that touches no
+   status, no money and no marker. Guests keep
+   their own seven-key OCR vocabulary in `guestSelfServeUpdate()` for the
+   website's re-send; `ocr_recipient_name` and `ocr_extracted_at` stay
+   Admin-only.
+4. **Verify before closing the ticket.**
+   ```bash
+   npm run test:rules          # offline rules suite: allow/deny for the OCR door
+   npm run test:emulator       # real rules evaluation, if the emulator + Java are available
+   ```
+   Then reopen the proof and use **Basahin muli**. A remaining refusal is an
+   identity/deployment problem, not a missing field in the patch: the panel
+   prints the classified cause and the device log prints the identity facts.
+
+See [RECEIPT_OCR_GUIDE.md](./RECEIPT_OCR_GUIDE.md) § 9 and
+[ADR-0023](./adr/0023-receipt-ocr-on-the-admins-device.md).
+
 ### 5. Deploy Hosting
 ```bash
 npm run build

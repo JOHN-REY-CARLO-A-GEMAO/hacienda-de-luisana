@@ -17,8 +17,10 @@
 //     reference already filed against a different Booking is refused unless the
 //     Admin says, on the record, that they have looked at both.
 //
-// Firestore, not a Cloud Function, because the Admin app already writes Bookings
-// directly under `adminUpdate()` in `firestore.rules`. The correction metadata
+// Firestore, not a Cloud Function: `firestore.rules` gives this exact patch its
+// own Admin-only door (`adminOcrEvidenceUpdate()`), so a read can be filed even
+// on a historical Booking whose stored status the general update rule refuses.
+// The correction metadata
 // (`ocr_extracted_at`, `ocr_recipient_name`, `payment_reference_source`,
 // `payment_reference_corrected_at/by`, `payment_reference_previous`) is outside
 // the Guest's `hasOnly` vocabulary, so a Guest can neither write nor clear it;
@@ -31,6 +33,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -179,8 +182,14 @@ ReceiptWriteFailure receiptWriteFailureFor(Object error) {
 String receiptWriteAdvice(ReceiptWriteFailure failure) {
   switch (failure) {
     case ReceiptWriteFailure.permissionDenied:
+      // Name the three things that actually decide this, in this project's
+      // vocabulary. A generic "check users/{uid}.role" sends the Admin to a
+      // collection that does not exist here — the role is at profiles/{uid},
+      // and the bootstrap address needs a verified email on the ID token.
       return 'Tinanggihan ng Firestore ang pagsulat (permission-denied): '
-          'i-deploy ang firestore.rules at tiyaking Admin account ang naka-sign in.';
+          'i-deploy ang firestore.rules sa tamang project; tiyaking Admin ang '
+          'session (profiles/<uid>.role = "admin" o verified na allowlisted '
+          'email); at mag-sign out / sign in muli para ma-refresh ang token.';
     case ReceiptWriteFailure.offline:
       return 'Hindi naabot ang Firestore — subukan muli kapag may signal.';
     case ReceiptWriteFailure.missingBooking:
@@ -189,6 +198,34 @@ String receiptWriteAdvice(ReceiptWriteFailure failure) {
     case ReceiptWriteFailure.noDatabase:
     case ReceiptWriteFailure.unknown:
       return '';
+  }
+}
+
+/// Put the identity Firestore actually judged into the device log.
+///
+/// A refused write arrives as a bare `permission-denied`, with no hint of
+/// *which* of the three facts was missing: the token's verified allowlist
+/// address, `profiles/{uid}.role == 'admin'`, or the deployed ruleset. This is
+/// the log line that turns step 3 of the diagnosis into something the person
+/// holding the phone can check, and it deliberately names the role sources
+/// this project uses rather than `users/{uid}` or an `admin` custom claim.
+Future<void> logReceiptWriterIdentity(String reason) async {
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint('[PaymentReference] $reason: no signed-in Firebase user');
+      return;
+    }
+    final result = await user.getIdTokenResult();
+    debugPrint('[PaymentReference] $reason: uid=${user.uid} '
+        'email=${user.email} user.emailVerified=${user.emailVerified} '
+        'token.email=${result.claims?['email']} '
+        'token.email_verified=${result.claims?['email_verified']}');
+    debugPrint('[PaymentReference] firestore.rules resolves this writer from '
+        'profiles/${user.uid}.role == "admin" or a verified adminEmails() '
+        'address; custom claims and users/{uid} grant nothing here.');
+  } catch (error) {
+    debugPrint('[PaymentReference] writer identity unavailable: $error');
   }
 }
 
@@ -359,6 +396,10 @@ class PaymentReferenceService {
       debugPrint('[PaymentReference] OCR read could not be filed in a '
           'transaction: $error');
       debugPrint('$stack');
+      if (receiptWriteFailureFor(error) ==
+          ReceiptWriteFailure.permissionDenied) {
+        await logReceiptWriterIdentity('transaction refused by Firestore');
+      }
     }
 
     try {
@@ -384,6 +425,9 @@ class PaymentReferenceService {
       debugPrint('[PaymentReference] OCR read could not be filed: $error');
       debugPrint('$stack');
       final failure = receiptWriteFailureFor(error);
+      if (failure == ReceiptWriteFailure.permissionDenied) {
+        await logReceiptWriterIdentity('update refused by Firestore');
+      }
       return _ExtractionWrite(
         error: failure == ReceiptWriteFailure.missingBooking
             ? 'Wala na ang Booking na ito, kaya hindi na-save ang nabasa.'

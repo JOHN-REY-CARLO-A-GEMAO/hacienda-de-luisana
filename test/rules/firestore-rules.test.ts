@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compileRules, evaluate, ruleTimestamp, type DocData, type Store } from './engine'
 import {
+  ADMIN_EMAIL,
   ADMIN_SECURITY_NOW,
   ADMIN_UID,
   BOOKING_ID,
@@ -20,6 +21,7 @@ import {
   GUEST_UID,
   OTHER_GUEST_UID,
   accessLogDoc,
+  adminOcrEvidencePatch,
   adminSecurityDoc,
   adminVerifyPatch,
   allowlistedAdmin,
@@ -991,33 +993,118 @@ describe('bookings: what a Guest may change', () => {
 describe('bookings: what the Admin may change', () => {
   const pending = bookingDoc()
 
-  it('accepts the OCR-only patch the Admin app files after an on-device read', () => {
-    // `PaymentReferenceService._storeExtraction` in the Admin app: `ocr_*`
-    // evidence only, no status, no money. The rule must accept it on a Pending
-    // Booking — a refusal here is the app reading the receipt aloud and then
-    // only being able to tell the Admin "Hindi na-save".
-    const withProof = bookingDoc({
-      payment_proof_url: 'payments/guest-uid-1/booking-1/proof.jpg',
+  // The 2026-11-02 device log: ML Kit read Ref 8159662488150 / ₱5000.00 and
+  // `PaymentReferenceService._storeExtraction()` then got PERMISSION_DENIED on
+  // `update(bookings/…)`. These cases hold the fix: the read has its own door,
+  // and that door is narrower than the general Admin update rule, not wider.
+  const ocrBase = {
+    path: `bookings/${BOOKING_ID}`,
+    method: 'update' as const,
+  }
+  const proofPath = `payments/${GUEST_UID}/${BOOKING_ID}/proof.jpg`
+  const withProof = bookingDoc({
+    payment_proof_url: proofPath,
+    payment_status: 'pending',
+    amount_claimed: 5000,
+  })
+  const evidence = { ...withProof, ...adminOcrEvidencePatch() }
+
+  it('accepts the exact evidence-only patch the Admin app files after an on-device read', () => {
+    // Nine `ocr_*` keys, including the Admin-only `ocr_recipient_name` and the
+    // server timestamp `ocr_extracted_at`. A refusal here is the app reading the
+    // receipt aloud and then only being able to say "Hindi na-save".
+    expect(
+      allow({ ...ocrBase, auth: allowlistedAdmin(), resourceData: withProof, requestData: evidence }),
+    ).toBe(true)
+  })
+
+  it('accepts an Admin whose role comes from profiles/{uid}.role, not the allowlist', () => {
+    // Step 3 of the diagnosis is not `users/{uid}` and not an `admin` custom
+    // claim: in this project the stored role lives at `profiles/{uid}`.
+    expect(
+      allow({ ...ocrBase, auth: promotedAdmin(), resourceData: withProof, requestData: evidence }),
+    ).toBe(true)
+  })
+
+  it('accepts the read on a historical Reserved Booking whose money is unverified', () => {
+    // The general update rule refuses ANY write to such a document through
+    // `reservedIsPaidFor()` — even one that touches no money. Evidence must not
+    // be held hostage by a stored status the Admin cannot change in this patch.
+    const legacy = bookingDoc({
+      status: 'Reserved',
       payment_status: 'pending',
-      amount_claimed: 8500,
+      payment_proof_url: proofPath,
+      amount_claimed: 5000,
     })
+    // …but a verification without its marker is still refused by the general
+    // rule, so this stored Booking really is one the general path denies.
+    expect(
+      deny({
+        ...ocrBase,
+        auth: allowlistedAdmin(),
+        resourceData: legacy,
+        requestData: { ...legacy, payment_status: 'verified' },
+      }),
+    ).toBe(true)
     expect(
       allow({
-        path: `bookings/${BOOKING_ID}`,
-        method: 'update',
+        ...ocrBase,
+        auth: allowlistedAdmin(),
+        resourceData: legacy,
+        requestData: { ...legacy, ...adminOcrEvidencePatch() },
+      }),
+    ).toBe(true)
+    // …but adding one money key to the same patch must not sneak through the
+    // narrow door: `hasOnly` refuses it there, and `hasVerificationMarker()`
+    // still refuses it in the general rule. Evidence cannot verify a payment.
+    expect(
+      deny({
+        ...ocrBase,
+        auth: allowlistedAdmin(),
+        resourceData: legacy,
+        requestData: {
+          ...legacy,
+          ...adminOcrEvidencePatch(),
+          payment_status: 'verified',
+        },
+      }),
+    ).toBe(true)
+  })
+
+  it('refuses the same patch from a Guest, even on their own Booking', () => {
+    // The Guest's `hasOnly` vocabulary carries seven provenance/evidence keys
+    // for the website's own read, but not the two Admin-only metadata keys.
+    expect(
+      deny({ ...ocrBase, auth: emailGuest(), resourceData: withProof, requestData: evidence }),
+    ).toBe(true)
+  })
+
+  it('refuses an allowlisted address whose email is not verified', () => {
+    expect(
+      deny({
+        ...ocrBase,
+        auth: { uid: ADMIN_UID, token: { email: ADMIN_EMAIL, email_verified: false } },
+        resourceData: withProof,
+        requestData: evidence,
+      }),
+    ).toBe(true)
+  })
+
+  it('cannot be used to smuggle a verification or an unverified status change', () => {
+    expect(
+      deny({
+        ...ocrBase,
         auth: allowlistedAdmin(),
         resourceData: withProof,
-        requestData: {
-          ...withProof,
-          ocr_reference: '8159662488150',
-          ocr_amount: '7500.00',
-          ocr_sender_name: 'JUAN DELA CRUZ',
-          ocr_recipient_name: 'MARIA SANTOS',
-          ocr_payment_date: '2026-11-01',
-          ocr_proof_url: 'payments/guest-uid-1/booking-1/proof.jpg',
-          ocr_engine: 'mlkit-latin',
-          ocr_confidence: 'high',
-        },
+        requestData: { ...evidence, payment_status: 'verified' },
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        ...ocrBase,
+        auth: allowlistedAdmin(),
+        resourceData: withProof,
+        requestData: { ...evidence, status: 'Approved', payment_status: 'verified' },
       }),
     ).toBe(true)
   })

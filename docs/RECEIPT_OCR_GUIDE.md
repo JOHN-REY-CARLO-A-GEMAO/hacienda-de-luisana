@@ -103,9 +103,11 @@ Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa
   Ang Admin, na tumitingin sa screenshot, ang nagpapa-verify.
 - **Walang cloud OCR call at walang upload ng larawan** para sa pagbasa. Sa browser lang.
 - **Walang server-side OCR** — kaya walang API key na kailangang itago, at walang gastos.
-- **Walang OCR sa Flutter admin app.** Ang mobile app ay Admin-only (ADR-0007/0008); wala itong
-  Tesseract at hindi nito kailangan: ang Guest sa website ang nag-e-extract, at ang admin ang
-  nagbe-verify sa pamamagitan ng pagtingin sa proof at sa `ocr_*` fields.
+- **Walang cloud OCR.** Mula 2026-10-29, **may on-device OCR na sa Flutter Admin app** gamit ang
+  Google ML Kit (`lib/services/receipt_ocr_service.dart`, ADR-0023): binabasa nito ang proof kapag
+  wala pang nagamit na `ocr_*` read ang website, o kapag pinili ng Admin ang "Basahin muli".
+  Pribado, offline, at walang API key — hindi ito Tesseract at hindi ito server call. Ang pag-verify
+  ay nananatiling desisyon ng Admin.
 
 ## 6. Kung may resibong hindi mabasa
 
@@ -135,10 +137,35 @@ Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa
 
 ## 8. Kung gusto mong ilagay din ito sa Flutter app
 
-Hindi kasama ngayon, at may dahilan. Kailangan ng OCR package (`google_mlkit_text_recognition`) sa
-device, o isang server function na may Vision API key — parehong bagong dependency at bagong
-paggastos. Bago gawin iyon, sagutin muna: **sino ang mag-e-extract?**
+**Nailagay na ito** ng [ADR-0023](./adr/0023-receipt-ocr-on-the-admins-device.md) (2026-10-29):
+`google_mlkit_text_recognition` sa device, walang server function at walang Vision API key. Ang
+orihinal na dahilan ng seksyong ito — sino ang mag-e-extract — sinasagot na ng dalawang hakbang:
+Guest sa browser (tesseract.js, libre) para sa bagong upload, at Admin sa device para sa lumang
+proof o sa "Basahin muli". Parehong hint lang ang nabasa; ang pag-verify ay sa Admin pa rin.
 
-- Kung **Guest**, website na ang tamang lugar — nandoon na, at libre (browser engine).
-- Kung **Admin**, hindi kailangan ng OCR: nakikita na niya ang larawan at ang `ocr_*` fields. Ang
-  kulang lang doon ay editing UI, hindi bagong engine.
+## 9. Kapag `PERMISSION_DENIED` ang pag-save ng binasa
+
+Kung nabasa ng ML Kit ang resibo (`Ref: 8159662488150`, `₱5000.00`) pero
+`PaymentReferenceService._storeExtraction()` ay tinanggihan ng Firestore, **hindi** ito problema sa
+parser kundi sa **na-deploy na `firestore.rules`** o sa **Admin identity**. Buong checklist nasa
+[FIREBASE_SETUP.md § 4](./FIREBASE_SETUP.md) — "PERMISSION_DENIED when the Admin app files a
+receipt read".
+
+Mga dapat tandaan, dahil madalas magmungkahi ng generic na rule na hindi bagay dito:
+
+- **Walang `users/{uid}` at walang `admin` custom claim** sa project na ito. Ang role ay
+  `profiles/<uid>.role == "admin"` o isang **verified** na email sa `adminEmails()`.
+- **`uid`** ang owner ng Booking (Guest), hindi `userId`; snake_case ang mga field
+  (`payment_proof_url`, `ocr_*`), hindi `paymentProofUrl` / `ocrData` / `updatedAt`.
+- **Huwag palitan ang `firestore.rules` ng `allow read, write: if isAdmin()`** — mabubura ang
+  Guest, lifecycle at money invariants (ADR-0001/0012/0018).
+- Ang pag-save ng read ay may sariling pintuan sa rules: `adminOcrEvidenceUpdate()`, Admin-only at
+  **siyam na `ocr_*` key lamang** ang pweding magbago. Kaya hindi nito madala ang `status`,
+  `payment_status`, o `amount_verified`, kahit sa lumang Booking na `Reserved` na walang
+  `verified` na `payment_status` — dati itong tinatanggihan ng pangkalahatang update rule.
+- Sa refusal, inililimbag ng app ang classified cause at ang uid/email/token claims ng writer sa
+  device log — iyon ang ikumpara sa Authentication at sa `profiles/<uid>`.
+
+I-deploy mula sa commit na ito: `firebase deploy --only firestore:rules --project hacienda-de-luisana`,
+pagkatapos ay i-verify ang email o ang Profile, at mag-sign out / sign in muli para ma-refresh ang
+ID token. Patakbuhin ang `npm run test:rules` bago mag-deploy.

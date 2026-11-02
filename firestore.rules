@@ -1224,13 +1224,60 @@ service cloud.firestore {
                    == next.get('refund_total', 0));
       }
 
+      // ------------------------------------------------------------------
+      // The Admin's OCR evidence, decided on its own (2026-11-02)
+      // ------------------------------------------------------------------
+      // `PaymentReferenceService._storeExtraction()` files a machine read of a
+      // payment receipt as evidence only (ADR-0023). It used to have to pass
+      // the general Admin update rule, which also asks about the *stored*
+      // state: `reservedIsPaidFor()` refuses every write to a historical
+      // `Reserved` Booking whose `payment_status` is not `verified`, even a
+      // patch that changes no status, no money and no marker. Firestore then
+      // returned a bare `permission-denied` for a read the Admin had just
+      // watched the app take.
+      //
+      // So an evidence-only write has its own door. It is deliberately narrow:
+      // at least one `ocr_*` key must change, NOTHING else may change, and the
+      // writer must be the Admin as `role()` resolves one — the verified
+      // bootstrap allowlist or `profiles/{uid}.role == 'admin'`. There is no
+      // `users/{uid}` collection, no `admin` custom claim, and no `userId` on a
+      // Booking in this project: a rule that reads those is a rule that grants
+      // nothing (or, written as `allow write: if isAdmin()`, one that throws
+      // away every Guest and money invariant below).
+      //
+      // The two cheap set checks precede `isAdmin()` for cost, not for meaning:
+      // an ordinary Guest proof upload is refused by the closed vocabulary
+      // before any `profiles/{uid}` lookup is spent. `hasOnly` is the boundary —
+      // it is why this door cannot be used to smuggle a `status`,
+      // `payment_status`, `amount_verified` or verification marker past the two
+      // halves below.
+      function ocrEvidenceKeys() {
+        return ['ocr_reference', 'ocr_amount', 'ocr_sender_name',
+                'ocr_recipient_name', 'ocr_payment_date', 'ocr_proof_url',
+                'ocr_engine', 'ocr_confidence', 'ocr_extracted_at'];
+      }
+
+      function adminOcrEvidenceUpdate() {
+        let affected = request.resource.data.diff(resource.data).affectedKeys();
+        return affected.hasAny(ocrEvidenceKeys())
+          && affected.hasOnly(ocrEvidenceKeys())
+          && isAdmin();
+      }
+
       // The two halves above are OR'd, not AND'd: a write is allowed if EITHER
       // a Admin's rules accept it OR the Guest's own self-serve rules do. That
       // is the same disjunction the inline body had, and it is why these must
       // stay two functions rather than being merged or reordered — `isAdmin()`
       // is false for a Guest and short-circuits the Admin half.
-      allow update: if reservedIsPaidFor() && pricingSnapshotImmutable()
-        && (adminUpdate() || guestSelfServeUpdate());
+      //
+      // The evidence door comes before both, as a third alternative. It skips
+      // `reservedIsPaidFor()` / `pricingSnapshotImmutable()` only because its
+      // closed key list makes those invariants vacuous: a patch that changes
+      // nothing but `ocr_*` cannot change a status, a price snapshot or a
+      // verification marker. Every other write still pays for them first.
+      allow update: if adminOcrEvidenceUpdate()
+        || (reservedIsPaidFor() && pricingSnapshotImmutable()
+            && (adminUpdate() || guestSelfServeUpdate()));
 
       allow delete: if isAdmin();
 
