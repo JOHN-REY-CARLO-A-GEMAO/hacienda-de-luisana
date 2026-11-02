@@ -164,3 +164,24 @@ the reason this bug took a screenshot to diagnose.
 
 Both paths still touch `ocr_*` only. Nothing here moves money, and nothing here
 flips `canAutoVerifyFromOcr()`.
+
+## Amendment — 2026-11-02: an evidence row appears only when it carries evidence
+
+Point 1 put amount, transaction date, sender and recipient on the panel, each
+with where it came from, and the panel printed "Hindi nabasa" in any of them the
+recognizer could not fill. On the commonest proof in the queue — a GCash
+*Express Send* receipt, which prints no `Sender` label and an unlabelled, masked
+payee — that produced two rows of "could not read" above the notice that
+actually mattered, and read as a fault in the app rather than as an answer. The
+same screenshot that started the 2026-11-01 amendment shows three of them.
+
+Sender, recipient and the provenance line are now rendered **only when they have
+a value**. Nothing is thrown away: `ocr_sender_name`, `ocr_recipient_name` and
+`ocr_proof_url` are still written by the extraction, still pre-fill the
+correction dialog, and `ocr_proof_url` is still what pins a read to a proof —
+a stale one is reported in `warnings`, which is where a thing the Admin can act
+on belongs. A receipt that could not be read is likewise still said once, in
+`warnings`; it is no longer said three times in the evidence list. The "Walang
+naitalang pinagmulan" string is gone with the row it described, and amount and
+transaction date keep their "Hindi nabasa": those two are the fields the decision
+turns on, so their absence *is* the signal.

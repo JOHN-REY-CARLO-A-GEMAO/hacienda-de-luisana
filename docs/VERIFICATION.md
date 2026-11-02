@@ -448,6 +448,14 @@ Implemented as a client-side pipeline (2026-09-27), documented, and still
   amendment is reasoned from the plugin's documented offline behaviour, not
   exercised. `_storeExtraction`'s patch is unchanged — `ocr_*` only, no status,
   no money.
+- **Amended 2026-11-02 — the evidence list shows evidence, not absence.** Sender,
+  recipient and the "Nabasa mula sa" provenance row are rendered only when they
+  have a value; a GCash *Express Send* receipt has no `Sender` label and an
+  unlabelled masked payee, so the panel used to lead with three "Hindi nabasa"
+  rows above the notice that mattered. The `ocr_*` fields are still written, the
+  correction dialog still pre-fills from them, and `ocr_proof_url` still pins a
+  read to a proof (a mismatch is reported in `warnings`). Amount and transaction
+  date keep "Hindi nabasa": the decision turns on those two.
 - **Amended 2026-10-29 — what has and has not moved.** An earlier draft of this
   section required a server-side pipeline (image → function → engine → text) and
   recorded that `functions/` did not exist. `functions/` now exists
