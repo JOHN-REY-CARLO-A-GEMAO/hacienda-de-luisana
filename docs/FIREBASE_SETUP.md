@@ -273,7 +273,7 @@ from the commit you intend. Rollback: Console → Firestore → Rules → versio
 history → restore the previous ruleset, or redeploy `firestore.rules` from the
 previous commit.
 
-#### `PERMISSION_DENIED` when the Admin app files a receipt read
+#### `PERMISSION_DENIED` when the Admin app saves receipt evidence or a reference
 
 Symptom: ML Kit reads the receipt (for example `Ref: 8159662488150`,
 `₱5000.00`) and then
@@ -285,7 +285,11 @@ Status{code=PERMISSION_DENIED, description=Missing or insufficient permissions.}
 
 comes from `PaymentReferenceService._storeExtraction()`'s `update()`. The read
 is fine; the write is being judged by the **deployed** rules and the
-**signed-in identity**.
+**signed-in identity**. A failure after **I-confirm o itama ang reference** is a
+different write, `saveCorrection()`, and needs the same checks. Its generic
+retry notice alone does not establish a permission error: look for
+`[PaymentReference Save Error]` in the device log for the actual exception and
+stack. Keyboard open/close events alone do not prove that a save was submitted.
 
 **Do not paste a generic `allow read, write: if isAdmin()` snippet into
 `firestore.rules`.** It does not describe this project:
@@ -307,8 +311,9 @@ Work through these in order:
    `src/lib/firebaseDefaults.ts` must all name the same `projectId`; rules
    deployed to a different project change nothing the app can see. In Console →
    Firestore → Rules, confirm the live text contains
-   `adminOcrEvidenceUpdate()`. A rules deploy replaces the whole file — a
-   stale or hand-edited console ruleset is the commonest cause.
+   `adminOcrEvidenceUpdate()` and `adminReferenceCorrectionUpdate()`. A rules
+   deploy replaces the whole file — a stale or hand-edited console ruleset is
+   the commonest cause.
 2. **Verify the signed-in account** — the app logs its uid, email,
    `user.emailVerified` and the token's `email_verified` claim on a refused
    write. For the UID in the Auth log (for example
@@ -332,15 +337,23 @@ Work through these in order:
    status, no money and no marker. Guests keep
    their own seven-key OCR vocabulary in `guestSelfServeUpdate()` for the
    website's re-send; `ocr_recipient_name` and `ocr_extracted_at` stay
-   Admin-only.
+   Admin-only. **I-confirm o itama ang reference** uses the separate
+   `adminReferenceCorrectionUpdate()` door: only the seven reference/sender/date
+   keys from `saveCorrection()`, with `payment_reference_source` set to
+   `admin_corrected` and `payment_reference_corrected_by` equal to the caller's
+   uid. It also leaves status, money, proof and OCR evidence untouched. The
+   service's duplicate and verified-overwrite confirmations still apply.
 4. **Verify before closing the ticket.**
    ```bash
-   npm run test:rules          # offline rules suite: allow/deny for the OCR door
+   npm run test:rules          # supplemental rules suite: both evidence doors
    npm run test:emulator       # real rules evaluation, if the emulator + Java are available
+   npm run test:flutter       # Dart error mapping, with the Flutter SDK installed
    ```
-   Then reopen the proof and use **Basahin muli**. A remaining refusal is an
-   identity/deployment problem, not a missing field in the patch: the panel
-   prints the classified cause and the device log prints the identity facts.
+   Rebuild/reinstall the Admin app to get the new save diagnostics, then reopen
+   the proof and try **Basahin muli** and **I-confirm o itama ang reference**.
+   Rules deployment alone does not update the installed Dart code. If a write
+   still fails, compare the classified notice and device-log exception with the
+   identity facts above; the shorter retry message is not a diagnosis by itself.
 
 See [RECEIPT_OCR_GUIDE.md](./RECEIPT_OCR_GUIDE.md) § 9 and
 [ADR-0023](./adr/0023-receipt-ocr-on-the-admins-device.md).

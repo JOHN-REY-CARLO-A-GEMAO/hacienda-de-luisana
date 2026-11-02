@@ -1264,18 +1264,43 @@ service cloud.firestore {
           && isAdmin();
       }
 
-      // The two halves above are OR'd, not AND'd: a write is allowed if EITHER
-      // a Admin's rules accept it OR the Guest's own self-serve rules do. That
-      // is the same disjunction the inline body had, and it is why these must
-      // stay two functions rather than being merged or reordered — `isAdmin()`
-      // is false for a Guest and short-circuits the Admin half.
+      // The Admin's deliberate acceptance/correction of a reference (ADR-0023).
+      // This is a separate write from OCR: saveCorrection() records the human's
+      // number and its provenance, never the machine's `ocr_*` fields. It needs
+      // the same stored-state independence as the evidence door above: a
+      // historical Reserved Booking must not make a money-neutral correction
+      // impossible. The service still checks duplicates and asks for explicit
+      // confirmation before replacing a verified reference, in a transaction.
       //
-      // The evidence door comes before both, as a third alternative. It skips
-      // `reservedIsPaidFor()` / `pricingSnapshotImmutable()` only because its
-      // closed key list makes those invariants vacuous: a patch that changes
-      // nothing but `ocr_*` cannot change a status, a price snapshot or a
-      // verification marker. Every other write still pays for them first.
+      // Only these seven keys may change or be removed. The source must say
+      // human-corrected and the writer must sign their own uid. In particular,
+      // this door cannot change status, money, verification markers, the Guest's
+      // identity, the proof, or OCR evidence. No ownership check belongs here:
+      // `uid` is the Guest's identity; `isAdmin()` is the Admin's permission.
+      function referenceCorrectionKeys() {
+        return ['payment_reference', 'payment_reference_source',
+                'payment_reference_corrected_at', 'payment_reference_corrected_by',
+                'payment_reference_previous', 'payment_sender_name', 'payment_date'];
+      }
+
+      function adminReferenceCorrectionUpdate() {
+        let next = request.resource.data;
+        let affected = next.diff(resource.data).affectedKeys();
+        return affected.hasAny(referenceCorrectionKeys())
+          && affected.hasOnly(referenceCorrectionKeys())
+          && isAdmin()
+          && next.get('payment_reference_source', '') == 'admin_corrected'
+          && next.get('payment_reference_corrected_by', '') == request.auth.uid;
+      }
+
+      // The general Admin/Guest halves remain OR'd, not AND'd. The two narrow
+      // evidence doors come first. They skip `reservedIsPaidFor()` /
+      // `pricingSnapshotImmutable()` only because their closed key sets make
+      // those invariants vacuous: neither patch can change a status, a price
+      // snapshot or a verification marker. Every other write still pays for
+      // them first, and the Guest's self-serve vocabulary is unchanged.
       allow update: if adminOcrEvidenceUpdate()
+        || adminReferenceCorrectionUpdate()
         || (reservedIsPaidFor() && pricingSnapshotImmutable()
             && (adminUpdate() || guestSelfServeUpdate()));
 

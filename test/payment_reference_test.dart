@@ -171,6 +171,55 @@ void main() {
     });
   });
 
+  group('a manual reference correction that could not be saved', () {
+    test('a permission refusal names the deployed rules and the real role sources', () {
+      final result = PaymentReferenceSaveResult.writeError(FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'permission-denied',
+        message: 'Missing or insufficient permissions.',
+      ));
+      expect(result.ok, isFalse);
+      expect(result.status, PaymentReferenceSaveStatus.failed);
+      expect(result.failure, ReceiptWriteFailure.permissionDenied);
+      expect(result.message, startsWith('Hindi na-save ang reference.'));
+      expect(result.message, contains('firestore.rules'));
+      expect(result.message, contains('profiles/<uid>.role'));
+      expect(result.message, contains('token'));
+      expect(result.message, isNot(contains('users/{uid}')));
+    });
+
+    test('an unacknowledged write is not reported as saved or queued', () {
+      for (final code in ['unavailable', 'deadline-exceeded']) {
+        final result = PaymentReferenceSaveResult.writeError(
+          FirebaseException(plugin: 'cloud_firestore', code: code),
+        );
+        expect(result.ok, isFalse);
+        expect(result.failure, ReceiptWriteFailure.offline);
+        expect(result.message, contains('signal'));
+        expect(result.message, isNot(contains('nai-queue')));
+      }
+    });
+
+    test('a missing Booking asks for a refresh rather than a blind retry', () {
+      final result = PaymentReferenceSaveResult.writeError(
+        FirebaseException(plugin: 'cloud_firestore', code: 'not-found'),
+      );
+      expect(result.ok, isFalse);
+      expect(result.failure, ReceiptWriteFailure.missingBooking);
+      expect(result.message, contains('I-refresh ang listahan'));
+    });
+
+    test('an unexpected exception keeps its raw details out of the notice', () {
+      final result = PaymentReferenceSaveResult.writeError(
+        StateError('private implementation detail'),
+      );
+      expect(result.ok, isFalse);
+      expect(result.failure, ReceiptWriteFailure.unknown);
+      expect(result.message, 'Hindi na-save ang reference. Subukan muli.');
+      expect(result.message, isNot(contains('private implementation detail')));
+    });
+  });
+
   group('a read that could not be filed', () {
     // The panel used to show one sentence for every accident — a dropped
     // connection, a refused write, a deleted Booking — which is why a screenshot
