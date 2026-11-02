@@ -31,6 +31,7 @@
     "test:qa:tutorial": "node scripts/phase0/run.mjs qa-tutorial",
     "check:phase0": "node scripts/phase0/run.mjs typecheck",
     "check:android": "node scripts/check-android-env.mjs",
+    "check:google-form": "node scripts/google-form/build-check.mjs",
     "build:phase0": "node scripts/phase0/run.mjs build",
     "prepare:phase0:emulators": "node scripts/phase0/prepare-emulators.mjs",
     "prepare:phase0:java": "node scripts/phase0/prepare-java.mjs",

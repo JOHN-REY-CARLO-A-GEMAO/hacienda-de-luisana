@@ -14,6 +14,7 @@
 2. Write the answer in the **Sagot** line (or in the Filipino form in [Appendix A](#appendix-a--tanong-sa-may-ari-one-page-form)).
 3. Bring the answers back to the repo: [Appendix B](#appendix-b--where-each-answer-gets-written-down) says which file or screen changes for each one. An answer that reaches no file is an answer the system never hears.
 4. **Do not re-ask what is already settled** — see [§7](#7-already-settled--huwag-nang-itanong).
+5. **Gusto ng Google Form?** Patakbuhin ang [`scripts/google-form/Code.gs`](../scripts/google-form/Code.gs) sa <https://script.google.com> at bubuo ito ng form at ng response sheet — 55 tanong, Taglish, anim na seksyon. Nasa [`scripts/google-form/README.md`](../scripts/google-form/README.md) ang mga hakbang. Ang dokumentong ito pa rin ang English na record.
 
 ### Priority key
 
