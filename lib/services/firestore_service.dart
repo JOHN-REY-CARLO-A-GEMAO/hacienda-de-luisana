@@ -11,8 +11,11 @@ import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
 import '../core/constants/app_constants.dart';
 import '../core/utils/date_formatter.dart';
+import '../utils/error_utils.dart';
 import 'booking_lifecycle.dart';
 import 'mock_data_service.dart';
+import 'payment_reference_service.dart'
+    show ReceiptWriteFailure, receiptWriteAdvice, receiptWriteFailureFor;
 import 'pin_store.dart' show PinSecurityRemote, SecurityTicket;
 import 'security_gate.dart';
 
@@ -110,6 +113,38 @@ String? validatePaymentInformationDocument(Map<String, dynamic> doc) {
     }
   }
   return null;
+}
+
+/// What the Admin is told when a Booking action could not be written.
+///
+/// A refused write arrives as a bare `permission-denied`, which is
+/// indistinguishable from a dropped connection once it is printed as
+/// "Could not save to Firestore". The transaction behind an action touches the
+/// Booking, its Activity entry and a Notification, so the raw text also never
+/// says *which* of the three was refused — and the answer is always one of the
+/// same three facts: the deployed ruleset, the session's role, or the ID token.
+/// Those are named here in this project's vocabulary (`profiles/{uid}.role`,
+/// a verified allowlisted address), never `users/{uid}` and never an `admin`
+/// custom claim, because neither exists here (ADR-0005).
+///
+/// Free function, so the wording is testable without a device or a database.
+String bookingWriteRefusalMessage(Object error) {
+  final failure = receiptWriteFailureFor(error);
+  switch (failure) {
+    case ReceiptWriteFailure.permissionDenied:
+      return 'Tinanggihan ng Firestore ang pag-save (permission-denied). '
+          '${receiptWriteAdvice(failure)}';
+    case ReceiptWriteFailure.offline:
+      return 'Hindi naabot ang Firestore. Subukan muli kapag may signal — '
+          'walang nabago sa Booking.';
+    case ReceiptWriteFailure.missingBooking:
+      return 'Wala na ang Booking na ito — i-refresh ang listahan.';
+    case ReceiptWriteFailure.staleProof:
+    case ReceiptWriteFailure.noDatabase:
+    case ReceiptWriteFailure.unknown:
+      return 'Hindi na-save ang Booking. '
+          '${ErrorUtils.toUserMessage(error, fallback: 'Subukan muli.')}';
+  }
 }
 
 class FirestoreService implements PinSecurityRemote {
@@ -398,8 +433,11 @@ class FirestoreService implements PinSecurityRemote {
         return result;
       });
     } catch (e) {
-      return ActionResult.refused(
-          'Could not save to Firestore (${e.toString().split('\n').first}).');
+      // Nothing was written: the Booking, its Activity entry and the Guest's
+      // Notification commit in one transaction, so a refusal leaves the
+      // Booking exactly as it was. Say that, and say which of the three facts
+      // decides it rather than echoing Firestore's sentence.
+      return ActionResult.refused(bookingWriteRefusalMessage(e));
     }
   }
 

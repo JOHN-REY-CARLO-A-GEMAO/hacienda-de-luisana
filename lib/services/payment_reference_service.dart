@@ -228,6 +228,34 @@ String receiptWriteAdvice(ReceiptWriteFailure failure) {
   }
 }
 
+/// What the Admin should be told when the `payment_references` collection
+/// cannot be read.
+///
+/// The collection is Admin-only (`allow read: if isAdmin()`), so a refusal is a
+/// statement about the session — the deployed ruleset or the role — and never
+/// about whether there are payments to show. The screen used to swallow this in
+/// a `print` and fall through to "No payment records yet", which reads as "the
+/// revenue screen is empty" rather than "you are signed in as a Guest".
+String receiptReadRefusalMessage(Object error) {
+  switch (receiptWriteFailureFor(error)) {
+    case ReceiptWriteFailure.permissionDenied:
+      return 'Tinanggihan ng Firestore ang pagbasa (permission-denied). '
+          'Ang Payment references ay Admin-only: i-deploy ang firestore.rules '
+          'ng commit na ito, at tiyaking Admin ang session '
+          '(profiles/<uid>.role = "admin" o verified na allowlisted email), '
+          'tapos mag-sign out at sign in muli para ma-refresh ang token.';
+    case ReceiptWriteFailure.offline:
+      return 'Hindi naabot ang Firestore. Subukan muli kapag may signal.';
+    case ReceiptWriteFailure.noDatabase:
+      return 'Walang Firestore sa build na ito (demo mode).';
+    case ReceiptWriteFailure.missingBooking:
+    case ReceiptWriteFailure.staleProof:
+    case ReceiptWriteFailure.unknown:
+      return 'Hindi ma-read ang payment references ngayon. Subukan muli — '
+          'ang detalyeng teknikal ay nasa device log.';
+  }
+}
+
 /// Put the identity Firestore actually judged into the device log.
 ///
 /// A refused write arrives as a bare `permission-denied`, with no hint of
