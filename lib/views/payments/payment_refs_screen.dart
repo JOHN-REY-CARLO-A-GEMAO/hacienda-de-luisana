@@ -12,6 +12,8 @@ import '../../models/booking_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/booking_lifecycle.dart';
 import '../../services/payment_proof_service.dart';
+import '../../services/payment_reference_service.dart'
+    show receiptReadRefusalMessage, receiptWriteAdvice, receiptWriteFailureFor;
 import '../../widgets/admin_ui.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
@@ -80,6 +82,10 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
   final _search = TextEditingController();
   String _sort = 'created_at';
   final List<_RefRow> _rows = [];
+
+  /// Why the collection could not be read, when it could not. Null while the
+  /// read is healthy — an empty list and a refused read must not look the same.
+  String? _loadError;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   StreamSubscription<QuerySnapshot>? _subscription;
 
@@ -99,12 +105,14 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
   }
 
   void _subscribeToPaymentReferences() {
+    _subscription?.cancel();
     _subscription = _firestore
         .collection(AppConstants.colPaymentReferences)
         .orderBy('created_at', descending: true)
         .snapshots()
         .listen((snapshot) {
       setState(() {
+        _loadError = null;
         _rows.clear();
         for (var doc in snapshot.docs) {
           final data = doc.data();
@@ -122,8 +130,24 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
         }
       });
     }, onError: (e) {
-      print('Error loading payment references: $e');
+      // A refused read used to be printed and nothing else, so the screen fell
+      // through to "No payment records yet" — an empty list and a denial look
+      // identical to the person holding the phone. `payment_references` is
+      // Admin-only (`allow read: if isAdmin()`), so a permission error here is
+      // a statement about the session, not about the data.
+      debugPrint('Error loading payment references: $e');
+      if (!mounted) return;
+      setState(() => _loadError = receiptReadRefusalMessage(e));
     });
+  }
+
+  /// Retry the subscription after a refused or dropped read.
+  void _resubscribePaymentReferences() {
+    setState(() {
+      _rows.clear();
+      _loadError = null;
+    });
+    _subscribeToPaymentReferences();
   }
 
   Future<void> _add() async {
@@ -160,7 +184,12 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
       _amount.clear();
       _toast('Reference added successfully.');
     } catch (e) {
-      _toast('Failed to add reference: $e');
+      // A refused create is a statement about the session or the deployed
+      // ruleset, not about the reference that was typed.
+      final advice = receiptWriteAdvice(receiptWriteFailureFor(e));
+      _toast(advice.isEmpty
+          ? 'Failed to add reference: $e'
+          : 'Hindi na-add ang reference. $advice');
     }
   }
 
@@ -386,6 +415,48 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
     );
   }
 
+  /// The list, its two empty states, and the difference between them.
+  ///
+  /// A refused read and an empty collection are not the same fact, and the
+  /// screen must not say the same thing about both.
+  Widget _buildListArea(List<_RefRow> filtered, Map<String, BookingModel> byId) {
+    if (_loadError != null) {
+      return EmptyState(
+        icon: Icons.cloud_off_outlined,
+        title: 'Hindi ma-read ang payment references',
+        subtitle: _loadError,
+        action: OutlinedButton.icon(
+          onPressed: _resubscribePaymentReferences,
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text('Try again'),
+        ),
+      );
+    }
+    if (filtered.isEmpty) {
+      return EmptyState(
+        icon: Icons.receipt_long_outlined,
+        title: 'No payment records yet',
+        subtitle:
+            'Verified payment proofs appear here, linked to their Booking. Review submitted proofs in the verification queue, or add a catalog reference below.',
+        action: OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const PaymentVerificationQueueScreen(),
+            ),
+          ),
+          icon: const Icon(Icons.fact_check_outlined, size: 18),
+          label: const Text('Open verification queue'),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: filtered.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, i) => _buildRow(filtered[i], byId),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bookingsAsync = ref.watch(bookingsStreamProvider);
@@ -461,30 +532,7 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
                 ),
               ),
               const Divider(height: 1, color: AppColors.cardBorder),
-              Expanded(
-                child: filtered.isEmpty
-                    ? EmptyState(
-                        icon: Icons.receipt_long_outlined,
-                        title: 'No payment records yet',
-                        subtitle:
-                            'Verified payment proofs appear here, linked to their Booking. Review submitted proofs in the verification queue, or add a catalog reference below.',
-                        action: OutlinedButton.icon(
-                          onPressed: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const PaymentVerificationQueueScreen(),
-                            ),
-                          ),
-                          icon: const Icon(Icons.fact_check_outlined, size: 18),
-                          label: const Text('Open verification queue'),
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (context, i) => _buildRow(filtered[i], byId),
-                      ),
-              ),
+              Expanded(child: _buildListArea(filtered, byId)),
               const Divider(height: 1, color: AppColors.cardBorder),
               // Manual catalog entry (unchanged workflow for exceptions).
               Padding(
