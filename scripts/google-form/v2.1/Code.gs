@@ -31,7 +31,8 @@
  *     box.
  *   - The permission grid no longer carries a "Wala sa lahat" column.
  *   - Account ownership covers the services this project runs on, including
- *     Vercel and Supabase, and asks for the registered owner email separately.
+ *     Vercel and Supabase, and a paragraph asks for the registered owner email
+ *     of each (plus any service not on the list).
  *   - The refund example adds up. The security-deposit definition no longer
  *     presumes a deposit is collected. The iCal wording no longer quotes a
  *     fixed delay, and the save-and-return promise now states its condition.
@@ -1464,7 +1465,6 @@ function buildQuestionsV2(form) {
     'Supabase',
     'Vercel',
     'GitHub',
-    'Iba pang serbisyo (isulat sa ibaba)',
   ], [
     'Hacienda (nakapangalan sa negosyo)',
     'Indibidwal — may-ari o kapamilya',
@@ -1479,11 +1479,11 @@ function buildQuestionsV2(form) {
       'na "invite" o "transfer ownership" ng bawat serbisyo.',
   })
 
-  addParagraph(form, 'Isulat ang registered owner email ng bawat account, at anong serbisyo ang nasa "Iba pa"', {
+  addParagraph(form, 'Isulat ang registered owner email ng bawat account, at anong serbisyo ang wala sa listahan', {
     required: false,
     help:
-      'Halimbawa: "Domain — aida@gmail.com; Firebase — haciendadeluisiana@gmail.com; Vercel — ' +
-      'gemaojohnrey@gmail.com; Supabase — wala pa." Email lang, walang password.',
+      'Halimbawa: "Domain — owner@gmail.com; Firebase — hacienda@gmail.com; Vercel — ' +
+      'dev@gmail.com; Supabase — wala pa." Email lang, walang password.',
   })
 
   addChoice(form, 'May authorized administrator access na ba ang Hacienda sa mga account?', [
