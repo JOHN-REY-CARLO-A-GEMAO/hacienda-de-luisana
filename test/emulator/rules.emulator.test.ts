@@ -452,6 +452,140 @@ describe('bookings', () => {
     }))
   })
 
+  it('files a human reference correction without changing OCR, status or money', async () => {
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({
+      status: 'Reserved',
+      payment_status: 'pending',
+      ocr_reference: '8159662488150',
+    })))
+    const verifiedAdmin = env.authenticatedContext('admin-uid-1', {
+      email: ADMIN_EMAIL,
+      email_verified: true,
+    })
+    // The exact saveCorrection() patch when the Admin accepts the OCR number.
+    // The general update path refuses this historical Reserved/pending record;
+    // the narrow correction path must not repair or verify it as a side effect.
+    await assertSucceeds(updateDoc(doc(verifiedAdmin.firestore(), 'bookings', BOOKING_ID), {
+      payment_reference: '8159662488150',
+      payment_reference_source: 'admin_corrected',
+      payment_reference_corrected_at: serverTimestamp(),
+      payment_reference_corrected_by: 'admin-uid-1',
+      payment_sender_name: 'ANA CRUZ',
+      payment_date: '2026-11-01',
+    }))
+    const stored = await getDoc(doc(verifiedAdmin.firestore(), 'bookings', BOOKING_ID))
+    expect(stored.data()).toMatchObject({
+      status: 'Reserved',
+      payment_status: 'pending',
+      ocr_reference: '8159662488150',
+      payment_reference: '8159662488150',
+      payment_reference_source: 'admin_corrected',
+      payment_reference_corrected_by: 'admin-uid-1',
+      payment_sender_name: 'ANA CRUZ',
+      payment_date: '2026-11-01',
+    })
+    expect(stored.data()?.amount_verified).toBeUndefined()
+    expect(stored.data()?.payment_reference_corrected_at).toBeInstanceOf(Timestamp)
+  })
+
+  it('preserves verified money when an Admin deliberately replaces its reference', async () => {
+    const marker = {
+      status: 'Reserved',
+      payment_status: 'verified',
+      amount_verified: 5000,
+      payment_verified_at: new Date(),
+      payment_verified_by: 'admin-uid-1',
+      payment_reference: 'GCASH-123456',
+    }
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc(marker)))
+    const verifiedAdmin = env.authenticatedContext('admin-uid-1', {
+      email: ADMIN_EMAIL,
+      email_verified: true,
+    })
+    await assertSucceeds(updateDoc(doc(verifiedAdmin.firestore(), 'bookings', BOOKING_ID), {
+      payment_reference: '8159662488150',
+      payment_reference_source: 'admin_corrected',
+      payment_reference_corrected_at: serverTimestamp(),
+      payment_reference_corrected_by: 'admin-uid-1',
+      payment_reference_previous: 'GCASH-123456',
+      payment_sender_name: null,
+      payment_date: null,
+    }))
+    const stored = await getDoc(doc(verifiedAdmin.firestore(), 'bookings', BOOKING_ID))
+    expect(stored.data()).toMatchObject({
+      status: marker.status,
+      payment_status: marker.payment_status,
+      amount_verified: marker.amount_verified,
+      payment_verified_by: marker.payment_verified_by,
+      payment_reference: '8159662488150',
+      payment_reference_previous: 'GCASH-123456',
+      payment_sender_name: null,
+      payment_date: null,
+    })
+    expect((stored.data()?.payment_verified_at as Timestamp).toMillis())
+      .toBe(marker.payment_verified_at.getTime())
+  })
+
+  it('keeps reference corrections Admin-only and signs the actual writer', async () => {
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({
+      status: 'Reserved', payment_status: 'pending',
+    })))
+    const patch = {
+      payment_reference: '8159662488150',
+      payment_reference_source: 'admin_corrected',
+      payment_reference_corrected_at: serverTimestamp(),
+      payment_reference_corrected_by: 'admin-uid-1',
+    }
+    await assertFails(updateDoc(doc(emailGuest().firestore(), 'bookings', BOOKING_ID), patch))
+    await assertFails(updateDoc(doc(env.unauthenticatedContext().firestore(), 'bookings', BOOKING_ID), patch))
+    await assertFails(updateDoc(doc(env.authenticatedContext('admin-uid-1', {
+      email: ADMIN_EMAIL, email_verified: false,
+    }).firestore(), 'bookings', BOOKING_ID), patch))
+    await assertFails(updateDoc(doc(env.authenticatedContext('admin-uid-1', {
+      admin: true,
+    }).firestore(), 'bookings', BOOKING_ID), patch))
+    await assertFails(updateDoc(doc(env.authenticatedContext('another-admin', {
+      email: ADMIN_EMAIL, email_verified: true,
+    }).firestore(), 'bookings', BOOKING_ID), patch))
+
+    await seed(async (db) => setDoc(doc(db.firestore(), 'profiles', 'promoted-admin-1'), {
+      uid: 'promoted-admin-1', role: 'admin',
+    }))
+    await assertSucceeds(updateDoc(doc(env.authenticatedContext('promoted-admin-1').firestore(), 'bookings', BOOKING_ID), {
+      ...patch, payment_reference_corrected_by: 'promoted-admin-1',
+    }))
+  })
+
+  it('cannot smuggle money, proof, identity or OCR changes through a reference correction', async () => {
+    await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc({
+      status: 'Reserved', payment_status: 'pending',
+    })))
+    const verifiedAdmin = env.authenticatedContext('admin-uid-1', {
+      email: ADMIN_EMAIL, email_verified: true,
+    })
+    const patch = {
+      payment_reference: '8159662488150',
+      payment_reference_source: 'admin_corrected',
+      payment_reference_corrected_at: serverTimestamp(),
+      payment_reference_corrected_by: 'admin-uid-1',
+    }
+    for (const extra of [
+      { status: 'Approved' },
+      { payment_status: 'verified' },
+      { amount_verified: 5000 },
+      { payment_verified_by: 'admin-uid-1' },
+      { payment_verified_at: serverTimestamp() },
+      { uid: OTHER_GUEST_UID },
+      { payment_proof_url: 'payments/someone-else/proof.jpg' },
+      { ocr_reference: '0000000000' },
+      { amount_due: 1 },
+    ]) {
+      await assertFails(updateDoc(doc(verifiedAdmin.firestore(), 'bookings', BOOKING_ID), {
+        ...patch, ...extra,
+      }))
+    }
+  })
+
   it('records the verification the Admin makes, and refuses one nobody signed', async () => {
     const proof = { status: 'Payment Pending', payment_status: 'pending', payment_proof_url: 'payments/x/y/proof.jpg', amount_due: 8500 }
     await seed(async (db) => setDoc(doc(db.firestore(), 'bookings', BOOKING_ID), bookingDoc(proof)))

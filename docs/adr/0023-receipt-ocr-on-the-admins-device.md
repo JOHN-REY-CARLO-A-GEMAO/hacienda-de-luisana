@@ -230,3 +230,43 @@ A generic `allow read, write: if isAdmin()` built on `users/{uid}`,
 and stores a Booking's Guest as `uid`. Installing that snippet would replace
 the Guest, lifecycle and money invariants of ADR-0001/0012/0018 with a
 two-line rule and would still not help a session the rules read as Guest.
+
+## Amendment — 2026-11-02: accepting the read is also a money-neutral write
+
+The next device log showed a successful OCR read followed by the short notice
+`Hindi na-save ang reference. Subukan muli.` after manual confirmation. The
+keyboard events alone do not prove a write was attempted, and that notice did
+not preserve the exception, so it cannot establish that Firestore returned
+`permission-denied`. The code did establish two gaps:
+
+1. `saveCorrection()` discarded the exception and stack in its final `catch`.
+   It now logs `[PaymentReference Save Error]`, the refused document path, the
+   exception and the stack. A permission refusal also logs the same writer
+   identity facts as OCR. Both call sites receive the classified, actionable
+   message through `PaymentReferenceSaveResult`; raw exceptions and Guest
+   details are not put into a UI notice. The transaction is **not** replaced
+   by an offline queued update: its fresh read protects a verified reference
+   from replacement without confirmation, so success still needs an ack.
+2. The OCR-only rule did not cover the human acceptance patch. That patch still
+   went through `reservedIsPaidFor()`, which refuses even a money-neutral write
+   to a historical `Reserved` Booking with unverified stored payment. A new
+   `adminReferenceCorrectionUpdate()` accepts only the seven keys written by
+   `saveCorrection()`: `payment_reference`, its source/corrected_at/corrected_by/
+   previous metadata, `payment_sender_name`, and `payment_date`. The source must
+   be `admin_corrected`, the corrected-by uid must be the caller's own uid, and
+   `isAdmin()` must hold. No `ocr_*`, status, money, marker, proof or identity key
+   can ride through this door. Duplicate and verified-overwrite confirmations
+   remain service guards; OCR still never accepts its own reference.
+
+This **extends the narrow exception to ADR-0010's stored `Reserved` invariant**
+already established for OCR evidence: a human correction may leave that stored
+state untouched, but cannot transition into it or change its money. Every other
+Booking update still passes the original lifecycle, pricing and money guards;
+the Guest vocabulary is unchanged. Regression tests cover both the permitted
+patch and attempts to add or remove protected fields, plus Guest, signed-out,
+unverified-allowlist, custom-claim and forged-writer requests.
+
+The rules change is not live until the complete `firestore.rules` is deployed
+to the project named by the app. The deployment/identity checklist is in
+`docs/FIREBASE_SETUP.md` § 4; a local code change alone cannot repair a refusal
+on an already installed Admin app.

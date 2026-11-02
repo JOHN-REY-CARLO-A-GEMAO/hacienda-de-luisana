@@ -17,9 +17,12 @@
 //     reference already filed against a different Booking is refused unless the
 //     Admin says, on the record, that they have looked at both.
 //
-// Firestore, not a Cloud Function: `firestore.rules` gives this exact patch its
-// own Admin-only door (`adminOcrEvidenceUpdate()`), so a read can be filed even
-// on a historical Booking whose stored status the general update rule refuses.
+// Firestore, not a Cloud Function: `firestore.rules` gives the OCR patch and
+// the human correction patch separate Admin-only doors
+// (`adminOcrEvidenceUpdate()` / `adminReferenceCorrectionUpdate()`). Both are
+// closed key sets, so evidence can be filed even on a historical Booking whose
+// stored status the general update rule refuses, without changing money.
+//
 // The correction metadata
 // (`ocr_extracted_at`, `ocr_recipient_name`, `payment_reference_source`,
 // `payment_reference_corrected_at/by`, `payment_reference_previous`) is outside
@@ -85,7 +88,31 @@ class PaymentReferenceSaveResult {
   /// The Booking the duplicate reference was filed against, when there is one.
   final String? duplicateBookingId;
 
-  const PaymentReferenceSaveResult(this.status, {this.message, this.duplicateBookingId});
+  /// The classified cause when Firestore, rather than a validation or a
+  /// confirmation guard, refused the write. Shared with the OCR save path.
+  final ReceiptWriteFailure? failure;
+
+  const PaymentReferenceSaveResult(
+    this.status, {
+    this.message,
+    this.duplicateBookingId,
+    this.failure,
+  });
+
+  /// The same actionable advice as an OCR refusal, without exposing the raw
+  /// exception (which may contain Guest details) in the Admin's notice.
+  factory PaymentReferenceSaveResult.writeError(Object error) {
+    final failure = receiptWriteFailureFor(error);
+    final advice = receiptWriteAdvice(failure);
+    return PaymentReferenceSaveResult(
+      PaymentReferenceSaveStatus.failed,
+      failure: failure,
+      message: failure == ReceiptWriteFailure.missingBooking
+          ? 'Wala na ang Booking na ito. I-refresh ang listahan.'
+          : 'Hindi na-save ang reference. '
+              '${advice.isEmpty ? 'Subukan muli.' : advice}',
+    );
+  }
 
   bool get ok => status == PaymentReferenceSaveStatus.saved;
   bool get needsDuplicateConfirmation =>
@@ -124,7 +151,7 @@ class ReferenceLookup {
   bool get catalogAlreadyUsed => catalogStatus == 'used';
 }
 
-/// Why filing a read on the Booking did not land.
+/// Why filing receipt evidence or a human reference correction did not land.
 ///
 /// The Admin is standing in front of a receipt and a decision; "hindi na-save"
 /// on its own tells them nothing they can act on. The cause is classified so
@@ -586,6 +613,7 @@ class PaymentReferenceService {
       return const PaymentReferenceSaveResult(
         PaymentReferenceSaveStatus.failed,
         message: 'Walang koneksyon sa database, kaya hindi na-save.',
+        failure: ReceiptWriteFailure.noDatabase,
       );
     }
 
@@ -650,12 +678,23 @@ class PaymentReferenceService {
       return const PaymentReferenceSaveResult(
         PaymentReferenceSaveStatus.failed,
         message: 'Wala na ang Booking na ito. I-refresh ang listahan.',
+        failure: ReceiptWriteFailure.missingBooking,
       );
-    } catch (_) {
-      return const PaymentReferenceSaveResult(
-        PaymentReferenceSaveStatus.failed,
-        message: 'Hindi na-save ang reference. Subukan muli.',
-      );
+    } catch (error, stack) {
+      // The dialog has already closed by this point. Keep the actual cause,
+      // stack and refused path in the device log, rather than swallowing it
+      // behind the panel's generic retry sentence. Do not log the reference,
+      // sender name or the patch: the identity and the cause are enough.
+      debugPrint('[PaymentReference Save Error] ${doc.path}: $error');
+      debugPrint('$stack');
+      final result = PaymentReferenceSaveResult.writeError(error);
+      if (result.failure == ReceiptWriteFailure.permissionDenied) {
+        await logReceiptWriterIdentity('reference correction refused by Firestore');
+      }
+      // Unlike an OCR-only write, this transaction must not be replaced by a
+      // queued plain update: its fresh read enforces the verified-reference
+      // confirmation. An offline failure stays a failure until acknowledged.
+      return result;
     }
   }
 

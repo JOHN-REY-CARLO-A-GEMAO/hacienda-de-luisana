@@ -119,6 +119,21 @@ export const adminOcrEvidencePatch = (overrides: DocData = {}): DocData => ({
 })
 
 /**
+ * `PaymentReferenceService.saveCorrection()`'s merge patch. Acceptance of a
+ * machine-read reference is a human-authored correction, not another OCR write.
+ * The timestamp is `request.time`, and the actor is the signed-in Admin.
+ */
+export const adminReferenceCorrectionPatch = (overrides: DocData = {}): DocData => ({
+  payment_reference: '8159662488150',
+  payment_reference_source: 'admin_corrected',
+  payment_reference_corrected_at: ruleTimestamp(DEFAULT_REQUEST_TIME),
+  payment_reference_corrected_by: ADMIN_UID,
+  payment_sender_name: 'ANA CRUZ',
+  payment_date: '2026-11-01',
+  ...overrides,
+})
+
+/**
  * The Admin patch of `applyAdminAction(verifyPayment)` — the web's
  * `src/lib/booking/actions.ts` and the app's `booking_lifecycle.dart`, which
  * write the same four fields: the status money buys, the amount, the instant,

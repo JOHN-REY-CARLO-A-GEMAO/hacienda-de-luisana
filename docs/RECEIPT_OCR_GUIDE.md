@@ -143,13 +143,13 @@ orihinal na dahilan ng seksyong ito — sino ang mag-e-extract — sinasagot na 
 Guest sa browser (tesseract.js, libre) para sa bagong upload, at Admin sa device para sa lumang
 proof o sa "Basahin muli". Parehong hint lang ang nabasa; ang pag-verify ay sa Admin pa rin.
 
-## 9. Kapag `PERMISSION_DENIED` ang pag-save ng binasa
+## 9. Kapag hindi na-save ang binasa o ang manual reference
 
 Kung nabasa ng ML Kit ang resibo (`Ref: 8159662488150`, `₱5000.00`) pero
 `PaymentReferenceService._storeExtraction()` ay tinanggihan ng Firestore, **hindi** ito problema sa
 parser kundi sa **na-deploy na `firestore.rules`** o sa **Admin identity**. Buong checklist nasa
-[FIREBASE_SETUP.md § 4](./FIREBASE_SETUP.md) — "PERMISSION_DENIED when the Admin app files a
-receipt read".
+[FIREBASE_SETUP.md § 4](./FIREBASE_SETUP.md) — "PERMISSION_DENIED when the Admin app saves
+receipt evidence or a reference".
 
 Mga dapat tandaan, dahil madalas magmungkahi ng generic na rule na hindi bagay dito:
 
@@ -160,11 +160,16 @@ Mga dapat tandaan, dahil madalas magmungkahi ng generic na rule na hindi bagay d
 - **Huwag palitan ang `firestore.rules` ng `allow read, write: if isAdmin()`** — mabubura ang
   Guest, lifecycle at money invariants (ADR-0001/0012/0018).
 - Ang pag-save ng read ay may sariling pintuan sa rules: `adminOcrEvidenceUpdate()`, Admin-only at
-  **siyam na `ocr_*` key lamang** ang pweding magbago. Kaya hindi nito madala ang `status`,
-  `payment_status`, o `amount_verified`, kahit sa lumang Booking na `Reserved` na walang
-  `verified` na `payment_status` — dati itong tinatanggihan ng pangkalahatang update rule.
-- Sa refusal, inililimbag ng app ang classified cause at ang uid/email/token claims ng writer sa
-  device log — iyon ang ikumpara sa Authentication at sa `profiles/<uid>`.
+  **siyam na `ocr_*` key lamang** ang pweding magbago. Ang manual na pag-confirm/itama ay may
+  hiwalay na `adminReferenceCorrectionUpdate()`: pitong reference/sender/date key lamang,
+  `payment_reference_source == "admin_corrected"`, at sariling uid ang writer. Parehong hindi
+  maaaring magbago ng `status`, `payment_status`, o `amount_verified`, kahit sa lumang Booking na
+  `Reserved` na walang `verified` na `payment_status`.
+- Sa refusal ng OCR man o manual save, inililimbag ang exception at stack trace; para sa
+  permission denial, kasama ang uid/email/token claims ng writer. Hanapin ang
+  `[PaymentReference]` o `[PaymentReference Save Error]` sa device log at ikumpara ang identity sa
+  Authentication at `profiles/<uid>`. Ang pagbubukas/pagsara lang ng keyboard ay hindi katibayan
+  na nakapagpadala na ng save request.
 
 I-deploy mula sa commit na ito: `firebase deploy --only firestore:rules --project hacienda-de-luisana`,
 pagkatapos ay i-verify ang email o ang Profile, at mag-sign out / sign in muli para ma-refresh ang
