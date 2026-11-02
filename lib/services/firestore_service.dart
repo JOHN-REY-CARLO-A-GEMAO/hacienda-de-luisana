@@ -15,7 +15,7 @@ import '../utils/error_utils.dart';
 import 'booking_lifecycle.dart';
 import 'mock_data_service.dart';
 import 'payment_reference_service.dart'
-    show ReceiptWriteFailure, receiptWriteAdvice, receiptWriteFailureFor;
+    show PaymentReferenceService, ReceiptWriteFailure, receiptWriteAdvice, receiptWriteFailureFor;
 import 'pin_store.dart' show PinSecurityRemote, SecurityTicket;
 import 'security_gate.dart';
 
@@ -378,8 +378,15 @@ class FirestoreService implements PinSecurityRemote {
     // the transaction, so a rival approval that commits first aborts this one
     // and the callback reruns on the changed world. Two Admins can therefore
     // never both claim the last unit.
+    //
+    // The re-read Booking is kept outside the transaction: the payment
+    // reference row is filed from it once the write has committed (see
+    // [_fileVerifiedPaymentReference]), and it must describe the world the
+    // approval actually landed in rather than the copy the screen held.
+    BookingModel? committed;
+    final ActionResult outcome;
     try {
-      return await _firestore!.runTransaction((tx) async {
+      outcome = await _firestore!.runTransaction((tx) async {
         final ref =
             _firestore.collection(AppConstants.colBookings).doc(booking.id);
         final snap = await tx.get(ref);
@@ -414,6 +421,7 @@ class FirestoreService implements PinSecurityRemote {
         final result = applyAdminAction(fresh.toLifecycleDoc(), action, actor,
             input: freshMerged);
         if (!result.ok) return result;
+        committed = fresh;
 
         // The Activity entry and the status patch commit atomically: the log
         // sequence is taken inside the transaction, so a logged approval can
@@ -439,6 +447,52 @@ class FirestoreService implements PinSecurityRemote {
       // decides it rather than echoing Firestore's sentence.
       return ActionResult.refused(bookingWriteRefusalMessage(e));
     }
+
+    // Outside the try on purpose: the write above is already committed, and a
+    // failure to file the reference row must not turn a successful approval
+    // into a refusal the Admin has to undo.
+    final approved = committed;
+    if (outcome.ok && approved != null) {
+      await _fileVerifiedPaymentReference(approved, action, outcome);
+    }
+    return outcome;
+  }
+
+  /// Files the `payment_references` row an approval owes, from every screen.
+  ///
+  /// The row used to be written only by the payment verification queue, so a
+  /// payment approved from the Booking detail screen or from a card left the
+  /// Payment references screen reading "No payment records yet" about money
+  /// that had just been verified. Doing it here — after the Booking transaction
+  /// has committed, against the re-read Booking — means one implementation
+  /// covers every approval path instead of three call sites that can drift.
+  ///
+  /// [fresh] is the Booking as the transaction read it, which is also where a
+  /// reference the Admin confirmed in a pre-approval dialog has landed.
+  Future<void> _fileVerifiedPaymentReference(
+    BookingModel fresh,
+    AdminAction action,
+    ActionResult result,
+  ) async {
+    if (action != AdminAction.approve && action != AdminAction.verifyPayment) {
+      return;
+    }
+    final reference = fresh.effectivePaymentReference;
+    if (reference == null || reference.trim().isEmpty) return;
+
+    // The amount the decision recorded. Both money actions write it into the
+    // patch; the Booking's own fields are the fallback for a build whose
+    // lifecycle did not.
+    final patched = result.patch['amount_verified'];
+    final amount = (patched is num && patched.toDouble() > 0)
+        ? patched.toDouble()
+        : (fresh.amountVerified ?? fresh.amountClaimed ?? 0);
+    if (amount <= 0) return;
+
+    await PaymentReferenceService.instance.recordVerifiedBookingReference(
+      fresh,
+      verifiedAmount: amount,
+    );
   }
 
   /// Reads every Booking for one Accommodation inside a transaction, as

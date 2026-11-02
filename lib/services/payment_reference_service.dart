@@ -16,6 +16,10 @@
 //     stored, the Admin's `payment_references` rows are checked for it, and a
 //     reference already filed against a different Booking is refused unless the
 //     Admin says, on the record, that they have looked at both.
+//  4. **A verified payment always leaves a row.** `recordVerifiedBookingReference`
+//     files the `payment_references` row from whichever screen approved the
+//     Booking, deterministically and idempotently, so the Payment references
+//     screen is never empty about money that was verified.
 //
 // Firestore, not a Cloud Function: `firestore.rules` gives the OCR patch and
 // the human correction patch separate Admin-only doors
@@ -730,4 +734,144 @@ class PaymentReferenceService {
     final trimmed = value?.trim() ?? '';
     return trimmed.isEmpty ? null : trimmed;
   }
+
+  /// File the `payment_references` row a payment an Admin just verified owes.
+  ///
+  /// This is the write the Payment references screen reads. It used to live as a
+  /// private method on the verification queue, which is why a payment verified
+  /// from the Booking detail screen or from a card in the Bookings list left
+  /// that screen saying "No payment records yet" about money that had just been
+  /// approved: only one of the three approval paths filed a row at all. It lives
+  /// here now, and [FirestoreService.applyBookingAction] calls it for every
+  /// approval, so no call site can forget it.
+  ///
+  /// Idempotent, in two ways. The document id is deterministic
+  /// (`reference` + Booking id), and the insert runs in a transaction that
+  /// reads the document first and writes only when it is absent — so two
+  /// concurrent verifications of the same reference can never insert a second
+  /// row, and a re-run (or the Payment references screen's backfill) is a no-op.
+  ///
+  /// [verifiedAmount] is the money the decision recorded. [confirmedReference]
+  /// is the number a human accepted *in this flow*; when it is absent the
+  /// Booking's own [BookingModel.effectivePaymentReference] is used, so a
+  /// payment verified after OCR pre-filled the field still files its row.
+  ///
+  /// Status: `verified` when a human supplied or accepted the number, and
+  /// `pending_review` when the only number that ever existed is the machine's
+  /// read. A reference nobody has agreed to is still worth filing — the Payment
+  /// references screen can correct it from there — but it must not be recorded
+  /// as agreed. This matches the values `firestore.rules` accepts on
+  /// `match /payment_references/{refId}`.
+  ///
+  /// Never throws. A failure to file the row must not hide a successful
+  /// verification: the money decision stands, and the row can be backfilled.
+  Future<void> recordVerifiedBookingReference(
+    BookingModel booking, {
+    required double verifiedAmount,
+    String? confirmedReference,
+  }) async {
+    final raw = (confirmedReference ?? booking.effectivePaymentReference)?.trim();
+    if (raw == null || raw.isEmpty) return;
+    final normalized = normalizeReference(raw);
+    if (!isValidReference(normalized)) return;
+
+    final db = _db;
+    if (db == null) return; // demo mode: no collection to file into
+    final row = paymentReferenceRow(
+      booking,
+      normalizedReference: normalized,
+      verifiedAmount: verifiedAmount,
+      confirmedReference: confirmedReference,
+    );
+    try {
+      final docRef = db
+          .collection(AppConstants.colPaymentReferences)
+          .doc(paymentReferenceDocId(normalized, booking.id));
+
+      await db.runTransaction((transaction) async {
+        final existing = await transaction.get(docRef);
+        if (existing.exists) return; // already filed — idempotent no-op
+        transaction.set(docRef, row);
+      });
+    } catch (error, stack) {
+      debugPrint('[PaymentReference] could not record the reference row for '
+          '${booking.id}: $error');
+      debugPrint('$stack');
+    }
+  }
+}
+
+/// Who supplied the reference a payment row records.
+///
+/// A reference confirmed in this very flow is the Admin accepting it now; a
+/// reference already on the Booking came from the Guest (or from an Admin's
+/// earlier correction); anything left is the machine's read, and only the first
+/// two are a statement a human has actually made.
+///
+/// A free function, outside the service, so the rule is a test rather than a
+/// guess — the same reason the failure mapping above is one.
+String paymentReferenceSourceFor(
+  BookingModel booking, {
+  String? confirmedReference,
+}) {
+  if (confirmedReference != null) return 'admin_confirmed';
+  final guestClaimed = (booking.paymentReference ?? '').trim();
+  if (guestClaimed.isEmpty) return 'ocr';
+  return booking.paymentReferenceWasCorrected ? 'admin_confirmed' : 'guest_claimed';
+}
+
+/// The `status` a `payment_references` row may carry for [source].
+///
+/// `verified` only where a human supplied or accepted the number. A reference
+/// that exists purely as OCR output is filed `pending_review`: the machine read
+/// it, nobody has agreed to it yet, and the Payment references screen can
+/// correct it from there. Both values are accepted by `firestore.rules`
+/// `match /payment_references/{refId}`.
+String paymentReferenceRowStatus(String source) =>
+    source == 'ocr' ? 'pending_review' : 'verified';
+
+/// The document id a verified payment row is filed under.
+///
+/// Deterministic — the reference plus the Booking id — and that is exactly what
+/// makes the insert idempotent and what lets the Payment references screen
+/// backfill a row that was never filed without creating a second one.
+///
+/// Firestore document ids may not contain '/'; a normalized reference is
+/// already [A-Z0-9-]{6,40}, but the substitution stays as a belt to that brace
+/// so a legacy row can never produce an invalid path. The Booking id is folded
+/// too, because the website's `paymentReferenceDocId` folds the whole composed
+/// string — the two apps have to land on the same document for the same payment
+/// or the catalogue holds the row twice.
+String paymentReferenceDocId(String normalizedReference, String bookingId) =>
+    '${normalizedReference}_$bookingId'.replaceAll(RegExp(r'[/\s]+'), '_');
+
+/// The `payment_references` row one verified payment files.
+///
+/// Pure: the whole document is built here with no database in sight, so a test
+/// can assert exactly what a verified payment leaves behind — including the
+/// extraction evidence (sender, date, proof path) that lets the Payment
+/// references screen show the row without asking the Admin to re-type anything,
+/// and the machine's own read kept beside the accepted number.
+Map<String, dynamic> paymentReferenceRow(
+  BookingModel booking, {
+  required String normalizedReference,
+  required double verifiedAmount,
+  String? confirmedReference,
+}) {
+  final source = paymentReferenceSourceFor(
+    booking,
+    confirmedReference: confirmedReference,
+  );
+  return {
+    'reference': normalizedReference,
+    'amount': verifiedAmount,
+    'status': paymentReferenceRowStatus(source),
+    'booking_id': booking.id,
+    'sender_name': booking.paymentSenderName ?? booking.ocrSenderName,
+    'payment_date': booking.paymentDate ?? booking.ocrPaymentDate,
+    'proof_url': booking.paymentProofUrl,
+    'ocr_reference': booking.ocrReference,
+    'reference_source': source,
+    'created_at': FieldValue.serverTimestamp(),
+  };
 }

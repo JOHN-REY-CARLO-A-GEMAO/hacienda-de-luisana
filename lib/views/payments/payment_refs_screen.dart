@@ -13,7 +13,7 @@ import '../../providers/app_providers.dart';
 import '../../services/booking_lifecycle.dart';
 import '../../services/payment_proof_service.dart';
 import '../../services/payment_reference_service.dart'
-    show receiptReadRefusalMessage, receiptWriteAdvice, receiptWriteFailureFor;
+    show PaymentReferenceService, receiptReadRefusalMessage, receiptWriteAdvice, receiptWriteFailureFor;
 import '../../widgets/admin_ui.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
@@ -89,6 +89,16 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   StreamSubscription<QuerySnapshot>? _subscription;
 
+  /// Bookings a backfill has already been attempted for.
+  ///
+  /// The write itself is idempotent — a deterministic document id and a
+  /// transaction that inserts only when the row is absent — but the Bookings
+  /// stream re-emits on every change, and a read per Booking per snapshot is
+  /// not something this screen should do to Firestore. A Booking that is not
+  /// verified yet is not remembered here, so one that becomes verified later
+  /// still gets its row when this screen is next open.
+  final Set<String> _backfilled = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +158,48 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
       _loadError = null;
     });
     _subscribeToPaymentReferences();
+  }
+
+  /// Files the `payment_references` rows that verified payments already owed.
+  ///
+  /// A row used to be written only by the verification queue, so a payment
+  /// approved from the Booking detail screen or from a card in the Bookings
+  /// list left this screen reading "No payment records yet" about money that
+  /// had been verified days earlier. The write now happens on every approval
+  /// path; this repairs the Bookings that were approved before it did.
+  ///
+  /// Safe to run more than once: `recordVerifiedBookingReference` derives the
+  /// document id from the reference and the Booking id and inserts only when
+  /// that document is absent, so a row that is already there is a no-op.
+  void _scheduleBackfill(List<BookingModel> bookings) {
+    if (!bookings.any((b) => !_backfilled.contains(b.id) && _needsBackfill(b))) {
+      return;
+    }
+    // After the frame, not during build: filing a row is a write, and build
+    // stays free of side effects.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final booking in bookings) {
+        if (!_needsBackfill(booking)) continue;
+        if (!_backfilled.add(booking.id)) continue;
+        PaymentReferenceService.instance.recordVerifiedBookingReference(
+          booking,
+          verifiedAmount: booking.amountVerified ??
+              booking.amountClaimed ??
+              booking.amountDue ??
+              0,
+        );
+      }
+    });
+  }
+
+  /// A Booking whose money is verified but whose reference was never filed:
+  /// the state an approval from before this write existed left behind.
+  static bool _needsBackfill(BookingModel booking) {
+    final flagged = (booking.paymentStatus ?? '').toLowerCase() == 'verified';
+    if (!booking.paymentIsVerified && !flagged) return false;
+    final reference = booking.effectivePaymentReference?.trim() ?? '';
+    return reference.isNotEmpty;
   }
 
   Future<void> _add() async {
@@ -466,6 +518,7 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
       data: (allBookings) {
         final byId = <String, BookingModel>{};
         for (final b in allBookings) byId[b.id] = b;
+        _scheduleBackfill(allBookings);
 
         final filtered = _rows.where((r) {
           if (q.isEmpty) return true;

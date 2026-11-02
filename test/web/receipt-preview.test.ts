@@ -137,8 +137,8 @@ describe('scanVerdict', () => {
 })
 
 describe('paymentReferenceDocId', () => {
-  // Mirrors `_recordPaymentReference` in
-  // `lib/views/bookings/payment_verification_queue_screen.dart`.
+  // Mirrors `paymentReferenceDocId` in
+  // `lib/services/payment_reference_service.dart`.
   it('keys the catalogue row by reference and Booking id', () => {
     expect(paymentReferenceDocId('7044357122304', 'abc123')).toBe('7044357122304_abc123')
   })

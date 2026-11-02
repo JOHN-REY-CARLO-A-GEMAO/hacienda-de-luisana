@@ -7,25 +7,28 @@
 //
 // What it shows, and why each part is there:
 //
-//  - **The reference field itself**, pre-filled with whatever a human accepted,
-//    falling back to what OCR read. A Booking whose reference no human has
-//    touched shows the machine's number behind an `OCR` label rather than
-//    passing it off as recorded fact.
-//  - **The evidence beside it** — amount, transaction date and time, sender and
-//    recipient — each marked with where it came from, because "the Guest typed
-//    this", "a machine read this" and "an Admin confirmed this" are three
-//    different levels of trust and the Admin's decision depends on which one
-//    they are looking at.
+//  - **The money first**, large, because that is the figure the decision is
+//    about. Then the **reference**, in a container with a one-tap copy, because
+//    that is the number the Admin types into a banking app. Then the **date**
+//    and the **sender**. Raw storage paths and engine names never appear: they
+//    are the developer's business, not the Admin's.
+//  - **Where each figure came from**, marked only where it changes the trust:
+//    an `OCR` tag on a value no human has accepted, and a status pill. A record
+//    a human has confirmed carries no disclaimer about the recognizer.
 //  - **Warnings instead of invented values**: a receipt that could not be read,
 //    a date that reads two ways, an amount that disagrees with the claim, a
 //    reference already filed against another Booking.
 //  - **Reading and correcting**, never verifying. The Approve button lives on
 //    the screens, behind the Security PIN, and nothing here can stand in for it.
+//    Which actions are offered depends on the state the money is in: a verified
+//    payment gets one large button (open the proof) and a quiet way to edit;
+//    an unverified one keeps reading, correcting and re-reading all reachable.
 // ---------------------------------------------------------------------------
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
@@ -313,9 +316,73 @@ Future<ReferenceCorrectionForm?> showPaymentReferenceCorrectionDialog(
     ),
   );
 }
-/// The Payment Reference panel: OCR evidence, the accepted reference, and the
-/// two things an Admin may do with them — read the receipt, and correct the
-/// value. It never approves anything.
+
+/// Makes a human accept the reference before money is verified against it.
+///
+/// A number nobody has seen cannot carry a verified payment: when the only
+/// reference on the record is what OCR read, the Admin confirms it here — in
+/// the same field they would otherwise type into — and the approval that
+/// follows records a reference a human has actually looked at.
+///
+/// Returns null when there is nothing to confirm: either the Booking already
+/// carries a reference a human accepted, or the Admin has just accepted one
+/// here. Otherwise it returns the sentence to show, and the caller **must**
+/// abort the approval — verifying against a machine read is exactly the state
+/// this prevents, and the row it would file is `pending_review` rather than
+/// `verified`.
+///
+/// Shared by every screen that approves a payment (the verification queue, the
+/// Booking detail screen) so the prompt cannot exist in one place and be
+/// missing from another.
+Future<String?> confirmReferenceBeforeVerification(
+  BuildContext context, {
+  required BookingModel booking,
+  required String actorUid,
+  PaymentReferenceService? service,
+}) async {
+  if (!booking.paymentReferenceIsMachineRead) return null;
+  final referenceService = service ?? PaymentReferenceService.instance;
+
+  final form = await showPaymentReferenceCorrectionDialog(
+    context,
+    booking: booking,
+    service: referenceService,
+    title: 'I-confirm ang reference bago i-verify',
+    requireReference: true,
+  );
+  if (form == null) {
+    return 'Kailangang kumpirmahin ang reference bago i-verify ang bayad.';
+  }
+  if (!context.mounted) {
+    return 'Hindi na natuloy ang verification. Buksan muli ang booking.';
+  }
+
+  final saved = await referenceService.saveCorrection(
+    booking,
+    reference: form.reference,
+    actorUid: actorUid,
+    senderName: form.senderName,
+    paymentDateIso: form.paymentDateIso,
+    confirmDuplicate: form.confirmDuplicate,
+  );
+  if (!saved.ok) {
+    return saved.message ??
+        'Hindi na-save ang reference, kaya hindi natuloy ang verification.';
+  }
+  return null;
+}
+
+/// The Payment Reference panel: the money, the reference, the evidence behind
+/// them, and the two things an Admin may do with them — read the receipt, and
+/// correct the value. It never approves anything.
+///
+/// Scannable in one pass, because the Admin reads it standing in front of a
+/// receipt and a decision: amount first and large, then the reference with a
+/// one-tap copy, then the date and the sender. Nothing here is addressed to a
+/// developer — no storage paths, no engine names — and nothing is repeated: the
+/// wordy "OCR is not verification" paragraph that used to sit under every button
+/// is gone, because the `(OCR)` tag on the value and the status pill already say
+/// it, once.
 class PaymentReferencePanel extends StatefulWidget {
   final BookingModel booking;
 
@@ -349,6 +416,10 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
   final PaymentReferenceService _service = PaymentReferenceService.instance;
 
   bool _busy = false;
+
+  /// True only while the recognizer is running, so the spinner sits on the
+  /// button that is actually working rather than on all of them.
+  bool _reading = false;
   String? _notice;
   AdminNoticeTone _noticeTone = AdminNoticeTone.info;
   ReferenceLookup? _lookup;
@@ -421,6 +492,7 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
     if (_busy) return;
     setState(() {
       _busy = true;
+      _reading = true;
       _notice = null;
     });
     final result = await _service.readAndStore(widget.booking, force: force);
@@ -480,6 +552,7 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
 
     setState(() {
       _busy = false;
+      _reading = false;
       _noticeTone = tone;
       _notice = message;
       if (extraction != null && result.outcome.producedValues) {
@@ -623,9 +696,7 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
         ? storedExtraction
         : freshExtraction.mergedWith(storedExtraction);
     final hasProof = (booking.paymentProofUrl?.trim() ?? '').isNotEmpty;
-    final readFor = booking.ocrEngine?.isNotEmpty == true
-        ? booking.ocrEngine!
-        : 'ocr';
+    final canOpenProof = hasProof && widget.onOpenProof != null;
 
     final statusLabel = verified
         ? 'VERIFIED'
@@ -676,7 +747,7 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
     // The merged read, not just the stored field: when the on-device read could
     // not be filed, its figure is the only receipt evidence there is to compare
     // the Guest's claim against.
-    final receiptAmount = double.tryParse(extraction.amount);
+    final receiptAmount = _printedAmount(extraction.amount);
     final claimed = booking.amountClaimed;
     if (receiptAmount != null && claimed != null && claimed > 0) {
       if ((receiptAmount - claimed).abs() > 0.005) {
@@ -716,6 +787,17 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
       );
     }
 
+    // Which of the figures on screen are the machine's rather than a human's.
+    // The amount is the receipt's own when the read produced one; the date is
+    // the machine's when no confirmed date sits on the Booking.
+    final amountFromReceipt = receiptAmount != null && receiptAmount > 0;
+    final dateFromReceipt = (booking.paymentDate?.trim() ?? '').isEmpty &&
+        (((booking.ocrPaymentDate?.trim() ?? '').isNotEmpty) ||
+            extraction.paymentDateIso.isNotEmpty);
+    // The caption belongs only where something on screen came off the image.
+    // A record a human has confirmed needs no disclaimer about OCR.
+    final ocrShown = machineRead || amountFromReceipt || dateFromReceipt;
+
     return HaciendaCard(
       borderColor: verified
           ? AppColors.statusSuccess
@@ -726,116 +808,138 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          // Title and status in one header, in a Wrap: the unverified labels
+          // run long ("MULA SA BISITA — HINDI PA BERIPIKADO") and a plain Row
+          // squeezed the title into a column a few letters wide on a phone.
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              const Icon(Icons.tag, size: 20, color: AppColors.primaryForest),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Payment Reference',
-                  style: AppTheme.serif(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.tag, size: 20, color: AppColors.primaryForest),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Payment Reference',
+                    style: AppTheme.serif(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
+              StatusPill(label: statusLabel, color: statusColor, fontSize: 10.5),
             ],
           ),
-          const SizedBox(height: 8),
-          // The pill sits under the title, not beside it: on a phone the long
-          // labels ("MULA SA BISITA — HINDI PA BERIPIKADO") squeezed the title
-          // into a column a few letters wide.
-          Align(
-            alignment: Alignment.centerLeft,
-            child: StatusPill(label: statusLabel, color: statusColor, fontSize: 10.5),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
+
+          // 1. The money, first and large: this is the figure the decision is
+          // about, so it is the first thing the eye lands on.
+          Text('HALAGA',
+              style: AppTheme.label(
+                  fontSize: 11.5, color: AppColors.textMuted)),
+          const SizedBox(height: 2),
           Text(
-            verified
-                ? 'Na-verify na ang bayad na ito. Ang reference sa ibaba ang pinagbatayan ng desisyon.'
-                : 'Pre-filled mula sa resibo. Hindi pa ito beripikasyon — mananatiling pending ang bayad hanggang aprubahan ng Admin.',
-            style: AppTheme.body(fontSize: 12.5, color: AppColors.textMuted),
+            amountFromReceipt ? _peso(receiptAmount!) : _amountFallback(booking),
+            style: AppTheme.metric(fontSize: 30, color: AppColors.textDark),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
+
+          // 2. The reference itself, with one tap to copy it — the number the
+          // Admin types into a banking app, so it is the second thing they need.
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.only(left: 14, right: 6, top: 11, bottom: 11),
             decoration: BoxDecoration(
               color: machineRead ? AppColors.goldMist : AppColors.sageMist,
               borderRadius: BorderRadius.circular(AppTheme.radiusField),
               border: Border.all(
-                color: (machineRead ? AppColors.accentGold : AppColors.primaryForestLight)
+                color: (machineRead
+                        ? AppColors.accentGold
+                        : AppColors.primaryForestLight)
                     .withValues(alpha: 0.35),
               ),
             ),
-            child: Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'PAYMENT REFERENCE',
-                  style: AppTheme.label(fontSize: 10.5, color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  reference ?? '— walang reference —',
-                  style: AppTheme.title(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: reference == null ? AppColors.textMuted : AppColors.textDark,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('REFERENCE NO.',
+                          style: AppTheme.label(
+                              fontSize: 10.5, color: AppColors.textMuted)),
+                      const SizedBox(height: 4),
+                      SelectableText(
+                        reference ?? '— walang reference —',
+                        style: AppTheme.title(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: reference == null
+                              ? AppColors.textMuted
+                              : AppColors.textDark,
+                        ),
+                      ),
+                      if (machineRead) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Nabasa ng OCR. I-confirm o itama bago i-verify.',
+                          style: AppTheme.body(
+                              fontSize: 11.5, color: AppColors.accentGoldDark),
+                        ),
+                      ],
+                      if (booking.paymentReferencePrevious?.isNotEmpty == true) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Pinalitan ang dating reference: ${booking.paymentReferencePrevious}',
+                          style: AppTheme.body(
+                              fontSize: 11.5, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (machineRead) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Nabasa ng OCR ($readFor). I-confirm o itama bago i-verify.',
-                    style: AppTheme.body(fontSize: 11.5, color: AppColors.accentGoldDark),
+                if (reference != null)
+                  IconButton(
+                    tooltip: 'Kopyahin ang reference number',
+                    onPressed: () => _copyReference(reference),
+                    icon: const Icon(Icons.copy_rounded, size: 20),
+                    color: AppColors.primaryForest,
                   ),
-                ],
-                if (booking.paymentReferencePrevious?.isNotEmpty == true) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Pinalitan ang dating reference: ${booking.paymentReferencePrevious}',
-                    style: AppTheme.body(fontSize: 11.5, color: AppColors.textMuted),
-                  ),
-                ],
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
+
+          // 3. When it was paid, and by whom. An evidence row appears only when
+          // it carries evidence: "Hindi nabasa" beside a field the recognizer
+          // was never going to fill reads as a fault in the app rather than as
+          // an answer.
           _row(
-            'Halaga sa resibo',
-            extraction.amount.isNotEmpty
-                ? '₱${extraction.amount}'
-                    '${extraction.amounts.length > 1 ? ' · ${extraction.amountLabel}' : ''}'
-                : 'Hindi nabasa',
-            muted: extraction.amount.isEmpty,
+            'Petsa',
+            _dateLine(booking, extraction, verified),
+            muted: !dateFromReceipt &&
+                (booking.paymentDate?.trim() ?? '').isEmpty,
           ),
-          _row(
-            'Petsa ng transaksyon',
-            _dateLine(booking, extraction),
-            muted: (booking.paymentDate ?? '').trim().isEmpty &&
-                (booking.ocrPaymentDate ?? '').trim().isEmpty &&
-                extraction.paymentDateIso.isEmpty,
-          ),
-          // An evidence row appears only when it carries evidence.
-          //
-          // "Hindi nabasa" beside a field the recognizer was never going to
-          // fill reads as a fault in the app rather than as an answer: a GCash
-          // Express Send receipt prints no `Sender` label and an unlabelled,
-          // masked payee, so the commonest proof in the queue produced two rows
-          // of "could not read" above the notice that actually mattered. An
-          // empty row is not evidence of a bad read — an unreadable receipt is
-          // already said once, in `warnings`, where the Admin can act on it.
-          if (!widget.dense && shownSender.isNotEmpty)
-            _row('Sender', shownSender),
+          if (shownSender.isNotEmpty) _row('Sender', shownSender),
           if (!widget.dense && shownRecipient.isNotEmpty)
             _row('Recipient / merchant', shownRecipient),
-          // Which object the stored read describes, and which engine read it:
-          // this is how a read is pinned to a proof (ADR-0023 § 1), so it stays
-          // whenever there is something to pin. A read that has not been filed
-          // yet has nothing to pin, and announcing that in its own row was more
-          // noise on a phone screen.
-          if (hasProof && (booking.ocrProofUrl?.trim().isNotEmpty ?? false))
-            _row('Nabasa mula sa', _proofLine(booking, readFor)),
+
+          // One quiet caption, only when something on screen is the machine's
+          // read. The wordy disclaimer that used to sit under every button is
+          // gone: the OCR tag on the value and the status pill already say it.
+          if (ocrShown) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Awtomatikong binasa mula sa resibo.',
+              style: AppTheme.body(fontSize: 11.5, color: AppColors.textMuted),
+            ),
+          ],
+
           if (warnings.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             AdminInlineNotice(
               title: warnings.length == 1
                   ? 'Isang bagay na kailangang suriin'
@@ -853,81 +957,113 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
                   : _noticeTone == AdminNoticeTone.danger
                       ? 'May problema'
                       : 'Paalala',
-              message: _notice,
+              message: _notice!,
               tone: _noticeTone,
             ),
           ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: (!widget.enabled || _busy || !hasProof)
-                      ? null
-                      : () => _readReceipt(
-                          force: booking.ocrReference?.isNotEmpty == true ||
-                              booking.ocrReadIsStale),
-                  icon: _busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.document_scanner_outlined, size: 18),
-                  label: Text(
-                    _busy
-                        ? 'Binabasa…'
-                        : booking.ocrReference?.isNotEmpty == true
-                            ? 'Basahin muli'
-                            : 'Basahin ang resibo',
-                  ),
+          const SizedBox(height: 14),
+
+          // 4. What the Admin may do, ranked by the state the money is in.
+          // Verified: opening the proof is the only thing worth a large button,
+          // and correcting a settled record is the exception rather than the
+          // next step. Pending: reading, correcting and re-reading all stay
+          // reachable, because the decision has not been made yet.
+          if (verified) ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (!widget.enabled || _busy || !canOpenProof)
+                    ? null
+                    : widget.onOpenProof,
+                icon: const Icon(Icons.receipt_long_outlined, size: 20),
+                label: const Text('Buksan ang Resibo'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryForest,
+                  foregroundColor: Colors.white,
                 ),
-              ),
-              if (widget.onOpenProof != null) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: (!widget.enabled || _busy || !hasProof)
-                        ? null
-                        : widget.onOpenProof,
-                    icon: const Icon(Icons.receipt_long, size: 18),
-                    label: const Text('Buksan ang proof'),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: (!widget.enabled || _busy || (!hasProof && reference == null))
-                  ? null
-                  : _correctReference,
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: Text(
-                booking.paymentReferenceWasCorrected
-                    ? 'Itama muli ang reference'
-                    : 'I-confirm o itama ang reference',
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryForest,
-                foregroundColor: Colors.white,
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Ang OCR ay hindi beripikasyon. Hindi nito nababago ang status ng bayad — '
-            'ang Approve at Verify sa itaas ang tanging paraan para mabayaran ang Booking.',
-            style: AppTheme.body(fontSize: 11.5, color: AppColors.textMuted),
-          ),
+            const SizedBox(height: 2),
+            Center(
+              child: TextButton.icon(
+                onPressed: (!widget.enabled || _busy) ? null : _correctReference,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('I-edit ang detalye'),
+              ),
+            ),
+          ] else ...[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: (!widget.enabled || _busy || !canOpenProof)
+                    ? null
+                    : widget.onOpenProof,
+                icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                label: const Text('Buksan ang Resibo'),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppColors.primaryForest),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (!widget.enabled ||
+                        _busy ||
+                        (!hasProof && reference == null))
+                    ? null
+                    : _correctReference,
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: Text(
+                  booking.paymentReferenceWasCorrected
+                      ? 'Itama muli ang reference'
+                      : 'I-confirm o itama ang reference',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryForest,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Center(
+              child: TextButton.icon(
+                onPressed: (!widget.enabled || _busy || !hasProof)
+                    ? null
+                    : () => _readReceipt(
+                          force: booking.ocrReference?.isNotEmpty == true ||
+                              booking.ocrReadIsStale,
+                        ),
+                icon: _reading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.document_scanner_outlined, size: 18),
+                label: Text(
+                  _reading
+                      ? 'Binabasa…'
+                      : booking.ocrReference?.isNotEmpty == true
+                          ? 'Basahin muli'
+                          : 'Basahin ang resibo',
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  String _dateLine(BookingModel booking, ReceiptExtraction extraction) {
+  /// The transaction date in the form a person reads — `Aug 26, 2026`, not
+  /// `2026-08-26` — with the time when the read carried one.
+  ///
+  /// The `(OCR)` tag marks a date nobody has accepted, so it stays only while
+  /// the payment is unverified: once money is verified the date on the record
+  /// *is* the record.
+  String _dateLine(BookingModel booking, ReceiptExtraction extraction, bool verified) {
     final confirmed = booking.paymentDate?.trim() ?? '';
     // The stored read first, then the read taken on this device: when the
     // latest one could not be filed it is still the date the Admin is
@@ -937,22 +1073,59 @@ class _PaymentReferencePanelState extends State<PaymentReferencePanel> {
         : extraction.paymentDateIso;
     final time = extraction.paymentTime;
     if (confirmed.isNotEmpty) {
-      return time.isEmpty ? confirmed : '$confirmed · $time';
+      final date = _humanDate(confirmed);
+      return time.isEmpty ? date : '$date · $time';
     }
     if (read.isNotEmpty) {
-      return '${time.isEmpty ? read : '$read · $time'} (OCR)';
+      final date = _humanDate(read);
+      final stamped = time.isEmpty ? date : '$date · $time';
+      return verified ? stamped : '$stamped (OCR)';
     }
     return 'Hindi nabasa';
   }
 
-  /// The provenance line for a stored read. Only called when there is a path to
-  /// show — the caller decides whether the row exists at all.
-  String _proofLine(BookingModel booking, String engine) {
-    final path = booking.ocrProofUrl?.trim() ?? '';
-    final name = path.isEmpty ? '—' : path.split('/').last;
-    final at = booking.ocrExtractedAt;
-    final when = at == null ? '' : ' · ${DateFormatter.formatFull(at.toLocal())}';
-    return '$name · $engine$when';
+  /// `2026-08-26` becomes `Aug 26, 2026`. A value that is not an ISO date is
+  /// shown verbatim rather than guessed at.
+  static String _humanDate(String iso) {
+    final trimmed = iso.trim();
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed == null) return trimmed;
+    return DateFormatter.formatDate(parsed);
+  }
+
+  /// Puts the reference on the clipboard and says so. A copy that gives no
+  /// feedback leaves the Admin wondering whether the tap landed, and the number
+  /// is the one they are about to type into a banking app.
+  Future<void> _copyReference(String reference) async {
+    await Clipboard.setData(ClipboardData(text: reference));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Nakopya ang reference number'),
+      duration: Duration(seconds: 2),
+    ));
+  }
+
+  /// `₱5,000.00`, with the thousands separators a person reads.
+  static final NumberFormat _pesoFormat = NumberFormat('#,##0.00');
+
+  static String _peso(double value) => '₱${_pesoFormat.format(value)}';
+
+  /// The amount a receipt printed, as a number. Commas and a peso sign are
+  /// stripped first: the recognizer keeps whatever the receipt printed.
+  static double? _printedAmount(String printed) {
+    final cleaned = printed.replaceAll(RegExp(r'[^0-9.]'), '');
+    if (cleaned.isEmpty || cleaned == '.') return null;
+    return double.tryParse(cleaned);
+  }
+
+  /// What to show when the receipt's own figure is unreadable: the amount the
+  /// Admin verified, then what the Guest claimed. A blank where the amount is
+  /// known would be the one thing this panel must never show.
+  String _amountFallback(BookingModel booking) {
+    for (final candidate in [booking.amountVerified, booking.amountClaimed]) {
+      if (candidate != null && candidate > 0) return _peso(candidate);
+    }
+    return 'Hindi nabasa';
   }
 
   Widget _row(String label, String value, {bool muted = false}) {
