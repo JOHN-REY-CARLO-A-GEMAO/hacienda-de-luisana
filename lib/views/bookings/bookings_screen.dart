@@ -44,6 +44,24 @@ class BookingsScreen extends ConsumerStatefulWidget {
   ConsumerState<BookingsScreen> createState() => _BookingsScreenState();
 }
 
+/// The reference line on a Booking card.
+///
+/// The Guest's `HDL-...` id when the Booking has one, the payment reference when
+/// it does not, and a short fragment of the document id as the last resort.
+/// "No reference on file" read as a fault in the app on the many Bookings that
+/// simply carry no `ref_id` while still having a payment reference the Admin
+/// verified a payment against.
+///
+/// Pure, so the fallback order is a test rather than a guess.
+String bookingCardReference(BookingModel booking) {
+  final refId = booking.refId?.trim() ?? '';
+  if (refId.isNotEmpty) return refId;
+  final paymentReference = booking.effectivePaymentReference?.trim() ?? '';
+  if (paymentReference.isNotEmpty) return 'Ref #$paymentReference';
+  final short = booking.id.length < 6 ? booking.id.length : 6;
+  return '#${booking.id.substring(0, short).toUpperCase()}';
+}
+
 /// One line of consequence for a quick action, in the gate's own words —
 /// the sheet names what the tap will do before the tap does it (ADR-0015).
 String quickConsequence(BookingModel booking, AdminAction action) {
@@ -734,7 +752,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        booking.refId ?? 'No reference on file',
+                        bookingCardReference(booking),
                         style: AppTheme.label(fontSize: 11),
                       ),
                       const SizedBox(height: 2),

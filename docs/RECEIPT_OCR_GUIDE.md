@@ -57,8 +57,14 @@ payment_references/{reference}_{booking_id}
   sender_name, payment_date, proof_url, created_at
 ```
 
-Deterministic ang document id (`paymentReferenceDocId()` sa web, `_recordPaymentReference()` sa
-Dart), kaya hindi ito ma-doble kahit dalawang Admin ang mag-verify nang sabay.
+Deterministic ang document id (`paymentReferenceDocId()` sa web at sa Dart), kaya hindi ito
+ma-doble kahit dalawang Admin ang mag-verify nang sabay. Sa Dart, isinusulat ito ng
+`PaymentReferenceService.recordVerifiedBookingReference()` — at tinatawag ito ng
+`FirestoreService.applyBookingAction` para sa **bawat** approval (Approve at Verify Payment),
+kahit taga-Booking detail screen, taga-Bookings list, o taga-verification queue. Bago nito, nasa
+verification queue lang ang pagsulat, kaya umiiwal ang Payment references screen sa mga bayad
+na na-verify na pala. Kung `ocr_reference` lamang ang may reference (walang taong kumumpirma),
+`pending_review` ang status — hindi `verified`.
 
 ## 3. Ano ang nababasa ngayon
 
@@ -131,7 +137,8 @@ Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa
 | `src/lib/payments/receipt-preview.ts` | Bagong: isinasalin ang extraction sa "saang field napupunta" rows (`scanFields`, `unreadFields`, `scanVerdict`, `paymentReferenceDocId`). |
 | `src/pages/DownpaymentPage.tsx` | OCR pag pumili ng screenshot sa bagong booking (`onFile`). |
 | `src/components/Booking/PaymentStep.tsx` | OCR + pag-submit ng apat na field sa `/account`. |
-| `lib/views/bookings/payment_verification_queue_screen.dart` | Admin verification, at ang pagsulat ng `payment_references` row. |
+| `lib/views/bookings/payment_verification_queue_screen.dart` | Admin verification ng nasa queue. |
+| `lib/services/payment_reference_service.dart` | `recordVerifiedBookingReference()` — ang pagsulat ng `payment_references` row, at ang correction/OCR write. |
 | `lib/views/payments/payment_refs_screen.dart` | Admin listahan ng references; dito nakikita at naitatama ang extraction. |
 | `test/web/receipt-ocr.test.ts`, `receipt-amounts.test.ts`, `receipt-preview.test.ts` | Mga test para sa OCR at field mapping. |
 

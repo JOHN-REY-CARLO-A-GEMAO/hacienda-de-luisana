@@ -268,4 +268,145 @@ void main() {
       expect(receiptWriteAdvice(ReceiptWriteFailure.unknown), isEmpty);
     });
   });
+
+  // The row a verified payment files, and the rules it obeys. This is the write
+  // that keeps the Payment references screen from saying "No payment records
+  // yet" about money an Admin approved from the Booking detail screen or from a
+  // card, so it is asserted here rather than left to a screenshot.
+  group('the payment_references row a verified payment files', () {
+    test('a reference a human supplied is filed verified', () {
+      final booking = bookingWith({
+        'payment_reference': '8159662488150',
+        'payment_sender_name': 'JOHN GEMAO',
+        'payment_date': '2026-08-26',
+        'payment_status': 'verified',
+        'amount_verified': 5000,
+      });
+      final row = paymentReferenceRow(
+        booking,
+        normalizedReference: '8159662488150',
+        verifiedAmount: 5000,
+      );
+      expect(row['reference'], '8159662488150');
+      expect(row['amount'], 5000);
+      expect(row['status'], 'verified');
+      expect(row['booking_id'], 'booking-1');
+      expect(row['sender_name'], 'JOHN GEMAO');
+      expect(row['payment_date'], '2026-08-26');
+      expect(row['reference_source'], 'guest_claimed');
+    });
+
+    test('a reference only OCR ever read is filed pending_review', () {
+      final booking = bookingWith({
+        'ocr_reference': '7044357122304',
+        'ocr_sender_name': 'ANA CRUZ',
+        'payment_status': 'verified',
+        'amount_verified': 4500,
+      });
+      final row = paymentReferenceRow(
+        booking,
+        normalizedReference: '7044357122304',
+        verifiedAmount: 4500,
+      );
+      expect(row['status'], 'pending_review');
+      expect(row['reference_source'], 'ocr');
+      // The machine's read is kept beside the accepted number, so the Payment
+      // references screen can still show where the row came from.
+      expect(row['ocr_reference'], '7044357122304');
+      expect(row['sender_name'], 'ANA CRUZ');
+    });
+
+    test('a reference the Admin confirmed in this flow is admin_confirmed', () {
+      final booking = bookingWith({'ocr_reference': '7044357122304'});
+      final row = paymentReferenceRow(
+        booking,
+        normalizedReference: '8159662488150',
+        verifiedAmount: 5000,
+        confirmedReference: '8159662488150',
+      );
+      expect(row['status'], 'verified');
+      expect(row['reference_source'], 'admin_confirmed');
+      expect(row['reference'], '8159662488150');
+    });
+
+    test("an Admin's earlier correction is admin_confirmed, not guest_claimed", () {
+      final booking = bookingWith({
+        'payment_reference': 'GCASH-123456',
+        'payment_reference_source': 'admin_corrected',
+      });
+      expect(
+        paymentReferenceSourceFor(booking),
+        'admin_confirmed',
+      );
+      expect(
+        paymentReferenceRow(
+          booking,
+          normalizedReference: 'GCASH-123456',
+          verifiedAmount: 5000,
+        )['status'],
+        'verified',
+      );
+    });
+
+    test('the row carries the three keys firestore.rules demands, and a legal status', () {
+      for (final extra in <Map<String, dynamic>>[
+        {'payment_reference': 'GCASH-123456'},
+        {'ocr_reference': '7044357122304'},
+      ]) {
+        final booking = bookingWith(extra);
+        final row = paymentReferenceRow(
+          booking,
+          normalizedReference: 'GCASH-123456',
+          verifiedAmount: 5000,
+        );
+        // match /payment_references/{refId} — `allow create` and `allow update`
+        // both require these three, and only these status values.
+        for (final key in ['reference', 'amount', 'status']) {
+          expect(row.containsKey(key), isTrue, reason: '$key must be filed');
+        }
+        expect(
+          row['status'],
+          anyOf('verified', 'pending_review'),
+        );
+      }
+    });
+
+    test('the document id is deterministic, which is what makes it idempotent', () {
+      expect(
+        paymentReferenceDocId('GCASH-123456', 'booking-1'),
+        'GCASH-123456_booking-1',
+      );
+      // A reference carrying a path separator still yields a usable id, and so
+      // does a Booking id: the website folds the whole composed string, and the
+      // two apps have to land on the same document for the same payment.
+      expect(
+        paymentReferenceDocId('GCASH 123456', 'booking-1'),
+        'GCASH_123456_booking-1',
+      );
+      expect(
+        paymentReferenceDocId('TRX/004455 667788', 'abc 123'),
+        'TRX_004455_667788_abc_123',
+      );
+      expect(paymentReferenceDocId('a/b/c', '1/2'), isNot(contains('/')));
+    });
+
+    test('a status is derived from the source, not from the amount', () {
+      expect(paymentReferenceRowStatus('admin_confirmed'), 'verified');
+      expect(paymentReferenceRowStatus('guest_claimed'), 'verified');
+      expect(paymentReferenceRowStatus('ocr'), 'pending_review');
+    });
+
+    test('filing without a database is a no-op, never a failure', () async {
+      // Demo mode has no Firestore, and a payment verified there must still
+      // succeed: the row is a record of the decision, not the decision.
+      final booking = bookingWith({'payment_reference': 'GCASH-123456'});
+      await expectLater(
+        PaymentReferenceService.instance.recordVerifiedBookingReference(
+          booking,
+          verifiedAmount: 5000,
+        ),
+        completes,
+      );
+    });
+  });
 }

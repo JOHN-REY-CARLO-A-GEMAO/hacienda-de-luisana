@@ -397,6 +397,23 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   Future<void> _handleAction(BookingModel booking, AdminAction action) async {
     switch (action) {
       case AdminAction.approve:
+        // A number nobody has accepted cannot carry a verified payment, so the
+        // reference is confirmed before the PIN — the same prompt the payment
+        // verification queue shows, from the same shared helper.
+        final problem = await confirmReferenceBeforeVerification(
+          context,
+          booking: booking,
+          actorUid: _actor().id,
+        );
+        if (problem != null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: AppColors.statusAlert,
+            content: Text(problem),
+            duration: const Duration(seconds: 7),
+          ));
+          return;
+        }
         final ticket = await _ticket(booking, action);
         if (ticket != null) await _run(booking, action, ticket: ticket);
         return;
@@ -419,6 +436,22 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           min: 0.01,
         );
         if (amount != null) {
+          // Same rule as Approve: confirm the machine-read reference before the
+          // PIN, so the verification records a number a human has seen.
+          final problem = await confirmReferenceBeforeVerification(
+            context,
+            booking: booking,
+            actorUid: _actor().id,
+          );
+          if (problem != null) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              backgroundColor: AppColors.statusAlert,
+              content: Text(problem),
+              duration: const Duration(seconds: 7),
+            ));
+            return;
+          }
           final ticket = await _ticket(booking, action);
           if (ticket != null) {
             await _run(booking, action,
