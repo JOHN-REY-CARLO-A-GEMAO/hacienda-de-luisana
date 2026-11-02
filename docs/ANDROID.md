@@ -74,9 +74,92 @@ flutter build appbundle --release    # for Play Console
 
 ## 5. Troubleshooting
 
+### 5.1 `AndroidLocationsBuildService` / `AndroidDirectoryCreator`
+
+This is the failure that stops `flutter run` at `android/app/build.gradle` line 2
+in about four seconds, before a single Dart file is compiled:
+
+```
+An exception occurred applying plugin request [id: 'com.android.application']
+> Failed to apply plugin 'com.android.internal.application'.
+   > Failed to create service '...AndroidLocationsBuildService_...'.
+      > Could not create provider for value source
+        AndroidLocationsBuildService.AndroidDirectoryCreator.
+```
+
+**It is not a bug in this repo.** While applying the Android Gradle Plugin (AGP),
+Android's tools resolve the *preferences* folder — `%USERPROFILE%\.android` on
+Windows — and try to create it. When that resolution throws an
+`AndroidLocationsException`, Gradle hides it behind the message above. `--stacktrace`
+shows the real one. The known causes:
+
+| Cause | Why it breaks |
+|---|---|
+| `ANDROID_USER_HOME`, `ANDROID_PREFS_ROOT` and/or `ANDROID_SDK_HOME` disagree | AGP reads env vars **and** JVM system properties and refuses multiple different paths. `ANDROID_USER_HOME` is the `.android` folder itself; the two deprecated variables are its **parent** — so setting them all to the same literal value *still* conflicts. |
+| `ANDROID_SDK_HOME` points at the SDK root | A common old-tutorial setting. AGP expects the parent of `.android` and rejects an SDK root (`platforms/` + `platform-tools/`) without a `.android` child. |
+| `.android` is a file, its parent drive is gone, or it is not writable | `AndroidDirectoryCreator` calls `Files.createDirectories(...)`; a redirected/OneDrive profile or a read-only `C:\Program Files` path fails here. |
+| A stale `-Duser.home=` in `GRADLE_OPTS`, `JAVA_TOOL_OPTIONS`, `JAVA_OPTS`, `_JAVA_OPTIONS`, or `systemProp.*` in `gradle.properties` | The Gradle daemon resolves `user.home` from the JVM, not from your shell. Containers and deleted profiles produce `?/.android`. |
+| Non-ASCII project or profile path | AGP rejects non-ASCII paths. `android.overridePathCheck=true` does **not** fix it — it just turns the failure into this opaque one. |
+| A Gradle daemon started before you changed the variables | Daemons keep their old environment. This is a *secondary* cause, not the root one. |
+
+**Diagnose first** — the preflight checks every one of those, plus the SDK,
+`local.properties`, Java, `google-services.json`, and prints the exact repair
+commands for your machine:
+
+```powershell
+npm run check:android                              # or: node scripts/check-android-env.mjs
+node scripts/check-android-env.mjs --self-test   # sanity-check the checker itself
+```
+
+**Typical repair** (PowerShell, from the repo root). Replace the SDK path if yours
+is not the default, and make the changes permanent in *System Properties →
+Environment Variables* afterwards — a new terminal is required because the
+Gradle daemon inherits its environment at startup:
+
+```powershell
+Remove-Item Env:ANDROID_PREFS_ROOT, Env:ANDROID_SDK_HOME -ErrorAction SilentlyContinue
+# Only if the preflight reports a stale -Duser.home (do not drop proxy options otherwise):
+# Remove-Item Env:GRADLE_OPTS, Env:JAVA_TOOL_OPTIONS, Env:JAVA_OPTS, Env:_JAVA_OPTIONS -ErrorAction SilentlyContinue
+$env:ANDROID_USER_HOME = "$env:USERPROFILE\.android"
+New-Item -ItemType Directory -Force -Path $env:ANDROID_USER_HOME | Out-Null
+$env:ANDROID_SDK_ROOT = "$env:LOCALAPPDATA\Android\Sdk"
+$env:ANDROID_HOME     = $env:ANDROID_SDK_ROOT
+flutter config --android-sdk $env:ANDROID_SDK_ROOT
+flutter pub get
+.\android\gradlew.bat --stop
+flutter clean
+flutter run
+```
+
+`android/local.properties` is gitignored and machine-local: if `sdk.dir` there is
+stale or uses single backslashes (`C:\Users\...` is mangled by Java's
+`Properties` reader into `C:Users...`), delete the file and let `flutter pub get`
+rewrite it. The preflight catches that too.
+
+`android/settings.gradle` now fails early with a readable message when the
+preferences variables conflict or `.android` cannot be created, so a fresh
+clone says what to fix instead of showing the opaque AGP error.
+
+Two things to expect **after** the environment is fixed:
+
+- `google-services.json` is gitignored, so `:app:processDebugGoogleServices`
+  fails until you add it (§ 1, and `docs/FIREBASE_SETUP.md`).
+- This checkout lives under a path with spaces. Gradle normally copes, but if a
+  later NDK/aapt2/cmake step fails, move it to an ASCII path without spaces such
+  as `D:\hacienda\hacienda-de-luisana`.
+
+If the preflight is all green and the build still fails, capture
+`flutter run -v` and `.\android\gradlew.bat --stacktrace` — that points at an
+AGP/Gradle/Flutter toolchain version mismatch, not a machine path.
+
+### 5.2 Other problems
+
 | Problem | Fix |
 |---|---|
 | `flutter.sdk not set in local.properties` | Run `flutter pub get` once from the repo root, or open `android/` in Android Studio (it writes `android/local.properties`). |
+| `AndroidLocationsBuildService` / `AndroidDirectoryCreator` | § 5.1 — Android preferences folder / environment variables, not project code. |
+| `SDK location not found` | `flutter config --android-sdk "<path>"`, then `flutter pub get`. Install SDK Platform 36 in SDK Manager. |
+| `File google-services.json is missing` | Download it from the Firebase console into `android/app/` (§ 1). It is gitignored. |
 | Gradle / Java errors | Use the JDK Android Studio bundles (Settings → Build → Gradle → Gradle JDK → `jbr-17` or newer). |
 | Google sign-in dies after the account picker | Missing SHA-1 in the Firebase console, or the web OAuth client id in `AuthStore.kServerClientId` does not match the project. Use email + password meanwhile. |
 | "Not authorized" after signing in | The account is not the Admin: add it to `adminEmails()` in `firestore.rules` and redeploy, or set `profiles/{uid}.role = 'admin'`. |

@@ -148,6 +148,7 @@ Firebase setup: see [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 ```bash
 flutter pub get
 flutter test              # lifecycle, rates, model, security-gate, PIN-policy and PIN-sheet tests
+npm run check:android     # pre-flight the Android SDK / .android environment (see ANDROID.md § 5.1)
 flutter run               # Android emulator/device
 ```
 

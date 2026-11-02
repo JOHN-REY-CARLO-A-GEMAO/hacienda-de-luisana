@@ -12,6 +12,58 @@ pluginManagement {
 
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
+    // Fail fast on the machine-level problem behind the opaque
+    //   "Could not create provider for value source
+    //    AndroidLocationsBuildService.AndroidDirectoryCreator"
+    // error. AGP resolves the .android *preferences* folder while applying
+    // com.android.application, before any of our build logic runs, and reports
+    // the real cause (AndroidLocationsException) only with --stacktrace.
+    // ANDROID_USER_HOME is that folder itself; the deprecated ANDROID_PREFS_ROOT
+    // and ANDROID_SDK_HOME are its *parent*. Name the conflict here instead.
+    // See docs/ANDROID.md section 5.1 and `node scripts/check-android-env.mjs`.
+    def prefsCandidates = []
+    ['ANDROID_USER_HOME', 'ANDROID_PREFS_ROOT', 'ANDROID_SDK_HOME'].each { name ->
+        [System.getenv(name), System.getProperty(name)].findAll { it }.each { value ->
+            def folder = new File(value.trim())
+            prefsCandidates << (name == 'ANDROID_USER_HOME' ? folder : new File(folder, '.android'))
+        }
+    }
+    def locationKey = { File folder ->
+        def absolute = folder.canonicalFile.absolutePath
+        File.separator == '\\' ? absolute.toLowerCase() : absolute
+    }
+    def byLocation = prefsCandidates.groupBy(locationKey)
+    if (byLocation.size() > 1) {
+        throw new GradleException(
+            'Android preferences folder is set by more than one variable:\n' +
+            prefsCandidates.collect { "  ${it.absolutePath}" }.join('\n') + '\n' +
+            'AGP needs exactly one. Unset ANDROID_PREFS_ROOT and ANDROID_SDK_HOME, ' +
+            'keep ANDROID_USER_HOME (the .android folder itself), then run ' +
+            '.\\android\\gradlew.bat --stop and `flutter run` again. ' +
+            'See docs/ANDROID.md section 5.1.')
+    }
+    def prefsFolder = byLocation.isEmpty()
+        ? new File(System.getProperty('user.home'), '.android')
+        : byLocation.values().first().first()
+    // Read-only guard: AGP itself creates the folder when it is missing. We
+    // only reject the states that make that creation impossible.
+    if (prefsFolder.exists() && !prefsFolder.isDirectory()) {
+        throw new GradleException(
+            "Android preferences path is a file, not a folder: ${prefsFolder}. " +
+            'Delete/rename it (or point ANDROID_USER_HOME elsewhere) and rebuild. ' +
+            'See docs/ANDROID.md section 5.1.')
+    }
+    if (!prefsFolder.exists()) {
+        def parent = prefsFolder.parentFile
+        if (parent == null || !parent.isDirectory() || !parent.canWrite()) {
+            throw new GradleException(
+                "Cannot create Android preferences folder: ${prefsFolder}. " +
+                'Set USERPROFILE / ANDROID_USER_HOME to a writable directory on an ' +
+                'existing drive, then restart the Gradle daemon. ' +
+                'See docs/ANDROID.md section 5.1.')
+        }
+    }
+
     repositories {
         google()
         mavenCentral()

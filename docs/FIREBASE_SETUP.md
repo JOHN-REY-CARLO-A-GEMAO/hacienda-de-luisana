@@ -558,9 +558,14 @@ flutter analyze lib          # must be 0 errors
 flutter build apk --debug
 ```
 
-If Gradle reports `AndroidLocationsBuildService` / `AndroidDirectoryCreator`, that
-is a stale daemon rather than a missing SDK — `flutter clean` and
-`android\gradlew.bat --stop`, then build again.
+If Gradle reports `AndroidLocationsBuildService` / `AndroidDirectoryCreator`,
+that is **not** a missing SDK and not usually just a stale daemon. AGP is
+failing to resolve the Android preferences folder (`%USERPROFILE%\.android`),
+normally because `ANDROID_USER_HOME`, `ANDROID_PREFS_ROOT` / `ANDROID_SDK_HOME`
+disagree, `.android` is unwritable, or a JVM option overrides `user.home`. Run
+`node scripts/check-android-env.mjs` and follow `docs/ANDROID.md` § 5.1;
+`android\gradlew.bat --stop` is one step of that repair (daemons keep the old
+environment), not the whole fix.
 
 ## 🛠 Troubleshooting
 
