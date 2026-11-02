@@ -14,7 +14,7 @@
 2. Write the answer in the **Sagot** line (or in the Filipino form in [Appendix A](#appendix-a--tanong-sa-may-ari-one-page-form)).
 3. Bring the answers back to the repo: [Appendix B](#appendix-b--where-each-answer-gets-written-down) says which file or screen changes for each one. An answer that reaches no file is an answer the system never hears.
 4. **Do not re-ask what is already settled** — see [§8](#8-already-settled--huwag-nang-itanong).
-5. **Gusto ng Google Form?** Patakbuhin ang [`scripts/google-form/v2/Code.gs`](../scripts/google-form/v2/Code.gs) sa <https://script.google.com> at bubuo ito ng form at ng response sheet — 101 tanong, Taglish, pitong seksyon. Nasa [`scripts/google-form/README.md`](../scripts/google-form/README.md) ang mga hakbang at ang pagkakaiba ng v1 at v2. Ang dokumentong ito pa rin ang English na record.
+5. **Gusto ng Google Form?** Patakbuhin ang [`scripts/google-form/v2/Code.gs`](../scripts/google-form/v2/Code.gs) sa <https://script.google.com> at bubuo ito ng form at ng response sheet — 124 tanong, Taglish, pitong seksyon. Nasa [`scripts/google-form/README.md`](../scripts/google-form/README.md) ang mga hakbang at ang pagkakaiba ng v1 at v2. Ang dokumentong ito pa rin ang English na record.
 
 ### Priority key
 
@@ -545,7 +545,7 @@ Who is trained before launch: __________. Rollback (turn booking off) decided by
 
 ## 7. Added in v2 of the form
 
-These came out of the review of v1. They are operational rules rather than open questions — the team can pick a sane default, but the owner's answer is what the system should record. Full wording lives in the form; this is the index.
+These came out of the two reviews of the form. They are operational rules rather than open questions — the team can pick a sane default, but the owner's answer is what the system should record. Full wording lives in the form; this is the index.
 
 | Decision | Why it matters | Lands in |
 |---|---|---|
@@ -569,6 +569,21 @@ These came out of the review of v1. They are operational rules rather than open 
 | Smart-lock workflow: who issues a code, when it activates and expires, manual unlock, power/Wi-Fi failure, backup key, who gets alerts | `docs/SMART_LOCK.md` defines a payload, not an operating procedure | `docs/SMART_LOCK.md`, then firmware |
 | Retention **per record type** (booking, payment, guest contact, chat, access log, ID) | One answer for everything over-retains some records and under-retains others | `docs/LIMITATIONS.md`, a scheduled sweep, Privacy notice |
 | Whether a testimonial needs fresh Guest consent each time, and what may be shown | Reviewing a stay and publishing a name are two permissions | `docs/REVIEWS.md`, `src/lib/legal.ts` |
+| **Revision 2** — is ₱5,000 / ₱6,000 per night or per booking; how many weekend nights a Fri–Sun stay charges | "Per stay" and "per night" were being used for the same figure; they differ by the length of the stay | `src/lib/booking/rates.ts`, `quoteAccommodation`, every quote surface |
+| Maximum occupancy as a **number** per accommodation, its basis, and what the website will enforce | A menu of presets decided the owner's policy for her; policy maximum and website maximum are different limits | Rates schedule `max_guests` (and the A-House-only exception), `firestore.rules` |
+| Minimum age of the **person responsible for the booking**; minors with a guardian | Currently 10 years old in the Terms and the sign-up validator | `src/lib/legal.ts`, `lib/utils/validators.dart`, `RegisterForm.tsx` |
+| ID at check-in: none / inspected / number recorded / photograph | The system has no ID step at all since Government ID KYC was removed | `src/lib/legal.ts`, the Admin check-in screen, the Privacy notice |
+| Whether the **deposit** is part of a cancellation refund; partial vs full payment | `settleRefund` assumes the deposit is inside the verified money, which is not what the Guest is told | `src/lib/booking/money.ts`, the Dart mirror, `docs/BOOKING_POLICY.md` |
+| Whether a rescheduled booking keeps its price; which date a refund uses after a reschedule | The Admin app reschedules; the price and refund base are not recorded anywhere | `lib/services/booking_lifecycle.dart`, a new Guest `Reschedule` |
+| Who approves and records a refund, and how | The refund pipeline records a status, not a person or a payout reference | `actions.ts` (`MarkRefunded`), Admin refund screen |
+| How damage is priced (actual cost, a fixed list, or the Admin's judgement) | The deposit can be deducted, but nothing says how the figure is reached | `settleRefund` (`damageDeduction`), Admin inspection step |
+| Typhoon at the Hacienda vs a Guest's personal emergency | They are different risks and need not share one rule | `src/lib/legal.ts`, `docs/BOOKING_POLICY.md` |
+| Should the Admin app record that the **check-in balance** was received | Today it cannot; only the down payment can be verified | New Admin action + rules + Dart mirror |
+| Who resolves a double-sold unit and how the Guest is refunded | The likeliest real failure once the site sits beside Airbnb and Agoda | Operations note, then the refund pipeline |
+| Events: forbidden, approved with a fee, or approved freely | The listings advertise events; the website sells stays only | `FEES.optional`, `manual_review_notice`, `HOUSE_RULES` |
+| What each Admin role may do (approve, verify, refund, see guest data, change availability) | One role sees and does everything (ADR-0007) | `firestore.rules` role vocabulary, `lib/services/auth_store.dart` |
+| Smart-lock brand, model, doors, power; battery failure; offline access | `docs/SMART_LOCK.md` is a payload contract, not an operating procedure | `docs/SMART_LOCK.md`, then firmware |
+| Keep Live Location as optional, shorten it, remove it, or defer it | A privacy feature nobody needs is a liability with no upside | `docs/MESSAGING.md`, Privacy notice |
 
 ---
 
@@ -610,7 +625,7 @@ These look like client questions and are not. They must be fixed by the team, an
 
 ## Appendix A — the short version (22 tanong, ~10 minuto)
 
-This is the printable first pass: the decisions that block go-live, one page, for a conversation or a Messenger thread. It is **not** a copy of the 101-question Google Form; it is the subset to settle first, and the full instrument follows.
+This is the printable first pass: the decisions that block go-live, one page, for a conversation or a Messenger thread. It is **not** a copy of the 124-question Google Form; it is the subset to settle first, and the full instrument follows.
 
 **Pangalan:** ______________________ **Petsa:** ____________
 
