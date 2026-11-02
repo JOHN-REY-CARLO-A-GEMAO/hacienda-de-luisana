@@ -147,6 +147,45 @@ String bookingWriteRefusalMessage(Object error) {
   }
 }
 
+/// Fill the device log with the identity facts Firestore actually judged when
+/// a Booking action was refused.
+///
+/// A refused write arrives as a bare `permission-denied`, with no hint of
+/// *which* of the three deciding facts was missing: the deployed ruleset, the
+/// session's role (`profiles/{uid}.role == 'admin'`, or a verified allowlisted
+/// address on the ID token), or the token itself. The approval path used to
+/// answer with a generic "You do not have permission to perform this action."
+/// and log nothing — the diagnosis could never get past step one. This is the
+/// booking-lifecycle twin of `logReceiptWriterIdentity` in
+/// `payment_reference_service.dart`, which already logged the OCR write path.
+///
+/// Debug builds only: the facts are printed, never shown, and release builds
+/// pay nothing.
+Future<void> logBookingActionRefusal(Object error) async {
+  if (!kDebugMode) return;
+  final isFirebaseException = error is FirebaseException;
+  debugPrint('[BookingAction] write refused: type=${error.runtimeType} '
+      'code=${isFirebaseException ? error.code : 'n/a'} '
+      'message=${isFirebaseException ? (error.message ?? '') : error.toString().split('\n').first}');
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint('[BookingAction] identity: no signed-in Firebase user');
+      return;
+    }
+    final result = await user.getIdTokenResult();
+    debugPrint('[BookingAction] identity: uid=${user.uid} '
+        'email=${user.email} user.emailVerified=${user.emailVerified} '
+        'token.email=${result.claims?['email']} '
+        'token.email_verified=${result.claims?['email_verified']}');
+    debugPrint('[BookingAction] firestore.rules reads an Admin from '
+        'profiles/${user.uid}.role == "admin" or a verified adminEmails() '
+        'address; users/{uid} and custom claims grant nothing here.');
+  } catch (identityError) {
+    debugPrint('[BookingAction] identity unavailable: $identityError');
+  }
+}
+
 class FirestoreService implements PinSecurityRemote {
   final FirebaseFirestore? _firestore;
   bool _isFirebaseReady = false;
@@ -436,7 +475,10 @@ class FirestoreService implements PinSecurityRemote {
       // Nothing was written: the Booking, its Activity entry and the Guest's
       // Notification commit in one transaction, so a refusal leaves the
       // Booking exactly as it was. Say that, and say which of the three facts
-      // decides it rather than echoing Firestore's sentence.
+      // decides it rather than echoing Firestore's sentence. In a debug build
+      // the raw exception code and the identity facts Firestore judged go to
+      // the device log first, so a `permission-denied` is never a guess again.
+      unawaited(logBookingActionRefusal(e));
       return ActionResult.refused(bookingWriteRefusalMessage(e));
     }
   }

@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hacienda_de_luisana/services/firestore_service.dart';
+import 'package:hacienda_de_luisana/utils/error_utils.dart';
 
 /// What the Admin reads when a Booking action is refused.
 ///
@@ -57,5 +58,27 @@ void main() {
 
     expect(message, contains('Hindi na-save ang Booking'));
     expect(message, contains('boom'));
+  });
+
+  test('the refusal collapses to the generic sentence if screens re-map it', () {
+    // The screens are the reason this message exists: they show it verbatim.
+    // ErrorUtils would collapse it — the Tagalog guidance names
+    // "permission-denied", which the generic mapper turns back into
+    // "You do not have permission to perform this action." — so a test that
+    // runs the pass documents what a screen must never do again.
+    final message = bookingWriteRefusalMessage(firestoreError('permission-denied'));
+
+    expect(message, contains('profiles/<uid>.role'));
+    expect(ErrorUtils.toUserMessage(message), isNot(contains('profiles/<uid>.role')));
+  });
+
+  test('the refusal logger survives a debug environment without Firebase', () async {
+    // The logger prints, never throws: demo builds (no Firebase app) and unit
+    // tests run it in a catch, so a refusal on those paths still classifies
+    // instead of crashing the catch block it is called from.
+    await expectLater(
+      logBookingActionRefusal(firestoreError('permission-denied')),
+      completes,
+    );
   });
 }

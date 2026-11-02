@@ -303,6 +303,18 @@ stack. Keyboard open/close events alone do not prove that a save was submitted.
 
 Work through these in order:
 
+The same diagnosis answers a refused **Approve / Verify / Reject** action on a
+Booking: those go through `FirestoreService.applyBookingAction()`, which
+classifies the refusal into an actionable message (`bookingWriteRefusalMessage`)
+and, in a debug build, prints the raw exception code and the identity facts
+Firestore judged under the `[BookingAction]` tag (`logBookingActionRefusal`).
+A debug build also shows that message as written — the admin screens pass a
+service refusal straight through instead of letting `ErrorUtils` collapse it
+into "You do not have permission to perform this action."
+
+0. **Build a debug app and repeat the action.** The `[BookingAction]` log lines
+   from `applyBookingAction` answer step 2 below without any console work:
+
 1. **Deploy the ruleset from this commit, to the right project.**
    ```bash
    firebase deploy --only firestore:rules --project hacienda-de-luisana

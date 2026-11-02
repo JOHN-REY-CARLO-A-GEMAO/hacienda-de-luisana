@@ -120,10 +120,17 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         content: Text('${action.label}: $status — ${booking.guestName}'),
       ));
     } else {
+      // A service refusal is already written to be read as-is: the write path
+      // classifies `permission-denied`, offline and a deleted Booking before it
+      // answers (bookingWriteRefusalMessage). Re-running it through ErrorUtils
+      // used to collapse that answer — the Tagalog guidance names
+      // "permission-denied", which ErrorUtils maps back to the generic
+      // "You do not have permission to perform this action." — so the Admin
+      // lost the one next step the message was written to carry.
       messenger.showSnackBar(SnackBar(
         backgroundColor: AppColors.statusAlert,
-        content: Text(ErrorUtils.toUserMessage(result.reason, fallback: 'Action was refused. Please check the requirements and try again.')),
-        duration: const Duration(seconds: 6),
+        content: Text(result.reason ?? 'Action was refused. Please check the requirements and try again.'),
+        duration: const Duration(seconds: 7),
       ));
     }
   }
