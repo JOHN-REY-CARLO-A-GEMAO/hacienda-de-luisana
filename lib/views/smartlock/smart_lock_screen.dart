@@ -53,12 +53,25 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         title: 'Door access',
         subtitle: 'Real-time smart lock audit trail',
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.primaryForest,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.nfc_rounded, size: 20),
-        label: const Text('Simulate RFID Swipe'),
-        onPressed: () => _simulateRfidSwipe(firestoreService),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            backgroundColor: AppColors.primaryForest,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.nfc_rounded, size: 20),
+            label: const Text('Simulate RFID Swipe'),
+            onPressed: () => _simulateRfidSwipe(firestoreService),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            backgroundColor: AppColors.primaryForest.withOpacity(0.85),
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.logout, size: 20),
+            label: const Text('Simulate Check-out Tap (desk)'),
+            onPressed: () => _simulateDeskCheckoutTap(firestoreService),
+          ),
+        ],
       ),
       body: lockLogsAsync.when(
         data: (logs) {
@@ -211,6 +224,86 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     );
   }
 
+  /// The desk reader's card register as a rounded white card: icon tile, card
+  /// uid + payload kind, the encoded payload itself, and a status pill —
+  /// ACTIVE (opens a room) until the check-out tap flips it to the REVOKED
+  /// calling card.
+  Widget _buildCardRegister(RfidCardModel? card) {
+    final active = card?.status == RfidCardStatus.active;
+    final tone = active ? AppColors.statusSuccess : AppColors.statusAlert;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.cardBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: tone.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.credit_card, color: tone),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('RFID card register', style: AppTheme.title(fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text(
+                    card == null
+                        ? 'No card issued yet — run the check-out tap demo to issue one.'
+                        : '${card.cardUid} · ${card.payloadKind.displayName}',
+                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+                  ),
+                  if (card != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      card.payload,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (card != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: tone.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  card.status.displayName,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: tone,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCounterTile({
     required String title,
     required String value,
@@ -356,6 +449,65 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         ],
       ),
     );
+  }
+
+  /// The check-out desk tap, end to end: issue a room key onto the demo card
+  /// if it has none, then tap at the desk — which revokes the key and rewrites
+  /// the card to the website link (souvenir calling card). Every step lands in
+  /// the Access log stamped SIMULATED. One ESP32 (the smart lock) serves both
+  /// the door and the desk tap.
+  Future<void> _simulateDeskCheckoutTap(FirestoreService firestoreService) async {
+    const demoCard = 'RFID-A3-89-CF-12';
+    final ok = await showSecureConfirm(
+      context,
+      title: 'Simulate a check-out desk tap?',
+      body: 'Key write + revoke + card rewrite for demo card $demoCard. All rows are marked SIMULATED in the Access log.',
+      confirm: 'Run it',
+    );
+    if (!ok || !mounted) return;
+
+    final auth = legacy.Provider.of<AuthStore>(context, listen: false);
+    final uid = auth.uid ?? auth.sessionEmail ?? 'admin';
+
+    final existing = await firestoreService.fetchRfidCard(demoCard);
+    if (existing == null) {
+      final problem = await firestoreService.issueRoomKey(
+        cardUid: demoCard,
+        bookingRefId: 'simulated',
+        accommodationId: 'main-house',
+        actorUid: uid,
+      );
+      if (!mounted) return;
+      if (problem != null) {
+        _showProblem(problem);
+        return;
+      }
+    }
+
+    final problem = await firestoreService.deskCheckoutTap(
+      cardUid: demoCard,
+      actorUid: uid,
+    );
+    if (!mounted) return;
+    if (problem != null) {
+      _showProblem(problem);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Check-out tap recorded: key revoked and card $demoCard rewritten to ${AppConstants.websiteUrl} (calling card).'),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+    await _loadDemoCard();
+  }
+
+  void _showProblem(String problem) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: AppColors.statusAlert,
+      content: Text(problem),
+      duration: const Duration(seconds: 6),
+    ));
   }
 
   /// The simulator writes demonstration rows into the real Access log —

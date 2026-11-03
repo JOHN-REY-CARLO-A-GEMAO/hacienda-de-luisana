@@ -10,6 +10,7 @@ import '../../services/booking_queue.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/admin_ui.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/explore_ui.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/loading_state.dart';
 import '../../widgets/section_header.dart';
@@ -89,30 +90,43 @@ class DashboardScreen extends ConsumerWidget {
     }
 
     Widget quickActions() {
+      // Category row in the explore-style kit (docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md):
+      // icon tile + label per destination, replacing the old button wrap. The
+      // tour anchors on TourKeys.reviewBookings, so the key stays on the subtree.
       return HaciendaCard(
         padding: const EdgeInsets.all(14),
-        child: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            SizedBox(
-              width: 210,
-              child: OutlinedButton.icon(
-                key: TourKeys.reviewBookings,
-                onPressed: () => onNavigateTab(1),
-                icon: const Icon(Icons.confirmation_number_outlined, size: 19),
-                label: const Text('All bookings'),
+        child: KeyedSubtree(
+          key: TourKeys.reviewBookings,
+          child: ExploreCategoryRow(
+            items: [
+              ExploreCategory(
+                label: 'Bookings',
+                icon: Icons.confirmation_number_outlined,
+                onTap: () => onNavigateTab(1),
               ),
-            ),
-            SizedBox(
-              width: 210,
-              child: ElevatedButton.icon(
-                onPressed: () => onNavigateTab(2),
-                icon: const Icon(Icons.chat_bubble_outline, size: 19),
-                label: const Text('Guest messages'),
+              ExploreCategory(
+                label: 'Chat',
+                icon: Icons.chat_bubble_outline,
+                onTap: () => onNavigateTab(2),
               ),
-            ),
-          ],
+              ExploreCategory(
+                label: 'Stays',
+                icon: Icons.night_shelter_outlined,
+                onTap: () => onNavigateTab(3),
+              ),
+              ExploreCategory(
+                label: 'Smart lock',
+                icon: Icons.lock_open_rounded,
+                badge: 'NEW',
+                onTap: () => onNavigateTab(5),
+              ),
+              ExploreCategory(
+                label: 'More',
+                icon: Icons.more_horiz,
+                onTap: () => onNavigateTab(4),
+              ),
+            ],
+          ),
         ),
       );
     }

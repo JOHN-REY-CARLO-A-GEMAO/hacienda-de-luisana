@@ -152,6 +152,8 @@ export const Users = base(<><circle cx="9" cy="8" r="3.2" /><path d="M2 21c0-3.5
 export const Bed = base(<><path d="M3 8v11" /><path d="M21 12v7" /><path d="M3 15h18" /><path d="M6 12h6a2 2 0 0 1 2 2v1" /><circle cx="8" cy="10.5" r="1.5" /></>)
 export const Sparkle = base(<><path d="M12 3v6" /><path d="M12 15v6" /><path d="M3 12h6" /><path d="M15 12h6" /><path d="M6 6l3 3" /><path d="M15 15l3 3" /><path d="M18 6l-3 3" /><path d="M9 15l-3 3" /></>)
 export const Compass = base(<><circle cx="12" cy="12" r="9" /><path d="M15 9l-2 6-6 2 2-6 6-2z" /></>)
+export const Search = base(<><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.8-3.8" /></>)
+export const Heart = base(<path d="M12 20.5S4 15.6 2.6 10.9C1.5 7.4 3.8 4 7.1 4c2 0 3.9 1.1 4.9 2.8C13 5.1 14.9 4 16.9 4c3.3 0 5.6 3.4 4.5 6.9C20 15.6 12 20.5 12 20.5z" />)
 export const House = base(
   <>
     <path d="M4 11.5L12 4l8 7.5" />

@@ -1392,6 +1392,73 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // ------------------------------------------------------------------
+    // rfid_cards — the help-desk reader's register of physical cards.
+    //
+    // One document per card (`rfid_cards/{cardUid}`), written when the desk
+    // controller encodes a room key at check-in and rewritten at check-out,
+    // when the revoked key is replaced by the website link the Guest keeps
+    // as a souvenir calling card. The touches themselves stay in
+    // `access_logs`; this register answers "what does this card open right
+    // now" — a fact the audit log cannot answer, because a revoked card's
+    // last touch is a `denied` row, not the revocation itself.
+    //
+    // Admin-only throughout: a Guest must never read which card opens which
+    // room, and must never be able to write a card into being active.
+    // ------------------------------------------------------------------
+    match /rfid_cards/{cardUid} {
+      function isCardShape() {
+        return request.resource.data.keys().hasAll(['cardUid', 'payloadKind', 'payload', 'status', 'issuedAt', 'issuedBy'])
+          && request.resource.data.keys().hasOnly(['cardUid', 'payloadKind', 'payload', 'status', 'issuedAt', 'issuedBy', 'bookingRefId', 'accommodationId', 'revokedAt', 'rewrittenAt'])
+          && request.resource.data.cardUid == cardUid
+          && request.resource.data.payloadKind in ['room_key', 'landing_link']
+          && request.resource.data.status in ['active', 'revoked']
+          && request.resource.data.payload is string
+          && request.resource.data.payload.size() > 0
+          && request.resource.data.issuedAt is string
+          && request.resource.data.issuedBy is string
+          && request.resource.data.issuedBy.size() > 0
+          && (!request.resource.data.keys().hasAny(['bookingRefId']) || request.resource.data.bookingRefId is string)
+          && (!request.resource.data.keys().hasAny(['accommodationId']) || isCanonicalAccommodation(request.resource.data.accommodationId));
+      }
+
+      allow read: if isAdmin();
+      // The Admin app writes the full document on both the check-in write
+      // and the check-out rewrite, so create and update carry the same shape.
+      allow create, update: if isAdmin() && isCardShape();
+      // A card's history is evidence; the card itself is plastic.
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------------------------
+    // room_turnover — the check-out hold record (damage inspection + cleaning).
+    //
+    // When a Guest checks out, the desk tap revokes the key and the room goes
+    // on a cleaning hold: the Admin inspects for missing or damaged items
+    // (and messages the departed Guest through the chat if any are found),
+    // then cleaning is recorded, and only then may the Booking be Completed
+    // and the Accommodation sold again. Each inspection or cleaning pass is
+    // one append-only document here, written by the Admin who did it.
+    // ------------------------------------------------------------------
+    match /room_turnover/{recordId} {
+      function isTurnoverShape() {
+        return request.resource.data.keys().hasAll(['bookingId', 'kind', 'accommodationId', 'at', 'createdBy'])
+          && request.resource.data.keys().hasOnly(['bookingId', 'kind', 'accommodationId', 'items', 'cleanerName', 'inspectedBy', 'guestContacted', 'notes', 'at', 'createdBy', 'updatedAt'])
+          && request.resource.data.bookingId is string
+          && request.resource.data.bookingId.size() > 0
+          && request.resource.data.kind in ['damage', 'cleaning']
+          && isCanonicalAccommodation(request.resource.data.accommodationId)
+          && request.resource.data.at is string
+          && request.resource.data.createdBy == request.auth.uid
+          && (!request.resource.data.keys().hasAny(['items']) || request.resource.data.items is list)
+          && (!request.resource.data.keys().hasAny(['guestContacted']) || request.resource.data.guestContacted is bool);
+      }
+
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isTurnoverShape();
+      allow delete: if false;
+    }
+
     // Gallery images metadata (public read, Admin write)
     match /gallery/{imageId} {
       allow read: if true;

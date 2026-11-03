@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { homeForRole } from '../../lib/auth'
 import { useAuth } from '../../hooks/useAuth'
 import { Logo } from '../Logo'
+import { Close } from '../../lib/icons'
 import { Alert, Field, Input } from '../ui'
 
 type Mode = 'login' | 'register' | 'reset'
@@ -94,8 +95,22 @@ export function AuthFormPanel({
   const { isConfigured, role } = useAuth()
 
   return (
-    <div className="w-full">
-      <div className="mb-6">
+    // Sheet card (reference set 2, docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md): the
+    // auth panel wears a rounded card with a grip handle and a close button,
+    // like the reference's "Log in or sign up" bottom sheet. Colors stay ours.
+    <div className="w-full rounded-[28px] border border-forest-900/8 bg-white p-6 shadow-card dark:border-cream-100/10 dark:bg-forest-900/60 sm:p-8">
+      <div className="relative mb-5 flex items-center justify-center">
+        <span className="h-1 w-10 rounded-full bg-forest-900/15 dark:bg-cream-100/20" aria-hidden="true" />
+        <Link
+          to="/"
+          aria-label="Close sign-in and go home"
+          className="absolute right-0 grid h-9 w-9 place-items-center rounded-full text-forest-700 transition hover:bg-forest-50 dark:text-cream-100 dark:hover:bg-forest-800"
+        >
+          <Close size={18} aria-hidden="true" />
+        </Link>
+      </div>
+
+      <div className="mb-6 text-center">
         <div className="eyebrow">{intro.eyebrow}</div>
         <h1 className="h2 mt-2">{intro.title}</h1>
         <p className="mt-2 text-sm leading-relaxed text-forest-700/85 dark:text-cream-100/85">{intro.body}</p>
@@ -167,6 +182,12 @@ export function AuthFormPanel({
           <Link to={homeForRole(role)} className="text-link text-forest-600 dark:text-cream-100">
             {role === 'guest' ? 'Go to my bookings' : 'Continue browsing the Hacienda'}
           </Link>
+        </div>
+        {/* Legal links row, in the reference sheet's footer position */}
+        <div className="pt-2 text-[11px] text-forest-700/60 dark:text-cream-100/60">
+          <Link to="/legal" className="underline underline-offset-2">Terms of Service</Link>
+          {' · '}
+          <Link to="/legal" className="underline underline-offset-2">Privacy Policy</Link>
         </div>
       </div>
     </div>
