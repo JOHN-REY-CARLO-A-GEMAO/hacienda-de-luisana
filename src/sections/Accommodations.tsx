@@ -1,10 +1,10 @@
 import { Container } from '../components/ui'
 import { Link } from 'react-router-dom'
-import { ACCOMMODATIONS, AMENITIES, type Accommodation } from '../config/site'
+import { ACCOMMODATIONS, AIRBNB_RATING, AMENITIES, type Accommodation } from '../config/site'
 import { SmartImage } from '../components/SmartImage'
 import { TiltCard } from '../components/TiltCard'
 import { SceneHeader } from '../components/Scene'
-import { AMENITY_ICONS, ArrowRight, Bed, House, Users } from '../lib/icons'
+import { AMENITY_ICONS, ArrowRight, Bed, Heart, House, Star, Users } from '../lib/icons'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { ratesForAccommodation, type PublishedRates } from '../lib/booking'
 
@@ -88,10 +88,26 @@ export function Accommodations() {
                       </span>
                     )}
                   </div>
+                  {/* Listing-card chrome (reference set 2): centered badge + heart,
+                      structure copied, colors kept */}
+                  {a.id === 'main-house' && (
+                    <span className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-forest-900 shadow-sm">
+                      Guest favorite
+                    </span>
+                  )}
+                  <span className="absolute top-4 right-4 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-forest-800 shadow-sm" aria-hidden="true">
+                    <Heart size={15} />
+                  </span>
                 </div>
 
                 <div className="p-7 lg:p-8 flex-1 flex flex-col">
                   <h3 className="font-serif text-3xl text-forest-900">{propertyName}</h3>
+                  {/* Rating row in the listing-card position (reference set 2) */}
+                  <div className="mt-2 inline-flex items-center gap-1.5 text-sm">
+                    <Star size={14} className="text-brass-500" />
+                    <span className="font-semibold text-forest-900">{AIRBNB_RATING.rating.toFixed(1)}</span>
+                    <span className="text-forest-700/70">({AIRBNB_RATING.reviewCount} reviews)</span>
+                  </div>
                   <p className="mt-3 text-forest-800/80 leading-relaxed">{a.description}</p>
 
                   <div className="mt-5 flex flex-wrap items-center gap-4 text-sm text-forest-800">
@@ -157,7 +173,17 @@ export function Accommodations() {
                     <div className="pt-6 border-t border-forest-900/5 flex flex-wrap items-end justify-between gap-4">
                       <div>
                         <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Rate</div>
-                        <div className="font-serif text-2xl text-forest-900 mt-1">{rate.label}</div>
+                        <div className="font-serif text-2xl text-forest-900 mt-1">
+                          {/* Listing-card price line (reference set 2): big figure + "/ night" */}
+                          {rate.nightly != null ? (
+                            <>
+                              ₱{rate.nightly!.toLocaleString('en-PH')}
+                              <span className="font-sans text-sm font-medium text-forest-700/80"> / night</span>
+                            </>
+                          ) : (
+                            rate.label
+                          )}
+                        </div>
                         {rate.source && <div className="text-xs text-forest-700/70 mt-1">{rate.source}</div>}
                       </div>
 

@@ -1,7 +1,7 @@
 import { Container } from '../components/ui'
 import { useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowDown, MapPin, Star } from '../lib/icons'
+import { ArrowDown, MapPin, Search, Star } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
 import { FoliageBranch, FoliageCorner } from '../components/decor/Foliage'
 import { AIRBNB_RATING, BUSINESS } from '../config/site'
@@ -91,6 +91,24 @@ export function Hero() {
                 </Link>
                 <a href="#stay" className="btn-secondary btn-lg">
                   Tingnan ang Matutuluyan
+                </a>
+              </div>
+
+              {/* Explore-style search pill (reference set 2, docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md):
+                  structure copied, Hacienda colors kept. Scrolls to the stays. */}
+              <div className="mt-8">
+                <a
+                  href="#stay"
+                  data-tour="search-pill"
+                  className="inline-flex items-center gap-3 rounded-full bg-white/95 py-2 pl-2 pr-6 text-forest-900 shadow-depth transition hover:bg-white"
+                >
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-forest-700 text-cream-50">
+                    <Search size={16} />
+                  </span>
+                  <span className="text-left">
+                    <span className="block text-sm font-semibold leading-tight">Start your search</span>
+                    <span className="block text-xs leading-tight text-forest-700/80">Anywhere · Any week · Add guests</span>
+                  </span>
                 </a>
               </div>
 

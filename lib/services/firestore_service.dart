@@ -1042,6 +1042,179 @@ class FirestoreService implements PinSecurityRemote {
     return null;
   }
 
+  // ------------------------------------------------------------------
+  // RFID cards — the desk reader's register (rfid_cards/{cardUid}).
+  //
+  // Check-in writes a room key onto the card; the check-out desk tap revokes
+  // the key and rewrites the payload to the website link, so the Guest keeps
+  // the card as a souvenir calling card. Every step also lands in access_logs.
+  // ------------------------------------------------------------------
+
+  /// Writes the full card document. Returns what went wrong, or null.
+  Future<String?> setRfidCard(RfidCardModel card) async {
+    if (isCloud) {
+      try {
+        await _firestore!
+            .collection(AppConstants.colRfidCards)
+            .doc(card.cardUid)
+            .set(card.toJson());
+      } catch (e) {
+        return 'Could not write the RFID card (${e.toString().split('\n').first}).';
+      }
+    }
+    return null;
+  }
+
+  Future<RfidCardModel?> fetchRfidCard(String cardUid) async {
+    if (!isCloud) return null;
+    try {
+      final snap = await _firestore!
+          .collection(AppConstants.colRfidCards)
+          .doc(cardUid)
+          .get();
+      if (!snap.exists || snap.data() == null) return null;
+      return RfidCardModel.fromJson(snap.data()!, snap.id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Check-in: encode the room key onto [cardUid] and log the write.
+  Future<String?> issueRoomKey({
+    required String cardUid,
+    required String bookingRefId,
+    required String accommodationId,
+    required String actorUid,
+  }) async {
+    final now = DateTime.now();
+    final card = RfidCardModel(
+      cardUid: cardUid,
+      payloadKind: CardPayloadKind.roomKey,
+      payload: 'KEY:$accommodationId:$bookingRefId',
+      status: RfidCardStatus.active,
+      bookingRefId: bookingRefId,
+      accommodationId: accommodationId,
+      issuedAt: now,
+      issuedBy: actorUid,
+    );
+    final event = SmartLockEventModel(
+      id: 'rfid-issue-${now.millisecondsSinceEpoch}',
+      doorName: 'Help desk reader',
+      action: LockAction.keyWritten,
+      method: LockMethod.rfidKeycard,
+      triggeredBy: 'Admin desk',
+      cardUid: cardUid,
+      timestamp: now,
+      isSuccess: true,
+      notes: 'Room key written to RFID card at check-in (simulated pipeline)',
+      reason: 'Check-in key write',
+      uid: actorUid,
+      refId: bookingRefId,
+      simulated: true,
+    );
+    final eventProblem = await recordSmartLockEvent(event);
+    if (eventProblem != null) return eventProblem;
+    return setRfidCard(card);
+  }
+
+  /// Check-out: the desk tap revokes the card's room key and rewrites its
+  /// payload to the website link (souvenir calling card). Both steps are
+  /// logged to access_logs. Returns what went wrong, or null.
+  Future<String?> deskCheckoutTap({
+    required String cardUid,
+    required String actorUid,
+  }) async {
+    final card = await fetchRfidCard(cardUid);
+    if (card == null) {
+      return 'No RFID card registered as $cardUid — issue a key at check-in first.';
+    }
+    if (card.status == RfidCardStatus.revoked) {
+      return 'Card $cardUid is already revoked and reads as a calling card.';
+    }
+    final now = DateTime.now();
+
+    final revokeEvent = SmartLockEventModel(
+      id: 'rfid-revoke-${now.millisecondsSinceEpoch}',
+      doorName: 'Help desk reader',
+      action: LockAction.keyRevoked,
+      method: LockMethod.rfidKeycard,
+      triggeredBy: 'Admin desk',
+      cardUid: cardUid,
+      timestamp: now,
+      isSuccess: true,
+      notes: 'Check-out tap — room key revoked (simulated pipeline)',
+      reason: 'Check-out key revocation',
+      uid: actorUid,
+      refId: card.bookingRefId ?? 'unknown',
+      simulated: true,
+    );
+    final revokeProblem = await recordSmartLockEvent(revokeEvent);
+    if (revokeProblem != null) return revokeProblem;
+
+    final rewritten = card.copyWith(
+      status: RfidCardStatus.revoked,
+      payloadKind: CardPayloadKind.landingLink,
+      payload: AppConstants.websiteUrl,
+      revokedAt: now,
+      rewrittenAt: now,
+    );
+    final writeProblem = await setRfidCard(rewritten);
+    if (writeProblem != null) return writeProblem;
+
+    final rewriteEvent = SmartLockEventModel(
+      id: 'rfid-rewrite-${now.millisecondsSinceEpoch}',
+      doorName: 'Help desk reader',
+      action: LockAction.cardRewritten,
+      method: LockMethod.rfidKeycard,
+      triggeredBy: 'Admin desk',
+      cardUid: cardUid,
+      timestamp: now,
+      isSuccess: true,
+      notes: 'Card rewritten to souvenir calling card: ${AppConstants.websiteUrl}',
+      reason: 'Check-out card rewrite to landing link',
+      uid: actorUid,
+      refId: card.bookingRefId ?? 'unknown',
+      simulated: true,
+    );
+    return recordSmartLockEvent(rewriteEvent);
+  }
+
+  // ------------------------------------------------------------------
+  // room_turnover — the check-out hold records (damage inspection, cleaning).
+  // ------------------------------------------------------------------
+
+  /// Files one turnover record. Returns what went wrong, or null.
+  Future<String?> fileTurnoverRecord(TurnoverRecordModel record) async {
+    if (isCloud) {
+      try {
+        await _firestore!
+            .collection(AppConstants.colRoomTurnover)
+            .add(record.toJson());
+      } catch (e) {
+        return 'Could not file the turnover record (${e.toString().split('\n').first}).';
+      }
+    }
+    return null;
+  }
+
+  /// The hold records filed against one Booking, newest first.
+  Future<List<TurnoverRecordModel>> fetchTurnoverRecords(String bookingId) async {
+    if (!isCloud) return [];
+    try {
+      final snap = await _firestore!
+          .collection(AppConstants.colRoomTurnover)
+          .where('bookingId', isEqualTo: bookingId)
+          .get();
+      final records = snap.docs
+          .map((d) => TurnoverRecordModel.fromJson(d.data(), d.id))
+          .toList();
+      records.sort((a, b) => b.at.compareTo(a.at));
+      return records;
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Confirm-tier in the gate (ADR-0015) — the confirm modal is the call
   /// site's job; the service's job is to say what went wrong instead of
   /// swallowing it, and the call sites await this and surface it.

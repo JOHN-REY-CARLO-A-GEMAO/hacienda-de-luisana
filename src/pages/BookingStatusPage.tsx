@@ -8,7 +8,7 @@ import { isFirebaseConfigured } from '../lib/firebase'
 import { rememberedBookingId } from '../lib/bookingDraft'
 import { ensureGuestUid } from '../lib/guestAuth'
 import type { Booking } from '../lib/storage'
-import { ArrowRight } from '../lib/icons'
+import { ArrowRight, Check } from '../lib/icons'
 import { EMAIL_MAX, REF_MAX, sanitizeReferenceInput } from '../lib/validation'
 import { formatStayDate } from '../lib/formatDate'
 import {
@@ -224,6 +224,13 @@ export function BookingStatusPage() {
             </div>
           ) : booking ? (
             <>
+              {/* Success check in the reference-set-2 position: tinted circle + check
+                  above the headline when the booking was just submitted */}
+              {justSubmitted && (
+                <div className="mx-auto mb-6 grid h-20 w-20 place-items-center rounded-full bg-forest-100 text-forest-700">
+                  <Check size={38} />
+                </div>
+              )}
               <PageHeader
                 eyebrow={justSubmitted ? 'Booking submitted · Naipasa na' : 'Booking status · Kalagayan ng booking'}
                 title={statusHeadline(status)}
