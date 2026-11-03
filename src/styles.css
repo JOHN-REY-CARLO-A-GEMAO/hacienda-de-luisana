@@ -1021,6 +1021,11 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 .messages-workspace {
   @apply mt-8 flex overflow-hidden;
   height: clamp(34rem, calc(100dvh - 16rem), 45rem);
+  /* The desk's brass edge — the one structural accent on this page. */
+  border-top: 3px solid rgb(184 154 100 / 0.85);
+}
+.dark .messages-workspace {
+  border-top-color: rgb(184 154 100 / 0.5);
 }
 .messages-topics {
   display: none;
@@ -1094,6 +1099,21 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 }
 .messages-privacy-note p {
   @apply text-[11px] leading-relaxed;
+}
+
+/* Inbox filter chips (All / Unread) — tokens so the page composes instead of
+   re-typing colours. Active chip is the forest pill; its count goes brass. */
+.msg-chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-forest-900/15 bg-white px-4 py-1.5 text-sm font-semibold text-forest-800 shadow-sm transition-colors hover:bg-forest-50 dark:border-cream-100/15 dark:bg-forest-900 dark:text-cream-100 dark:hover:bg-forest-800;
+}
+.msg-chip[aria-pressed='true'] {
+  @apply border-forest-900 bg-forest-900 text-cream-50;
+}
+.msg-chip-count {
+  @apply rounded-full bg-forest-100 px-1.5 py-0.5 text-[11px] font-bold text-forest-800 dark:bg-forest-800 dark:text-cream-100;
+}
+.msg-chip[aria-pressed='true'] .msg-chip-count {
+  @apply bg-brass-400 text-forest-950;
 }
 
 .messages-conversation-header {
