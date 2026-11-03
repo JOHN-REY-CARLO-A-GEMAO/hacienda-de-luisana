@@ -4,6 +4,13 @@ enum LockAction {
   autoRelock,
   denied,
   masterOverride,
+  /// Desk reader wrote a room key onto an RFID card at check-in.
+  keyWritten,
+  /// Desk tap at check-out revoked the room key.
+  keyRevoked,
+  /// The revoked card's payload was rewritten to the website link, so the
+  /// Guest keeps it as a souvenir calling card.
+  cardRewritten,
 }
 
 extension LockActionX on LockAction {

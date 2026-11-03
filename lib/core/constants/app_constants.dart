@@ -17,6 +17,15 @@ class AppConstants {
   /// Same collection the website writes when a Credential touches a lock
   /// (firestore.rules `access_logs`).
   static const String colSmartLockLogs = 'access_logs';
+  /// The help-desk reader's register of physical RFID cards: one document per
+  /// card, holding what the card currently opens (`room_key` at check-in,
+  /// `landing_link` after the check-out rewrite). Admin-only in
+  /// `firestore.rules`.
+  static const String colRfidCards = 'rfid_cards';
+  /// Check-out hold records: damage inspections and cleaning passes filed by
+  /// the Admin between check-out and completion. Admin-only in
+  /// `firestore.rules`.
+  static const String colRoomTurnover = 'room_turnover';
   static const String colRooms = 'rooms';
   static const String colGuestProfiles = 'guest_profiles';
   /// Payment references: the Admin's catalog of verified reference numbers,

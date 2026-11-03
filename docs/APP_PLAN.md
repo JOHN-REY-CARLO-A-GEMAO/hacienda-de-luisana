@@ -136,7 +136,7 @@ Firebase setup: [FIREBASE_SETUP.md](FIREBASE_SETUP.md). Android specifics: [ANDR
 | Push notifications sa guest (approved / verified / check-in bukas) | Cloud Functions (Blaze) + FCM sa website | Local notifications sa Admin app meron na (`notification_service.dart`) |
 | Tunay na ESP32 / RFID / BLE mobile key | Admin app Smart Lock | Ngayon simulation + `access_logs` read lang |
 | Transactional Approve sa app | `booking_lifecycle.dart` | Web protocol nasa ADR-0006; app gumagamit ng latest snapshot check |
-| Damage report + cleaning records bilang documents | Admin app Stays | Ngayon deposit settlement lang ang nirerecord |
+| Damage report + cleaning records bilang documents | Admin app Stays | ✅ `room_turnover` records (`lib/models/turnover_record_model.dart`), nafi-file sa check-out (cleaning hold) at complete (inspection/damage + cleaning passed); admin-only sa `firestore.rules` |
 | iOS build ng Admin app | `flutter create --platforms=ios .` | Kailangan Apple Developer account |
 | Play Store internal testing | `flutter build appbundle` | Privacy policy + screenshots |
 

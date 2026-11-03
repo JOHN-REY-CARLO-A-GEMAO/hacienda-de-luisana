@@ -7,7 +7,7 @@ import { formatStayDate } from '../lib/formatDate'
 import { FlowSteps } from '../components/Booking/FlowSteps'
 import { AvailabilityCalendar } from '../components/Booking/AvailabilityCalendar'
 import { isFirebaseConfigured } from '../lib/firebase'
-import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone } from '../lib/icons'
+import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone, Search, Chevron, Close } from '../lib/icons'
 import { SmartImage } from '../components/SmartImage'
 import { useAuth } from '../hooks/useAuth'
 import {
@@ -40,6 +40,7 @@ import { officialAddonFallbacks } from '../lib/stayRequests'
 import { StayRequestsSection, AddonFeeSummary } from '../components/Booking/StayRequestsSection'
 import { guestFacingErrorMessage } from '../lib/firebaseFailure'
 import { Alert, CheckboxRow, Container, Field, Input, Page, PageHeader, Select } from '../components/ui'
+import { useOverlay } from '../components/ui/overlay'
 
 type FormState = {
   check_in: string
@@ -112,6 +113,15 @@ export function BookingPage() {
   const [calendarState, setCalendarState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [calendarNotice, setCalendarNotice] = useState('')
   const [acceptedTerms, setAcceptedTerms] = useState(false)
+  // Mobile search bottom-sheet (reference set 2): on small screens the stay
+  // details (Where / When / Who) live in a sheet that slides up from the bottom;
+  // the summary bar in the form opens it. Desktop renders the same fields
+  // inline, so there is only ever one mounted copy of each control.
+  const [searchOpen, setSearchOpen] = useState(false)
+  // Escape, focus trap and the scroll lock come from the one shared overlay
+  // hook (design-system rule: exactly one overlay implementation).
+  const sheetRef = useRef<HTMLDivElement | null>(null)
+  useOverlay(searchOpen, () => setSearchOpen(false), sheetRef)
 
   // A signed-in Guest does not type their own details again. Filled once the
   // account has finished loading (so the Profile is there, not just the sign-in),
@@ -483,7 +493,7 @@ export function BookingPage() {
         style={{ background: 'radial-gradient(circle, rgba(198,214,193,0.6), transparent 65%)' }}
         aria-hidden="true"
       />
-      <Container width="wide" className="relative">
+      <Container width="wide" className="relative pb-28 lg:pb-0">
         <PageHeader
           eyebrow="Mag-book ng Matutuluyan · Hindi kailangan ng account"
           title="Plan Your Stay"
@@ -527,6 +537,7 @@ export function BookingPage() {
 
         <div className="mt-12 grid lg:grid-cols-3 gap-8 lg:gap-10">
           <form
+            id="booking-form"
             onSubmit={onSubmit}
             noValidate
             className="booking-light-surface card space-y-8 p-6 sm:p-8 lg:col-span-2 lg:p-10"
@@ -542,6 +553,56 @@ export function BookingPage() {
                 Pinakamaagang check-in: <strong>{formatStayDate(earliestCheckIn)}</strong> (Philippine time).
               </p>
               <div className="mt-6" data-tour="stay-details">
+                {/* Mobile search summary — opens the Where/When/Who bottom sheet (reference set 2) */}
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(true)}
+                  aria-expanded={searchOpen}
+                  className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-forest-900/10 bg-white p-4 text-left shadow-card lg:hidden"
+                >
+                  <Search size={18} className="shrink-0 text-forest-700" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-semibold uppercase tracking-eyebrow text-forest-600">Maghanap</span>
+                    <span className="block truncate text-sm font-semibold text-forest-900">
+                      {options.find((o) => o.id === form.accommodation)?.label || 'Pumili ng matutuluyan'}
+                      {' · '}
+                      {form.check_in && form.check_out ? `${formatStayDate(form.check_in)} → ${formatStayDate(form.check_out)}` : 'Pumili ng petsa'}
+                      {' · '}
+                      {form.guests} {Number(form.guests) === 1 ? 'bisita' : 'mga bisita'}
+                    </span>
+                  </span>
+                  <Chevron size={16} className="-rotate-90 shrink-0 text-forest-600" aria-hidden="true" />
+                </button>
+
+                {/* Stay fields — inline on desktop (lg:contents), bottom sheet on mobile */}
+                <div
+                  ref={sheetRef}
+                  role={searchOpen ? 'dialog' : undefined}
+                  aria-modal={searchOpen ? true : undefined}
+                  aria-label={searchOpen ? 'Maghanap ng matutuluyan' : undefined}
+                  tabIndex={searchOpen ? -1 : undefined}
+                  className={`max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-50 max-lg:max-h-[85vh] max-lg:overflow-y-auto max-lg:rounded-t-[28px] max-lg:border-t max-lg:border-forest-900/10 max-lg:bg-white max-lg:p-6 max-lg:shadow-depth max-lg:transition-transform max-lg:duration-300 lg:contents ${
+                    searchOpen
+                      ? 'max-lg:translate-y-0 max-lg:visible'
+                      : 'max-lg:pointer-events-none max-lg:invisible max-lg:translate-y-full'
+                  }`}
+                >
+                  {/* Sheet header — mobile only */}
+                  <div className="mb-5 lg:hidden">
+                    <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-forest-900/10" aria-hidden="true" />
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-serif text-2xl text-forest-900">Maghanap ng Matutuluyan</h3>
+                      <button
+                        type="button"
+                        onClick={() => setSearchOpen(false)}
+                        aria-label="Isara ang paghahanap"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-forest-900/10 text-forest-800"
+                      >
+                        <Close size={16} />
+                      </button>
+                    </div>
+                  </div>
+
                 <div className="grid sm:grid-cols-2 gap-5">
                   <Field label="Matutuluyan (Accommodation)" error={errors.accommodation} tour="accommodation-field" required>
                     <Select
@@ -558,16 +619,38 @@ export function BookingPage() {
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Bilang ng Bisita (Number of guests)" error={errors.guests} required>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      inputMode="numeric"
-                      value={form.guests}
-                      onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
-                      onBlur={() => handleBlur('guests')}
-                    />
+                  <Field label="Bilang ng Bisita (Number of guests)" error={errors.guests} controlId="guest-count" required>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        aria-label="Bawasan ang bilang ng bisita"
+                        onClick={() => set('guests', Math.max(1, Number(form.guests) - 1))}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-forest-900/15 text-lg font-bold text-forest-800 lg:hidden"
+                      >
+                        −
+                      </button>
+                      <Input
+                        id="guest-count"
+                        type="number"
+                        min={1}
+                        max={100}
+                        inputMode="numeric"
+                        value={form.guests}
+                        onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
+                        onBlur={() => handleBlur('guests')}
+                        className="text-center"
+                        invalid={Boolean(errors.guests)}
+                        aria-describedby={errors.guests ? 'guest-count-message' : undefined}
+                      />
+                      <button
+                        type="button"
+                        aria-label="Dagdagan ang bilang ng bisita"
+                        onClick={() => set('guests', Math.min(100, Number(form.guests) + 1))}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-forest-900/15 text-lg font-bold text-forest-800 lg:hidden"
+                      >
+                        +
+                      </button>
+                    </div>
                   </Field>
                 </div>
 
@@ -606,6 +689,27 @@ export function BookingPage() {
                     and security deposit follow from that total and are re-checked before payment.
                   </Alert>
                 )}
+
+                  {/* Sheet footer — mobile only: Clear all + Search (reference set 2) */}
+                  <div className="mt-6 flex items-center gap-4 border-t border-forest-900/10 pt-4 lg:hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        set('accommodation', '')
+                        setForm((f) => ({ ...f, check_in: '', check_out: '', guests: 1 }))
+                        setErrors((e) => ({ ...e, accommodation: undefined, check_in: undefined, check_out: undefined, guests: undefined }))
+                        setAvailability(null)
+                        setCalendarNotice('')
+                      }}
+                      className="shrink-0 text-sm font-semibold text-forest-800 underline underline-offset-2"
+                    >
+                      Clear all
+                    </button>
+                    <button type="button" onClick={() => setSearchOpen(false)} className="btn-primary flex-1">
+                      Maghanap · Search
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -829,6 +933,33 @@ export function BookingPage() {
             </div>
           </aside>
         </div>
+
+        {/* Mobile sticky CTA (reference set 2, docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md):
+            estimated total + continue, always reachable on a long form.
+            Desktop keeps the in-form submit button; this bar is lg:hidden. */}
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-forest-900/10 bg-white/95 px-4 py-3 shadow-depth backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-eyebrow text-forest-600">Tinatayang Kabuuan</div>
+              <div className="truncate font-serif text-xl text-forest-900">
+                {estimatedTotal ? `₱${estimatedTotal.toLocaleString('en-PH')}` : 'Pumili ng petsa'}
+              </div>
+            </div>
+            <button type="submit" form="booking-form" className="btn-primary shrink-0">
+              Magpatuloy <ArrowRight size={18} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        {/* Scrim behind the mobile search sheet — rendered after the sticky bar
+            so the dim covers it too; tap to close. Mobile only. */}
+        {searchOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-forest-950/50 backdrop-blur-sm lg:hidden"
+            onClick={() => setSearchOpen(false)}
+            aria-hidden="true"
+          />
+        )}
       </Container>
     </Page>
   )

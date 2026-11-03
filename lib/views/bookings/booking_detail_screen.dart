@@ -11,6 +11,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/status_style.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../models/booking_model.dart';
+import '../../models/turnover_record_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
 import '../../services/booking_lifecycle.dart';
@@ -24,6 +25,7 @@ import 'booking_invoice_dialog.dart';
 import 'payment_proof_viewer.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/admin_ui.dart';
+import '../../widgets/explore_ui.dart';
 import '../../widgets/booking_timeline_widget.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/hacienda_card.dart';
@@ -123,6 +125,39 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       messenger.showSnackBar(SnackBar(
         backgroundColor: AppColors.statusAlert,
         content: Text(ErrorUtils.toUserMessage(result.reason, fallback: 'Action was refused. Please check the requirements and try again.')),
+        duration: const Duration(seconds: 6),
+      ));
+    }
+  }
+
+  /// Files one `room_turnover` record for [booking] — the check-out hold trail:
+  /// a damage inspection (with the departed Guest messaged) or a cleaning pass.
+  /// Skips quietly when the Booking carries a non-canonical Accommodation,
+  /// which the rules would refuse anyway.
+  Future<void> _fileTurnover(BookingModel booking, TurnoverKind kind,
+      {List<String> items = const [], bool guestContacted = false, String? notes}) async {
+    const canonical = ['main-house', 'annex', 'house-a-camping'];
+    if (!canonical.contains(booking.accommodation)) return;
+    final service = ref.read(firestoreServiceProvider);
+    final actor = _actor();
+    final record = TurnoverRecordModel(
+      id: '',
+      bookingId: booking.id,
+      accommodationId: booking.accommodation,
+      kind: kind,
+      items: items,
+      inspectedBy: actor.name,
+      guestContacted: guestContacted,
+      notes: notes,
+      at: DateTime.now(),
+      createdBy: actor.id,
+    );
+    final problem = await service.fileTurnoverRecord(record);
+    if (!mounted) return;
+    if (problem != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: AppColors.statusAlert,
+        content: Text(problem),
         duration: const Duration(seconds: 6),
       ));
     }
@@ -857,6 +892,10 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           ),
         ],
       ),
+      // Sticky price + primary-action bar (reference set 2 "Reserve" pattern,
+      // docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md) — the next decision is always one
+      // tap away at the bottom of a long detail page.
+      bottomNavigationBar: _stickyBar(booking, actions),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -920,7 +959,8 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               tone: AdminNoticeTone.danger,
             ),
           ),
-          const SizedBox(height: 32),
+          // Extra room so the sticky action bar never covers the last entry.
+          const SizedBox(height: 96),
         ],
       ),
     );
@@ -1461,6 +1501,31 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         ),
       );
 
+
+  /// The sticky bottom bar: stay total on the left, the primary next action
+  /// as the pill CTA on the right (disabled when busy or when nothing is
+  /// primary for this status).
+  Widget _stickyBar(BookingModel booking, List<AdminAction> actions) {
+    final doc = booking.toLifecycleDoc();
+    AdminAction? primary;
+    for (final a in actions) {
+      if (_isPrimary(a) && adminActionBlockedReason(doc, a) == null) {
+        primary = a;
+        break;
+      }
+    }
+    final due = booking.amountDue;
+    return StickyActionBar(
+      priceLabel: '₱${booking.totalAmount.toStringAsFixed(2)}',
+      priceSub: (due != null && due > 0)
+          ? '₱${due.toStringAsFixed(2)} due · ${booking.rawStatus}'
+          : 'stay total · ${booking.rawStatus}',
+      ctaLabel: primary?.label ?? 'No actions',
+      onCta: (primary == null || _busy || _openingProof)
+          ? null
+          : () => _onAction(booking, primary),
+    );
+  }
 
   static bool _isPrimary(AdminAction a) =>
       a == AdminAction.approve ||
