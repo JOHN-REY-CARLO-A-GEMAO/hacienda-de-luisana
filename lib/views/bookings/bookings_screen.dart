@@ -26,6 +26,7 @@ import '../../widgets/status_pill.dart';
 import '../inbox/inbox_screen.dart';
 import '../security/secure_action_sheet.dart';
 import '../security/security_pin_sheet.dart';
+import 'archived_bookings_screen.dart';
 import 'booking_detail_screen.dart';
 import 'payment_verification_queue_screen.dart';
 
@@ -38,7 +39,16 @@ class BookingsScreen extends ConsumerStatefulWidget {
   /// additional mounted lists, so they deliberately do not duplicate them.
   final bool tourAnchors;
 
-  const BookingsScreen({super.key, this.initialFilter, this.tourAnchors = true});
+  /// True for the read-only archive view (ArchivedBookingsScreen): the filter
+  /// strip becomes the archive buckets and the title reads "Archived Bookings".
+  final bool archiveMode;
+
+  const BookingsScreen({
+    super.key,
+    this.initialFilter,
+    this.tourAnchors = true,
+    this.archiveMode = false,
+  });
 
   @override
   ConsumerState<BookingsScreen> createState() => _BookingsScreenState();
@@ -89,7 +99,7 @@ String quickConsequence(BookingModel booking, AdminAction action) {
 
 class _BookingsScreenState extends ConsumerState<BookingsScreen> {
   static const int _pageSize = 10;
-  static const List<String> _filters = [
+  static const List<String> _defaultFilters = [
     BookingListFilter.all,
     BookingListFilter.needsAction,
     BookingListFilter.paymentQueue,
@@ -100,6 +110,10 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     BookingListFilter.closed,
     BookingListFilter.arrivalsToday,
   ];
+
+  /// Archive mode swaps the operational queues for the archive buckets.
+  List<String> get _filters =>
+      widget.archiveMode ? BookingListFilter.archived : _defaultFilters;
 
   final TextEditingController _searchController = TextEditingController();
   int _selectedFilterIndex = 0;
@@ -246,11 +260,27 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     return Scaffold(
       backgroundColor: AppColors.surfaceLight,
       appBar: AdminPageHeader(
-        title: _selectedFilterIndex == 0
-            ? 'Bookings'
-            : bookingFilterLabel(_filters[_selectedFilterIndex]),
-        subtitle: 'Triage, contact and progress real stays',
+        title: widget.archiveMode
+            ? 'Archived Bookings'
+            : _selectedFilterIndex == 0
+                ? 'Bookings'
+                : bookingFilterLabel(_filters[_selectedFilterIndex]),
+        subtitle: widget.archiveMode
+            ? 'Read-only record of ended stays and ended requests'
+            : 'Triage, contact and progress real stays',
         actions: [
+          if (!widget.archiveMode)
+            Tooltip(
+              message: 'Archived bookings',
+              child: IconButton(
+                icon: const Icon(Icons.archive_outlined, color: Colors.white),
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const ArchivedBookingsScreen(),
+                  ));
+                },
+              ),
+            ),
           Tooltip(
             message: 'Payments to verify',
             child: IconButton(
@@ -296,10 +326,14 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                         icon: Icons.event_busy_outlined,
                         title: _query.isNotEmpty
                             ? 'No bookings match'
-                            : 'This queue is clear',
+                            : widget.archiveMode
+                                ? 'Nothing archived here yet'
+                                : 'This queue is clear',
                         subtitle: _query.isNotEmpty
                             ? 'Try a different name, reference or email. Nothing was deleted.'
-                            : 'Nothing in this view needs attention. Choose another filter to continue.',
+                            : widget.archiveMode
+                                ? 'Try another archive bucket — Completed, Cancelled, Expired, Rejected or No-show.'
+                                : 'Nothing in this view needs attention. Choose another filter to continue.',
                         action: OutlinedButton.icon(
                           onPressed: _clearAll,
                           icon: const Icon(Icons.filter_alt_off_outlined, size: 18),

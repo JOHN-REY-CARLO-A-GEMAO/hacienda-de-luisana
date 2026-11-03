@@ -199,7 +199,7 @@ export function LoginFormOnly({
           disabled={loading}
           className="btn-primary w-full justify-center"
         >
-          {loading ? 'Signing in…' : 'Sign In'}
+          {loading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
 

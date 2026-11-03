@@ -156,6 +156,10 @@ export function BookingPage() {
     [form.accommodation],
   )
 
+  /// Hard cap for the guest-count input: the selected accommodation's capacity,
+  /// falling back to the platform-wide 100-guest online limit.
+  const maxGuests = selectedAcc?.capacity ?? 100
+
 
   const nights = useMemo(() => {
     if (!form.check_in || !form.check_out) return 0
@@ -608,7 +612,14 @@ export function BookingPage() {
                     <Select
                       value={form.accommodation}
                       onChange={(e) => {
+                        const next = ACCOMMODATIONS.find((a) => a.id === e.target.value)
                         set('accommodation', e.target.value)
+                        // Clamp the guest count if the newly chosen unit sleeps fewer.
+                        const cap = next?.capacity
+                        if (cap) {
+                          setForm((f) => (f.guests > cap ? { ...f, guests: cap } : f))
+                          setErrors((er) => ({ ...er, guests: undefined }))
+                        }
                         setCalendarNotice('')
                       }}
                       onBlur={() => handleBlur('accommodation')}
@@ -619,7 +630,13 @@ export function BookingPage() {
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Bilang ng Bisita (Number of guests)" error={errors.guests} controlId="guest-count" required>
+                  <Field
+                    label="Bilang ng Bisita (Number of guests)"
+                    error={errors.guests}
+                    controlId="guest-count"
+                    hint={`Hanggang ${maxGuests} bisita${selectedAcc ? ` ang kasya sa ${selectedAcc.name}` : ''}.`}
+                    required
+                  >
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -633,10 +650,10 @@ export function BookingPage() {
                         id="guest-count"
                         type="number"
                         min={1}
-                        max={100}
+                        max={maxGuests}
                         inputMode="numeric"
                         value={form.guests}
-                        onChange={(e) => set('guests', Math.max(1, Number(e.target.value) || 1))}
+                        onChange={(e) => set('guests', Math.min(maxGuests, Math.max(1, Number(e.target.value) || 1)))}
                         onBlur={() => handleBlur('guests')}
                         className="text-center"
                         invalid={Boolean(errors.guests)}
@@ -645,7 +662,7 @@ export function BookingPage() {
                       <button
                         type="button"
                         aria-label="Dagdagan ang bilang ng bisita"
-                        onClick={() => set('guests', Math.min(100, Number(form.guests) + 1))}
+                        onClick={() => set('guests', Math.min(maxGuests, Number(form.guests) + 1))}
                         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-forest-900/15 text-lg font-bold text-forest-800 lg:hidden"
                       >
                         +

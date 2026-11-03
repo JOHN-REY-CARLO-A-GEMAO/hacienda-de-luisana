@@ -388,81 +388,145 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
         : row.isPaymentRow
             ? 'Booking not found'
             : 'catalog entry';
-    final dateLine =
-        row.paymentDate != null ? ' · ${row.paymentDate}' : '';
-    final senderLine = row.senderName != null ? ' · ${row.senderName!}' : '';
     // Where the number came from, when it is not simply "a human typed it".
     // `ocr` is the one an Admin still has to agree with: the machine read it and
     // nobody has confirmed it, so it stays `pending_review` and says so here.
-    final sourceLine = switch (row.source) {
-      'ocr' => ' · OCR (hindi pa nakumpirma)',
-      'admin_confirmed' => ' · Kinumpirma ng Admin',
-      'guest_claimed' => ' · Mula sa bisita',
+    final sourceLabel = switch (row.source) {
+      'ocr' => 'OCR — hindi pa nakumpirma',
+      'admin_confirmed' => 'Kinumpirma ng Admin',
+      'guest_claimed' => 'Mula sa bisita',
       _ => '',
     };
+    final metaParts = <String>[
+      if (row.paymentDate != null) row.paymentDate!,
+      if (row.senderName != null) row.senderName!,
+      if (sourceLabel.isNotEmpty) sourceLabel,
+    ];
+    final metaLine = metaParts.join(' · ');
 
     return HaciendaCard(
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(14),
-        leading: row.proofUrl != null
-            ? IconButton(
-                icon: const Icon(Icons.receipt_long, size: 20),
-                tooltip: 'Open payment proof',
-                onPressed: () => _openProof(row.proofUrl!),
-              )
-            : const Icon(Icons.description_outlined, size: 20, color: AppColors.textMuted),
-        title: Text(row.reference),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              '₱${row.amount.toStringAsFixed(2)}$senderLine$dateLine$sourceLine  ${guestLine.isNotEmpty ? '· $guestLine' : ''}',
-              style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: row.proofUrl != null
+                    ? AppColors.primaryForest.withValues(alpha: 0.10)
+                    : AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: row.proofUrl != null
+                  ? IconButton(
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.receipt_long, size: 20, color: AppColors.primaryForest),
+                      tooltip: 'Open payment proof',
+                      onPressed: () => _openProof(row.proofUrl!),
+                    )
+                  : const Icon(Icons.description_outlined, size: 20, color: AppColors.textMuted),
             ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _statusColor(row.status).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _statusColor(row.status).withValues(alpha: 0.4)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row.reference,
+                    style: AppTheme.metric(fontSize: 19, color: AppColors.textDark),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  child: Text(
-                    row.status.replaceAll('_', ' ').toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: _statusColor(row.status),
+                  const SizedBox(height: 3),
+                  Text(
+                    guestLine,
+                    style: AppTheme.body(fontSize: 13, color: AppColors.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (metaLine.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      metaLine,
+                      style: AppTheme.label(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '₱${row.amount.toStringAsFixed(2)}',
+                  style: AppTheme.metric(fontSize: 15, color: AppColors.primaryForest),
                 ),
+                const SizedBox(height: 6),
+                _statusChip(row.status),
+                if (row.canCorrect || row.deletable) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (row.canCorrect)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          tooltip: 'Correct extraction',
+                          onPressed: () => _correctRow(row),
+                        ),
+                      if (row.deletable)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.statusAlert),
+                          tooltip: 'Delete reference',
+                          onPressed: () => _confirmDelete(row),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (row.canCorrect)
-              IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 20),
-                tooltip: 'Correct extraction',
-                onPressed: () => _correctRow(row),
-              ),
-            if (row.deletable)
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.statusAlert),
-                tooltip: 'Delete reference',
-                onPressed: () => _confirmDelete(row),
-              ),
-          ],
-        ),
+      ),
+    );
+  }
+
+  /// Sentence-case status pill with a status dot — quiet, but scannable.
+  Widget _statusChip(String status) {
+    final color = _statusColor(status);
+    final raw = status.replaceAll('_', ' ');
+    final label = raw.isEmpty ? raw : '${raw[0].toUpperCase()}${raw.substring(1)}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(label, style: AppTheme.label(fontSize: 11, color: color)),
+        ],
       ),
     );
   }
@@ -558,28 +622,54 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
                   children: [
                     Text(
                       'OCR extraction is never verification. Match reference and amount against the proof, reject duplicates, and only then mark a record verified.',
-                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
+                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted, height: 1.4),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 10),
-                    TextField(
-                      controller: _search,
-                      decoration: const InputDecoration(
-                        labelText: 'Search',
-                        hintText: 'Reference, sender, booking or guest',
-                        prefixIcon: Icon(Icons.search),
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButton<String>(
-                      value: _sort,
-                      items: const [
-                        DropdownMenuItem(value: 'created_at', child: Text('Sort: newest first')),
-                        DropdownMenuItem(value: 'reference', child: Text('Sort by reference')),
-                        DropdownMenuItem(value: 'amount', child: Text('Sort by amount')),
-                        DropdownMenuItem(value: 'status', child: Text('Sort by status')),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _search,
+                            decoration: InputDecoration(
+                              hintText: 'Search reference, sender, booking or guest',
+                              hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted),
+                              prefixIcon: const Icon(Icons.search, size: 20),
+                              filled: true,
+                              fillColor: AppColors.surfaceLight,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: AppColors.accentGold, width: 1.5),
+                              ),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        DropdownButton<String>(
+                          value: _sort,
+                          isDense: true,
+                          underline: Container(height: 1, color: AppColors.cardBorder),
+                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textDark),
+                          items: const [
+                            DropdownMenuItem(value: 'created_at', child: Text('Newest first')),
+                            DropdownMenuItem(value: 'reference', child: Text('By reference')),
+                            DropdownMenuItem(value: 'amount', child: Text('By amount')),
+                            DropdownMenuItem(value: 'status', child: Text('By status')),
+                          ],
+                          onChanged: (v) => setState(() => _sort = v ?? 'created_at'),
+                        ),
                       ],
-                      onChanged: (v) => setState(() => _sort = v ?? 'created_at'),
                     ),
                   ],
                 ),
@@ -589,40 +679,45 @@ class _PaymentRefsScreenState extends ConsumerState<PaymentRefsScreen> {
               const Divider(height: 1, color: AppColors.cardBorder),
               // Manual catalog entry (unchanged workflow for exceptions).
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('Add a valid reference by hand',
-                        style: GoogleFonts.inter(
-                            fontSize: 13, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _ref,
-                            decoration: const InputDecoration(labelText: 'Reference'),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: HaciendaCard(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text('Add a reference by hand', style: AppTheme.title(fontSize: 14)),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _ref,
+                              decoration: const InputDecoration(labelText: 'Reference'),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: _amount,
-                            decoration: const InputDecoration(labelText: 'Amount'),
-                            keyboardType: TextInputType.number,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _amount,
+                              decoration: const InputDecoration(labelText: 'Amount'),
+                              keyboardType: TextInputType.number,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(onPressed: _add, icon: const Icon(Icons.add_circle_outline)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Catalog references (available / used / void) are what a proof is checked against. Payment rows appear above once the Admin verifies a proof.',
-                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
-                    ),
-                  ],
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            onPressed: _add,
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Catalog references (available / used / void) are what a proof is checked against. Payment rows appear above once the Admin verifies a proof.',
+                        style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted, height: 1.4),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
