@@ -1,7 +1,10 @@
 # Handoff for the next agent / AI session
 
-**Date:** 2026-11-03 · **Branch:** `arena/049858a5-hacienda-de-luisana` (fixed name —
-do not rename; push only to this branch) · **Project:** Hacienda de LuisAna —
+**Date:** 2026-11-03 · **Branch:** current session branch is `arena/392df080-hacienda-de-luisana`
+(earlier session used `arena/049858a5-hacienda-de-luisana`, merged as PR #158;
+`arena/83f9046f-hacienda-de-luisana` merged as PR #159) — always check
+`git branch --show-current` and push only to the active session branch ·
+**Project:** Hacienda de LuisAna —
 Guest website (React/Vite/TS in `src/`) + Admin app (Flutter in `lib/`) + Firebase.
 
 Read this first, then `CONTEXT.md` (glossary), then the docs below. If a decision
@@ -37,6 +40,15 @@ otherwise in writing.
    - Admin app: `lib/widgets/explore_ui.dart` kit (SearchPill, ExploreCategoryRow
      with NEW badge, ListingCard, StickyActionBar, RadioOptionTile, SuccessCheck);
      dashboard quick actions are now a category row.
+4. **Archived Bookings (owner feature list item 1, 2026-11-03)** — new
+   `lib/views/bookings/archived_bookings_screen.dart` (thin wrapper) opened from
+   the Bookings app bar archive icon; `BookingsScreen` gained `archiveMode: true`
+   which swaps the filter strip to 5 archive buckets in
+   `lib/services/booking_queue.dart`: Completed, Cancelled, Expired (incl.
+   lapsed Pending holds via `effectiveStatus`), Rejected, and **No-show — derived,
+   not stored** (`bookingIsNoShow`: Approved/Payment Verified/Reserved with the
+   check-in day passed, no check-in). Tests in `test/booking_queue_test.dart`.
+   Archiving is a VIEW only — no data is moved or deleted (docs/MESSAGING.md §4).
 
 ## Verification state (re-run after `npm ci` — node_modules is wiped between sandbox turns)
 
