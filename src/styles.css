@@ -1364,3 +1364,77 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 .dark .booking-page .booking-light-surface .field:disabled { @apply bg-cream-50 text-forest-600; }
 .dark .booking-page .booking-light-surface .alert-info { @apply bg-cream-100 border-forest-900/10 text-forest-800; }
 .dark .booking-page .booking-light-surface .text-link { @apply text-forest-800; }
+
+/* ------------------------------------------------------------------ */
+/* Print — /legal is the page a Guest is most likely to save.          */
+/* Hide the fixed navigation, the footer, the tour controls and the    */
+/* page's own actions; keep the full text, the tables and the version  */
+/* record. Cards avoid breaking across pages where the browser allows. */
+/* ------------------------------------------------------------------ */
+
+@media print {
+  header.fixed,
+  footer,
+  [role="dialog"],
+  .no-print {
+    display: none !important;
+  }
+
+  .legal-page {
+    min-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    background: #fff !important;
+    color: #1c1917 !important;
+  }
+
+  .legal-container {
+    max-width: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .legal-card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #d6d3d1 !important;
+    background: #fff !important;
+    color: #1c1917 !important;
+  }
+
+  .legal-card h2,
+  .legal-card h3,
+  .legal-card h4,
+  .legal-card p,
+  .legal-card li,
+  .legal-card td,
+  .legal-card th,
+  .legal-card dt,
+  .legal-card dd,
+  .legal-card a,
+  .legal-card .alert {
+    color: #1c1917 !important;
+  }
+
+  .legal-card .alert {
+    border: 1px solid #d6d3d1 !important;
+    background: #fafaf9 !important;
+  }
+
+  .legal-card table {
+    min-width: 0 !important;
+    font-size: 10pt;
+  }
+
+  .legal-card .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  a {
+    text-decoration: none !important;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}
