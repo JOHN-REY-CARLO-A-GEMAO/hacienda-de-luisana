@@ -10,7 +10,7 @@ const DEFAULT_REGISTER_INTRO: RegisterIntro = {
   eyebrow: 'Create account',
   title: 'Make a Guest account',
   body: 'Sign in before booking to keep your future bookings, payment proofs and dates in one place. Earlier bookings are not automatically linked.',
-  submitLabel: 'Create Guest Account',
+  submitLabel: 'Create guest account',
   successMessage: 'Your Guest account is ready. Bookings made while signed in can be linked to your account; earlier bookings are not automatically linked.',
 }
 
@@ -30,10 +30,13 @@ export function LoginForm({
   onSuccess,
   intro,
   registerIntro = DEFAULT_REGISTER_INTRO,
+  bare = false,
 }: {
   onSuccess?: () => void
   intro?: AuthIntro
   registerIntro?: RegisterIntro
+  /** `bare` drops the sheet-card chrome when a parent panel already provides it. */
+  bare?: boolean
 }) {
   const [mode, setMode] = useState<Mode>('login')
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +76,7 @@ export function LoginForm({
       suggestLogin={suggestLogin}
       onSwitchMode={switchMode}
       onSwitchToLogin={() => switchMode('login')}
+      bare={bare}
     >
       {mode === 'login' && (
         <LoginFormOnly

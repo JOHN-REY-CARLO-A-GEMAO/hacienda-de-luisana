@@ -88,6 +88,11 @@ body {
   .eyebrow {
     @apply text-xs sm:text-sm font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400;
   }
+  /* Inside the sign-in sheet the label stays sentence case and brass — the
+     tracked ALL-CAPS `.eyebrow` belongs to page heroes, not to a modal. */
+  .auth-eyebrow {
+    @apply text-xs font-semibold tracking-wide text-brass-600 dark:text-brass-300;
+  }
   .card-surface {
     @apply bg-white dark:bg-forest-900/80 rounded-[28px] border border-forest-900/5 dark:border-cream-100/10 shadow-card transition-all duration-300;
   }

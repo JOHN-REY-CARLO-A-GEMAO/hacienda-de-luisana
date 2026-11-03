@@ -251,7 +251,7 @@ export function RegisterForm({
     <form onSubmit={handleSubmit} noValidate className="space-y-6">
       {/* One group heading per question the form asks, not per field. */}
       <fieldset className="space-y-4">
-        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold tracking-wide text-forest-600 dark:text-sage-400">
           Your name
         </legend>
 
@@ -306,7 +306,7 @@ export function RegisterForm({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold tracking-wide text-forest-600 dark:text-sage-400">
           How the Hacienda reaches you
         </legend>
 
@@ -363,7 +363,7 @@ export function RegisterForm({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold uppercase tracking-eyebrow text-forest-600 dark:text-sage-400">
+        <legend className="mb-3 w-full border-b border-forest-900/10 pb-2 text-xs font-semibold tracking-wide text-forest-600 dark:text-sage-400">
           Securing your account
         </legend>
 

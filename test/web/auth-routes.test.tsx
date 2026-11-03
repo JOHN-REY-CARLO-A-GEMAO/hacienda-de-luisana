@@ -191,7 +191,7 @@ describe('the sign-in form itself', () => {
 
     openSignUp(page.container)
 
-    expect(page.text()).toContain('Create Guest Account')
+    expect(page.text()).toContain('Create guest account')
     expect(page.text()).toContain('Make a Guest account')
     expect(page.text()).not.toMatch(/owner account/i)
   })
@@ -237,7 +237,7 @@ describe('the sign-in form itself', () => {
     clickButton(page.container, /Sign in instead/)
 
     // Login mode, with the email kept: the person only types the password.
-    expect(page.text()).toContain('Sign In')
+    expect(page.text()).toContain('Sign in')
     expect(page.container.querySelector<HTMLInputElement>('input[type="email"]')?.value).toBe(
       'twice@example.com',
     )

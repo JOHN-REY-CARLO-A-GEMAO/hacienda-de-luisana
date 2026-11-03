@@ -75,7 +75,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
                 was changed.
               </Alert>
             )}
-            <LoginForm />
+            <LoginForm bare />
           </div>
         </div>
         <p className="mt-5 max-w-sm text-center text-xs leading-relaxed text-forest-700/70 dark:text-cream-100/60">
