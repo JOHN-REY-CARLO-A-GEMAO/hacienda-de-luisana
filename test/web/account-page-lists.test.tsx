@@ -61,6 +61,7 @@ const GUEST_SESSION: AuthContextType = {
     displayName: 'Test Guest',
     isAnonymous: false,
     provider: 'password',
+    emailVerified: null,
   },
   profile: null,
   role: 'guest',
@@ -68,6 +69,8 @@ const GUEST_SESSION: AuthContextType = {
   status: 'signed-in',
   isConfigured: false,
   isCloud: false,
+  isRegistering: false,
+  verificationEmail: { uid: null, email: null, status: 'idle', message: null },
   can: (permission: Permission) => can('guest', permission),
   canOpen: () => true,
   actor: { kind: 'guest', uid: GUEST_UID, name: 'Test Guest' } as unknown as Actor,
@@ -76,6 +79,8 @@ const GUEST_SESSION: AuthContextType = {
   loginWithGoogle: async () => {},
   logout: async () => {},
   resetPassword: async () => {},
+  sendVerificationEmail: async () => {},
+  checkEmailVerification: async () => true,
   refresh: async () => {},
 }
 

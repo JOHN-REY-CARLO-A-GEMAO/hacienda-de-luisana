@@ -8,6 +8,7 @@ import { composeFullName, validateBirthdate, validateNamePart, validatePhMobile 
 import { LogOut } from '../lib/icons'
 import { Alert, Container, Field, Input, Page, PageHeader } from '../components/ui'
 import { Flyleaf } from '../components/Account'
+import { EmailVerificationNotice } from '../components/Auth/EmailVerificationNotice'
 
 /** Guest profile has its own protected route, separate from booking history. */
 export function ProfilePage() {
@@ -105,6 +106,7 @@ export function ProfilePage() {
   return (
     <Page className="ledger-ground">
       <Container width="wide">
+        <EmailVerificationNotice className="mb-6" />
         <PageHeader eyebrow="Your account" title="My profile" lead="Keep your details up to date so the Hacienda can reach you about your stay." actions={<Link to="/mybookings" className="btn-ghost">My bookings</Link>} />
         <div className="ledger-grid mt-8">
           <section className="ledger-sheet" aria-label="My profile">

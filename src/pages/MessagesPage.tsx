@@ -8,6 +8,7 @@ import { MessageComposer } from '../components/chat/MessageComposer'
 import { QuickReplyActions, type QuickReplyOption } from '../components/chat/QuickReplyActions'
 import { ShareLocationBar } from '../components/chat/ShareLocationBar'
 import { MessageTimeline } from '../components/chat/MessageTimeline'
+import { EmailVerificationNotice } from '../components/Auth/EmailVerificationNotice'
 import { Alert, Container, EmptyState, Input, LoadingPanel, Page, PageHeader } from '../components/ui'
 import { useAuth } from '../hooks/useAuth'
 import { canShareLocation, useLiveLocation } from '../hooks/useLiveLocation'
@@ -491,6 +492,7 @@ export function MessagesPage() {
   return (
     <Page className="guest-ground">
       <Container width="content">
+        <EmailVerificationNotice className="mb-6" />
         <PageHeader
           eyebrow="Messages"
           title="Guest Messages"

@@ -37,6 +37,9 @@ export type AuthContextType = {
   /** Firebase is configured: accounts and enforcement live in the cloud. */
   isConfigured: boolean
   isCloud: boolean
+  /** Email delivery can finish after the registration form has redirected. */
+  isRegistering: boolean
+  verificationEmail: SessionState['verificationEmail']
   /** May the signed-in person do this? */
   can: (permission: Permission) => boolean
   /** May they open this page? */
@@ -61,6 +64,8 @@ export type AuthContextType = {
   loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
+  sendVerificationEmail: () => Promise<void>
+  checkEmailVerification: () => Promise<boolean>
   /** Re-read the current identity and its Profile. */
   refresh: () => Promise<void>
 }
@@ -77,6 +82,8 @@ export const AuthContext = createContext<AuthContextType>({
   status: 'loading',
   isConfigured: false,
   isCloud: false,
+  isRegistering: false,
+  verificationEmail: { uid: null, email: null, status: 'idle', message: null },
   can: () => false,
   canOpen: () => false,
   actor: null,
@@ -85,6 +92,8 @@ export const AuthContext = createContext<AuthContextType>({
   loginWithGoogle: notAvailable,
   logout: notAvailable,
   resetPassword: notAvailable,
+  sendVerificationEmail: notAvailable,
+  checkEmailVerification: notAvailable,
   refresh: notAvailable,
 })
 
@@ -103,6 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status: state.status,
       isConfigured: isFirebaseConfigured,
       isCloud: state.isCloud,
+      isRegistering: state.isRegistering,
+      verificationEmail: state.verificationEmail,
       can: (permission) => session.can(permission),
       canOpen: (path) => canOpenPage(state.role, path),
       actor: session.actor(),
@@ -121,6 +132,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetPassword: async (email) => {
         await session.resetPassword(email)
       },
+      sendVerificationEmail: () => session.sendVerificationEmail(),
+      checkEmailVerification: () => session.checkEmailVerification(),
       refresh: () => session.refresh(),
     }),
     [session, state],

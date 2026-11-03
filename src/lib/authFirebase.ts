@@ -15,6 +15,8 @@ import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  reload,
+  sendEmailVerification,
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
@@ -77,6 +79,7 @@ function toSessionUser(user: User): SessionUser {
     displayName: user.displayName,
     isAnonymous: user.isAnonymous,
     provider: providerOf(user),
+    emailVerified: user.emailVerified,
   }
 }
 
@@ -147,6 +150,31 @@ export function createFirebasePorts(): { auth: AuthPort; profiles: ProfilePort }
 
     async resetPassword(email) {
       await sendPasswordResetEmail(firebaseAuth, email)
+    },
+
+    async sendVerificationEmail(uid, email) {
+      const user = firebaseAuth.currentUser
+      if (!user || user.uid !== uid || user.email !== email || user.isAnonymous
+          || user.emailVerified || providerOf(user) !== 'password') {
+        throw new AuthError('hdl/unavailable', 'Email verification is not available for this session.')
+      }
+      // Use Firebase's default action handler and the console's configured
+      // template. No hard-coded return URL or custom mail server is required.
+      await sendEmailVerification(user)
+    },
+
+    async reloadVerification(uid) {
+      const user = firebaseAuth.currentUser
+      if (!user || user.uid !== uid || user.isAnonymous) {
+        throw new AuthError('auth/user-token-expired')
+      }
+      await reload(user)
+      if (firebaseAuth.currentUser !== user) throw new AuthError('auth/user-token-expired')
+      // `emailVerified` can change in another tab. Refresh the ID token as well
+      // so rules see the new email_verified claim, rather than a stale token.
+      if (user.emailVerified) await user.getIdToken(true)
+      if (firebaseAuth.currentUser !== user) throw new AuthError('auth/user-token-expired')
+      return toSessionUser(user)
     },
   }
 

@@ -176,6 +176,7 @@ function toSessionUser(account: StoredAccount): SessionUser {
     displayName: account.display_name,
     isAnonymous: false,
     provider: 'local',
+    emailVerified: null,
   }
 }
 
@@ -298,6 +299,14 @@ export function createLocalPorts(): { auth: AuthPort; profiles: ProfilePort } {
         'hdl/unavailable',
         'Demo mode has no email to send a reset link from. Configure Firebase for password resets.',
       )
+    },
+
+    async sendVerificationEmail() {
+      throw new AuthError('hdl/unavailable', 'Email verification is unavailable in demo mode.')
+    },
+
+    async reloadVerification() {
+      throw new AuthError('hdl/unavailable', 'Email verification is unavailable in demo mode.')
     },
   }
 
