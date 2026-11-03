@@ -67,9 +67,14 @@ otherwise in writing.
    with grip + X, Clear all + "Maghanap · Search" footer, mobile −/+ guest
    steppers, scrim, and Escape/focus-trap/scroll-lock via the shared
    `useOverlay` from `src/components/ui/overlay.ts`; tsc clean, web 1268/7
-   same pre-existing fails). **Reference-set UI port is now COMPLETE** —
-   remaining reference patterns (④ wishlist, messages filter chips,
-   confirm-and-pay breakdown) are NOT in the recordings; only build them if
+   same pre-existing fails). Messages filter chips — **DONE 2026-11-03**
+   (`MessagesPage.tsx`: Lahat · All / Hindi pa nababasa · Unread chips with
+   brass unread badge, combined with search). Confirm-and-pay breakdown —
+   **DONE 2026-11-03** (`DownpaymentPage.tsx` "Buod ng Bayad": itemized
+   ₱rate × nights + pet fee + late checkout rows, then stay total, due-now
+   hero figure, balance, refundable deposit). **Reference-set UI port is now
+   COMPLETE incl. owner-requested extras** — the only remaining reference
+   pattern is ④ wishlist, which is NOT in the recordings; only build it if
    the owner explicitly asks.
 2. **NotebookLM next steps:** add `docs/adr/*` + `CONTEXT.md` as notebook sources,
    then ask *"which transcript requirements conflict with the ADRs, and which ADR

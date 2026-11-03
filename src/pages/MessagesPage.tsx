@@ -43,6 +43,8 @@ export function MessagesPage() {
   const [selectedConvoId, setSelectedConvoId] = useState<string | null>(null)
   const [mobileView, setMobileView] = useState<'inbox' | 'conversation'>('conversation')
   const [searchQuery, setSearchQuery] = useState('')
+  // Inbox filter chips (reference set 2, messages screen): All / Unread.
+  const [inboxFilter, setInboxFilter] = useState<'all' | 'unread'>('all')
 
   const [convosState, setConvosState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [threadState, setThreadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -128,16 +130,22 @@ export function MessagesPage() {
     [conversations, selectedConvoId],
   )
 
+  const unreadTotal = useMemo(
+    () => conversations.reduce((total, item) => total + Math.max(0, item.unreadCount), 0),
+    [conversations],
+  )
+
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return conversations
     return conversations.filter((item) => {
+      if (inboxFilter === 'unread' && item.unreadCount <= 0) return false
+      if (!q) return true
       const prop = (item.propertyName ?? '').toLowerCase()
       const ref = (item.bookingReference ?? '').toLowerCase()
       const name = item.guestName.toLowerCase()
       return prop.includes(q) || ref.includes(q) || name.includes(q)
     })
-  }, [conversations, searchQuery])
+  }, [conversations, searchQuery, inboxFilter])
 
   const activeConvoId = selectedConvo?.conversationId ?? null
   currentConversationRef.current = activeConvoId
@@ -568,12 +576,46 @@ export function MessagesPage() {
                       />
                     </div>
                   )}
+                  {/* Filter chips — reference set 2 messages screen: All / Unread */}
+                  <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter conversations">
+                    {(
+                      [
+                        { id: 'all' as const, label: 'Lahat · All' },
+                        { id: 'unread' as const, label: 'Hindi pa nababasa · Unread' },
+                      ]
+                    ).map((chip) => (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        aria-pressed={inboxFilter === chip.id}
+                        onClick={() => setInboxFilter(chip.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-semibold shadow-sm transition-colors ${
+                          inboxFilter === chip.id
+                            ? 'border-forest-900 bg-forest-900 text-cream-50'
+                            : 'border-forest-900/15 bg-white text-forest-800 hover:bg-forest-50 dark:bg-forest-900 dark:text-cream-100 dark:hover:bg-forest-800'
+                        }`}
+                      >
+                        {chip.label}
+                        {chip.id === 'unread' && unreadTotal > 0 && (
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
+                              inboxFilter === chip.id ? 'bg-brass-400 text-forest-950' : 'bg-forest-100 text-forest-800 dark:bg-forest-800 dark:text-cream-100'
+                            }`}
+                          >
+                            {unreadTotal}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="messages-topic-list">
                   {filteredConversations.length === 0 ? (
                     <div className="p-5 text-center text-xs text-forest-600 dark:text-sage-400">
-                      No stays matched &ldquo;{searchQuery.trim()}&rdquo;.
+                      {inboxFilter === 'unread'
+                        ? 'No unread messages right now — you are all caught up.'
+                        : <>No stays matched &ldquo;{searchQuery.trim()}&rdquo;.</>}
                     </div>
                   ) : (
                     filteredConversations.map((summary) => (
