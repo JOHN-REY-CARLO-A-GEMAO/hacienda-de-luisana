@@ -137,3 +137,17 @@ pink accent was deliberately not copied.
   forbids a second keydown/overlay implementation. Scrim is the Drawer-style
   `bg-forest-950/50 backdrop-blur-sm`, rendered after the sticky CTA bar so it
   dims that too. The existing mobile sticky total + Magpatuloy bar is unchanged.
+- **Messages filter chips** (`src/pages/MessagesPage.tsx`): the reference's
+  chip row above the inbox — **Lahat · All** / **Hindi pa nababasa · Unread**
+  (with a brass count badge of total unread), active chip = forest pill,
+  inactive = white outline pill. Combined with the existing search filter;
+  empty state says "No unread messages right now" when the Unread chip is empty.
+- **Confirm-and-pay breakdown** (`src/pages/DownpaymentPage.tsx`, "Buod ng
+  Bayad" card): itemized rows — `₱nightlyRate × N nights` (with weekday/
+  weekend-holiday + bracket sub-line), **Pet fee**, **Late checkout** when
+  priced — then **Kabuuan ng stay (Stay total)**, **Babayaran Ngayon**
+  (downpayment due now, hero figure), **Natitirang bayad sa check-in**
+  (balance), and **Refundable security deposit** (separate). The reference's
+  "You're confirmed!" success screen was already ported earlier
+  (`BookingStatusPage.tsx`: success check circle, HDL confirmation code,
+  summary + "Tingnan ang Aking Bookings" CTA).

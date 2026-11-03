@@ -582,8 +582,39 @@ refund_policy_snapshot: published.refund ?? null,
                   {selectedOption ? (paymentPlan === 'down-payment' ? '50% downpayment' : 'Full payment') : 'Published rate unavailable'} · {nights} {nights === 1 ? 'night' : 'nights'}
                 </p>
                 <dl className="mt-5 space-y-4">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
-                    <dt className="text-base text-cream-100/85">Kabuuan ng stay</dt>
+                  {/* Itemized price breakdown — reference set 2 confirm-and-pay:
+                      nightly rate × nights, then any priced add-ons, then the stay total. */}
+                  {quoted && (
+                    <>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+                        <dt className="text-base text-cream-100/85">
+                          {peso(quoted.rateCard.nightlyRate)} × {quoted.nights} {quoted.nights === 1 ? 'night' : 'nights'}
+                          <span className="block text-xs font-normal text-cream-100/60">
+                            {quoted.classification === 'weekend_holiday' ? 'Weekend / holiday' : 'Weekday'} · {quoted.bracket}
+                          </span>
+                        </dt>
+                        <dd className="guest-num text-base font-semibold">{peso(quoted.addons.rateAmount * quoted.nights)}</dd>
+                      </div>
+                      {quoted.addons.petFee > 0 && (
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+                          <dt className="text-base text-cream-100/85">
+                            Pet fee ({quoted.addons.petCount} {quoted.addons.petCount === 1 ? 'pet' : 'pets'})
+                          </dt>
+                          <dd className="guest-num text-base font-semibold">{peso(quoted.addons.petFee)}</dd>
+                        </div>
+                      )}
+                      {quoted.addons.lateCheckoutFee > 0 && (
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+                          <dt className="text-base text-cream-100/85">
+                            Late checkout ({quoted.addons.lateCheckoutHours} {quoted.addons.lateCheckoutHours === 1 ? 'hour' : 'hours'})
+                          </dt>
+                          <dd className="guest-num text-base font-semibold">{peso(quoted.addons.lateCheckoutFee)}</dd>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-t border-cream-100/20 pt-4">
+                    <dt className="text-base font-semibold text-cream-50">Kabuuan ng stay (Stay total)</dt>
                     <dd className="guest-num text-xl font-semibold">{stayTotal === null ? 'Hindi pa available' : peso(stayTotal)}</dd>
                   </div>
                   <div className="border-t border-cream-100/20 pt-4">
