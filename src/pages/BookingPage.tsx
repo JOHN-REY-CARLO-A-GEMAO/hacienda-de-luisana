@@ -5,6 +5,7 @@ import { cloudBookingsDB } from '../lib/firestoreBookings'
 import { loadBookingDraft, loadBookingProgress, saveBookingDraft, saveBookingProgress } from '../lib/bookingDraft'
 import { formatStayDate } from '../lib/formatDate'
 import { FlowSteps } from '../components/Booking/FlowSteps'
+import { EmailVerificationNotice } from '../components/Auth/EmailVerificationNotice'
 import { AvailabilityCalendar } from '../components/Booking/AvailabilityCalendar'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { Calendar, Users, Bed, ArrowRight, Sparkle, MapPin, Phone, Search, Chevron, Close } from '../lib/icons'
@@ -498,6 +499,7 @@ export function BookingPage() {
         aria-hidden="true"
       />
       <Container width="wide" className="relative pb-28 lg:pb-0">
+        <EmailVerificationNotice className="mb-6 max-w-6xl" />
         <PageHeader
           eyebrow="Mag-book ng Matutuluyan · Hindi kailangan ng account"
           title="Plan Your Stay"

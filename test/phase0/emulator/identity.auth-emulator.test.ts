@@ -21,8 +21,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
 import {
-  connectAuthEmulator, createUserWithEmailAndPassword, EmailAuthProvider, getAuth, linkWithCredential,
-  signInAnonymously, signInWithEmailAndPassword, signOut, type Auth,
+  applyActionCode, connectAuthEmulator, createUserWithEmailAndPassword, EmailAuthProvider, getAuth, linkWithCredential,
+  reload, sendEmailVerification, signInAnonymously, signInWithEmailAndPassword, signOut, type Auth,
 } from 'firebase/auth'
 import { assertEmulatorEnvironment } from '../../../scripts/phase0/boundary.mjs'
 
@@ -42,6 +42,16 @@ async function emulatorAccounts(): Promise<Array<{ localId: string; email?: stri
   })
   expect(response.ok).toBe(true)
   return (await response.json()).userInfo ?? []
+}
+
+async function verificationCode(email: string): Promise<string> {
+  // The Auth emulator records action codes locally; it does not send real mail.
+  const response = await fetch(`${ORIGIN}/emulator/v1/projects/${PROJECT}/oobCodes`)
+  expect(response.ok).toBe(true)
+  const data: { oobCodes?: { email: string; oobCode: string; requestType: string }[] } = await response.json()
+  const entry = data.oobCodes?.find((code) => code.email === email && code.requestType === 'VERIFY_EMAIL')
+  if (!entry) throw new Error('The emulator did not record a verification action code')
+  return entry.oobCode
 }
 
 beforeAll(() => {
@@ -92,6 +102,34 @@ describe('F16 canonical platform semantics: anonymous continuity', () => {
     const anonymousUid = (await signInAnonymously(auth)).user.uid
     const linked = await linkWithCredential(auth.currentUser!, EmailAuthProvider.credential('guest-link@phase0.example.invalid', PASSWORD))
     expect(linked.user.uid).toBe(anonymousUid)
+  })
+})
+
+describe('email verification in the local Auth emulator', () => {
+  it('issues an action code and refreshes the verified token claim after it is used', async () => {
+    const email = 'verify@phase0.example.invalid'
+    const account = (await createUserWithEmailAndPassword(auth, email, PASSWORD)).user
+    const uid = account.uid
+    expect(account.emailVerified).toBe(false)
+    await sendEmailVerification(account)
+    expect(account.emailVerified).toBe(false) // requesting mail does not verify ownership
+    await applyActionCode(auth, await verificationCode(email))
+    await reload(account)
+    expect(account.emailVerified).toBe(true)
+    expect(account.uid).toBe(uid)
+    expect(claims(await account.getIdToken(true)).payload.email_verified).toBe(true)
+  })
+
+  it('verifies an email linked to an anonymous identity without changing its booking UID', async () => {
+    const uid = (await signInAnonymously(auth)).user.uid
+    const email = 'linked-verify@phase0.example.invalid'
+    const linked = (await linkWithCredential(auth.currentUser!, EmailAuthProvider.credential(email, PASSWORD))).user
+    await sendEmailVerification(linked)
+    await applyActionCode(auth, await verificationCode(email))
+    await reload(linked)
+    expect(linked.uid).toBe(uid)
+    expect(linked.emailVerified).toBe(true)
+    expect(claims(await linked.getIdToken(true)).payload.email_verified).toBe(true)
   })
 })
 

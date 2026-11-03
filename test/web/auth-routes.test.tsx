@@ -23,7 +23,7 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
   const role = (overrides.role ?? null) as Role | null
   return {
     user: role
-      ? { uid: `uid-${role}`, email: `${role}@hacienda.test`, displayName: null, isAnonymous: false, provider: 'password' }
+      ? { uid: `uid-${role}`, email: `${role}@hacienda.test`, displayName: null, isAnonymous: false, provider: 'password', emailVerified: true }
       : null,
     profile: role ? { uid: `uid-${role}`, role } : null,
     role,
@@ -31,6 +31,8 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
     status: role ? 'signed-in' : 'signed-out',
     isConfigured: true,
     isCloud: true,
+    isRegistering: false,
+    verificationEmail: { uid: null, email: null, status: 'idle', message: null },
     can: (permission: Permission) => Boolean(role && permissionsOf(role).includes(permission)),
     canOpen: (path: string) => canOpenPage(role, path),
     actor: role ? { actor: role, actor_id: `uid-${role}`, actor_name: `${role}@hacienda.test` } : null,
@@ -39,6 +41,8 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
     loginWithGoogle: async () => {},
     logout: async () => {},
     resetPassword: async () => {},
+    sendVerificationEmail: async () => {},
+    checkEmailVerification: async () => true,
     refresh: async () => {},
     ...overrides,
   }

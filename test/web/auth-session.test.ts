@@ -43,7 +43,7 @@ type FakeProvider = {
 }
 
 function user(uid: string, email: string | null, extra: Partial<SessionUser> = {}): SessionUser {
-  return { uid, email, displayName: null, isAnonymous: false, provider: 'password', ...extra }
+  return { uid, email, displayName: null, isAnonymous: false, provider: 'password', emailVerified: false, ...extra }
 }
 
 function createFakeProvider(options: { isCloud?: boolean; google?: boolean } = {}): FakeProvider {
@@ -95,6 +95,13 @@ function createFakeProvider(options: { isCloud?: boolean; google?: boolean } = {
     },
     async resetPassword(email) {
       if (!accounts.has(email)) throw new AuthError('auth/user-not-found')
+    },
+    async sendVerificationEmail(uid, email) {
+      if (current?.uid !== uid || current.email !== email) throw new AuthError('hdl/unavailable')
+    },
+    async reloadVerification(uid) {
+      if (!current || current.uid !== uid) throw new AuthError('auth/user-token-expired')
+      return current
     },
   }
 
@@ -435,6 +442,8 @@ describe('signing out, and a session that ends by itself', () => {
       profile: null,
       role: null,
       isCloud: false,
+      isRegistering: false,
+      verificationEmail: { uid: null, email: null, status: 'idle', message: null },
     })
     expect(session.can('bookings:review')).toBe(false)
     expect(session.actor()).toBeNull()

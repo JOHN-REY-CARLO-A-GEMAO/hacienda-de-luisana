@@ -6,6 +6,7 @@ import { auth, googleProvider } from '../lib/firebase'
 import { EMAIL_MAX } from '../lib/validation'
 import { MIN_PASSWORD_LENGTH } from '../lib/auth'
 import { Alert, Card, Container, Field, Input, Page, PageHeader } from '../components/ui'
+import { EmailVerificationNotice } from '../components/Auth/EmailVerificationNotice'
 import { MessageCircle } from '../lib/icons'
 
 /**
@@ -30,9 +31,10 @@ function linkingError(error: unknown): string {
 }
 
 export function SupportPage() {
-  const { user, role, refresh, loading } = useAuth()
+  const { user, role, refresh, loading, sendVerificationEmail } = useAuth()
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState<{ uid: string; text: string } | null>(null)
+  const activeNotice = notice && notice.uid === user?.uid ? notice.text : ''
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -41,7 +43,7 @@ export function SupportPage() {
     if (busy) return
     setBusy(true)
     setError('')
-    setNotice('')
+    setNotice(null)
     try {
       const current = auth?.currentUser
       if (!current?.isAnonymous || current.uid !== user?.uid) {
@@ -58,13 +60,28 @@ export function SupportPage() {
         await linkWithCredential(current, EmailAuthProvider.credential(email.trim(), password))
       }
       setPassword('')
-      setNotice('Your booking identity was linked successfully. Your booking keeps the same UID.')
+      setNotice({ uid: current.uid, text: 'Your booking identity was linked successfully. Your booking keeps the same UID.' })
       // Linking is already complete even if the token or session refresh fails.
+      let refreshed = false
       try {
         await current.getIdToken(true)
         await refresh()
+        refreshed = true
       } catch {
-        setNotice('Your identity was linked, but the session could not be refreshed. Reload this page; do not try to link it again.')
+        setNotice({ uid: current.uid, text: 'Your identity was linked, but the session could not be refreshed. Reload this page; do not try to link it again.' })
+      }
+      if (!google && refreshed) {
+        if (auth?.currentUser !== current) {
+          setNotice({ uid: current.uid, text: 'Your booking identity was linked, but your session changed. Sign in to that account to request verification; do not link it again.' })
+        } else {
+          try {
+            await sendVerificationEmail()
+          } catch {
+            // Delivery is independent of linking. Never tell a Guest to link
+            // again after the booking identity has already been secured.
+            setNotice({ uid: current.uid, text: 'Your booking identity was linked successfully and keeps the same UID, but we could not confirm that the verification email was sent. Check your inbox or try again from My Bookings.' })
+          }
+        }
       }
     } catch (e) {
       setError(linkingError(e))
@@ -76,6 +93,7 @@ export function SupportPage() {
   return (
     <Page className="dark:bg-forest-950 dark:text-cream-50">
       <Container width="narrow">
+        <EmailVerificationNotice className="mb-6" />
         <PageHeader
           eyebrow="Support"
           title="How can we help?"
@@ -99,7 +117,7 @@ export function SupportPage() {
 
         {loading && <p role="status" className="mt-8 text-forest-700 dark:text-cream-100/80">Checking your session…</p>}
 
-        {notice && <Alert tone="success" className="mt-6">{notice}</Alert>}
+        {activeNotice && <Alert tone="success" className="mt-6">{activeNotice}</Alert>}
 
         {error && (
           <Alert tone="danger" className="mt-6">
@@ -135,7 +153,7 @@ export function SupportPage() {
           </Card>
         )}
 
-        {!loading && user && role !== 'admin' && user.isAnonymous && !notice && (
+        {!loading && user && role !== 'admin' && user.isAnonymous && !activeNotice && (
           <Card className="mt-8" padding="lg">
             <h2 className="h3">Secure this booking identity</h2>
             <p className="mt-2 text-sm leading-relaxed text-forest-700/85 dark:text-cream-100/75">
