@@ -22,6 +22,7 @@
 import type { Actor } from '../booking'
 import { DEFAULT_ROLE, resolveRole, type Profile } from './profile'
 import { ROLE_LABELS, can as roleCan, type Permission, type Role } from './roles'
+import { LIMITS, checkRateLimit } from '../rateLimit'
 import {
   AuthError,
   describeAuthError,
@@ -42,6 +43,16 @@ export type SessionUser = {
   isAnonymous: boolean
   /** Where the session came from, so a form can offer what this provider supports. */
   provider: 'password' | 'google' | 'anonymous' | 'local'
+  /** Firebase's verified-email flag, or null for the browser-only demo. */
+  emailVerified: boolean | null
+}
+
+/** Delivery state belongs to one identity and email, never to the next session. */
+export type VerificationEmailState = {
+  uid: string | null
+  email: string | null
+  status: 'idle' | 'sending' | 'sent' | 'failed'
+  message: string | null
 }
 
 /**
@@ -64,6 +75,10 @@ export type AuthPort = {
   loginWithGoogle(): Promise<SessionUser>
   logout(): Promise<void>
   resetPassword(email: string): Promise<void>
+  /** Send only for this still-current identity and email. */
+  sendVerificationEmail(uid: string, email: string): Promise<void>
+  /** Re-read Firebase's verified-email flag for this still-current identity. */
+  reloadVerification(uid: string): Promise<SessionUser>
 }
 
 /**
@@ -84,6 +99,9 @@ export type SessionState = {
   /** Null while loading and while signed out: nobody has a role yet. */
   role: Role | null
   isCloud: boolean
+  /** Whether this identity's registration is still finishing after sign-in. */
+  isRegistering: boolean
+  verificationEmail: VerificationEmailState
 }
 
 export type SessionStore = {
@@ -100,11 +118,19 @@ export type SessionStore = {
   loginWithGoogle(): Promise<SessionUser>
   logout(): Promise<void>
   resetPassword(email: string): Promise<void>
+  /** Request another verification email for the signed-in password account. */
+  sendVerificationEmail(): Promise<void>
+  /** Refresh the account and token after following a verification link. */
+  checkEmailVerification(): Promise<boolean>
   /** Re-read the current identity and Profile, in case either changed. */
   refresh(): Promise<void>
 }
 
-const SIGNED_OUT: Omit<SessionState, 'isCloud'> = {
+const NO_VERIFICATION_EMAIL: VerificationEmailState = {
+  uid: null, email: null, status: 'idle', message: null,
+}
+
+const SIGNED_OUT: Pick<SessionState, 'status' | 'user' | 'profile' | 'role'> = {
   status: 'signed-out',
   user: null,
   profile: null,
@@ -119,11 +145,27 @@ const SIGNED_OUT: Omit<SessionState, 'isCloud'> = {
  * signed-in person changes, which is the same answer firestore.rules gives.
  */
 export function createSession(auth: AuthPort, profiles: ProfilePort): SessionStore {
-  let state: SessionState = { ...SIGNED_OUT, status: 'loading', isCloud: auth.isCloud }
+  let state: SessionState = {
+    ...SIGNED_OUT,
+    status: 'loading',
+    isCloud: auth.isCloud,
+    isRegistering: false,
+    verificationEmail: NO_VERIFICATION_EMAIL,
+  }
   const listeners = new Set<(state: SessionState) => void>()
   /** Bumped on every change of person, so a slow Profile read cannot land late. */
   let generation = 0
   let pending: { uid: string; promise: Promise<void> } | null = null
+  const registrationsInProgress = new Map<symbol, string>()
+  let verificationGeneration = 0
+  /** Distinguish even two sign-ins of the same UID across a sign-out. */
+  let identityEpoch = 0
+  let verificationInFlight: { uid: string; email: string; promise: Promise<void> } | null = null
+  let destroyed = false
+
+  function registeringFor(user: SessionUser | null): boolean {
+    return Boolean(user?.email && [...registrationsInProgress.values()].includes(user.email.trim().toLowerCase()))
+  }
 
   function emit() {
     for (const listener of [...listeners]) listener(state)
@@ -135,6 +177,7 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
   }
 
   async function loadProfile(user: SessionUser, gen: number): Promise<void> {
+    const userAtStart = state.user
     let profile: Profile | null = null
     try {
       profile = await profiles.read(user.uid)
@@ -144,24 +187,38 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
       console.warn('[Auth] could not read the Profile for this session', error)
     }
     if (gen !== generation) return
-    set({ status: 'signed-in', user, profile, role: resolveRole(user, profile) })
+    // Verification can finish while a Profile read is still pending. Keep the
+    // latest version of this identity rather than restoring the older flag.
+    const latest = state.user?.uid === user.uid && state.user !== userAtStart ? state.user : user
+    set({ status: 'signed-in', user: latest, profile, role: resolveRole(latest, profile) })
   }
 
   function onUser(user: SessionUser | null) {
     generation += 1
+    if ((state.user?.uid ?? null) !== (user?.uid ?? null)) identityEpoch += 1
+    const delivery = state.verificationEmail
+    const changedDeliveryIdentity = delivery.uid !== null && (
+      !user || delivery.uid !== user.uid || delivery.email !== user.email || user.emailVerified === true
+    )
+    if (!user || changedDeliveryIdentity) {
+      verificationGeneration += 1
+      verificationInFlight = null
+    }
+    const verificationEmail = !user || changedDeliveryIdentity ? NO_VERIFICATION_EMAIL : delivery
+    const isRegistering = registeringFor(user)
     if (!user) {
       pending = null
-      set({ ...SIGNED_OUT, isCloud: auth.isCloud })
+      set({ ...SIGNED_OUT, isCloud: auth.isCloud, verificationEmail, isRegistering })
       return
     }
     if (state.status === 'signed-in' && state.user?.uid === user.uid) {
       // The same person, refreshed: keep the role rather than flashing a spinner.
-      set({ user })
+      set({ user, verificationEmail, isRegistering })
       return
     }
     // Loading with no role: a page that asked now would be told nobody may
     // anything, which is the safe answer until the Profile has been read.
-    set({ status: 'loading', user, profile: null, role: null })
+    set({ status: 'loading', user, profile: null, role: null, verificationEmail, isRegistering })
     const promise = loadProfile(user, generation)
     pending = { uid: user.uid, promise }
   }
@@ -175,6 +232,10 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
       await started.promise
       if (state.status === 'signed-in' && state.user?.uid === user.uid) return
     }
+    // A sign-out or account switch can happen while registration/profile work
+    // is pending. Only the provider listener may move the session to that new
+    // identity; the old operation must not load its user back into the store.
+    if (auth.current()?.uid !== user.uid || (state.user && state.user.uid !== user.uid)) return
     generation += 1
     await loadProfile(user, generation)
   }
@@ -185,6 +246,70 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
       return await run()
     } catch (error) {
       throw describeAuthError(error)
+    }
+  }
+
+  function canVerify(user: SessionUser | null): user is SessionUser & { email: string } {
+    return Boolean(
+      auth.isCloud && user && !user.isAnonymous && user.provider === 'password'
+      && user.email && user.emailVerified === false,
+    )
+  }
+
+  function deliveryFailure(error: unknown): string {
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+    if (code === 'auth/network-request-failed') {
+      return 'Check your internet connection and try again.'
+    }
+    if (code === 'auth/too-many-requests') {
+      return 'Too many requests. Please wait before trying again.'
+    }
+    return 'Please try again in a little while.'
+  }
+
+  /**
+   * Both sign-up and the resend button use this one path. Its result is tagged
+   * with the exact UID and email so a late response can never announce success
+   * or failure on another Guest's session. Firebase also rate-limits requests;
+   * this small client cooldown prevents accidental repeated clicks.
+   */
+  async function requestVerification(user: SessionUser & { email: string }): Promise<void> {
+    const { uid, email } = user
+    const current = auth.current()
+    if (!canVerify(current) || current.uid !== uid || current.email !== email) {
+      throw new AuthError('hdl/unavailable', 'Sign in again before requesting a verification email.')
+    }
+    if (verificationInFlight?.uid === uid && verificationInFlight.email === email) {
+      return verificationInFlight.promise
+    }
+
+    const operation = ++verificationGeneration
+    const isCurrent = () => {
+      const now = auth.current()
+      return !destroyed && operation === verificationGeneration
+        && canVerify(now) && now.uid === uid && now.email === email
+    }
+    const limit = checkRateLimit(`email-verification:${uid}`, LIMITS.verification)
+    if (!limit.ok) {
+      if (isCurrent()) set({ verificationEmail: { uid, email, status: 'failed', message: limit.message } })
+      throw new AuthError('auth/too-many-requests', limit.message)
+    }
+
+    const promise = Promise.resolve()
+      .then(() => auth.sendVerificationEmail(uid, email))
+      .then(() => {
+        if (isCurrent()) set({ verificationEmail: { uid, email, status: 'sent', message: null } })
+      })
+      .catch((error: unknown) => {
+        if (isCurrent()) set({ verificationEmail: { uid, email, status: 'failed', message: deliveryFailure(error) } })
+        throw error
+      })
+    verificationInFlight = { uid, email, promise }
+    set({ verificationEmail: { uid, email, status: 'sending', message: null } })
+    try {
+      await promise
+    } finally {
+      if (verificationInFlight?.promise === promise) verificationInFlight = null
     }
   }
 
@@ -208,8 +333,12 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
     destroy() {
       unsubscribeAuth()
       listeners.clear()
+      destroyed = true
       generation += 1
+      identityEpoch += 1
+      verificationGeneration += 1
       pending = null
+      verificationInFlight = null
     },
 
     can: (permission) => roleCan(state.role, permission),
@@ -228,33 +357,47 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
       guard(async () => {
         const checked = validateRegistration(input)
         if (!checked.ok) throw checked.error
-        const user = await auth.register(checked.value)
-        // A sign-up is a Guest. There is no role to pass in, so nothing a person
-        // types can arrive as the Admin (ADR-0005).
-        const at = new Date().toISOString()
+        const registration = Symbol('registration')
+        registrationsInProgress.set(registration, checked.value.email)
+        set({ isRegistering: registeringFor(state.user) })
         try {
-          await profiles.create({
-            uid: user.uid,
-            role: DEFAULT_ROLE,
-            email: user.email,
-            display_name: checked.value.displayName ?? user.displayName,
-            first_name: checked.value.firstName,
-            middle_name: checked.value.middleName,
-            last_name: checked.value.lastName,
-            phone: checked.value.phone,
-            birthdate: checked.value.birthdate,
-            terms_version: checked.value.termsVersion,
-            terms_accepted_at: checked.value.termsAcceptedAt,
-            created_at: at,
-            updated_at: at,
-          })
-        } catch (error) {
-          // Without a Profile the person is still a Guest — the default both
-          // here and in the rules — so a failed write costs nothing.
-          console.warn('[Auth] the new account is a Guest without a stored Profile', error)
+          const user = await auth.register(checked.value)
+          // Account creation has already succeeded. Email delivery is a separate
+          // operation: a failed or slow send must not turn that success into a
+          // failed sign-up, or make the Guest try to create the account again.
+          // The state is retained even if the sign-in page has already redirected.
+          if (canVerify(user)) void requestVerification(user).catch(() => {})
+
+          // A sign-up is a Guest. There is no role to pass in, so nothing a person
+          // types can arrive as the Admin (ADR-0005).
+          const at = new Date().toISOString()
+          try {
+            await profiles.create({
+              uid: user.uid,
+              role: DEFAULT_ROLE,
+              email: user.email,
+              display_name: checked.value.displayName ?? user.displayName,
+              first_name: checked.value.firstName,
+              middle_name: checked.value.middleName,
+              last_name: checked.value.lastName,
+              phone: checked.value.phone,
+              birthdate: checked.value.birthdate,
+              terms_version: checked.value.termsVersion,
+              terms_accepted_at: checked.value.termsAcceptedAt,
+              created_at: at,
+              updated_at: at,
+            })
+          } catch (error) {
+            // Without a Profile the person is still a Guest — the default both
+            // here and in the rules — so a failed write costs nothing.
+            console.warn('[Auth] the new account is a Guest without a stored Profile', error)
+          }
+          await settleFor(user)
+          return user
+        } finally {
+          registrationsInProgress.delete(registration)
+          if (!destroyed) set({ isRegistering: registeringFor(state.user) })
         }
-        await settleFor(user)
-        return user
       }),
 
     login: (email, password) =>
@@ -280,9 +423,14 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
       guard(async () => {
         await auth.logout()
         generation += 1
+        identityEpoch += 1
+        verificationGeneration += 1
+        verificationInFlight = null
         pending = null
         // Most providers tell us themselves; only say it once.
-        if (state.status !== 'signed-out') set({ ...SIGNED_OUT, isCloud: auth.isCloud })
+        if (state.status !== 'signed-out') {
+          set({ ...SIGNED_OUT, isCloud: auth.isCloud, isRegistering: false, verificationEmail: NO_VERIFICATION_EMAIL })
+        }
       }),
 
     resetPassword: (email) =>
@@ -290,6 +438,47 @@ export function createSession(auth: AuthPort, profiles: ProfilePort): SessionSto
         const checked = validateEmail(email)
         if (!checked.ok) throw checked.error
         await auth.resetPassword(checked.value.email)
+      }),
+
+    sendVerificationEmail: () =>
+      guard(async () => {
+        const user = state.user
+        if (!canVerify(user)) {
+          throw new AuthError('hdl/unavailable', 'Email verification is not available for this session.')
+        }
+        if (state.isRegistering && (verificationInFlight?.uid !== user.uid || verificationInFlight.email !== user.email)) {
+          throw new AuthError('hdl/unavailable', 'Your verification email is being prepared. Please wait.')
+        }
+        await requestVerification(user)
+      }),
+
+    checkEmailVerification: () =>
+      guard(async () => {
+        const previous = state.user
+        if (!canVerify(previous)) {
+          throw new AuthError('hdl/unavailable', 'Email verification is not available for this session.')
+        }
+        const epoch = identityEpoch
+        const refreshed = await auth.reloadVerification(previous.uid)
+        // Checking a link must never restore a signed-out or different identity,
+        // including an older sign-in of the same UID.
+        if (epoch !== identityEpoch || auth.current()?.uid !== previous.uid || state.user?.uid !== previous.uid) {
+          throw new AuthError('auth/user-token-expired')
+        }
+        if (refreshed.email !== previous.email) {
+          verificationGeneration += 1
+          verificationInFlight = null
+          set({ user: refreshed, verificationEmail: NO_VERIFICATION_EMAIL })
+          throw new AuthError('hdl/unavailable', 'Your sign-in email changed. Check the current address and try again.')
+        }
+        if (refreshed.emailVerified) {
+          verificationGeneration += 1
+          verificationInFlight = null
+          set({ user: refreshed, verificationEmail: NO_VERIFICATION_EMAIL })
+        } else {
+          set({ user: refreshed })
+        }
+        return refreshed.emailVerified === true
       }),
 
     refresh: () =>

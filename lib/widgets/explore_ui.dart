@@ -94,16 +94,14 @@ class ExploreCategoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            _category(items[i]),
-            if (i < items.length - 1) const SizedBox(width: 18),
-          ],
-        ],
-      ),
+    // Wrap, not a clipped horizontal scroll: on a phone the fixed-width tiles
+    // overflow the card and the last destinations (e.g. More) are cut off with
+    // no affordance. Wrapping keeps every tile reachable; on wide layouts the
+    // row still fits on one line.
+    return Wrap(
+      spacing: 18,
+      runSpacing: 14,
+      children: [for (final item in items) _category(item)],
     );
   }
 

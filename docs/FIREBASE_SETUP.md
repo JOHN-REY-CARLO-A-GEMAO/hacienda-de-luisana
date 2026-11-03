@@ -31,13 +31,27 @@ VITE_FIREBASE_MEASUREMENT_ID (optional)
 
 ### 3. Authentication & roles (Email + Google for people, Anonymous for web Guests)
 
+Copy-paste drafts for the Firebase Authentication email templates, their
+console limitations, and a test checklist are in [FIREBASE_AUTH_TEMPLATES.md](./FIREBASE_AUTH_TEMPLATES.md).
+The templates are managed in the Firebase Console, not deployed from this repository.
+
+After a Firebase email/password Guest account is created, the website requests a
+verification email using Firebase's configured template. Delivery failure does
+not undo the account, and verification is not an access requirement. The Guest
+can resend from My Bookings or My Profile, then use **I have verified my email**
+to reload the account and refresh its ID token after opening the link. The same
+request is made after a successful email link to an anonymous booking identity
+when its session refresh succeeds, without changing its UID. Google and
+browser-only demo sessions do not send this email. Firebase's delivery limits
+and project settings still apply.
+
 Two roles, from `CONTEXT.md` § People: **Guest** and **Admin** — no Staff, no Host
 ([ADR-0007](./adr/0007-two-roles-two-apps-admin-on-mobile-guest-on-the-web.md)). A role is
 stored at `profiles/{uid}` and bootstrapped by an email allowlist
 ([ADR-0005](./adr/0005-a-person-s-role-is-stored-in-profiles-and-bootstrapped-by-an-email-allowlist.md));
 `firestore.rules` enforces it. The website signs Guests in; the Admin signs in on the Flutter app.
 
-**`src/lib/auth/` — the website's authorization core (pure: no Firebase, no browser APIs)**
+**`src/lib/auth/` — the website's provider-independent authorization core**
 - `roles.ts`: the two roles, the permission catalogue, `can(role, permission)`
 - `pages.ts`: which page a permission opens (`/account`) and where each role lands (`homeForRole`)
 - `profile.ts`: `resolveRole()` — bootstrap allowlist (`BOOTSTRAP_ROLES`), then Profile, then Guest

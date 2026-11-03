@@ -23,7 +23,7 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
   const role = (overrides.role ?? null) as Role | null
   return {
     user: role
-      ? { uid: `uid-${role}`, email: `${role}@hacienda.test`, displayName: null, isAnonymous: false, provider: 'password' }
+      ? { uid: `uid-${role}`, email: `${role}@hacienda.test`, displayName: null, isAnonymous: false, provider: 'password', emailVerified: true }
       : null,
     profile: role ? { uid: `uid-${role}`, role } : null,
     role,
@@ -31,6 +31,8 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
     status: role ? 'signed-in' : 'signed-out',
     isConfigured: true,
     isCloud: true,
+    isRegistering: false,
+    verificationEmail: { uid: null, email: null, status: 'idle', message: null },
     can: (permission: Permission) => Boolean(role && permissionsOf(role).includes(permission)),
     canOpen: (path: string) => canOpenPage(role, path),
     actor: role ? { actor: role, actor_id: `uid-${role}`, actor_name: `${role}@hacienda.test` } : null,
@@ -39,6 +41,8 @@ function session(overrides: Partial<AuthContextType> = {}): AuthContextType {
     loginWithGoogle: async () => {},
     logout: async () => {},
     resetPassword: async () => {},
+    sendVerificationEmail: async () => {},
+    checkEmailVerification: async () => true,
     refresh: async () => {},
     ...overrides,
   }
@@ -191,7 +195,7 @@ describe('the sign-in form itself', () => {
 
     openSignUp(page.container)
 
-    expect(page.text()).toContain('Create Guest Account')
+    expect(page.text()).toContain('Create guest account')
     expect(page.text()).toContain('Make a Guest account')
     expect(page.text()).not.toMatch(/owner account/i)
   })
@@ -237,7 +241,7 @@ describe('the sign-in form itself', () => {
     clickButton(page.container, /Sign in instead/)
 
     // Login mode, with the email kept: the person only types the password.
-    expect(page.text()).toContain('Sign In')
+    expect(page.text()).toContain('Sign in')
     expect(page.container.querySelector<HTMLInputElement>('input[type="email"]')?.value).toBe(
       'twice@example.com',
     )

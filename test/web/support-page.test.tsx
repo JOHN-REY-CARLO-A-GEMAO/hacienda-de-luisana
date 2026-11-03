@@ -7,10 +7,10 @@ const mocks = vi.hoisted(() => ({
   user: null as null | { uid: string; isAnonymous: boolean }, role: 'guest', loading: false,
   auth: null as null | { currentUser: { uid: string; isAnonymous: boolean; getIdToken: ReturnType<typeof vi.fn> } },
   google: null as null | object,
-  refresh: vi.fn(), credential: vi.fn(), linkEmail: vi.fn(), linkGoogle: vi.fn(),
+  refresh: vi.fn(), sendVerificationEmail: vi.fn(), credential: vi.fn(), linkEmail: vi.fn(), linkGoogle: vi.fn(),
 }))
 vi.mock('../../src/hooks/useAuth', () => ({
-  useAuth: () => ({ user: mocks.user, role: mocks.role, loading: mocks.loading, refresh: mocks.refresh }),
+  useAuth: () => ({ user: mocks.user, role: mocks.role, loading: mocks.loading, refresh: mocks.refresh, sendVerificationEmail: mocks.sendVerificationEmail }),
 }))
 vi.mock('../../src/lib/firebase', () => ({ get auth() { return mocks.auth }, get googleProvider() { return mocks.google } }))
 vi.mock('firebase/auth', () => ({
@@ -32,6 +32,7 @@ beforeEach(() => {
   mocks.auth = null
   mocks.google = null
   mocks.refresh.mockResolvedValue(undefined)
+  mocks.sendVerificationEmail.mockResolvedValue(undefined)
   mocks.linkEmail.mockResolvedValue(undefined)
   mocks.linkGoogle.mockResolvedValue(undefined)
   ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -108,8 +109,46 @@ describe('general Guest support after case retirement', () => {
     await submitLink()
     expect(mocks.linkEmail).toHaveBeenCalledOnce()
     expect(mocks.refresh).toHaveBeenCalledOnce()
+    expect(mocks.sendVerificationEmail).toHaveBeenCalledOnce()
     expect(container.textContent).toContain('linked successfully')
     expect(container.querySelector('form')).toBeNull()
+  })
+
+  it('keeps the identity linked when sending a verification email fails', async () => {
+    prepareAnonymous()
+    mocks.sendVerificationEmail.mockRejectedValue(new Error('offline'))
+    await render()
+    await submitLink()
+    expect(container.textContent).toContain('linked successfully')
+    expect(container.textContent).toContain('could not confirm that the verification email was sent')
+    expect(container.textContent).not.toContain('Could not link this identity')
+    expect(mocks.linkEmail).toHaveBeenCalledOnce()
+    expect(container.querySelector('form')).toBeNull()
+  })
+
+  it('does not send a verification email to a different account if the session changes during linking', async () => {
+    prepareAnonymous()
+    mocks.linkEmail.mockImplementationOnce(async () => {
+      mocks.auth!.currentUser = { uid: 'other-guest', isAnonymous: false, getIdToken: vi.fn().mockResolvedValue('token') }
+    })
+    await render()
+    await submitLink()
+    expect(mocks.sendVerificationEmail).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('identity was linked, but your session changed')
+    expect(container.textContent).toContain('do not link it again')
+  })
+
+  it('does not show a previous identity’s link result to the newly signed-in Guest', async () => {
+    prepareAnonymous()
+    mocks.linkEmail.mockImplementationOnce(async () => {
+      mocks.auth!.currentUser = { uid: 'other-guest', isAnonymous: false, getIdToken: vi.fn().mockResolvedValue('token') }
+      mocks.user = { uid: 'other-guest', isAnonymous: false }
+    })
+    await render()
+    await submitLink()
+    expect(mocks.sendVerificationEmail).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('identity was linked')
+    expect(container.textContent).toContain('Your Booking, your conversation')
   })
 
   it('does not report a completed link as failed when refreshing the token fails', async () => {

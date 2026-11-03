@@ -15,6 +15,7 @@ import { validateSearch } from '../lib/validation'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Pager } from '../components/Pager'
 import { ReviewForm } from '../components/ReviewForm'
+import { EmailVerificationNotice } from '../components/Auth/EmailVerificationNotice'
 import { Bell, CreditCard, Sparkle } from '../lib/icons'
 import { Alert, Container, Drawer, Input, Modal, Page, Select, SkeletonLines } from '../components/ui'
 import {
@@ -221,6 +222,7 @@ export function AccountPage() {
           Hacienda's own photograph, under its dates. Everything below it is a
           quiet document. */}
       <Container width="wide">
+        <EmailVerificationNotice className="mb-6" />
         <StayMasthead
           booking={nextStay}
           greeting={shortName}

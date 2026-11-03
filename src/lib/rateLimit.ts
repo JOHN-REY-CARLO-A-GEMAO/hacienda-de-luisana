@@ -14,6 +14,7 @@ export const LIMITS = {
   login: { windowMs: 60_000, max: 5, lockMs: 60_000 },
   register: { windowMs: 60_000, max: 5, lockMs: 60_000 },
   reset: { windowMs: 60_000, max: 3, lockMs: 120_000 },
+  verification: { windowMs: 60_000, max: 3, lockMs: 120_000 },
   inquiry: { windowMs: 60_000, max: 3, lockMs: 60_000 },
   booking: { windowMs: 60_000, max: 4, lockMs: 30_000 },
   payment: { windowMs: 60_000, max: 5, lockMs: 30_000 },

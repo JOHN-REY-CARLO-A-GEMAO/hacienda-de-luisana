@@ -148,11 +148,40 @@ class DashboardScreen extends ConsumerWidget {
             data: (logs) {
               final recentLogs = logs.take(5).toList();
               if (recentLogs.isEmpty) {
-                return const HaciendaCard(
-                  child: EmptyState(
-                    icon: Icons.lock_clock_outlined,
-                    title: 'No recent door activity',
-                    subtitle: 'Real smart lock events will appear here.',
+                // Slim inline empty row — a full-height EmptyState card reads as
+                // a broken layout when the Access log simply has no events yet.
+                return HaciendaCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryForest.withValues(alpha: 0.10),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.lock_clock_outlined,
+                          size: 17,
+                          color: AppColors.primaryForest,
+                        ),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('No recent door activity', style: AppTheme.title(fontSize: 13)),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Real smart lock events will appear here.',
+                              style: AppTheme.body(fontSize: 11, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 );
               }

@@ -68,4 +68,5 @@ export {
   type SessionState,
   type SessionStore,
   type SessionUser,
+  type VerificationEmailState,
 } from './session'

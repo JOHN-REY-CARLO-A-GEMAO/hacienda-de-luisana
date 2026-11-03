@@ -16,6 +16,22 @@ class BookingListFilter {
   static const activeStay = 'Active Stay';
   static const completed = 'Completed';
   static const closed = 'Cancelled / Rejected';
+
+  // Archive view buckets (ArchivedBookingsScreen). Terminal outcomes, plus a
+  // derived no-show bucket — the lifecycle stores no "No-show" status, so
+  // that one is computed from dates, never written to the document.
+  static const archivedCompleted = 'Archived · Completed';
+  static const archivedCancelled = 'Archived · Cancelled';
+  static const archivedExpired = 'Archived · Expired';
+  static const archivedRejected = 'Archived · Rejected';
+  static const archivedNoShow = 'Archived · No-show';
+  static const archived = [
+    archivedCompleted,
+    archivedCancelled,
+    archivedExpired,
+    archivedRejected,
+    archivedNoShow,
+  ];
 }
 
 bool _hasProof(BookingModel booking) =>
@@ -65,8 +81,34 @@ bool bookingNeedsAdminAction(BookingModel booking) {
   }
 }
 
+/// Derived no-show: the dates were committed (Approved / Payment Verified /
+/// Reserved) but the recorded check-in day has passed with no check-in ever
+/// recorded. The lifecycle has no stored "No-show" status, so this bucket is
+/// computed from the dates and never written to the document.
+bool bookingIsNoShow(BookingModel booking, DateTime now) {
+  final committedPreStay = booking.rawStatus == BookingStatuses.approved ||
+      booking.rawStatus == BookingStatuses.paymentVerified ||
+      booking.rawStatus == BookingStatuses.reserved;
+  if (!committedPreStay) return false;
+  final today = DateTime(now.year, now.month, now.day);
+  return booking.checkInDate.isBefore(today);
+}
+
 bool bookingMatchesFilter(BookingModel booking, String filter, DateTime now) {
   switch (filter) {
+    case BookingListFilter.archivedCompleted:
+      return booking.rawStatus == BookingStatuses.completed;
+    case BookingListFilter.archivedCancelled:
+      return booking.rawStatus == BookingStatuses.cancelled;
+    case BookingListFilter.archivedExpired:
+      // A Pending whose 24-hour Date hold ran out reads as Expired on every
+      // surface, even before the Admin records the expiry.
+      return booking.rawStatus == BookingStatuses.expired ||
+          effectiveStatus(booking.toLifecycleDoc(), now) == BookingStatuses.expired;
+    case BookingListFilter.archivedRejected:
+      return booking.rawStatus == BookingStatuses.rejected;
+    case BookingListFilter.archivedNoShow:
+      return bookingIsNoShow(booking, now);
     case BookingListFilter.needsAction:
       return bookingNeedsAdminAction(booking);
     case BookingListFilter.paymentQueue:
@@ -112,6 +154,16 @@ String bookingFilterLabel(String filter) {
       return 'Tapos na';
     case BookingListFilter.closed:
       return 'Kanselado / Tinanggihan';
+    case BookingListFilter.archivedCompleted:
+      return 'Tapos na · Completed';
+    case BookingListFilter.archivedCancelled:
+      return 'Kanselado · Cancelled';
+    case BookingListFilter.archivedExpired:
+      return 'Nag-expire · Expired';
+    case BookingListFilter.archivedRejected:
+      return 'Tinanggihan · Rejected';
+    case BookingListFilter.archivedNoShow:
+      return 'No-show · Walang dumating';
     case BookingListFilter.all:
     default:
       return 'Lahat ng Booking';

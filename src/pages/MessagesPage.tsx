@@ -8,6 +8,7 @@ import { MessageComposer } from '../components/chat/MessageComposer'
 import { QuickReplyActions, type QuickReplyOption } from '../components/chat/QuickReplyActions'
 import { ShareLocationBar } from '../components/chat/ShareLocationBar'
 import { MessageTimeline } from '../components/chat/MessageTimeline'
+import { EmailVerificationNotice } from '../components/Auth/EmailVerificationNotice'
 import { Alert, Container, EmptyState, Input, LoadingPanel, Page, PageHeader } from '../components/ui'
 import { useAuth } from '../hooks/useAuth'
 import { canShareLocation, useLiveLocation } from '../hooks/useLiveLocation'
@@ -491,6 +492,7 @@ export function MessagesPage() {
   return (
     <Page className="guest-ground">
       <Container width="content">
+        <EmailVerificationNotice className="mb-6" />
         <PageHeader
           eyebrow="Messages"
           title="Guest Messages"
@@ -499,6 +501,21 @@ export function MessagesPage() {
               One continuous conversation per booking. Only you and the Hacienda Admin can read
               these messages.
             </p>
+          }
+          aside={
+            conversations.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-forest-600 dark:text-sage-400">
+                <span className="inline-flex items-center gap-1.5">
+                  <Lock size={13} />
+                  Private to you and the Hacienda Admin
+                </span>
+                {unreadTotal > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-brass-400/25 px-2 py-0.5 font-semibold text-forest-900 dark:text-brass-200">
+                    {unreadTotal} unread
+                  </span>
+                )}
+              </div>
+            ) : undefined
           }
           actions={
             conversations.length > 0 ? (
@@ -589,21 +606,11 @@ export function MessagesPage() {
                         type="button"
                         aria-pressed={inboxFilter === chip.id}
                         onClick={() => setInboxFilter(chip.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-semibold shadow-sm transition-colors ${
-                          inboxFilter === chip.id
-                            ? 'border-forest-900 bg-forest-900 text-cream-50'
-                            : 'border-forest-900/15 bg-white text-forest-800 hover:bg-forest-50 dark:bg-forest-900 dark:text-cream-100 dark:hover:bg-forest-800'
-                        }`}
+                        className="msg-chip"
                       >
                         {chip.label}
                         {chip.id === 'unread' && unreadTotal > 0 && (
-                          <span
-                            className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
-                              inboxFilter === chip.id ? 'bg-brass-400 text-forest-950' : 'bg-forest-100 text-forest-800 dark:bg-forest-800 dark:text-cream-100'
-                            }`}
-                          >
-                            {unreadTotal}
-                          </span>
+                          <span className="msg-chip-count">{unreadTotal}</span>
                         )}
                       </button>
                     ))}

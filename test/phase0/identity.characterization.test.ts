@@ -11,6 +11,7 @@ vi.mock('firebase/auth', () => ({
   signInAnonymously: calls.signInAnonymous, updateProfile: calls.update,
   browserLocalPersistence: 'synthetic-persistence', setPersistence: vi.fn(async () => {}),
   onAuthStateChanged: vi.fn(() => () => {}), signOut: vi.fn(), signInWithPopup: vi.fn(), sendPasswordResetEmail: vi.fn(),
+  sendEmailVerification: vi.fn(), reload: vi.fn(),
 }))
 import { ensureGuestUid } from '../../src/lib/guestAuth'
 import { createFirebasePorts } from '../../src/lib/authFirebase'
@@ -18,7 +19,7 @@ import { createFirebasePorts } from '../../src/lib/authFirebase'
 beforeEach(() => {
   resetCloudDouble()
   for (const fn of [calls.create, calls.login, calls.signInAnonymous, calls.update]) fn.mockReset()
-  const registered = { uid: scenarios.identities.authenticatedGuest.uid, email: scenarios.identities.authenticatedGuest.email, displayName: 'Synthetic Guest A', isAnonymous: false, providerData: [{ providerId: 'password' }] }
+  const registered = { uid: scenarios.identities.authenticatedGuest.uid, email: scenarios.identities.authenticatedGuest.email, displayName: 'Synthetic Guest A', isAnonymous: false, emailVerified: false, providerData: [{ providerId: 'password' }] }
   calls.create.mockImplementation(async () => { sdk.auth.currentUser = registered as typeof sdk.auth.currentUser; return { user: registered } })
   calls.login.mockImplementation(async () => { sdk.auth.currentUser = registered as typeof sdk.auth.currentUser; return { user: registered } })
   calls.update.mockResolvedValue(undefined)

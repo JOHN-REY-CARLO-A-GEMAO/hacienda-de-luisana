@@ -82,6 +82,7 @@ export function AuthFormPanel({
   suggestLogin = false,
   onSwitchMode,
   onSwitchToLogin,
+  bare = false,
 }: {
   mode: Mode
   intro: AuthIntro
@@ -91,6 +92,9 @@ export function AuthFormPanel({
   suggestLogin?: boolean
   onSwitchMode: (mode: Mode) => void
   onSwitchToLogin?: () => void
+  /** `bare` embeds the panel in a surface that already provides the card
+   *  (the route gate) — no card-in-card, no sheet grip. */
+  bare?: boolean
 }) {
   const { isConfigured, role } = useAuth()
 
@@ -98,9 +102,17 @@ export function AuthFormPanel({
     // Sheet card (reference set 2, docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md): the
     // auth panel wears a rounded card with a grip handle and a close button,
     // like the reference's "Log in or sign up" bottom sheet. Colors stay ours.
-    <div className="w-full rounded-[28px] border border-forest-900/8 bg-white p-6 shadow-card dark:border-cream-100/10 dark:bg-forest-900/60 sm:p-8">
+    <div
+      className={
+        bare
+          ? 'w-full'
+          : 'w-full rounded-[28px] border border-forest-900/8 bg-white p-6 shadow-card dark:border-cream-100/10 dark:bg-forest-900/60 sm:p-8'
+      }
+    >
       <div className="relative mb-5 flex items-center justify-center">
-        <span className="h-1 w-10 rounded-full bg-forest-900/15 dark:bg-cream-100/20" aria-hidden="true" />
+        {!bare && (
+          <span className="h-1 w-10 rounded-full bg-forest-900/15 dark:bg-cream-100/20" aria-hidden="true" />
+        )}
         <Link
           to="/"
           aria-label="Close sign-in and go home"
@@ -111,7 +123,7 @@ export function AuthFormPanel({
       </div>
 
       <div className="mb-6 text-center">
-        <div className="eyebrow">{intro.eyebrow}</div>
+        <div className="auth-eyebrow">{intro.eyebrow}</div>
         <h1 className="h2 mt-2">{intro.title}</h1>
         <p className="mt-2 text-sm leading-relaxed text-forest-700/85 dark:text-cream-100/85">{intro.body}</p>
       </div>

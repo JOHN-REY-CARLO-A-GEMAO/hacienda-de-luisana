@@ -77,4 +77,34 @@ void main() {
     expect(bookingMatchesFilter(arrival, BookingListFilter.pendingVerification, now), isFalse);
     expect(bookingFilterLabel(BookingListFilter.arrivalsToday), 'Darating Ngayon');
   });
+
+  test('archive buckets match their terminal statuses', () {
+    expect(bookingMatchesFilter(booking(status: 'Completed'), BookingListFilter.archivedCompleted, now), isTrue);
+    expect(bookingMatchesFilter(booking(status: 'Cancelled'), BookingListFilter.archivedCancelled, now), isTrue);
+    expect(bookingMatchesFilter(booking(status: 'Rejected'), BookingListFilter.archivedRejected, now), isTrue);
+    expect(bookingMatchesFilter(booking(status: 'Expired'), BookingListFilter.archivedExpired, now), isTrue);
+    // A live stay is not archived anywhere.
+    for (final bucket in BookingListFilter.archived) {
+      expect(bookingMatchesFilter(booking(status: 'Staying'), bucket, now), isFalse);
+      expect(bookingMatchesFilter(booking(status: 'Pending'), bucket, now), isFalse);
+    }
+  });
+
+  test('a Pending whose 24h hold lapsed reads as Expired in the archive', () {
+    // created_at is 2026-10-01 in the helper, so by `now` the hold has run out.
+    final lapsed = booking(status: 'Pending', checkIn: '2026-10-20');
+    expect(bookingMatchesFilter(lapsed, BookingListFilter.archivedExpired, now), isTrue);
+    expect(bookingMatchesFilter(lapsed, BookingListFilter.archivedNoShow, now), isFalse);
+  });
+
+  test('no-show is derived: committed dates whose check-in day passed', () {
+    final past = booking(status: 'Reserved', checkIn: '2026-10-20');
+    expect(bookingMatchesFilter(past, BookingListFilter.archivedNoShow, now), isTrue);
+    // A future reservation is not a no-show; a same-day one is not yet either.
+    expect(bookingMatchesFilter(booking(status: 'Reserved', checkIn: '2026-10-26'), BookingListFilter.archivedNoShow, now), isFalse);
+    expect(bookingMatchesFilter(booking(status: 'Reserved'), BookingListFilter.archivedNoShow, now), isFalse);
+    // Checked-in stays never count as no-show.
+    expect(bookingMatchesFilter(booking(status: 'Checked-In', checkIn: '2026-10-20'), BookingListFilter.archivedNoShow, now), isFalse);
+    expect(bookingFilterLabel(BookingListFilter.archivedNoShow), 'No-show · Walang dumating');
+  });
 }
