@@ -65,7 +65,7 @@ function ReplayButton() {
   return (
     <>
       {/* Phone and tablet: the last row of the document, after the footer. */}
-      <div className="lg:hidden border-t border-forest-900/10 bg-cream-50 dark:border-cream-100/10 dark:bg-forest-950">
+      <div className="no-print lg:hidden border-t border-forest-900/10 bg-cream-50 dark:border-cream-100/10 dark:bg-forest-950">
         <div className="mx-auto max-w-7xl px-5 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
@@ -86,7 +86,7 @@ function ReplayButton() {
         onClick={tour.start}
         aria-label={REPLAY_LABEL}
         title="How to Book: Launch the interactive guide"
-        className="hidden lg:inline-flex fixed bottom-6 right-4 z-30 items-center gap-1.5 rounded-full border border-cream-100/20 bg-forest-800 px-3.5 py-2 text-xs font-medium text-cream-50 shadow-float transition-all duration-300 hover:bg-forest-900 dark:bg-forest-700 dark:hover:bg-forest-600"
+        className="no-print hidden lg:inline-flex fixed bottom-6 right-4 z-30 items-center gap-1.5 rounded-full border border-cream-100/20 bg-forest-800 px-3.5 py-2 text-xs font-medium text-cream-50 shadow-float transition-all duration-300 hover:bg-forest-900 dark:bg-forest-700 dark:hover:bg-forest-600"
       >
         <span className="text-sage-300">How to Book ·</span>
         <span>Replay tutorial</span>

@@ -183,7 +183,7 @@ export const ROUTE_META: readonly RouteMeta[] = [
     path: '/legal',
     title: `Terms, Privacy & Booking Rules | ${BRAND}`,
     description:
-      'The terms, privacy policy, booking and cancellation rules, payment rules and smart-lock rules that apply to every stay at Hacienda de LuisAna.',
+      'The full terms, privacy notice, booking and cancellation rules, payment rules, guest conduct, safety, liability and smart-lock rules for every stay at Hacienda de LuisAna.',
     index: true,
     prerender: true,
     priority: 0.4,
