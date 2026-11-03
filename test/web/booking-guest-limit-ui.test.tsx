@@ -100,13 +100,13 @@ afterEach(() => {
 describe('guest-count limit follows the selected accommodation', () => {
   it('defaults to the 100-guest online cap before a unit is chosen', async () => {
     open()
-    await until(() => container.querySelector('#guest-count'))
+    await until(() => Boolean(container.querySelector('#guest-count')))
     expect(input('#guest-count').max).toBe('100')
   })
 
   it('caps the input, the steppers and typed values at the unit capacity (A-House: 3)', async () => {
     open()
-    await until(() => container.querySelector('select'))
+    await until(() => Boolean(container.querySelector('select')))
     choose('select', 'house-a-camping')
     await until(() => input('#guest-count').max === '3')
     expect(container.textContent).toContain('Hanggang 3 bisita')
@@ -130,7 +130,7 @@ describe('guest-count limit follows the selected accommodation', () => {
 
   it('clamps an existing count down when a smaller unit is picked', async () => {
     open()
-    await until(() => container.querySelector('#guest-count'))
+    await until(() => Boolean(container.querySelector('#guest-count')))
     fill('#guest-count', '8')
     expect(input('#guest-count').value).toBe('8')
     choose('select', 'house-a-camping')
