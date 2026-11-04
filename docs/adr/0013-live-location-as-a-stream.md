@@ -177,6 +177,57 @@ Three limits, each deliberate:
   phone under a metal roof does not flicker between "40 m away" and "here". It
   never ends a session and never announces an arrival.
 
+## Amendment, 2026-11-04 (second) — the silence was a publish bug
+
+The field test that followed the first amendment produced this: a live Firestore
+consent, a ticking countdown on the Admin's panel, and *"Waiting for the Guest's
+first position…"* forever, with an empty node in the Realtime Database.
+
+It was not the rules, the transport, the deploy, or a stale bundle. It was
+`shouldPublishFix`, and the bug was an `&&`.
+
+    if (now - last.atMs < interval) return too soon     // 3 s
+    if (distance(last, next) < floor) return not far enough   // 10 m
+
+Both had to pass for a fix to be published. So a Guest who opened the share and
+then **stood still** — at the gate, on the porch, waiting for the Admin to answer,
+which is the ordinary case — published exactly one position (the first fix is
+always sent) and then nothing for the rest of the session. The Admin's panel was
+waiting for a second fix that the policy had decided never to send.
+
+The distance floor was described in a comment as protecting against noise. It does
+not: a noisy fix *is* a fix that differs from the last one, so the floor suppressed
+exactly the reports that were real, on a still phone, while a moving Guest was
+reported every few metres. The two triggers were always meant to be alternatives —
+movement is what needs reporting quickly, stillness needs only a heartbeat — and
+they are now an OR. `MIN_PUBLISH_INTERVAL_MS` is the heartbeat; `MIN_PUBLISH_DISTANCE_M`
+decides whether movement can beat it.
+
+A policy unit test asserted the broken behaviour ("holds a fix back when the Guest
+has not moved"), so the bug was green. That test now asserts the opposite and says
+why. **The lesson worth keeping: a test written from the same reasoning as the code
+confirms the reasoning, not the feature.** The field test found this in one session;
+1343 passing tests did not find it in a week.
+
+### The second half: a refusal had no words
+
+`publishFix` answered `'retry' | 'sent' | 'stopped'`. On a refusal the Guest's own
+banner said *"Locating GPS…"* — the same words as a GPS that has not answered yet —
+so a Guest whose every write was refused was told to keep waiting, and the Admin was
+told the Guest had not arrived. Neither side had a word for "your position is not
+being accepted."
+
+`publishFixReported` now carries the database's error code beside the verdict, and
+the Guest's banner names the fault and keeps the session running:
+
+    Location is not reaching the hacienda
+    Your position is not reaching the hacienda. Sharing is still on and will keep
+    retrying — if this does not clear, tell the hacienda and send them this code:
+    database/permission-denied
+
+The session is deliberately **not** ended over this. A refused write is worth
+another fix; ending the share would turn a rules problem into a lost session.
+
 ## What this costs, honestly
 
 - One Firestore write when a share starts, one update when it stops. **Not one write per GPS fix** — that is the whole reason for the split.

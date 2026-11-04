@@ -25,10 +25,24 @@ export function LiveLocationStatus({
   }
 
   const stateDetail = sharing.offline
-    ? 'Offline — paused'
-    : sharing.lastSentAtMs !== null
-      ? 'Updating live'
-      : 'Locating GPS…'
+    ? 'Paused — no connection'
+    : sharing.fixError
+      ? 'Location is not reaching the hacienda'
+      : sharing.lastSentAtMs !== null
+        ? 'Updating live'
+        : 'Locating GPS…'
+
+  // A refused write is not "still locating". The Guest is standing somewhere
+  // the hacienda cannot see, and nothing on their screen used to say so: the
+  // banner said "Locating GPS…" for the whole session, the Admin's panel said
+  // "Waiting for the Guest's first position…", and neither side had a word for
+  // what was actually wrong. Name it, and keep the session alive — the code is
+  // for the Guest to report, not a reason to end a share that may recover.
+  const publishWarning =
+    sharing.fixError && sharing.phase === 'active' && !sharing.offline
+      ? 'Your position is not reaching the hacienda. Sharing is still on and will keep retrying — if this does not clear, tell the hacienda and send them this code: ' +
+        sharing.fixError
+      : null
 
   return (
     <div
@@ -77,6 +91,12 @@ export function LiveLocationStatus({
           </button>
         )}
       </div>
+
+      {publishWarning && (
+        <p role="alert" className="w-full text-[11px] leading-snug text-forest-800 dark:text-cream-100/80">
+          {publishWarning}
+        </p>
+      )}
     </div>
   )
 }
