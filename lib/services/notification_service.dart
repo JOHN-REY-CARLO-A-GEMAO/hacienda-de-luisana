@@ -755,8 +755,8 @@ class NotificationService {
     return _permission;
   }
 
-  /// Requests OS notification permission from the first-open flow or the
-  /// explicit Phone notifications setting.
+  /// Requests OS notification permission from the first-open flow.
+  /// Subsequent permission changes are managed in the phone’s system settings.
   ///
   /// Marks the prompt as shown so the app does not repeat the native dialog on
   /// every launch, and syncs the Admin device token when permission is granted.
