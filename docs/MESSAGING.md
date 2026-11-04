@@ -185,6 +185,38 @@ A device reporting a position every second therefore produces at most ~20 writes
 
 **A share never reports success it did not have.** `unavailableReason()` returns `signed-out`, `no-firebase` or `no-database` before the Guest presses anything, and the control is disabled with the reason in its tooltip. A Guest who believes the Admin can see them when the Admin cannot is the one failure this feature cannot have.
 
+### Point B — where the Guest is, relative to the hacienda
+
+One position is a coordinate without a reference. The reader adds the hacienda's
+own pin (the `BUSINESS.coordinates` constant — a business address, never part of
+the stream) and shows:
+
+| Reading | What the Admin sees |
+| --- | --- |
+| ≥ 50 m away, outside the fix's own accuracy | `~1.8 km from the Hacienda, north-east.` + the caveat below |
+| within 50 m, or within the reported accuracy | `At the Hacienda — within the accuracy of the reading.` |
+| not a position at all | `The distance from the Hacienda cannot be worked out from this position.` |
+
+**The distance is a straight line and says so.** `STRAIGHT_LINE_CAVEAT` sits
+under the number: *"Straight-line distance, not the driving route. Open the
+directions for the road distance."* There is no routing engine in this app and
+no provider is called: the road distance comes from a directions **link**
+(`directionsUrl()`, OpenStreetMap) that the Admin presses, which is the only
+moment a Guest's position leaves the two stores it consented to.
+
+`proximityTo()` is pure, takes the destination as an argument, and is covered by
+`test/web/live-location-point-b.test.ts` — bearing to the nearest of eight
+points, the metres/kilometres wording, and the accuracy-widened "at the property"
+test that keeps the badge from flickering.
+
+**The Admin's web reader.** `/admin/live-location/:convoId` (permission
+`guest-location:read`, Admin only) is the browser counterpart of the Flutter
+panel: it reads the consent and the node, passes both through `evaluateReader()`
+→ `checkFix()`, and draws nothing the rules would not have allowed. It shows the
+coordinate, accuracy, age and countdown, the point-B sentence, and two links —
+the position on OpenStreetMap, and driving directions to the Hacienda. No
+embedded map: an embed is a third-party tile request carrying the position.
+
 ### Who may see a position
 
 | Actor | Reads the session | Reads the position |

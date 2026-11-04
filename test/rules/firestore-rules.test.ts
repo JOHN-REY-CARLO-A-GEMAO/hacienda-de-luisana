@@ -2570,6 +2570,64 @@ describe('location_sessions: the consent, never the position', () => {
 })
 
 // ---------------------------------------------------------------------------
+// The clock probe (ADR-0013, amendment: the window is stated on the server's
+// clock)
+// ---------------------------------------------------------------------------
+
+describe('clock_probes: one throwaway document, so a Guest can be told the time', () => {
+  const probe = (over: Partial<DocData> = {}): DocData => ({
+    uid: GUEST_UID,
+    probed_at: ruleTimestamp('2026-10-01T09:00:00.000Z'),
+    ...over,
+  })
+
+  it('lets a signed-in Guest write a probe as themselves', () => {
+    expect(allow({ path: `clock_probes/${GUEST_UID}-1`, method: 'create', auth: anonymousGuest(), requestData: probe() })).toBe(true)
+    expect(allow({ path: `clock_probes/${GUEST_UID}-2`, method: 'create', auth: emailGuest(), requestData: probe() })).toBe(true)
+  })
+
+  it('refuses a probe written in somebody else\'s name, or by nobody', () => {
+    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'create', auth: anonymousGuest(), requestData: probe({ uid: OTHER_GUEST_UID }) })).toBe(true)
+    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'create', auth: null, requestData: probe() })).toBe(true)
+  })
+
+  it('refuses a probe carrying anything a probe does not need', () => {
+    // The narrowest write in the file, deliberately: a Guest who could park a
+    // coordinate or a note here would have found a way around the rule that
+    // keeps a position out of Firestore.
+    for (const extra of [{ lat: 14.1 }, { lng: 121.3 }, { note: 'anything' }]) {
+      expect(
+        deny({
+          path: `clock_probes/${GUEST_UID}-1`,
+          method: 'create',
+          auth: anonymousGuest(),
+          requestData: probe(extra as Partial<DocData>),
+        }),
+      ).toBe(true)
+    }
+  })
+
+  it('lets only its owner read a probe back, and nobody change one', () => {
+    expect(allow({ path: `clock_probes/${GUEST_UID}-1`, method: 'get', auth: anonymousGuest(), resourceData: probe() })).toBe(true)
+    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'get', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: probe() })).toBe(true)
+    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'get', auth: allowlistedAdmin(), resourceData: probe() })).toBe(true)
+    expect(deny({ path: 'clock_probes', method: 'list', auth: anonymousGuest() })).toBe(true)
+    expect(deny({
+      path: `clock_probes/${GUEST_UID}-1`,
+      method: 'update',
+      auth: anonymousGuest(),
+      resourceData: probe(),
+      requestData: probe({ probed_at: ruleTimestamp('2026-10-01T09:00:01.000Z') }),
+    })).toBe(true)
+  })
+
+  it('lets its owner clear it, because the probe is not a record', () => {
+    expect(allow({ path: `clock_probes/${GUEST_UID}-1`, method: 'delete', auth: anonymousGuest(), resourceData: probe() })).toBe(true)
+    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'delete', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: probe() })).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Anything else
 // ---------------------------------------------------------------------------
 

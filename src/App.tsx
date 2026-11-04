@@ -21,6 +21,7 @@ import { AccountPage } from './pages/AccountPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { LegalPage } from './pages/LegalPage'
 import { MessagesPage } from './pages/MessagesPage'
+import { AdminLiveLocationPage } from './pages/AdminLiveLocationPage'
 import { StatusPage } from './pages/StatusPage'
 import { Tutorial } from './components/Tutorial'
 import { MessageScreen } from './components/ui'
@@ -148,6 +149,19 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <MessagesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* The Admin's live-location reader. The Guest's share has always
+              said "the Admin can see your location"; this is the browser side of
+              that sentence, gated by `guest-location:read` — which only the Admin
+              role holds — and by the two rules files underneath it. */}
+          <Route
+            path="/admin/live-location/:convoId"
+            element={
+              <ProtectedRoute>
+                <AdminLiveLocationPage />
               </ProtectedRoute>
             }
           />

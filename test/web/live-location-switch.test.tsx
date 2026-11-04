@@ -3,10 +3,14 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LocationSession } from '../../src/lib/liveLocationPolicy'
 
-const api = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), publish: vi.fn() }))
+const api = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), publish: vi.fn(), resume: vi.fn(), skew: vi.fn(), arm: vi.fn() }))
 vi.mock('../../src/lib/liveLocation', () => ({
   canShareLocation: () => true, unavailableReason: () => null,
   startSharing: api.start, stopSharing: api.stop, publishFix: api.publish,
+  // The three the hook reaches for on mount and before a start. `resume` answers
+  // "nothing to take up" by default, which is the ordinary case for these cases
+  // and is what the old behaviour was.
+  resumeSharing: api.resume, estimateClockSkew: api.skew, armDisconnectCleanup: api.arm,
 }))
 import { useLiveLocation, type UseLiveLocation } from '../../src/hooks/useLiveLocation'
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
@@ -22,6 +26,10 @@ function View({ id }: { id: string }) { result = useLiveLocation({ convoId: id, 
 function render(id: string) { act(() => root.render(<View id={id} />)) }
 beforeEach(() => {
   api.start.mockReset(); api.stop.mockReset().mockResolvedValue(undefined)
+  api.publish.mockReset().mockResolvedValue('sent')
+  api.resume.mockReset().mockResolvedValue(null)
+  api.skew.mockReset().mockResolvedValue(null)
+  api.arm.mockReset().mockResolvedValue(undefined)
   vi.stubGlobal('navigator', { geolocation: { watchPosition: vi.fn(() => 1), clearWatch: vi.fn() }, onLine: true })
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
 })
@@ -45,6 +53,9 @@ describe('live location conversation lifecycle', () => {
     api.start.mockImplementation(() => new Promise((done) => { resolve = done }))
     render('old')
     act(() => { void result.start(30) })
+    // `start` probes the server clock first, so the call to `startSharing` is a
+    // turn later than it used to be. Wait for it rather than assuming.
+    await act(async () => { await Promise.resolve() })
     render('new')
     await act(async () => { resolve({ ok: true, session: session('old') }); await Promise.resolve() })
     expect(api.stop).toHaveBeenCalledWith(expect.objectContaining({ convoId: 'old' }))

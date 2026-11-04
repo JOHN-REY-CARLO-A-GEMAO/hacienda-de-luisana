@@ -30,7 +30,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   canShareLocation,
+  estimateClockSkew,
   publishFix,
+  resumeSharing,
   startSharing,
   stopSharing,
   unavailableReason,
@@ -49,6 +51,8 @@ import {
 export type SharingState = {
   /** What the control shows: idle, active, or the reason it is not sharing. */
   phase: 'idle' | 'starting' | 'active' | 'error'
+  /** This conversation's earlier session is being read back, on mount. */
+  resuming: boolean
   /** The session being shared, while there is one. */
   session: LocationSession | null
   /** A sentence for the Guest, or null while all is well. */
@@ -68,7 +72,7 @@ export type UseLiveLocation = SharingState & {
   stop: () => Promise<void>
 }
 
-const IDLE: Omit<SharingState, 'blocked' | 'offline'> = {
+const IDLE: Omit<SharingState, 'blocked' | 'offline' | 'resuming'> = {
   phase: 'idle',
   session: null,
   message: null,
@@ -83,7 +87,11 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [lastSentAtMs, setLastSentAtMs] = useState<number | null>(null)
   const [offline, setOffline] = useState(() => (typeof navigator === 'undefined' ? false : !navigator.onLine))
-  const [blocked] = useState<StartFailure | null>(() => unavailableReason(input.uid))
+  // Recomputed rather than frozen: this is "can this build share, *now*, for
+  // *this* person", and a session that restores a second after the first render
+  // must not leave the control permanently disabled with a stale reason.
+  const blocked = unavailableReason(input.uid)
+  const [resuming, setResuming] = useState(false)
 
   // The live values the watch callback needs, without re-subscribing the GPS
   // watch every time a fix is published.
@@ -148,19 +156,31 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
             now,
           )
             .then((outcome) => {
-              if (outcome === 'sent') setLastSentAtMs(now)
-            })
-            .catch(() => {
-              // Two different failures, two different answers. A dropped
-              // connection is the device's, not the session's: the watch stays
-              // open and the panel says the position is not updating. Anything
-              // else is the server saying the session is over, and the only
-              // honest reading of that is that sharing has stopped.
-              if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-                setOffline(true)
+              if (outcome === 'sent') {
+                setLastSentAtMs(now)
                 return
               }
-              void endSession('Sharing stopped: the Hacienda\'s server refused the update.')
+              if (outcome === 'stopped') {
+                void endSession('Sharing stopped: the Hacienda\'s server refused the update.')
+                return
+              }
+              // 'retry' — the write did not land, and that is not the same as
+              // the session being over. The last fix is forgotten so the very
+              // next GPS tick is eligible again (a fix that failed because it
+              // was "not far enough" would otherwise never be retried), the
+              // watch stays open, and the panel tells the Guest what is true:
+              // the position is not updating. Ending the share over one bad
+              // write was the bug — a transient refusal killed a session that
+              // was working a second earlier.
+              lastFixRef.current = null
+              setOffline(true)
+            })
+            .catch(() => {
+              // `publishFix` answers rather than throws; this is the belt to
+              // that braces: an SDK failure outside its try is still only a
+              // missed fix, never proof the session ended.
+              lastFixRef.current = null
+              setOffline(true)
             })
         },
         (error) => {
@@ -190,7 +210,13 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
       const generation = ++startGeneration.current
       setPhase('starting')
       setMessage(null)
-      const result = await startSharing({ convoId, uid, minutes, nowMs: Date.now() })
+      // Ask the server the time before stating a window on its clock. Best
+      // effort by construction: `estimateClockSkew` returns null when the probe
+      // cannot run, and `startSharing` then falls back to the device's clock
+      // with a wider guard band.
+      const skew = await estimateClockSkew(uid)
+      if (!mounted.current || generation !== startGeneration.current) return
+      const result = await startSharing({ convoId, uid, minutes, nowMs: Date.now(), skew })
       if (!mounted.current || generation !== startGeneration.current || currentSubject.current.convoId !== convoId || currentSubject.current.uid !== uid) {
         if (result.ok) void stopSharing({ convoId: result.session.conversation_id, uid: result.session.guest_uid, nowMs: Date.now() }).catch(() => {})
         return
@@ -209,6 +235,61 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
   )
 
   const stop = useCallback(() => endSession(null), [endSession])
+
+  /**
+   * Take up a session the store already has — after a reload, a restore from
+   * the back/forward cache, or a second tab — instead of starting a second one.
+   *
+   * Two things make this safe rather than a hole in "the Guest pressed Stop":
+   * `resumeSharing` only returns a session whose `active` is true, whose window
+   * is open, and whose `guest_uid` is this Guest's; and the secret comes back
+   * from the document, so the fixes that follow are the ones the Admin can
+   * correlate. The server-side disconnect cleanup is armed again here, because
+   * the connection that registered it is gone.
+   */
+  const adopt = useCallback(
+    (pending: LocationSession) => {
+      sessionRef.current = pending
+      lastFixRef.current = null
+      setSession(pending)
+      setPhase('active')
+      setMessage(null)
+      setLastSentAtMs(null)
+      openWatch(pending)
+    },
+    [openWatch],
+  )
+
+  // Nothing in memory survives a reload, so the store is asked on mount (and
+  // whenever the Guest switches conversation): is there a consent for this
+  // conversation that I may carry on with? Before this, a refresh either ended
+  // the share or left a live consent the Admin could read while the Guest's own
+  // screen said nothing was being shared.
+  useEffect(() => {
+    if (!convoId || !uid) return
+    if (unavailableReason(uid)) return
+    let cancelled = false
+    const generation = startGeneration.current
+    setResuming(true)
+    void (async () => {
+      const pending = await resumeSharing({ convoId, uid, nowMs: Date.now() })
+      if (cancelled || !mounted.current) return
+      // A start, a stop, or a change of subject that happened while the read was
+      // in flight wins: this only fills an empty panel.
+      if (generation !== startGeneration.current) return
+      if (currentSubject.current.convoId !== convoId || currentSubject.current.uid !== uid) return
+      if (sessionRef.current) return
+      setResuming(false)
+      if (!pending) return
+      void import('../lib/liveLocation').then(({ armDisconnectCleanup }) =>
+        armDisconnectCleanup(pending.conversation_id, pending.guest_uid),
+      )
+      adopt(pending)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [adopt, convoId, uid])
 
   // The countdown, and the session ending by itself when the window closes.
   useEffect(() => {
@@ -244,7 +325,12 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
   // Closing the tab must not leave a watch or a timer running.
   useEffect(() => {
     if (!session || typeof window === 'undefined') return
-    const onPageHide = () => {
+    const onPageHide = (event: PageTransitionEvent) => {
+      // A page going into the back/forward cache is not gone — it is frozen
+      // with its state intact and will be resumed exactly as it was. Ending the
+      // share there would end it every time the Guest followed a link and
+      // pressed Back, which is not what "I closed the page" means.
+      if (event.persisted) return
       const current = sessionRef.current
       if (!current) return
       // `sendBeacon` cannot carry a Firestore write, so the end is best-effort
@@ -298,6 +384,7 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
   return {
     ...IDLE,
     phase,
+    resuming,
     session,
     message,
     countdown: session ? formatCountdown(session.expires_at_ms, nowMs) : null,

@@ -105,6 +105,148 @@ export function expiryFor(startedAtMs: number, minutes: number): number {
   return startedAtMs + Math.min(Math.max(1, Math.floor(minutes)), MAX_SHARE_MINUTES) * 60_000
 }
 
+/**
+ * How far ahead of the phone's clock the server's clock is, in milliseconds.
+ *
+ * Both stores check a window against **their** clock, never the device's:
+ * `firestore.rules` requires `expires_at <= request.time + 1h` and
+ * `database.rules.json` requires `expires_at_ms <= now + 3600000`, where `now`
+ * is the Realtime Database server's. A phone whose clock runs a second fast
+ * therefore asks for a window that is already past the cap, and the *longest*
+ * share — the one the Guest most wants — is the one refused: the consent create
+ * comes back `permission-denied`, and every fix is rejected as "the server
+ * refused the update". Nothing in the browser can fix its own clock, but it can
+ * be told the offset.
+ *
+ * The inputs are the moments one server-stamped document was asked for and the
+ * moment its stamp was read back, so the offset is bracketed rather than
+ * guessed and never runs ahead of the server:
+ *
+ *   - `offsetMs` is the *low* end of the bracket — the local time before which
+ *     the server had certainly not yet reached the stamp — so a window built on
+ *     it is never longer than the Guest asked for. It is off by at most the
+ *     round trip, and always in the safe direction.
+ *   - `serverTimeMs` is the server's clock as this call reads it now.
+ *   - `certain` says whether the bracket was tight enough to be worth anything
+ *     (see `SKEW_TOLERANCE_MS`). A bracket is never zero-width — a round trip
+ *     takes time — so "certain" is a threshold, not a proof, and callers that
+ *     can say so should.
+ */
+export type ClockSkew = { offsetMs: number; serverTimeMs: number; certain: boolean }
+
+/** Wider than this and the measurement is not worth believing. */
+export const SKEW_TOLERANCE_MS = 1_000
+
+export const NO_CLOCK_SKEW: ClockSkew = { offsetMs: 0, serverTimeMs: 0, certain: false }
+
+export function clockSkewFrom(stamp: { requestedAtMs: number; receivedAtMs: number; stampMs: number }): ClockSkew | null {
+  const { requestedAtMs, receivedAtMs, stampMs } = stamp
+  if (![requestedAtMs, receivedAtMs, stampMs].every((value) => Number.isFinite(value))) return null
+  const low = stampMs - receivedAtMs
+  const high = stampMs - requestedAtMs
+  const offsetMs = Math.min(low, high)
+  return { offsetMs, serverTimeMs: receivedAtMs + offsetMs, certain: high - low <= SKEW_TOLERANCE_MS }
+}
+
+/**
+ * When a share should end, on **both** clocks.
+ *
+ * The obvious implementation — `expires_at = now + minutes` — is the bug this
+ * function exists to remove. The rules compare that timestamp with the
+ * server's clock, so a device whose clock is a little ahead asks for a window
+ * that is already past the hour cap: the consent create comes back
+ * `permission-denied` and the 60-minute option is the one that fails. So the
+ * window is stated in the clock the reader will use:
+ *
+ *   - `serverMs` is what `expires_at` is written as. It is `now + skew + the
+ *     chosen minutes`, i.e. this browser's clock converted into the server's,
+ *     so the rule's `expires_at <= request.time + 1h` is satisfied by the
+ *     Guest's choice rather than by a millisecond.
+ *   - `localMs` is the *same instant* on the device's clock, which is what the
+ *     countdown reads and what the Realtime Database node is stamped with.
+ *   - both are pulled in by `guardMs`, the band that absorbs the write's own
+ *     round trip (and, when the clock could not be measured at all, the whole
+ *     of a possible drift).
+ *
+ * A share is therefore never longer than the Guest asked for, and never
+ * refused for saying so.
+ */
+export function shareWindow(input: {
+  nowMs: number
+  minutes: number
+  skew?: ClockSkew | null
+}): { localMs: number; serverMs: number; durationMs: number; guardMs: number } {
+  const minutes = Math.min(Math.max(1, Math.floor(input.minutes)), MAX_SHARE_MINUTES)
+  const durationMs = minutes * 60_000
+  const offset = input.skew && Number.isFinite(input.skew.offsetMs) ? input.skew.offsetMs : null
+  // A measured clock is trusted to a few seconds' round trip; an unmeasured one
+  // is trusted to nothing, so the window gives up a minute instead.
+  const guardMs = offset === null ? CLOCK_GUARD_MS : WINDOW_GUARD_MS
+  const clientMs = input.nowMs + durationMs - guardMs
+  return {
+    localMs: clientMs,
+    serverMs: offset === null ? clientMs : clientMs + offset,
+    durationMs,
+    guardMs,
+  }
+}
+
+/**
+ * The band, in milliseconds, that a window is pulled inside when the device's
+ * clock could not be measured. A minute is far more than any phone drifts and
+ * far less than the shortest share the Guest may choose.
+ */
+export const CLOCK_GUARD_MS = 60_000
+
+/** The band when the offset *was* measured: the write's own round trip, twice over. */
+export const WINDOW_GUARD_MS = 5_000
+
+/**
+ * Is this stored consent still one the Guest may resume?
+ *
+ * A reload, a tab restored from the back/forward cache, a second tab: all of
+ * them arrive with no memory of the session, and the store is the only place
+ * that knows. The rules let the owning Guest read the consent for exactly this
+ * reason, so the question is asked of the document rather than of memory.
+ *
+ * Two refusals that matter: a session the Guest already stopped (`active` is
+ * false) is not resumable — reopening it is exactly what `firestore.rules`
+ * forbids — and neither is one whose window has closed. A rotating phone that
+ * re-mounts the page must not resurrect a share the Guest ended.
+ */
+export function resumableSession(raw: unknown, nowMs: number): LocationSession | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const d = raw as Record<string, unknown>
+  const num = (k: string) => (typeof d[k] === 'number' && Number.isFinite(d[k]) ? (d[k] as number) : null)
+  const str = (k: string) => (typeof d[k] === 'string' ? (d[k] as string) : null)
+  const startedAtMs = num('started_at_ms')
+  const expiresAtMs = num('expires_at_ms')
+  const durationMinutes = num('duration_minutes')
+  const guestUid = str('guest_uid')
+  const conversationId = str('conversation_id')
+  const secret = str('stream_secret')
+  if (
+    startedAtMs === null || expiresAtMs === null || durationMinutes === null ||
+    guestUid === null || conversationId === null || secret === null
+  ) {
+    return null
+  }
+  if (secret.length !== SESSION_SECRET_LENGTH) return null
+  if (d.active !== true) return null
+  if (isExpired(expiresAtMs, nowMs)) return null
+  if (durationMinutes < MIN_SHARE_MINUTES || durationMinutes > MAX_SHARE_MINUTES) return null
+  return {
+    id: conversationId,
+    conversation_id: conversationId,
+    guest_uid: guestUid,
+    active: true,
+    started_at_ms: startedAtMs,
+    expires_at_ms: expiresAtMs,
+    duration_minutes: durationMinutes,
+    stream_secret: secret,
+  }
+}
+
 /** Has the window closed? A millisecond early is still sharing. */
 export function isExpired(expiresAtMs: number, nowMs: number): boolean {
   return nowMs >= expiresAtMs
@@ -145,6 +287,160 @@ export function distanceM(a: LatLng, b: LatLng): number {
     Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2)
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)))
 }
+
+// ----------------------------------------------------------------------------
+// Point B: where the Guest is relative to the hacienda
+// ----------------------------------------------------------------------------
+// The stream carries ONE point. On its own that is two numbers and no meaning —
+// an owner asking "nasaan na ba sila?" cannot turn `14.19, 121.53` into a
+// decision. Adding the hacienda's own pin turns one point into a bearing and a
+// distance, which is the smallest thing that answers the question.
+//
+// Three deliberate limits, each of which a later edit must not relax:
+//
+//   1. **It is a straight line, never a route.** There is no routing engine
+//      behind this and there must not appear to be one. `labelForDistance` and
+//      `bearingLabel` exist so the UI has no excuse to print a bare "1.8 km"
+//      that a reader takes for road distance.
+//   2. **It is computed on the device, from a constant.** Both points are
+//      already in the reader's memory; nothing is sent anywhere. A position
+//      that is sent to a routing API is a position disclosed to a fourth party
+//      the Guest never consented to — see ADR-0013.
+//   3. **It answers a different question from "arrived".** A phone under a
+//      metal roof in Luisiana reports ±50 m ballistically, so "close enough"
+//      is a statement about the *reading*, not about the Guest, and the UI
+//      says so rather than announcing an arrival.
+
+/**
+ * How close is "here", in metres.
+ *
+ * Two readings are deliberately treated as the same place: a fix inside the
+ * accuracy it reports (the device itself says it cannot tell), and a fix inside
+ * a hard floor. The floor matters because a very good fix (accuracy 5 m) would
+ * otherwise put a Guest standing at the gate *outside* the threshold, and flip a
+ * stable "at the property" badge back to "40 m away" on the next tick.
+ */
+export const AT_PROPERTY_M = 50
+
+export type Proximity =
+  /** Within the threshold, or inside the device's own error: "here". */
+  | { kind: 'at-property'; distanceM: number }
+  /** A direction and a straight-line distance. */
+  | { kind: 'away'; distanceM: number; bearingDeg: number; bearing: BearingLabel }
+  /** The point is not a position, so nothing is claimed. */
+  | { kind: 'unknown' }
+
+/**
+ * Where one position is, relative to a fixed point B.
+ *
+ * `accuracyM` is the reading's own error. It is used only to widen the
+ * "at the property" test in the safe direction — a device that says ±200 m
+ * should not produce a confident "15 m away".
+ */
+export function proximityTo(
+  point: LatLng | null | undefined,
+  destination: LatLng,
+  accuracyM = 0,
+): Proximity {
+  if (!point || !isFinite(point.lat) || !isFinite(point.lng)) return { kind: 'unknown' }
+  if (point.lat < -90 || point.lat > 90 || point.lng < -180 || point.lng > 180) return { kind: 'unknown' }
+  const metres = distanceM(point, destination)
+  if (metres <= Math.max(AT_PROPERTY_M, accuracyM)) {
+    return { kind: 'at-property', distanceM: metres }
+  }
+  const bearingDeg = bearingDegrees(point, destination)
+  return { kind: 'away', distanceM: metres, bearingDeg, bearing: bearingLabel(bearingDeg) }
+}
+
+/**
+ * Initial bearing from `from` to `to`, degrees clockwise from north, 0–360.
+ *
+ * Great-circle, not rhumb line: over the few kilometres this feature deals in
+ * the two agree to a degree, and the great-circle one is the honest answer for
+ * "which way do I turn".
+ */
+export function bearingDegrees(from: LatLng, to: LatLng): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const toDeg = (rad: number) => (rad * 180) / Math.PI
+  const lat1 = toRad(from.lat)
+  const lat2 = toRad(to.lat)
+  const dLng = toRad(to.lng - from.lng)
+  const y = Math.sin(dLng) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  return (toDeg(Math.atan2(y, x)) + 360) % 360
+}
+
+/** The eight compass points, which is as fine as a GPS fix justifies. */
+export const BEARING_POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const
+export type BearingPoint = (typeof BEARING_POINTS)[number]
+export type BearingLabel = { point: BearingPoint; full: string; deg: number }
+
+const BEARING_NAMES: Record<BearingPoint, string> = {
+  N: 'north',
+  NE: 'north-east',
+  E: 'east',
+  SE: 'south-east',
+  S: 'south',
+  SW: 'south-west',
+  W: 'west',
+  NW: 'north-west',
+}
+
+export function bearingLabel(deg: number): BearingLabel {
+  const wrapped = ((deg % 360) + 360) % 360
+  // 22.5° per sector, centred on each point, so 350° reads as north rather than
+  // as north-west.
+  const index = Math.round(wrapped / 45) % BEARING_POINTS.length
+  const point = BEARING_POINTS[index]
+  return { point, full: BEARING_NAMES[point], deg: wrapped }
+}
+
+/**
+ * A distance as a sentence fragment, in the unit that suits it.
+ *
+ * Metres below a kilometre (a "0.4 km away" reads as further than "400 m away"
+ * to everybody), one decimal above. The tilde is part of the string on purpose:
+ * a GPS fix is never exact, and a bare "1.8 km" invites a precision the reading
+ * does not have.
+ */
+export function labelForDistance(metres: number): string {
+  if (!isFinite(metres) || metres < 0) return 'an unknown distance'
+  if (metres < 1_000) {
+    const rounded = metres < 100 ? Math.round(metres / 10) * 10 : Math.round(metres / 50) * 50
+    return `~${Math.max(10, rounded)} m`
+  }
+  return `~${(metres / 1_000).toFixed(1)} km`
+}
+
+/**
+ * The whole sentence an Admin reads, in one place.
+ *
+ * Kept in the policy module rather than in a component so the wording — the
+ * part that decides whether an owner mistakes a straight line for a drive — is
+ * unit-tested, and so the Flutter panel and the web page can be held to the
+ * same words. English, like the rest of both apps (docs/DEFENSE_CHEATSHEET.md
+ * counts mixed-language copy as a defect).
+ */
+export function proximitySentence(proximity: Proximity): string {
+  if (proximity.kind === 'unknown') {
+    return 'The distance from the Hacienda cannot be worked out from this position.'
+  }
+  if (proximity.kind === 'at-property') {
+    return 'At the Hacienda — within the accuracy of the reading.'
+  }
+  return `${labelForDistance(proximity.distanceM)} from the Hacienda, ${proximity.bearing.full}.`
+}
+
+/**
+ * The one-line caveat that has to sit beside the distance.
+ *
+ * Not optional and not a tooltip: the number is the most mis-readable thing on
+ * the screen, and "it is not the driving distance" is the fact that prevents the
+ * owner from telling a Guest "you're only 2 km away" when the road is nine.
+ */
+export const STRAIGHT_LINE_CAVEAT =
+  'Straight-line distance, not the driving route. Open the directions for the road distance.'
+
 
 export type PublishDecision = { publish: true } | { publish: false; reason: string }
 

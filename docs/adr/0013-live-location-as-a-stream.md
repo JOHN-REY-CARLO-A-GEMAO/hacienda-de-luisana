@@ -110,6 +110,73 @@ A Profile-promoted Admin is recognised by the Realtime Database through `live_lo
 
 The Admin's reader compares `expires_at` against the clock as well, so an expired session is not drawable even in the window before anything else notices.
 
+## Amendment, 2026-11-04 — the clock, the reload, and point B
+
+Four changes, all found by reading the feature end to end rather than by
+running it. None of them changes the rule the design turns on.
+
+**1. The window is stated on the server's clock.** `expires_at` used to be the
+*device's* `now + chosen minutes`, and both `firestore.rules`
+(`expires_at <= request.time + 1h`) and `database.rules.json`
+(`expires_at_ms <= now + 3600000`) compare it with the *server's* clock. A phone
+a second fast therefore asked for a window already past the cap, and the 60-minute
+share — the longest, the one a Guest most often wants — was refused at the create.
+Every fix that followed was refused too, and `useLiveLocation` read that as "the
+server ended the session".
+
+The fix is one throwaway document. `estimateClockSkew()` writes
+`clock_probes/{uid}-{now}` with a single `serverTimestamp()`, reads it back with
+`getDocFromServer`, and `clockSkewFrom()` brackets the offset between the two
+clocks. `shareWindow()` then states the same instant twice: `expires_at` on the
+server's clock (what the rules compare) and `expires_at_ms` on the device's (what
+the countdown and the stream use). Both are pulled in by a guard band, so a share
+is never longer than the Guest asked for. When the probe cannot run — no network,
+a rules file that has not been deployed — the feature still works on the device's
+clock with a wider band, which is what it did before, minus the refusal.
+
+`clock_probes` is the narrowest write in `firestore.rules`: the Guest's own uid,
+one server-stamped field, `hasOnly(['uid', 'probed_at'])`, no update, readable
+only by its owner, deleted as soon as it is read.
+
+**2. A refused fix is a retry, not an ending.** `publishFix` answered by throwing,
+and the hook's `.catch` ended the session on any error. One transient refusal — a
+race with a re-started session, a clock that had not settled — tore down a share
+that was working a second earlier. It now answers `'sent' | 'stopped' | 'retry'`;
+only an expired window or a missing transport is `'stopped'`. A `'retry'` forgets
+the last fix (so the next GPS tick is eligible even though the Guest has not
+moved) and the panel says the position is not updating.
+
+**3. A reload is survivable, and a stopped share cannot be reopened.** Nothing
+read `location_sessions` back, so a refresh either ended the share on `pagehide`
+or left a live consent the Admin could read while the Guest's own screen said
+nothing was being shared — even though the rules grant the owning Guest that read
+for exactly this purpose. `resumeSharing()` reads the consent on mount,
+`resumableSession()` refuses a document that is stopped, expired, malformed or
+belonging to somebody else, and the hook adopts it. `pagehide` with
+`event.persisted` (a back/forward-cache freeze, not a close) no longer ends
+anything.
+
+**4. Point B — where the Guest is, relative to the hacienda.** The stream carries
+one point, and one point answers nothing: an owner asking "nasaan na ba sila?"
+cannot turn `14.19, 121.53` into a decision. `proximityTo()` adds the hacienda's
+own pin (from the site config, passed in as an argument) and returns a
+straight-line distance, an eight-point bearing, or "at the property".
+
+Three limits, each deliberate:
+
+- **It is a straight line and is labelled as one.** There is no routing engine,
+  and `STRAIGHT_LINE_CAVEAT` says so beside the number, because "1.8 km" is
+  otherwise read as the drive.
+- **The road distance is a link, not a request.** `directionsUrl()` builds an
+  OpenStreetMap directions URL from the Guest's accepted position to the
+  hacienda; the Admin presses it. A routing API called from the app would make a
+  fourth party a recipient of a live Guest position, which no consent covers. No
+  provider is contacted by this feature at all.
+- **"At the property" is a statement about the reading.** The test is the
+  distance against the larger of a 50 m floor and the fix's own accuracy, so a
+  phone under a metal roof does not flicker between "40 m away" and "here". It
+  never ends a session and never announces an arrival.
+
 ## What this costs, honestly
 
 - One Firestore write when a share starts, one update when it stops. **Not one write per GPS fix** — that is the whole reason for the split.

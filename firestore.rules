@@ -1718,6 +1718,35 @@ service cloud.firestore {
         || (isConversationMember(sessionId) && resource.data.guest_uid == request.auth.uid);
     }
 
+    // ------------------------------------------------------------------
+    // A clock probe: one throwaway document per share, so the Guest's browser
+    // can learn what time the *server* thinks it is before it states a sharing
+    // window on the server's clock.
+    //
+    // Why it exists. `location_sessions` above caps the window with
+    // `expires_at <= request.time + 1h`, and `database.rules.json` caps every
+    // fix with `expires_at_ms <= now + 3600000`. Both are the server's clock. A
+    // browser computing `now + 60 minutes` from *its own* clock therefore asks
+    // for a window past the cap whenever that clock runs fast — and the longest
+    // share, the one a Guest most often wants, is the one refused. `serverTimestamp()`
+    // is the only way a browser can be told the server's time, and only a write
+    // gets one.
+    //
+    // So the shape is deliberately the narrowest write in this file: one
+    // document per probe, named by the caller, carrying the probe's owner and a
+    // server stamp. The Guest may create and read back their own, and remove it;
+    // nobody may read anybody's, and nothing here is a record of anything.
+    match /clock_probes/{probeId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['uid', 'probed_at'])
+        && request.resource.data.keys().hasOnly(['uid', 'probed_at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.probed_at is timestamp;
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
+
     // A Review is a Guest's words about their own finished stay, and one stay
     // gets one of them. The document id *is* the Booking id, so that is the
     // shape of the store rather than a check somebody has to remember to run,
