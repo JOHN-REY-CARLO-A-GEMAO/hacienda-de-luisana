@@ -26,6 +26,12 @@ extension LockActionX on LockAction {
         return 'denied';
       case LockAction.masterOverride:
         return 'master_override';
+      case LockAction.keyWritten:
+        return 'key_written';
+      case LockAction.keyRevoked:
+        return 'key_revoked';
+      case LockAction.cardRewritten:
+        return 'card_rewritten';
     }
   }
 
@@ -41,6 +47,12 @@ extension LockActionX on LockAction {
         return 'ACCESS DENIED';
       case LockAction.masterOverride:
         return 'MASTER KEY';
+      case LockAction.keyWritten:
+        return 'KEY WRITTEN';
+      case LockAction.keyRevoked:
+        return 'KEY REVOKED';
+      case LockAction.cardRewritten:
+        return 'CARD REWRITTEN';
     }
   }
 
@@ -59,6 +71,15 @@ extension LockActionX on LockAction {
       case 'masteroverride':
       case 'master':
         return LockAction.masterOverride;
+      case 'key_written':
+      case 'keywritten':
+        return LockAction.keyWritten;
+      case 'key_revoked':
+      case 'keyrevoked':
+        return LockAction.keyRevoked;
+      case 'card_rewritten':
+      case 'cardrewritten':
+        return LockAction.cardRewritten;
       default:
         return LockAction.unlock;
     }

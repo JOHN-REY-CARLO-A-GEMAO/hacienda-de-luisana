@@ -23,6 +23,21 @@ SmartLockEventModel event({
 
 void main() {
   group('SmartLockEventModel access-log serialization', () {
+    test('desk actions retain their identity when serialized and read', () {
+      for (final action in [
+        LockAction.keyWritten,
+        LockAction.keyRevoked,
+        LockAction.cardRewritten,
+      ]) {
+        final json = event(action: action).toJson();
+        expect(SmartLockEventModel.fromJson(json).action, action);
+        expect(action.displayName, isNotEmpty);
+      }
+      expect(LockActionX.fromString('key_written'), LockAction.keyWritten);
+      expect(LockActionX.fromString('key_revoked'), LockAction.keyRevoked);
+      expect(LockActionX.fromString('card_rewritten'), LockAction.cardRewritten);
+    });
+
     test('writes the explicit reason while retaining display notes', () {
       final json = event(
         notes: 'Simulator demonstration; not a real credential use',

@@ -7,6 +7,8 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/admin_notification_model.dart';
 import '../models/booking_model.dart';
 import '../models/smart_lock_event_model.dart';
+import '../models/rfid_card_model.dart';
+import '../models/turnover_record_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
 import '../core/constants/app_constants.dart';
