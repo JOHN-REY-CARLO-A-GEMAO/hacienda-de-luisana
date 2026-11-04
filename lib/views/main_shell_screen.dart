@@ -189,7 +189,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     final List<Widget> screens = [
       AnimatedTabPage(
         isActive: _currentIndex == 0,
-        child: DashboardScreen(onNavigateTab: _navigateToTab),
+        child: const DashboardScreen(),
       ),
       AnimatedTabPage(isActive: _currentIndex == 1, child: const BookingsScreen()),
       AnimatedTabPage(isActive: _currentIndex == 2, child: const InboxScreen()),

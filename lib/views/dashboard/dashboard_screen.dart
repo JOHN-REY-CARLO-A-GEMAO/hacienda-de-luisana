@@ -4,31 +4,28 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../models/booking_model.dart';
-import '../../models/smart_lock_event_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/booking_queue.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/admin_ui.dart';
-import '../../widgets/empty_state.dart';
-import '../../widgets/explore_ui.dart';
 import '../../widgets/hacienda_card.dart';
 import '../../widgets/loading_state.dart';
-import '../../widgets/section_header.dart';
 import '../bookings/bookings_screen.dart';
 import '../notifications/notifications_screen.dart';
 
 /// The Admin's daily work page.
 ///
-/// Every number on this page is derived from the Booking and Access-log
-/// streams. The masthead states the day's real position; the ledger below is
-/// ordered by the decision the Admin has to make next.
+/// Every number on this page is derived from the Booking stream. The masthead
+/// states the day's real position; the ledger below is ordered by the
+/// decision the Admin has to make next.
+///
+/// The smart-lock Access log is deliberately NOT repeated here. It used to
+/// appear twice on this screen — a "Smart lock" shortcut tile stacked on a
+/// "Recent door activity" feed whose "All logs" action opened the same tab —
+/// and the feed itself was a five-row copy of the Door access audit trail.
+/// Door activity now has exactly one home: More › Smart lock logs.
 class DashboardScreen extends ConsumerWidget {
-  final Function(int tabIndex) onNavigateTab;
-
-  const DashboardScreen({
-    super.key,
-    required this.onNavigateTab,
-  });
+  const DashboardScreen({super.key});
 
   void _openQueue(BuildContext context, String filter) {
     Navigator.of(context).push(MaterialPageRoute(
@@ -40,7 +37,6 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final stats = ref.watch(dashboardStatsProvider);
     final bookingsAsync = ref.watch(bookingsStreamProvider);
-    final smartLockLogsAsync = ref.watch(smartLockLogsStreamProvider);
     // The bell counts decisions, not notifications: the Notifications screen
     // lists several rows about one Booking (a proof is both "submitted" and
     // "to verify"), so its length was never the number of things to do.
@@ -84,116 +80,6 @@ class DashboardScreen extends ConsumerWidget {
               tone: AdminNoticeTone.danger,
               action: OutlinedButton.icon(
                 onPressed: () => ref.invalidate(bookingsStreamProvider),
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Try again'),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    Widget quickActions() {
-      // Category row in the explore-style kit (docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md):
-      // icon tile + label per destination. The tour anchors on
-      // TourKeys.reviewBookings, so the key stays on the subtree.
-      //
-      // Only destinations the bottom bar cannot reach are listed. Bookings, Chat,
-      // Stays and More were repeated here as tiles that did exactly what the tab
-      // four inches below them already does — the same icon, the same
-      // destination, twice on one screen. Smart lock is the only destination
-      // that lives behind "More"; with it here the card is the shortcut the tab
-      // bar cannot give.
-      return HaciendaCard(
-        padding: const EdgeInsets.all(14),
-        child: KeyedSubtree(
-          key: TourKeys.reviewBookings,
-          child: ExploreCategoryRow(
-            items: [
-              ExploreCategory(
-                label: 'Smart lock',
-                icon: Icons.lock_open_rounded,
-                onTap: () => onNavigateTab(5),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    Widget activitySection() {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SectionHeader(
-            title: 'Recent door activity',
-            caption: 'Latest events from the Access log',
-            padding: EdgeInsets.zero,
-            actionLabel: 'All logs',
-            actionSemanticsLabel: 'Open all smart lock logs',
-            onAction: () => onNavigateTab(5),
-          ),
-          const SizedBox(height: 8),
-          smartLockLogsAsync.when(
-            data: (logs) {
-              final recentLogs = logs.take(5).toList();
-              if (recentLogs.isEmpty) {
-                // Slim inline empty row — a full-height EmptyState card reads as
-                // a broken layout when the Access log simply has no events yet.
-                return HaciendaCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryForest.withValues(alpha: 0.10),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.lock_clock_outlined,
-                          size: 17,
-                          color: AppColors.primaryForest,
-                        ),
-                      ),
-                      const SizedBox(width: 11),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('No recent door activity', style: AppTheme.title(fontSize: 13)),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Real smart lock events will appear here.',
-                              style: AppTheme.body(fontSize: 11, color: AppColors.textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-              return Column(
-                children: [
-                  for (var i = 0; i < recentLogs.length; i++) ...[
-                    _FeedTile(log: recentLogs[i]),
-                    if (i < recentLogs.length - 1) const SizedBox(height: 8),
-                  ],
-                ],
-              );
-            },
-            loading: () => const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: LoadingState(label: 'Reading door activity…'),
-            ),
-            error: (error, _) => AdminInlineNotice(
-              title: 'Door activity could not be read',
-              message: error.toString().split('\n').first,
-              tone: AdminNoticeTone.danger,
-              action: OutlinedButton.icon(
-                onPressed: () => ref.invalidate(smartLockLogsStreamProvider),
                 icon: const Icon(Icons.refresh, size: 18),
                 label: const Text('Try again'),
               ),
@@ -260,7 +146,6 @@ class DashboardScreen extends ConsumerWidget {
         color: AppColors.primaryForest,
         onRefresh: () async {
           ref.invalidate(bookingsStreamProvider);
-          ref.invalidate(smartLockLogsStreamProvider);
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -276,33 +161,9 @@ class DashboardScreen extends ConsumerWidget {
                   children: [
                     _OperationsMasthead(stats: stats),
                     const SizedBox(height: 20),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        if (constraints.maxWidth < AppTheme.compactBreakpoint) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              queuesSection(),
-                              const SizedBox(height: 18),
-                              quickActions(),
-                              const SizedBox(height: 18),
-                              activitySection(),
-                            ],
-                          );
-                        }
-                        return AdminResponsiveColumns(
-                          breakpoint: AppTheme.compactBreakpoint,
-                          primary: queuesSection(),
-                          secondary: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              quickActions(),
-                              const SizedBox(height: 16),
-                              activitySection(),
-                            ],
-                          ),
-                        );
-                      },
+                    KeyedSubtree(
+                      key: TourKeys.reviewBookings,
+                      child: queuesSection(),
                     ),
                   ],
                 ),
@@ -601,74 +462,6 @@ class _QueueRow extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// One recent smart-lock event in the dashboard feed.
-class _FeedTile extends StatelessWidget {
-  final SmartLockEventModel log;
-
-  const _FeedTile({required this.log});
-
-  @override
-  Widget build(BuildContext context) {
-    final isUnlock = log.action == LockAction.unlock;
-    final isDenied = log.action == LockAction.denied;
-    final color = isUnlock
-        ? AppColors.statusSuccess
-        : isDenied
-            ? AppColors.statusAlert
-            : AppColors.primaryForest;
-    final icon = isUnlock
-        ? Icons.lock_open_rounded
-        : isDenied
-            ? Icons.gpp_bad_rounded
-            : Icons.lock_outline_rounded;
-
-    return HaciendaCard(
-      padding: const EdgeInsets.all(13),
-      semanticLabel: '${log.doorName}, ${log.action.displayName}, ${DateFormatter.timeAgo(log.timestamp)}',
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 17, color: color),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  log.doorName,
-                  style: AppTheme.title(fontSize: 13),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${log.action.displayName}, ${log.triggeredBy}, ${log.method.displayName}',
-                  style: AppTheme.body(fontSize: 11, color: AppColors.textMuted),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  DateFormatter.timeAgo(log.timestamp),
-                  style: AppTheme.label(fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
