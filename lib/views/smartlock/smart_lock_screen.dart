@@ -83,7 +83,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
           const SizedBox(height: 10),
           FloatingActionButton.extended(
             heroTag: 'simulateDeskCheckoutTap',
-            backgroundColor: AppColors.primaryForest.withOpacity(0.85),
+            backgroundColor: AppColors.primaryForest.withValues(alpha: 0.85),
             foregroundColor: Colors.white,
             icon: const Icon(Icons.logout, size: 20),
             label: const Text('Simulate Check-out Tap (desk)'),
@@ -287,7 +287,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: tone.withOpacity(0.12),
+                color: tone.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(Icons.credit_card, color: tone),
@@ -329,7 +329,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: tone.withOpacity(0.12),
+                  color: tone.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -431,9 +431,9 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: badgeColor.withOpacity(0.12),
+                      color: badgeColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: badgeColor.withOpacity(0.4)),
+                      border: Border.all(color: badgeColor.withValues(alpha: 0.4)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -463,10 +463,10 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.textMuted.withOpacity(0.12),
+                        color: AppColors.textMuted.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: AppColors.textMuted.withOpacity(0.4)),
+                            color: AppColors.textMuted.withValues(alpha: 0.4)),
                       ),
                       child: Text(
                         'Simulation',
@@ -506,7 +506,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
               style: GoogleFonts.inter(
                   fontSize: 11,
                   fontStyle: FontStyle.italic,
-                  color: AppColors.textDark.withOpacity(0.8)),
+                  color: AppColors.textDark.withValues(alpha: 0.8)),
             ),
           ],
           const SizedBox(height: 6),
