@@ -69,28 +69,6 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         title: 'Door access',
         subtitle: 'Real-time smart lock audit trail',
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.extended(
-            heroTag: 'simulateRfidSwipe',
-            backgroundColor: AppColors.primaryForest,
-            foregroundColor: Colors.white,
-            icon: const Icon(Icons.nfc_rounded, size: 20),
-            label: const Text('Simulate RFID Swipe'),
-            onPressed: () => _simulateRfidSwipe(firestoreService),
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton.extended(
-            heroTag: 'simulateDeskCheckoutTap',
-            backgroundColor: AppColors.primaryForest.withValues(alpha: 0.85),
-            foregroundColor: Colors.white,
-            icon: const Icon(Icons.logout, size: 20),
-            label: const Text('Simulate Check-out Tap (desk)'),
-            onPressed: () => _simulateDeskCheckoutTap(firestoreService),
-          ),
-        ],
-      ),
       body: lockLogsAsync.when(
         data: (logs) {
           final doorOptions = _doorOptions(logs);
@@ -114,7 +92,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
               : logs.where((l) => l.doorName == effectiveDoorFilter).toList();
 
           return ListView(
-            padding: const EdgeInsets.only(bottom: 84),
+            padding: const EdgeInsets.only(bottom: 24),
             children: [
               // 1. Summary Metric Counters at Top
               Padding(
@@ -189,8 +167,10 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
                     Text(
                       'Audit trail (${filteredLogs.length})',
@@ -207,12 +187,14 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
 
               // 3. Audit Trail List
               if (filteredLogs.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                   child: EmptyState(
                     icon: Icons.lock_clock_outlined,
                     title: 'No lock activity',
-                    subtitle: 'Simulate an RFID swipe to see the audit trail.',
+                    subtitle: effectiveDoorFilter == 'All Doors'
+                        ? 'Door activity will appear here when it is recorded.'
+                        : 'No activity recorded for this door.',
                   ),
                 )
               else
@@ -234,6 +216,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                     );
                   },
                 ),
+              const SizedBox(height: 16),
+              _buildSimulatorControls(firestoreService),
             ],
           );
         },
@@ -254,6 +238,67 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         ),
       ),
     );
+  }
+
+  /// Keep demonstration actions in the scrollable page, not on top of the
+  /// Access log. They write simulated events only after explicit confirmation.
+  Widget _buildSimulatorControls(FirestoreService firestoreService) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Simulation', style: AppTheme.title(fontSize: 14)),
+          const SizedBox(height: 4),
+          Text(
+            'Demo actions are recorded as simulations, not real door activity.',
+            style: AppTheme.body(fontSize: 11, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => _chooseSimulation(firestoreService),
+            icon: const Icon(Icons.science_outlined, size: 20),
+            label: const Text('Simulation options'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _chooseSimulation(FirestoreService firestoreService) async {
+    final selection = await showModalBottomSheet<_SimulationAction>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.nfc_rounded),
+              title: const Text('Simulate RFID Swipe'),
+              subtitle: const Text('Record a demo unlock and auto-relock.'),
+              onTap: () => Navigator.pop(sheetContext, _SimulationAction.swipe),
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Simulate Check-out Tap (desk)'),
+              subtitle: const Text('Demo key revocation and card rewrite.'),
+              onTap: () => Navigator.pop(sheetContext, _SimulationAction.checkout),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    switch (selection) {
+      case _SimulationAction.swipe:
+        await _simulateRfidSwipe(firestoreService);
+        break;
+      case _SimulationAction.checkout:
+        await _simulateDeskCheckoutTap(firestoreService);
+        break;
+      case null:
+        break;
+    }
   }
 
   /// Reloads the demo card's register entry for [_buildCardRegister] —
@@ -319,29 +364,27 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                         color: AppColors.textDark,
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: tone.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        card.status.displayName,
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: tone,
+                        ),
+                      ),
+                    ),
                   ],
                 ],
               ),
             ),
-            if (card != null) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: tone.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  card.status.displayName,
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: tone,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -397,8 +440,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         badgeColor = AppColors.statusAlert;
         break;
       case LockAction.masterOverride:
-        badgeColor = C
-        olors.purple;
+        badgeColor = Colors.purple;
         break;
       case LockAction.keyWritten:
         badgeColor = AppColors.statusSuccess;
@@ -421,11 +463,14 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 8,
+            runSpacing: 6,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   Container(
                     padding:
@@ -458,7 +503,6 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                   // The simulator's rows say what they are, in the log itself —
                   // demonstration rows never pass as door history (ADR-0015).
                   if (log.simulated) ...[
-                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
@@ -672,3 +716,6 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     });
   }
 }
+
+// The two demos do different things; expose them from one screen control.
+enum _SimulationAction { swipe, checkout }
