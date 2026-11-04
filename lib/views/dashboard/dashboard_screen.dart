@@ -95,8 +95,15 @@ class DashboardScreen extends ConsumerWidget {
 
     Widget quickActions() {
       // Category row in the explore-style kit (docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md):
-      // icon tile + label per destination, replacing the old button wrap. The
-      // tour anchors on TourKeys.reviewBookings, so the key stays on the subtree.
+      // icon tile + label per destination. The tour anchors on
+      // TourKeys.reviewBookings, so the key stays on the subtree.
+      //
+      // Only destinations the bottom bar cannot reach are listed. Bookings, Chat,
+      // Stays and More were repeated here as tiles that did exactly what the tab
+      // four inches below them already does — the same icon, the same
+      // destination, twice on one screen. Smart lock is the only destination
+      // that lives behind "More"; with it here the card is the shortcut the tab
+      // bar cannot give.
       return HaciendaCard(
         padding: const EdgeInsets.all(14),
         child: KeyedSubtree(
@@ -104,30 +111,9 @@ class DashboardScreen extends ConsumerWidget {
           child: ExploreCategoryRow(
             items: [
               ExploreCategory(
-                label: 'Bookings',
-                icon: Icons.confirmation_number_outlined,
-                onTap: () => onNavigateTab(1),
-              ),
-              ExploreCategory(
-                label: 'Chat',
-                icon: Icons.chat_bubble_outline,
-                onTap: () => onNavigateTab(2),
-              ),
-              ExploreCategory(
-                label: 'Stays',
-                icon: Icons.night_shelter_outlined,
-                onTap: () => onNavigateTab(3),
-              ),
-              ExploreCategory(
                 label: 'Smart lock',
                 icon: Icons.lock_open_rounded,
-                badge: 'NEW',
                 onTap: () => onNavigateTab(5),
-              ),
-              ExploreCategory(
-                label: 'More',
-                icon: Icons.more_horiz,
-                onTap: () => onNavigateTab(4),
               ),
             ],
           ),
@@ -446,21 +432,26 @@ List<BookingModel> _sorted(Iterable<BookingModel> source, {bool byStayDate = fal
 
 List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
   final now = DateTime.now();
-  // Each row owns a different piece of work. Approvals and Payments to verify
-  // used to be counted a second time inside "Other admin actions", so two rows
-  // described the same Bookings with different totals — the same seven proofs
-  // read as 7 here and 8 there, and the row named "Other" showed nothing other
-  // than the payment review above it. Rows now split the work as: approve,
-  // verify payment, close a checked-out stay, pay out a refund, and check in
-  // today's guests.
-  final approvals = _sorted(bookings.where((booking) => bookingNeedsApproval(booking, now)));
-  final payments = _sorted(bookings.where(bookingNeedsPaymentReview));
-  final arrivals = _sorted(
-    bookings.where((booking) => bookingArrivesToday(booking, now)),
-    byStayDate: true,
-  );
-  final current = _sorted(bookings.where(bookingIsCurrentGuest));
-  final other = _sorted(bookings.where(bookingIsUnattended));
+
+  // One row per Booking. The queues overlap by nature — an approval carrying a
+  // payment proof answers both "approve this" and "verify this payment" — so
+  // printing a Booking under every queue it matched showed the same Guest twice,
+  // with the same next step, under two headings ("Payments to verify 7" above
+  // "Other admin actions 8").
+  //
+  // Each Booking is placed by the one action it is waiting on
+  // ([bookingQueueAction]), so no Booking is listed twice and the counts can be
+  // added up. The statuses behind the rows are disjoint, so this loses nothing.
+  final work = <String, List<BookingModel>>{
+    BookingListFilter.pendingVerification: [],
+    BookingListFilter.paymentQueue: [],
+    BookingListFilter.needsAction: [],
+  };
+  for (final booking in bookings) {
+    final action = bookingQueueAction(booking, now);
+    if (action != null) work[action]!.add(booking);
+  }
+
   return [
     _OperationalQueue(
       title: 'Approvals',
@@ -468,7 +459,7 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
       filter: BookingListFilter.pendingVerification,
       icon: Icons.fact_check_outlined,
       color: AppColors.statusWarning,
-      bookings: approvals,
+      bookings: _sorted(work[BookingListFilter.pendingVerification]!),
     ),
     _OperationalQueue(
       title: 'Arrivals today',
@@ -476,7 +467,10 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
       filter: BookingListFilter.arrivalsToday,
       icon: Icons.meeting_room_outlined,
       color: AppColors.primaryForest,
-      bookings: arrivals,
+      bookings: _sorted(
+        bookings.where((booking) => bookingArrivesToday(booking, now)),
+        byStayDate: true,
+      ),
     ),
     _OperationalQueue(
       title: 'Current guests',
@@ -484,7 +478,7 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
       filter: BookingListFilter.activeStay,
       icon: Icons.king_bed_outlined,
       color: AppColors.statusSuccess,
-      bookings: current,
+      bookings: _sorted(bookings.where(bookingIsCurrentGuest)),
     ),
     _OperationalQueue(
       title: 'Payments to verify',
@@ -492,20 +486,19 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
       filter: BookingListFilter.paymentQueue,
       icon: Icons.payments_outlined,
       color: AppColors.accentGoldDark,
-      bookings: payments,
+      bookings: _sorted(work[BookingListFilter.paymentQueue]!),
     ),
     _OperationalQueue(
       title: 'Other admin actions',
       description: 'Checked-out stays to close and refunds to pay out.',
       filter: BookingListFilter.needsAction,
-      // The list behind this row is "Needs action", which still contains the
-      // approvals and payments above (that chip is the one combined working
-      // queue). The row counts only its own remainder, so it states plainly
-      // that it opens a wider list.
+      // The Bookings list behind this row is the combined "Needs action" queue,
+      // which also holds the approvals and payments above. The row counts only
+      // what it owns, so it says plainly that the list it opens is wider.
       opensWiderList: true,
       icon: Icons.assignment_late_outlined,
       color: AppColors.statusAlert,
-      bookings: other,
+      bookings: _sorted(work[BookingListFilter.needsAction]!),
     ),
   ];
 }

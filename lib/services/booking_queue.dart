@@ -136,6 +136,22 @@ bool bookingIsUnattended(BookingModel booking) {
   }
 }
 
+/// The one decision a Booking is waiting on, as a row the dashboard can list.
+///
+/// The queues are five overlapping questions — an approval with a proof answers
+/// "approve" *and* "verify payment" — so a page that prints one row per queue
+/// prints the same Guest twice, with the same next step, under two headings.
+/// This collapses a Booking to the single next action, in lifecycle order:
+/// approve it, or verify the payment, or close the stay, or pay out the refund.
+/// Each row therefore names one Booking once, and every Booking the working
+/// queue contains appears exactly once.
+String? bookingQueueAction(BookingModel booking, DateTime now) {
+  if (bookingNeedsApproval(booking, now)) return BookingListFilter.pendingVerification;
+  if (bookingNeedsPaymentReview(booking)) return BookingListFilter.paymentQueue;
+  if (bookingIsUnattended(booking)) return BookingListFilter.needsAction;
+  return null;
+}
+
 /// Derived no-show: the dates were committed (Approved / Payment Verified /
 /// Reserved) but the recorded check-in day has passed with no check-in ever
 /// recorded. The lifecycle has no stored "No-show" status, so this bucket is

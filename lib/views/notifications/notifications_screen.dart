@@ -39,9 +39,17 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           final items = <_NotificationItem>[];
 
           for (final b in bookings) {
+            // A late-checkout request and a started refund are separate pieces
+            // of work on the same Booking, so they each get a row. The booking
+            // status rows below do not: one Booking produced both "New Booking
+            // Submitted" and "Payment Verification Required" for the same
+            // decision, which is the duplicate this list used to show.
+            var statusRowAdded = false;
+
             // Payment Verification Required
             if ((b.paymentProofUrl != null && b.paymentProofUrl!.isNotEmpty && b.paymentStatus != 'verified') ||
                 b.rawStatus == 'Payment Pending') {
+              statusRowAdded = true;
               items.add(_NotificationItem(
                 id: 'pay-${b.id}',
                 title: 'Payment Verification Required',
@@ -86,8 +94,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               ));
             }
 
-            // New Booking Pending Review
-            if (b.rawStatus == 'Pending' && (b.paymentProofUrl == null || b.paymentProofUrl!.isEmpty)) {
+            // New Booking Pending Review — only when the proof row above did not
+            // already describe this Booking's decision.
+            if (!statusRowAdded &&
+                b.rawStatus == 'Pending' &&
+                (b.paymentProofUrl == null || b.paymentProofUrl!.isEmpty)) {
               items.add(_NotificationItem(
                 id: 'new-${b.id}',
                 title: 'New Booking Submitted',

@@ -82,6 +82,41 @@ void main() {
     expect(bookingIsUnattended(refund), isTrue);
   });
 
+  test('one booking, one queue row: no Guest is listed twice', () {
+    // A Pending that already carries a proof answers two questions at once —
+    // "approve this" and "verify the payment". The dashboard used to print it
+    // under both headings with the same next step, which is how the same guest
+    // appeared in "Payments to verify" and again in "Other admin actions".
+    final approvalWithProof = booking(
+      status: 'Pending',
+      proof: 'payments/proof.png',
+      holdExpiresAt: runningHold,
+    );
+    final payment = booking(status: 'Payment Pending', proof: 'payments/proof.png');
+    final closing = booking(status: 'Checked-Out');
+    final refund = booking(status: 'Cancelled', refundStatus: 'initiated');
+    final noDecision = booking(status: 'Staying');
+
+    // The approval still matches both older predicates...
+    expect(bookingNeedsApproval(approvalWithProof, now), isTrue);
+    expect(bookingNeedsPaymentReview(approvalWithProof), isTrue);
+    // ...but it is placed by exactly one action, the first in lifecycle order.
+    expect(bookingQueueAction(approvalWithProof, now),
+        BookingListFilter.pendingVerification);
+    expect(bookingQueueAction(payment, now), BookingListFilter.paymentQueue);
+    expect(bookingQueueAction(closing, now), BookingListFilter.needsAction);
+    expect(bookingQueueAction(refund, now), BookingListFilter.needsAction);
+    expect(bookingQueueAction(noDecision, now), isNull);
+
+    // Placing every booking once means the row totals add up to the combined
+    // working queue instead of exceeding it.
+    final all = [approvalWithProof, payment, closing, refund, noDecision];
+    final placed = all.where((b) => bookingQueueAction(b, now) != null).length;
+    final inWorkingQueue = all.where((b) => bookingNeedsAdminAction(b, now)).length;
+    expect(placed, inWorkingQueue);
+    expect(placed, 4);
+  });
+
   test('a Pending whose recorded date hold ran out is not live admin work', () {
     final lapsed = booking(
       status: 'Pending',
