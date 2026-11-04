@@ -50,6 +50,7 @@ const SESSION: LocationSession = {
 function makeSharing(over: Partial<UseLiveLocation> = {}): UseLiveLocation {
   return {
     phase: 'idle',
+    resuming: false,
     session: null,
     message: null,
     countdown: null,

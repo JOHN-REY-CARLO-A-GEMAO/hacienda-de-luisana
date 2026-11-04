@@ -45,6 +45,19 @@ export function ShareLocationBar({ sharing }: { sharing: UseLiveLocation }) {
     )
   }
 
+  // A conversation that already has a live consent is read back before the
+  // control is offered, so the Guest is never invited to start a share that is
+  // already running (which would restart the window and mint a second secret).
+  if (sharing.resuming) {
+    return (
+      <div className="messages-location">
+        <p className="messages-location-hint" role="status">
+          Checking whether you are already sharing your location…
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="messages-location">
       {sharing.phase === 'error' && sharing.message && (

@@ -141,8 +141,18 @@ stream, and the only rules file that is not Firestore or Storage:
   it leaves the browser. Removal is `onDisconnect().remove()` plus the client's
   own `stopSharing`; see `docs/adr/0013-live-location-as-a-stream.md`
 
+- `clock_probes/{probeId}`: one throwaway document per share, written by the
+  signed-in Guest, carrying `uid` and a `serverTimestamp()` and nothing else
+  (`hasOnly(['uid', 'probed_at'])`), readable only by its owner, never updated.
+  It exists because `location_sessions` and the stream compare a sharing window
+  with the **server's** clock, and a browser can only be told that clock by
+  stamping a document. Without it a device whose clock runs fast cannot start the
+  longest share at all. The probe is deleted as soon as it has been read back.
+
 Deploy it with `firebase deploy --only database` after creating the database in the
-console. The production website's committed default URL matches the Android/iOS
+console. (The probe lives in Firestore, so `firebase deploy --only firestore:rules`
+is needed for it too — deploying only the database leaves sharing working, but a
+fast clock then falls back to the wider guard band instead of being measured.) The production website's committed default URL matches the Android/iOS
 value in `lib/firebase_options.dart`; set `VITE_FIREBASE_DATABASE_URL` when building
 for a different project, and keep it paired with that project's `VITE_FIREBASE_PROJECT_ID`.
 The resolver refuses malformed or cross-project URLs, and the share control stays off

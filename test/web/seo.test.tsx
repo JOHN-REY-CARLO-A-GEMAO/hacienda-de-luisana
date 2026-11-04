@@ -36,19 +36,36 @@ describe('the route manifest matches the router', () => {
   const routerPaths = new Set(
     [...appSource.matchAll(/<Route\s+path="([^"]+)"/g)].map((match) => match[1].replace(/\/\*$/, '')),
   )
+  /**
+   * A route with a parameter (`/admin/live-location/:convoId`) is answered by the
+   * manifest row of the section it lives in, which is marked `subtree` — the
+   * same way `/app-settings` was never given a row of its own.
+   */
+  const manifestPath = (path: string) => path.split('/:')[0]
 
   it('describes every public route the app declares', () => {
     // `/login` redirects to `/guest/auth`, and `*` is the not-found route; both
     // are addresses rather than pages, so neither needs its own head.
     const expected = [...routerPaths].filter((path) => path !== '*' && path !== '/login')
     const described = new Set(ROUTE_META.map((route) => route.path))
-    const missing = expected.filter((path) => !described.has(path))
+    const missing = expected.filter((path) => !described.has(manifestPath(path)))
     expect(missing, 'add these to src/config/routes.ts').toEqual([])
   })
 
   it('declares no route the router would not answer', () => {
     const described = ROUTE_META.map((route) => route.path).filter((path) => path !== '/')
-    const orphans = described.filter((path) => !routerPaths.has(path))
+    // A `subtree` row answers for the parameterised routes under it
+    // (`/admin/live-location` for `/admin/live-location/:convoId`), so it is
+    // checked against those rather than against an exact match.
+    const orphans = described.filter((path) => {
+      const row = ROUTE_META.find((route) => route.path === path)
+      if (row?.subtree) {
+        // Its own address (`/app`), or a parameterised route under it
+        // (`/admin/live-location/:convoId`), is what the router answers.
+        return !routerPaths.has(path) && ![...routerPaths].some((route) => route.startsWith(`${path}/`))
+      }
+      return !routerPaths.has(path)
+    })
     expect(orphans, 'remove these from src/config/routes.ts').toEqual([])
   })
 })
@@ -175,7 +192,11 @@ describe('the hosts answer an address they do not have with a 404 status', () =>
   }
 
   /** The routes the app renders itself, with no pre-rendered file behind them. */
-  const appOnly = ROUTE_META.filter((route) => !route.prerender).map((route) => route.path)
+  // A `subtree` row answers for everything under it (`/admin/live-location` is
+  // served from `/admin/`), so the host is only asked for the section itself.
+  const appOnly = ROUTE_META.filter((route) => !route.prerender)
+    .map((route) => (route.subtree ? route.path.split('/').slice(0, 2).join('/') : route.path))
+    .filter((path, index, all) => all.indexOf(path) === index)
   /** `/login` is a redirect the router answers; it has no manifest row. */
   const spaPaths = [...appOnly, '/login'].sort()
 

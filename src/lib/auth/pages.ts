@@ -1,12 +1,16 @@
 // ----------------------------------------------------------------------------
 // Which pages a role may open — Hacienda de LuisAna
 // ----------------------------------------------------------------------------
-// The website is the Guest's application (ADR-0007). Its one gated page is the
-// Guest's own account, and it is gated by the permission it exists to exercise:
-// `/mybookings` is where a Guest reads their own Bookings, so it opens for whoever
-// holds `booking:read:own`. The Admin's pages do not exist here at all — they
-// are screens in the Flutter app — so an Admin session on the website is a
-// person on the wrong front door, and is told so.
+// The website is the Guest's application (ADR-0007). Its Guest pages are gated by
+// the permission they exist to exercise: `/mybookings` is where a Guest reads
+// their own Bookings, so it opens for whoever holds `booking:read:own`. The
+// Admin's screens are in the Flutter app, and an Admin session on the website is
+// a person on the wrong front door, and is told so.
+//
+// The single exception is the live-location reader at `/admin/live-location`,
+// which exists because the Guest's own share promises the Admin can see them and
+// the website could not read a position at all. It is gated by `guest-location:read`
+// — held by the Admin role and nobody else — and by the two rules files under it.
 //
 // Hiding a page is a courtesy, not the enforcement — firestore.rules is. Both
 // read the same catalogue.
@@ -26,6 +30,13 @@ const GATED_PAGES: ReadonlyArray<{ path: string; permission: Permission }> = [
   { path: '/mybookings', permission: 'booking:read:own' },
   { path: '/profile', permission: 'booking:read:own' },
   { path: '/messages', permission: 'booking:read:own' },
+  // The one Admin page the website has. The Guest's live-location share says
+  // "the Admin can see your location"; without this the only thing that could
+  // read a position was the Flutter app, and the website's own `checkFix` gate
+  // was called by nothing but its tests. `guest-location:read` is held by the
+  // Admin role and by no other, and it is the same permission the lifecycle
+  // names — `firestore.rules` and `database.rules.json` remain the enforcement.
+  { path: '/admin/live-location', permission: 'guest-location:read' },
 ]
 
 /**

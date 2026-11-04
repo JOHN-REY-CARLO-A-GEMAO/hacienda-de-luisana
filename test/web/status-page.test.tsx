@@ -87,16 +87,19 @@ describe('the deployment status page', () => {
 })
 
 describe('the connection check with no project in the build', () => {
-  it('fails the build step and skips the two that need a project', async () => {
+  it('fails the build step and skips the three that need a project', async () => {
     const checks = await runConnectionCheck()
 
-    // `write` is here too: it reports what this browser has already been refused,
-    // and a build with no project has refused nothing.
-    expect(checks.map((c) => c.id)).toEqual(['build', 'identity', 'database', 'write'])
+    // `live-location` is here too: a build with no project has no Realtime
+    // Database either, and the share control is disabled because of it — which
+    // used to be invisible on this page. `write` reports what this browser has
+    // already been refused, and a build with no project has refused nothing.
+    expect(checks.map((c) => c.id)).toEqual(['build', 'identity', 'database', 'live-location', 'write'])
     expect(checks[0].status).toBe('fail')
     expect(checks[0].detail).toMatch(/committed defaults|no project|every request stays in this browser/i)
     expect(checks[1].status).toBe('skip')
     expect(checks[2].status).toBe('skip')
-    expect(checks[3].status).toBe('ok')
+    expect(checks[3].status).toBe('skip')
+    expect(checks[4].status).toBe('ok')
   })
 })

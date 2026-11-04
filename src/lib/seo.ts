@@ -346,7 +346,11 @@ export function llmsTxt(routes: readonly RouteMeta[] = indexableRoutes()): strin
 
 /** The robots.txt body. `*` only: a named group would silently drop the Disallow list. */
 export function robotsTxt(): string {
-  const disallow = ['/mybookings', '/profile', '/messages', '/booking/status', '/book/pay', '/review', '/guest/auth', '/login', '/admin', '/app']
+  // `/admin/live-location` is listed on its own even though `/admin` already
+  // covers it: the reader is a real page that reads a Guest's position, and a
+  // crawler rule that only works because of a shorter prefix is one edit away
+  // from silently indexing it.
+  const disallow = ['/mybookings', '/profile', '/messages', '/booking/status', '/book/pay', '/review', '/guest/auth', '/login', '/admin', '/admin/live-location', '/app']
   return [
     '# Hacienda de LuisAna — public pages are open to every crawler, including',
     '# assistants that summarise rather than index. Signed-in pages are not.',

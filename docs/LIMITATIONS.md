@@ -61,6 +61,23 @@ Two different acceptances, and only one is stored. **At sign-up it is recorded:*
 
 **Realtime Database has no per-node TTL, so nothing deletes a position for us.** This was wrong here until 2026-09-30: the feature claimed the server expired every fix at `expires_at_ms`, and it sent a `'.ttl'` field to ask. Two facts make that impossible — Realtime Database has no per-node TTL on any plan, and a key containing `.` is rejected by the Firebase client SDK before the write leaves the browser, so every fix threw `contains an invalid key (.ttl)` and the feature never published a position at all. Expiry is now enforced by `database.rules.json`: the Admin's read sits on the leaf node and is refused once `expires_at_ms` is in the past, so an expired position is unreadable by the server itself. The node is removed on an explicit Stop and by `onDisconnect().remove()` when the connection drops. **The residual:** an abandoned node's bytes can still exist, and the Firebase console — which bypasses rules — will show the coordinate to the owner. Making that disappear too would need a card (Firestore TTL policies require billing) or a scheduled sweeper. The rules case is `test/emulator/realtime-rules.emulator.test.ts`; the payload case is in `test/web/live-location.test.ts`.
 
+**There is no road distance and no ETA, by choice.** Point B shows a
+straight-line distance and a compass bearing from the Guest to the hacienda's
+pin. The road distance and a travel time exist only behind a directions link the
+Admin presses (`directionsUrl()`), where OpenStreetMap's routing engine does the
+work in a tab the Admin opened. Calling a routing API from the app would add a
+fourth party to a live Guest position — something no sharing consent covers — and
+every free provider is either a demo server or quota-limited, so the honest
+ceiling is the link. The straight-line figure is labelled as such, everywhere it
+appears, for the same reason: a Guest "2 km away" across a valley can be twenty
+minutes by road.
+
+**"At the property" is not arrival detection.** The badge means the reading is
+within 50 m (or within the accuracy the device itself reports), not that the
+Guest has checked in. Nothing in the feature ends a session or writes an arrival
+when the distance closes: a phone under a metal roof in Luisiana reports
+ballistically, and an automatic arrival would fire on noise.
+
 **The Admin-side role mirror needs a first run by an allowlisted Admin.** `firestore.rules` can read `profiles/{uid}.role`; Realtime Database rules cannot read Firestore, so a Profile-promoted Admin is admitted by `live_location_admins/{uid}`, which only an address on the bootstrap allowlist may write. Until an allowlisted Admin has opened the app once after deploying the database rules, a promoted Admin gets a refused read and the panel says so.
 
 **Retention has no scheduler in this repository.** `messages_expires_at` is stamped and the policy is unit-tested, but Firestore Security Rules cannot delete on a schedule, and the current `functions/` entry point has no messaging-retention scheduler — nothing is scheduled to run this sweep. The TTL policy and the `sweepMessages` function to deploy are written out in `docs/MESSAGING.md` § 4. Until they are deployed, the stamp is a schedule with nobody on it.
