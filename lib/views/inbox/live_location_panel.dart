@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/live_location/proximity.dart';
 import '../../services/live_location_service.dart';
 import 'osm_tile.dart';
 
@@ -201,6 +202,23 @@ class _LiveLocationPanelState extends State<LiveLocationPanel> {
             ],
           ),
           const SizedBox(height: 10),
+          // Point B, above the map: the one line an Admin reads when they are
+          // not going to study a map. Messaging apps stop at "near you"; this
+          // says how far, in which direction, and — when the Guest is close
+          // enough that it matters — says it in words and in colour, because
+          // "1.2 km away" and "at the gate" are different answers to the
+          // question the Admin is actually asking.
+          _ProximityStrip(
+            proximity: proximityTo(
+              lat: fix.lat,
+              lng: fix.lng,
+              destinationLat: AppConstants.resortLatitude,
+              destinationLng: AppConstants.resortLongitude,
+              accuracyM: fix.accuracyM,
+            ),
+            stale: fix.isStale,
+          ),
+          const SizedBox(height: 8),
           _Map(fix: fix),
           const SizedBox(height: 8),
           Text(
@@ -261,6 +279,101 @@ class _LiveLocationPanelState extends State<LiveLocationPanel> {
         border: Border.all(color: AppColors.primaryForest.withOpacity(0.18)),
       ),
       child: child,
+    );
+  }
+}
+
+/// The proximity strip: where the Guest is relative to the hacienda, as a
+/// colour-coded chip and one sentence.
+///
+/// Three states, and each one is a different answer:
+///
+///   * **Unknown** — the position cannot be turned into a distance. Says so
+///     rather than showing a number it cannot justify.
+///   * **Away** — a straight-line distance and a compass point, amber while the
+///     Guest is still within [kNearbyM] and neutral beyond it.
+///   * **At the property** — green, and it means the distance is inside the
+///     reading's own error or [kAtPropertyM], whichever is larger. It does NOT
+///     mean the Guest has reached the door, and the caveat under the chip is
+///     what keeps an Admin from reading it that way.
+///
+/// A stale position keeps its chip, but the sentence beneath says the distance
+/// is as of the last position received rather than the Guest's current one.
+class _ProximityStrip extends StatelessWidget {
+  const _ProximityStrip({required this.proximity, required this.stale});
+
+  final Proximity proximity;
+  final bool stale;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color fill, Color ink) = switch (proximity) {
+      UnknownProximity() => (AppColors.surfaceSunken, AppColors.textMuted),
+      AtProperty() => (AppColors.sageMist, AppColors.statusSuccess),
+      Away(:final distanceM) when distanceM <= kNearbyM => (
+          AppColors.goldMist,
+          AppColors.accentGoldDark,
+        ),
+      Away() => (AppColors.surfaceSunken, AppColors.textMuted),
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: ink.withOpacity(0.28)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                proximity is AtProperty
+                    ? Icons.home_outlined
+                    : Icons.near_me_outlined,
+                size: 15,
+                color: ink,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  proximityChipLabel(proximity),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: ink,
+                  ),
+                ),
+              ),
+              if (proximity is AtProperty)
+                Icon(Icons.check_circle, size: 14, color: ink),
+            ],
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          stale
+              ? 'As of the last position received — the Guest has not sent an update recently.'
+              : proximitySentence(proximity),
+          style: const TextStyle(
+            fontSize: 11,
+            height: 1.35,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          kStraightLineCaveat,
+          style: const TextStyle(
+            fontSize: 10,
+            height: 1.35,
+            color: AppColors.textMuted,
+          ),
+        ),
+      ],
     );
   }
 }
