@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart' as legacy;
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_formatter.dart';
+import '../../models/rfid_card_model.dart';
 import '../../models/smart_lock_event_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_store.dart';
@@ -16,6 +17,9 @@ import '../../widgets/admin_ui.dart';
 import '../../widgets/loading_state.dart';
 import '../../core/theme/app_theme.dart';
 
+/// Door access: the one home of the smart-lock Access log — counters, door
+/// filter, RFID card register, simulators and the full audit trail. Reached
+/// via More › Smart lock logs; the Dashboard does not repeat any of it.
 class SmartLockScreen extends ConsumerStatefulWidget {
   const SmartLockScreen({super.key});
 
@@ -25,6 +29,17 @@ class SmartLockScreen extends ConsumerStatefulWidget {
 
 class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
   String _doorFilter = 'All Doors';
+
+  /// The one demo card the simulators tap and the register reports on.
+  static const String _demoCardUid = 'RFID-A3-89-CF-12';
+
+  RfidCardModel? _demoCard;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDemoCard());
+  }
 
   /// The door filter is built from the doors the logs actually name.
   ///
@@ -57,6 +72,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           FloatingActionButton.extended(
+            heroTag: 'simulateRfidSwipe',
             backgroundColor: AppColors.primaryForest,
             foregroundColor: Colors.white,
             icon: const Icon(Icons.nfc_rounded, size: 20),
@@ -65,6 +81,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
           ),
           const SizedBox(height: 10),
           FloatingActionButton.extended(
+            heroTag: 'simulateDeskCheckoutTap',
             backgroundColor: AppColors.primaryForest.withOpacity(0.85),
             foregroundColor: Colors.white,
             icon: const Icon(Icons.logout, size: 20),
@@ -156,6 +173,10 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
               ),
               const SizedBox(height: 14),
 
+              // The desk reader's register entry for the demo card.
+              _buildCardRegister(_demoCard),
+              const SizedBox(height: 14),
+
               // 2. Audit Trail Header
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -222,6 +243,15 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
             ),
       ),
     );
+  }
+
+  /// Reloads the demo card's register entry for [_buildCardRegister] —
+  /// after first frame, and again after a simulated desk tap rewrites it.
+  Future<void> _loadDemoCard() async {
+    final card =
+        await ref.read(firestoreServiceProvider).fetchRfidCard(_demoCardUid);
+    if (!mounted) return;
+    setState(() => _demoCard = card);
   }
 
   /// The desk reader's card register as a rounded white card: icon tile, card
@@ -457,11 +487,10 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
   /// the Access log stamped SIMULATED. One ESP32 (the smart lock) serves both
   /// the door and the desk tap.
   Future<void> _simulateDeskCheckoutTap(FirestoreService firestoreService) async {
-    const demoCard = 'RFID-A3-89-CF-12';
     final ok = await showSecureConfirm(
       context,
       title: 'Simulate a check-out desk tap?',
-      body: 'Key write + revoke + card rewrite for demo card $demoCard. All rows are marked SIMULATED in the Access log.',
+      body: 'Key write + revoke + card rewrite for demo card $_demoCardUid. All rows are marked SIMULATED in the Access log.',
       confirm: 'Run it',
     );
     if (!ok || !mounted) return;
@@ -469,10 +498,10 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     final auth = legacy.Provider.of<AuthStore>(context, listen: false);
     final uid = auth.uid ?? auth.sessionEmail ?? 'admin';
 
-    final existing = await firestoreService.fetchRfidCard(demoCard);
+    final existing = await firestoreService.fetchRfidCard(_demoCardUid);
     if (existing == null) {
       final problem = await firestoreService.issueRoomKey(
-        cardUid: demoCard,
+        cardUid: _demoCardUid,
         bookingRefId: 'simulated',
         accommodationId: 'main-house',
         actorUid: uid,
@@ -485,7 +514,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     }
 
     final problem = await firestoreService.deskCheckoutTap(
-      cardUid: demoCard,
+      cardUid: _demoCardUid,
       actorUid: uid,
     );
     if (!mounted) return;
@@ -495,7 +524,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Check-out tap recorded: key revoked and card $demoCard rewritten to ${AppConstants.websiteUrl} (calling card).'),
+        content: Text('Check-out tap recorded: key revoked and card $_demoCardUid rewritten to ${AppConstants.websiteUrl} (calling card).'),
         duration: const Duration(seconds: 5),
       ),
     );
@@ -534,7 +563,7 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
       action: LockAction.unlock,
       method: LockMethod.rfidKeycard,
       triggeredBy: 'Simulator (demo swipe)',
-      cardUid: 'RFID-A3-89-CF-12',
+      cardUid: _demoCardUid,
       timestamp: now,
       isSuccess: true,
       notes: 'Simulated RFID tap — not a real credential use',

@@ -39,7 +39,7 @@ const List<TutorialStep> adminTutorialSteps = [
         'counting down.',
     advance: TutorialAdvance.tab,
     tabIndex: 1,
-    actionHint: 'Tap “Review Bookings”, or the Bookings tab below.',
+    actionHint: 'Tap the Bookings tab below.',
   ),
   TutorialStep(
     id: 'bookings-filters',
@@ -188,10 +188,10 @@ const List<TutorialStep> adminTutorialSteps = [
     targetKey: 'smartLockStats',
     ensureTab: 5,
     body:
-        'The Access log is append-only: every Credential use — granted or denied — lands here '
-        'and on the Dashboard feed.',
+        'The Access log is append-only: every Credential use — granted or denied — lands here. '
+        'This screen is its one home.',
     fallbackBody:
-        'Every Credential use, granted or denied, lands here and on the Dashboard feed. It is '
+        'Every Credential use, granted or denied, lands here — this screen is its one home. It is '
         'about doors, not position.',
     continueLabel: 'Next',
   ),
