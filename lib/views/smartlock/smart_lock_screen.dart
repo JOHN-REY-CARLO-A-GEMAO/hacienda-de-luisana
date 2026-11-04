@@ -51,7 +51,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
   List<String> _doorOptions(List<SmartLockEventModel> logs) {
     final names = <String>{
       for (final log in logs)
-        if (log.doorName.isNotEmpty && log.doorName != 'Unrecorded door') log.doorName,
+        if (log.doorName.isNotEmpty && log.doorName != 'Unrecorded door')
+          log.doorName,
     }.toList()
       ..sort();
     return ['All Doors', ...names];
@@ -93,9 +94,16 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
       body: lockLogsAsync.when(
         data: (logs) {
           final doorOptions = _doorOptions(logs);
-          final totalUnlocks = logs.where((l) => l.action == LockAction.unlock).length;
-          final totalRelocks = logs.where((l) => l.action == LockAction.lock || l.action == LockAction.autoRelock).length;
-          final totalDenied = logs.where((l) => l.action == LockAction.denied || !l.isSuccess).length;
+          final totalUnlocks =
+              logs.where((l) => l.action == LockAction.unlock).length;
+          final totalRelocks = logs
+              .where((l) =>
+                  l.action == LockAction.lock ||
+                  l.action == LockAction.autoRelock)
+              .length;
+          final totalDenied = logs
+              .where((l) => l.action == LockAction.denied || !l.isSuccess)
+              .length;
 
           // A door can disappear when the stream changes. Fall back to the
           // real "all" view rather than showing an unselected, empty filter.
@@ -179,7 +187,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
 
               // 2. Audit Trail Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -189,7 +198,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                     ),
                     Text(
                       'Down to the second',
-                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+                      style: GoogleFonts.inter(
+                          fontSize: 11, color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -209,7 +219,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                 ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   itemCount: filteredLogs.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, i) {
@@ -227,20 +238,20 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
           );
         },
         loading: () => const LoadingState(
-              label: 'Reading door activity…',
-              detail: 'Loading the real-time Access log.',
-            ),
+          label: 'Reading door activity…',
+          detail: 'Loading the real-time Access log.',
+        ),
         error: (err, _) => EmptyState(
-              icon: Icons.cloud_off_outlined,
-              title: 'Door activity could not be read',
-              subtitle:
-                  'Check the connection and try again. ${err.toString().split('\n').first}',
-              action: OutlinedButton.icon(
-                onPressed: () => ref.invalidate(smartLockLogsStreamProvider),
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Try again'),
-              ),
-            ),
+          icon: Icons.cloud_off_outlined,
+          title: 'Door activity could not be read',
+          subtitle:
+              'Check the connection and try again. ${err.toString().split('\n').first}',
+          action: OutlinedButton.icon(
+            onPressed: () => ref.invalidate(smartLockLogsStreamProvider),
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Try again'),
+          ),
+        ),
       ),
     );
   }
@@ -286,13 +297,15 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('RFID card register', style: AppTheme.title(fontSize: 14)),
+                  Text('RFID card register',
+                      style: AppTheme.title(fontSize: 14)),
                   const SizedBox(height: 2),
                   Text(
                     card == null
                         ? 'No card issued yet — run the check-out tap demo to issue one.'
                         : '${card.cardUid} · ${card.payloadKind.displayName}',
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+                    style: GoogleFonts.inter(
+                        fontSize: 11, color: AppColors.textMuted),
                   ),
                   if (card != null) ...[
                     const SizedBox(height: 4),
@@ -313,7 +326,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
             if (card != null) ...[
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: tone.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(999),
@@ -353,7 +367,10 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
           const SizedBox(height: 6),
           Text(
             value,
-            style: GoogleFonts.cinzel(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textDark),
+            style: GoogleFonts.cinzel(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textDark),
           ),
           const SizedBox(height: 2),
           Text(
@@ -380,7 +397,17 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         badgeColor = AppColors.statusAlert;
         break;
       case LockAction.masterOverride:
-        badgeColor = Colors.purple;
+        badgeColor = C
+        olors.purple;
+        break;
+      case LockAction.keyWritten:
+        badgeColor = AppColors.statusSuccess;
+        break;
+      case LockAction.keyRevoked:
+        badgeColor = AppColors.statusAlert;
+        break;
+      case LockAction.cardRewritten:
+        badgeColor = AppColors.primaryForest;
         break;
     }
 
@@ -401,7 +428,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: badgeColor.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(12),
@@ -414,11 +442,15 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                           width: 6,
                           height: 6,
                           margin: const EdgeInsets.only(right: 5),
-                          decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle),
+                          decoration: BoxDecoration(
+                              color: badgeColor, shape: BoxShape.circle),
                         ),
                         Text(
                           log.action.displayName,
-                          style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: badgeColor),
+                          style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: badgeColor),
                         ),
                       ],
                     ),
@@ -428,15 +460,20 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
                   if (log.simulated) ...[
                     const SizedBox(width: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: AppColors.textMuted.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.textMuted.withOpacity(0.4)),
+                        border: Border.all(
+                            color: AppColors.textMuted.withOpacity(0.4)),
                       ),
                       child: Text(
                         'Simulation',
-                        style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted),
+                        style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textMuted),
                       ),
                     ),
                   ],
@@ -444,14 +481,18 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
               ),
               Text(
                 DateFormatter.timeAgo(log.timestamp),
-                style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+                style:
+                    GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
               ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
             log.doorName,
-            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textDark),
+            style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textDark),
           ),
           const SizedBox(height: 3),
           Text(
@@ -462,17 +503,24 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
             const SizedBox(height: 4),
             Text(
               log.notes!,
-              style: GoogleFonts.inter(fontSize: 11, fontStyle: FontStyle.italic, color: AppColors.textDark.withOpacity(0.8)),
+              style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: AppColors.textDark.withOpacity(0.8)),
             ),
           ],
           const SizedBox(height: 6),
           Row(
             children: [
-              const Icon(Icons.access_time_filled, size: 11, color: AppColors.textMuted),
+              const Icon(Icons.access_time_filled,
+                  size: 11, color: AppColors.textMuted),
               const SizedBox(width: 4),
               Text(
                 DateFormatter.formatFull(log.timestamp),
-                style: GoogleFonts.inter(fontSize: 10, fontFeatures: const [FontFeature.tabularFigures()], color: AppColors.textMuted),
+                style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: AppColors.textMuted),
               ),
             ],
           ),
@@ -486,11 +534,13 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
   /// the card to the website link (souvenir calling card). Every step lands in
   /// the Access log stamped SIMULATED. One ESP32 (the smart lock) serves both
   /// the door and the desk tap.
-  Future<void> _simulateDeskCheckoutTap(FirestoreService firestoreService) async {
+  Future<void> _simulateDeskCheckoutTap(
+      FirestoreService firestoreService) async {
     final ok = await showSecureConfirm(
       context,
       title: 'Simulate a check-out desk tap?',
-      body: 'Key write + revoke + card rewrite for demo card $_demoCardUid. All rows are marked SIMULATED in the Access log.',
+      body:
+          'Key write + revoke + card rewrite for demo card $_demoCardUid. All rows are marked SIMULATED in the Access log.',
       confirm: 'Run it',
     );
     if (!ok || !mounted) return;
@@ -524,7 +574,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Check-out tap recorded: key revoked and card $_demoCardUid rewritten to ${AppConstants.websiteUrl} (calling card).'),
+        content: Text(
+            'Check-out tap recorded: key revoked and card $_demoCardUid rewritten to ${AppConstants.websiteUrl} (calling card).'),
         duration: const Duration(seconds: 5),
       ),
     );
@@ -547,7 +598,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
     final ok = await showSecureConfirm(
       context,
       title: 'Run the RFID simulator?',
-      body: 'Two demonstration rows, marked SIMULATED, are written into the real Access log. They are not door history.',
+      body:
+          'Two demonstration rows, marked SIMULATED, are written into the real Access log. They are not door history.',
       confirm: 'Run it',
     );
     if (!ok || !mounted) return;
@@ -586,7 +638,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Simulated swipe recorded and marked as a simulation. Auto-relock in 5 seconds.'),
+        content: Text(
+            'Simulated swipe recorded and marked as a simulation. Auto-relock in 5 seconds.'),
         duration: Duration(seconds: 4),
       ),
     );
@@ -607,7 +660,8 @@ class _SmartLockScreenState extends ConsumerState<SmartLockScreen> {
         refId: 'simulated',
         simulated: true,
       );
-      final relockProblem = await firestoreService.recordSmartLockEvent(relockEvent);
+      final relockProblem =
+          await firestoreService.recordSmartLockEvent(relockEvent);
       if (relockProblem != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: AppColors.statusAlert,
