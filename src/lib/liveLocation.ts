@@ -265,9 +265,46 @@ export async function startSharing(input: {
     return { ok: false, reason: isPermissionError(error) ? 'refused' : 'unavailable' }
   }
 
-  // The session is open, so arm the server-side cleanup before any fix is sent.
-  void armDisconnectCleanup(input.convoId, input.uid)
+  // The session is open, so clear any node the last share left behind, then arm
+  // the server-side cleanup before any fix is sent.
+  void resetStream(input.convoId, input.uid)
   return { ok: true, session }
+}
+
+/**
+ * Make a conversation's stream empty, then arm the disconnect cleanup on it.
+ *
+ * Order matters, and it is the whole reason this is one function rather than two
+ * calls. `armDisconnectCleanup` only *schedules* a removal; it writes nothing. So
+ * a first fix that arrives before the server has executed the `onDisconnect`
+ * triggers it immediately — the server sees a new node appear and deletes it, and
+ * the next fix deletes again, forever. The position never lands.
+ *
+ * That was invisible while `database.rules.json` had never been deployed: the
+ * write was refused anyway, so nothing could observe the ordering. Deploying the
+ * rules turned the stream on and with it this failure, on *every restart*, because
+ * a restart carries a new `expires_at_ms` and `database.rules.json` refuses a fix
+ * that pushes the window past the one already stored — the Guest's own no-extend
+ * rule. The fix could never be written, so it could never be the thing that
+ * triggered the pending removal.
+ *
+ * So: remove first and wait, which clears the stale window and the stale
+ * position together; only then arm. A `remove()` on a node that does not exist is
+ * a no-op, so the ordinary first share pays nothing for this.
+ *
+ * Best-effort at every step, as before: the rules are what make an expired
+ * position unreadable, and this only decides whether a live one can be written.
+ */
+export async function resetStream(convoId: string, uid: string): Promise<void> {
+  try {
+    const reference = await streamRef(convoId, uid)
+    if (!reference) return
+    const { remove } = await import('firebase/database')
+    await remove(reference).catch(() => {})
+  } catch {
+    // No transport. `armDisconnectCleanup` will no-op for the same reason.
+  }
+  await armDisconnectCleanup(convoId, uid)
 }
 
 /** The path one Guest's position lives at, or null with no transport. */

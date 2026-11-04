@@ -299,6 +299,15 @@ describe('where each half of the feature is stored', () => {
     const source = readFileSync(join(__dirname, '../../src/lib/liveLocation.ts'), 'utf8')
     expect(source).toContain('onDisconnect')
     expect(source).toMatch(/onDisconnect\(reference\)\.remove\(\)/)
-    expect(source).toContain('armDisconnectCleanup(input.convoId, input.uid)')
+    // A start clears the node FIRST and arms the cleanup second. The order is the
+    // whole point: `onDisconnect` only schedules a removal, so a fix that lands
+    // before the server has run it triggers the pending removal — and the server
+    // then deletes the position, every time, forever.
+    expect(source).toContain('resetStream(input.convoId, input.uid)')
+    expect(source.indexOf('resetStream(input.convoId, input.uid)'))
+      .toBeGreaterThan(source.indexOf('await setDoc(reference, {'))
+    expect(source).toContain('await remove(reference)')
+    expect(source.indexOf('await remove(reference)'))
+      .toBeLessThan(source.indexOf('await armDisconnectCleanup(convoId, uid)'))
   })
 })
