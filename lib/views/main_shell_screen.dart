@@ -519,16 +519,6 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.notifications_active_outlined),
-                      title: const Text('Phone notifications'),
-                      subtitle: const Text('Manage this app’s phone notification permission'),
-                      onTap: () async {
-                        Navigator.pop(sheetContext);
-                        await _askForNotificationPermission(context);
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
                       leading: const Icon(
                         Icons.logout,
                         color: AppColors.statusAlert,
