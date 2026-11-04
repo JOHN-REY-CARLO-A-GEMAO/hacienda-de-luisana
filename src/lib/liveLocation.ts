@@ -400,14 +400,34 @@ export async function stopSharing(input: { convoId: string; uid: string; nowMs: 
  */
 export type PublishOutcome = 'sent' | 'stopped' | 'retry'
 
+/**
+ * The same answer as `publishFix`, plus the database's own error code when the
+ * write was refused.
+ *
+ * The code is the difference between a diagnosis and a guess. `retry` alone says
+ * "it did not land", which on screen is indistinguishable from "the GPS has not
+ * answered yet"; `database/permission-denied` says the rules refused it, and
+ * `database/unavailable` says the socket is gone. That distinction is the whole
+ * reason the Guest's banner can now stop claiming the GPS is still locating.
+ */
+export type PublishResult = { outcome: PublishOutcome; code: string | null }
+
 export async function publishFix(
   session: LocationSession,
   fix: Pick<LocationFix, 'lat' | 'lng' | 'accuracy_m' | 'seq'>,
   nowMs: number,
 ): Promise<PublishOutcome> {
-  if (isExpired(session.expires_at_ms, nowMs)) return 'stopped'
+  return (await publishFixReported(session, fix, nowMs)).outcome
+}
+
+export async function publishFixReported(
+  session: LocationSession,
+  fix: Pick<LocationFix, 'lat' | 'lng' | 'accuracy_m' | 'seq'>,
+  nowMs: number,
+): Promise<PublishResult> {
+  if (isExpired(session.expires_at_ms, nowMs)) return { outcome: 'stopped', code: null }
   const reference = await streamRef(session.conversation_id, session.guest_uid)
-  if (!reference) return 'stopped'
+  if (!reference) return { outcome: 'stopped', code: null }
 
   const payload = {
     lat: fix.lat,
@@ -423,7 +443,7 @@ export async function publishFix(
   const { set } = await import('firebase/database')
   try {
     await set(reference, payload)
-    return 'sent'
+    return { outcome: 'sent', code: null }
   } catch (error) {
     // An expired node (the window closed between the check above and the
     // write) is the one refusal that really is an ending. Everything else —
@@ -431,9 +451,9 @@ export async function publishFix(
     // another fix, and the caller can tell the Guest it is offline meanwhile.
     const code = (error as { code?: string } | null)?.code ?? ''
     if (code === 'database/permission-denied' && isExpired(session.expires_at_ms, Date.now())) {
-      return 'stopped'
+      return { outcome: 'stopped', code }
     }
-    return 'retry'
+    return { outcome: 'retry', code: code || 'unknown' }
   }
 }
 

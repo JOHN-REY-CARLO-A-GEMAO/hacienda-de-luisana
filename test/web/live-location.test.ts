@@ -120,27 +120,33 @@ describe('a GPS chip reports a position every second; we do not send every one',
     expect(shouldPublishFix({ next: { lat: 14.1, lng: 121.3 }, nowMs: T0 }).publish).toBe(true)
   })
 
-  it('holds a fix back inside the interval', () => {
+  it('holds a fix back inside the interval when the Guest has barely moved', () => {
     const last = { at: { lat: 14.1, lng: 121.3 }, atMs: T0 }
-    const verdict = shouldPublishFix({ next: { lat: 14.1005, lng: 121.3 }, last, nowMs: T0 + 1_000 })
+    // ~2 m, one second later: inside the interval AND under the distance floor,
+    // so neither trigger fires. Movement alone never waits for the interval —
+    // see the test below.
+    const verdict = shouldPublishFix({ next: { lat: 14.10002, lng: 121.3 }, last, nowMs: T0 + 1_000 })
     expect(verdict.publish).toBe(false)
-    expect(verdict.publish === false && verdict.reason).toBe('too soon')
+    expect(verdict.publish === false && verdict.reason).toContain('Neither far enough nor long enough')
     expect(MIN_PUBLISH_INTERVAL_MS).toBe(3_000)
   })
 
-  it('holds a fix back when the Guest has not moved', () => {
+  it('sends a heartbeat even when the Guest has not moved', () => {
     const last = { at: { lat: 14.1, lng: 121.3 }, atMs: T0 }
-    const verdict = shouldPublishFix({ next: { lat: 14.10001, lng: 121.3 }, last, nowMs: T0 + 10_000 })
-    expect(verdict.publish).toBe(false)
-    expect(verdict.publish === false && verdict.reason).toBe('not far enough')
-  })
-
-  it('sends once both the interval has passed and the Guest has moved', () => {
-    const last = { at: { lat: 14.1, lng: 121.3 }, atMs: T0 }
-    // ~22 m north, five seconds later.
-    const verdict = shouldPublishFix({ next: { lat: 14.1002, lng: 121.3 }, last, nowMs: T0 + 5_000 })
+    // One metre and eight seconds: standing at the gate, not walking. The
+    // interval is what keeps a stationary Guest visible, so this MUST publish —
+    // an AND here meant a still phone published once and then went silent for
+    // the whole session, and the Admin's panel waited forever.
+    const verdict = shouldPublishFix({ next: { lat: 14.10001, lng: 121.3 }, last, nowMs: T0 + 8_000 })
     expect(verdict.publish).toBe(true)
     expect(MIN_PUBLISH_DISTANCE_M).toBe(10)
+  })
+
+  it('sends at once when the Guest moves, without waiting for the interval', () => {
+    const last = { at: { lat: 14.1, lng: 121.3 }, atMs: T0 }
+    // ~22 m north, one second later — movement beats the interval.
+    const verdict = shouldPublishFix({ next: { lat: 14.1002, lng: 121.3 }, last, nowMs: T0 + 1_000 })
+    expect(verdict.publish).toBe(true)
   })
 
   it('refuses a position that is not a position', () => {
@@ -309,5 +315,32 @@ describe('where each half of the feature is stored', () => {
     expect(source).toContain('await remove(reference)')
     expect(source.indexOf('await remove(reference)'))
       .toBeLessThan(source.indexOf('await armDisconnectCleanup(convoId, uid)'))
+  })
+})
+
+describe('a refused write is not allowed to look like a slow GPS', () => {
+  it('reports the database code for a refused write, not just "retry"', () => {
+    // The Guest's banner used to read "Locating GPS…" for a session whose every
+    // write was being refused, because `publishFix` answered `retry` and nothing
+    // carried the reason. `retry` alone cannot be shown to anyone: it is the
+    // same word for a socket that blinked and a rule that will never pass.
+    const source = readFileSync(join(__dirname, '../../src/lib/liveLocation.ts'), 'utf8')
+    expect(source).toContain('export async function publishFixReported')
+    expect(source).toContain("return { outcome: 'retry', code: code || 'unknown' }")
+    // The old shape still answers the same, for every caller that only asks yes
+    // or no. Nothing is lost by adding the code beside the verdict.
+    expect(source).toContain('return (await publishFixReported(session, fix, nowMs)).outcome')
+  })
+
+  it('says out loud that the position is not reaching the hacienda', () => {
+    const source = readFileSync(
+      join(__dirname, '../../src/components/chat/LiveLocationStatus.tsx'),
+      'utf8',
+    )
+    expect(source).toContain('Location is not reaching the hacienda')
+    expect(source).toContain('sharing.fixError')
+    // It must not end the share over a refusal: the warning is a sentence, and
+    // the only thing that stops sharing is the button the Guest presses.
+    expect(source).toContain('Sharing is still on and will keep retrying')
   })
 })

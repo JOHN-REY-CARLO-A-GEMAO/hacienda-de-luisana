@@ -29,15 +29,25 @@ export type ShareDuration = (typeof SHARE_DURATIONS)[number]
 export const MAX_SHARE_MINUTES = 60
 export const MIN_SHARE_MINUTES = 1
 
-/** How often a fix may be sent at most, in milliseconds. */
+/**
+ * How long a published fix stands for before the next GPS tick may replace it,
+ * in milliseconds — **unless the Guest has moved**, in which case the movement
+ * wins and the fix goes immediately.
+ *
+ * The two thresholds are an OR, and the OR is the whole design. An AND made a
+ * Guest who was not walking invisible: a phone held still for the whole session
+ * published its first fix and then nothing, ever, because the interval passed
+ * and the distance never did. The Admin's panel waited on a position that was
+ * never going to arrive. Movement is what needs reporting quickly; stillness
+ * needs only a heartbeat, which this interval is.
+ */
 export const MIN_PUBLISH_INTERVAL_MS = 3_000
 
 /**
- * …and how far the Guest has to have moved before a fix is worth sending even
- * after the interval has passed. Ten metres is roughly the GPS error of a
- * phone outdoors, so anything finer is noise; a guest walking to the gate does
- * not move ten metres, and the Admin still sees the gate, thirty seconds late
- * rather than never.
+ * …and how far the Guest has to have moved for a fix to be worth sending
+ * *inside* that interval. Ten metres is roughly the GPS error of a phone
+ * outdoors, so anything finer is noise — below this, only the interval can
+ * trigger a publish.
  */
 export const MIN_PUBLISH_DISTANCE_M = 10
 
@@ -453,6 +463,25 @@ export type PublishDecision = { publish: true } | { publish: false; reason: stri
  * the first fix always goes (otherwise a stationary Guest would never be seen),
  * and after that three seconds and ten metres, whichever is the later.
  */
+/**
+ * Should this GPS tick be published?
+ *
+ * `publish` when either of these is true:
+ *
+ *   - the Guest has moved at least `minDistanceM` since the last published fix —
+ *     movement inside the interval is reported at once, because that is the one
+ *     thing the Admin is actually watching for; or
+ *   - `minIntervalMs` has passed since the last published fix — a heartbeat, so a
+ *     Guest standing still is still visibly "here, a moment ago" rather than a
+ *     number that quietly ages into a lie.
+ *
+ * An AND of the two used to sit here, and it was wrong in the way that mattered:
+ * a Guest who stayed put published their first fix and then never published
+ * again, so the Admin's panel read "Waiting for the Guest's first position…"
+ * for the whole session while the Guest's own screen said "Updating live."
+ * Stillness is the normal case — someone is standing at the gate — so the rule
+ * that made stillness silent was the bug.
+ */
 export function shouldPublishFix(input: {
   next: LatLng
   last?: { at: LatLng; atMs: number } | null
@@ -469,13 +498,12 @@ export function shouldPublishFix(input: {
     return { publish: false, reason: 'The device reported a position outside the world.' }
   }
   if (!input.last) return { publish: true }
-  if (input.nowMs - input.last.atMs < interval) {
-    return { publish: false, reason: 'too soon' }
+  if (distanceM(input.last.at, input.next) >= floor) return { publish: true }
+  if (input.nowMs - input.last.atMs >= interval) return { publish: true }
+  return {
+    publish: false,
+    reason: 'Neither far enough nor long enough since the last position.',
   }
-  if (distanceM(input.last.at, input.next) < floor) {
-    return { publish: false, reason: 'not far enough' }
-  }
-  return { publish: true }
 }
 
 /** 32 hex characters — 128 bits from `crypto.getRandomValues`. */

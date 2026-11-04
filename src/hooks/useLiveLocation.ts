@@ -31,7 +31,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   canShareLocation,
   estimateClockSkew,
-  publishFix,
+  publishFixReported,
   resumeSharing,
   startSharing,
   stopSharing,
@@ -63,6 +63,15 @@ export type SharingState = {
   lastSentAtMs: number | null
   /** The device is offline: nothing is being sent until it returns. */
   offline: boolean
+  /**
+   * The database's error code for the last refused publish, or null.
+   *
+   * `null` while `lastSentAtMs` is also null means the GPS genuinely has not
+   * answered. A code here means a position *was* produced and the write was
+   * refused — a different fault with a different fix, and the Guest deserves to
+   * be told which one they have.
+   */
+  fixError: string | null
   /** This build cannot share at all, and why. */
   blocked: StartFailure | null
 }
@@ -72,7 +81,7 @@ export type UseLiveLocation = SharingState & {
   stop: () => Promise<void>
 }
 
-const IDLE: Omit<SharingState, 'blocked' | 'offline' | 'resuming'> = {
+const IDLE: Omit<SharingState, 'blocked' | 'offline' | 'resuming' | 'fixError'> = {
   phase: 'idle',
   session: null,
   message: null,
@@ -87,6 +96,10 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [lastSentAtMs, setLastSentAtMs] = useState<number | null>(null)
   const [offline, setOffline] = useState(() => (typeof navigator === 'undefined' ? false : !navigator.onLine))
+  // Why the last publish did not land. Without this, "the GPS has not answered
+  // yet" and "every write is being refused" are the same screen — and the
+  // Guest's own banner said "Locating GPS…" in both, forever.
+  const [fixError, setFixError] = useState<string | null>(null)
   // Recomputed rather than frozen: this is "can this build share, *now*, for
   // *this* person", and a session that restores a second after the first render
   // must not leave the control permanently disabled with a stale reason.
@@ -124,6 +137,7 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
       setPhase(why ? 'error' : 'idle')
       setMessage(why)
       setLastSentAtMs(null)
+      setFixError(null)
       startGeneration.current += 1
       if (current) {
         await stopSharing({ convoId: current.conversation_id, uid: current.guest_uid, nowMs: Date.now() }).catch(() => {})
@@ -150,14 +164,15 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
           lastFixRef.current = { at, atMs: now }
           seqRef.current += 1
 
-          publishFix(
+          publishFixReported(
             live,
             { lat: at.lat, lng: at.lng, accuracy_m: position.coords.accuracy ?? 0, seq: seqRef.current },
             now,
           )
-            .then((outcome) => {
+            .then(({ outcome, code }) => {
               if (outcome === 'sent') {
                 setLastSentAtMs(now)
+                setFixError(null)
                 return
               }
               if (outcome === 'stopped') {
@@ -174,6 +189,7 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
               // was working a second earlier.
               lastFixRef.current = null
               setOffline(true)
+              setFixError(outcome === 'retry' ? (code ?? 'unknown') : null)
             })
             .catch(() => {
               // `publishFix` answers rather than throws; this is the belt to
@@ -181,6 +197,7 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
               // missed fix, never proof the session ended.
               lastFixRef.current = null
               setOffline(true)
+              setFixError('unknown')
             })
         },
         (error) => {
@@ -210,6 +227,7 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
       const generation = ++startGeneration.current
       setPhase('starting')
       setMessage(null)
+      setFixError(null)
       // Ask the server the time before stating a window on its clock. Best
       // effort by construction: `estimateClockSkew` returns null when the probe
       // cannot run, and `startSharing` then falls back to the device's clock
@@ -255,6 +273,7 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
       setPhase('active')
       setMessage(null)
       setLastSentAtMs(null)
+      setFixError(null)
       openWatch(pending)
     },
     [openWatch],
@@ -390,6 +409,7 @@ export function useLiveLocation(input: { convoId: string | null; uid: string | u
     countdown: session ? formatCountdown(session.expires_at_ms, nowMs) : null,
     lastSentAtMs,
     offline,
+    fixError,
     blocked,
     start,
     stop,

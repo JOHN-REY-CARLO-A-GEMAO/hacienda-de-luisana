@@ -56,6 +56,7 @@ function makeSharing(over: Partial<UseLiveLocation> = {}): UseLiveLocation {
     countdown: null,
     lastSentAtMs: null,
     offline: false,
+    fixError: null,
     blocked: null,
     start: async () => {},
     stop: async () => {},
