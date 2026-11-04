@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
 
 /// Explore-style UI kit — structure copied from the owner-provided reference
 /// designs (2026-11-03; see docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md, "Reference
 /// set 2"). Per the owner: copy the UI, keep the Hacienda's own colors — every
 /// widget below takes its tones from [AppColors], never from the reference.
-library;
 
 /// Pill search bar: tinted icon circle + bold title + muted subtitle, all in
 /// one rounded-full row (reference: "Start your search / Anywhere · Any week").

@@ -8,8 +8,8 @@ import '../models/admin_notification_model.dart';
 import '../models/booking_model.dart';
 import '../models/smart_lock_event_model.dart';
 import '../models/rfid_card_model.dart';
-import '../models/turnover_record_model.dart';
 import '../models/room_model.dart';
+import '../models/turnover_record_model.dart';
 import '../models/guest_crm_model.dart';
 import '../core/constants/app_constants.dart';
 import '../core/utils/date_formatter.dart';
@@ -439,7 +439,7 @@ class FirestoreService implements PinSecurityRemote {
 
         // Re-read the published rates inside the transaction so the approval
         // prices against the same document version the rules enforce.
-        final ratesSnap = await tx.get(_firestore!
+        final ratesSnap = await tx.get(_firestore
             .collection(AppConstants.colSiteConfig)
             .doc(AppConstants.docRates));
         final publishedRates = ratesSnap.exists
@@ -554,8 +554,7 @@ class FirestoreService implements PinSecurityRemote {
         .get();
     return snap.docs
         .where((d) => d.id != excludeId)
-        .map((d) => BookingModel.fromJson(
-            d.data() as Map<String, dynamic>, d.id).toLifecycleDoc())
+        .map((d) => BookingModel.fromJson(d.data(), d.id).toLifecycleDoc())
         .toList();
   }
 
@@ -752,7 +751,7 @@ class FirestoreService implements PinSecurityRemote {
       try {
         final result = await _firestore!.runTransaction((tx) async {
           final ref =
-              _firestore!.collection(AppConstants.colBookings).doc(booking.id);
+              _firestore.collection(AppConstants.colBookings).doc(booking.id);
           final snap = await tx.get(ref);
           if (!snap.exists) {
             return ActionResult.refused('No Booking with that id.');

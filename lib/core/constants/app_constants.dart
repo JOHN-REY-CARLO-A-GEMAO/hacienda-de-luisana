@@ -11,7 +11,11 @@ class AppConstants {
   static const double resortLongitude = 121.519389;
   static const String resortDirectionsUrl =
       'https://www.google.com/maps/dir/?api=1&destination=14.1754304,121.519389';
-  
+  /// The Guest website's canonical origin (`src/config/site.ts` SITE_ORIGIN).
+  /// Rewritten onto a physical card's `landing_link` payload at check-out so
+  /// the Guest keeps the RFID card as a souvenir calling card.
+  static const String websiteUrl = 'https://haciendadeluisana.com';
+
   // Firestore Collection Names
   static const String colBookings = 'bookings';
   /// Same collection the website writes when a Credential touches a lock

@@ -1522,15 +1522,18 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       }
     }
     final due = booking.amountDue;
+    // Promote out of the mutable local before capturing it in the closure —
+    // Dart will not null-promote `primary` inside `onCta`'s lambda by itself.
+    final primaryAction = primary;
     return StickyActionBar(
       priceLabel: '₱${booking.totalAmount.toStringAsFixed(2)}',
       priceSub: (due != null && due > 0)
           ? '₱${due.toStringAsFixed(2)} due · ${booking.rawStatus}'
           : 'stay total · ${booking.rawStatus}',
       ctaLabel: primary?.label ?? 'No actions',
-      onCta: (primary == null || _busy || _openingProof)
+      onCta: (primaryAction == null || _busy || _openingProof)
           ? null
-          : () => _onAction(booking, primary),
+          : () => _onAction(booking, primaryAction),
     );
   }
 
