@@ -327,6 +327,11 @@ class BookingModel {
   }
 
   /// The Admin-facing summary of what is waiting on this Booking.
+  ///
+  /// Pure and state-free: it describes the stored lifecycle status only. A
+  /// caller that knows the Date hold has run out says so itself (the dashboard
+  /// rows and the Booking cards both do), because a lapsed Pending still reads
+  /// `Pending` in the document until the Admin records the expiry.
   String get nextStep {
     switch (rawStatus) {
       case BookingStatuses.pending:

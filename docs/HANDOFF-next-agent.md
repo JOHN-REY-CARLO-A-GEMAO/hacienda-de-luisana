@@ -49,6 +49,18 @@ otherwise in writing.
    not stored** (`bookingIsNoShow`: Approved/Payment Verified/Reserved with the
    check-in day passed, no check-in). Tests in `test/booking_queue_test.dart`.
    Archiving is a VIEW only — no data is moved or deleted (docs/MESSAGING.md §4).
+5. **Dashboard counts were double-counted (owner screenshot, 2026-11-04)** — the
+   page printed "Payments to verify 7" and "Other admin actions 8" for the same
+   seven proofs. `bookingNeedsAdminAction` was a *superset* of the approval and
+   payment-review rows, so "Other" restated the row above it. Now:
+   `bookingIsUnattended` (Checked-Out stays + initiated refunds) owns that row,
+   the Bookings "Needs action" chip stays the one combined list, and the bell /
+   Bookings-tab badges read `pendingActionsCountProvider` (one Booking, one
+   entry) instead of the Notifications screen's length. A Pending whose
+   **recorded** hold lapsed is excluded from both (`bookingHoldLapsed` — a
+   Booking with no hold on record stays reviewable, matching the web's
+   `adminActionBlockedReason`), and the row says the dates were released instead
+   of "Suriin ang downpayment screenshot". Tests in `test/booking_queue_test.dart`.
 
 ## Verification state (re-run after `npm ci` — node_modules is wiped between sandbox turns)
 

@@ -8,6 +8,7 @@ BookingModel booking({
   String? proof,
   String paymentStatus = 'pending',
   String? refundStatus,
+  DateTime? holdExpiresAt,
 }) {
   return BookingModel.fromJson({
     'guest_name': 'Test Guest',
@@ -20,6 +21,12 @@ BookingModel booking({
     'status': status,
     'stay_total': 6000,
     'created_at': '2026-10-01T00:00:00.000Z',
+    // Only a *recorded* expiry can have run out (the web's rule too), so a
+    // Pending without one stays reviewable rather than vanishing from the queue.
+    // Test holds are built relative to `now` so the suite does not depend on the
+    // runner's timezone.
+    if (holdExpiresAt != null)
+      'hold_expires_at': holdExpiresAt.toUtc().toIso8601String(),
     if (proof != null) 'payment_proof_url': proof,
     'payment_status': paymentStatus,
     if (refundStatus != null) 'refund_status': refundStatus,
@@ -28,19 +35,86 @@ BookingModel booking({
 
 void main() {
   final now = DateTime(2026, 10, 25, 12);
+  // A hold that ran out an hour ago, and one still running well past any
+  // timezone offset the suite might run in.
+  final lapsedHold = now.toUtc().subtract(const Duration(hours: 1));
+  final runningHold = now.toUtc().add(const Duration(hours: 6));
 
   test('the five operational queues use canonical booking facts', () {
-    final approval = booking(status: 'Pending', proof: 'payments/proof.png');
+    final approval = booking(
+      status: 'Pending',
+      proof: 'payments/proof.png',
+      holdExpiresAt: runningHold,
+    );
     final arrival = booking(status: 'Reserved');
     final current = booking(status: 'Staying');
     final payment = booking(status: 'Payment Pending', proof: 'payments/proof.png');
     final refund = booking(status: 'Cancelled', refundStatus: 'initiated');
 
-    expect(bookingNeedsApproval(approval), isTrue);
+    expect(bookingNeedsApproval(approval, now), isTrue);
     expect(bookingArrivesToday(arrival, now), isTrue);
     expect(bookingIsCurrentGuest(current), isTrue);
     expect(bookingNeedsPaymentReview(payment), isTrue);
-    expect(bookingNeedsAdminAction(refund), isTrue);
+    expect(bookingNeedsAdminAction(refund, now), isTrue);
+    expect(bookingIsUnattended(refund), isTrue);
+  });
+
+  test('approvals, payments and the "other" row never double-count a booking', () {
+    final approval = booking(
+      status: 'Pending',
+      proof: 'payments/proof.png',
+      holdExpiresAt: runningHold,
+    );
+    final payment = booking(status: 'Payment Pending', proof: 'payments/proof.png');
+    final closing = booking(status: 'Checked-Out');
+    final refund = booking(status: 'Cancelled', refundStatus: 'initiated');
+
+    // The combined working queue still holds all four...
+    for (final b in [approval, payment, closing, refund]) {
+      expect(bookingNeedsAdminAction(b, now), isTrue);
+    }
+    // ...but the row named "Other admin actions" holds only what nothing else
+    // owns. This is what made the dashboard print 7 payments and 8 "other"
+    // actions for the same seven proofs.
+    expect(bookingIsUnattended(approval), isFalse);
+    expect(bookingIsUnattended(payment), isFalse);
+    expect(bookingIsUnattended(closing), isTrue);
+    expect(bookingIsUnattended(refund), isTrue);
+  });
+
+  test('a Pending whose recorded date hold ran out is not live admin work', () {
+    final lapsed = booking(
+      status: 'Pending',
+      proof: 'payments/proof.png',
+      holdExpiresAt: lapsedHold,
+    );
+
+    expect(bookingHoldLapsed(lapsed, now), isTrue);
+    expect(bookingNeedsApproval(lapsed, now), isFalse);
+    expect(bookingNeedsAdminAction(lapsed, now), isFalse);
+    expect(bookingMatchesFilter(lapsed, BookingListFilter.archivedExpired, now), isTrue);
+    expect(bookingMatchesFilter(lapsed, BookingListFilter.pendingVerification, now), isFalse);
+    // The stored status is untouched; only the reading changed.
+    expect(lapsed.rawStatus, 'Pending');
+  });
+
+  test('a hold still running, or none on record, keeps the Booking reviewable', () {
+    final live = booking(
+      status: 'Pending',
+      proof: 'payments/proof.png',
+      holdExpiresAt: runningHold,
+    );
+    expect(bookingHoldLapsed(live, now), isFalse);
+    expect(bookingNeedsApproval(live, now), isTrue);
+    expect(bookingMatchesFilter(live, BookingListFilter.pendingVerification, now), isTrue);
+
+    // A Booking stored before Date holds existed has no countdown to run out.
+    // The web refuses to act only when a recorded hold has lapsed, so hiding
+    // this one would strand it forever; it stays in the queue.
+    final legacy = booking(status: 'Pending', proof: 'payments/proof.png');
+    expect(bookingHoldLapsed(legacy, now), isFalse);
+    expect(bookingNeedsApproval(legacy, now), isTrue);
+    expect(bookingNeedsAdminAction(legacy, now), isTrue);
   });
 
   test('future or unapproved stays are not arrivals or current guests', () {
@@ -86,13 +160,29 @@ void main() {
     // A live stay is not archived anywhere.
     for (final bucket in BookingListFilter.archived) {
       expect(bookingMatchesFilter(booking(status: 'Staying'), bucket, now), isFalse);
-      expect(bookingMatchesFilter(booking(status: 'Pending'), bucket, now), isFalse);
+      // A Pending whose hold is still running is live work, not an archive
+      // bucket; the lapsed-hold test below covers the other half.
+      expect(
+        bookingMatchesFilter(
+          booking(status: 'Pending', holdExpiresAt: runningHold),
+          bucket,
+          now,
+        ),
+        isFalse,
+      );
+      expect(
+        bookingMatchesFilter(booking(status: 'Pending'), bucket, now),
+        isFalse,
+      );
     }
   });
 
   test('a Pending whose 24h hold lapsed reads as Expired in the archive', () {
-    // created_at is 2026-10-01 in the helper, so by `now` the hold has run out.
-    final lapsed = booking(status: 'Pending', checkIn: '2026-10-20');
+    final lapsed = booking(
+      status: 'Pending',
+      checkIn: '2026-10-20',
+      holdExpiresAt: lapsedHold,
+    );
     expect(bookingMatchesFilter(lapsed, BookingListFilter.archivedExpired, now), isTrue);
     expect(bookingMatchesFilter(lapsed, BookingListFilter.archivedNoShow, now), isFalse);
   });

@@ -7,6 +7,7 @@ import '../models/smart_lock_event_model.dart';
 import '../models/room_model.dart';
 import '../models/guest_crm_model.dart';
 import '../services/accommodations.dart';
+import '../services/booking_queue.dart';
 import '../services/firestore_service.dart';
 import '../services/pin_store.dart';
 import '../services/review_service.dart';
@@ -105,6 +106,28 @@ final adminNotificationsProvider =
   return service.streamAdminNotifications();
 });
 
+/// The Booking decisions waiting on the Admin, from the same predicates the
+/// dashboard rows and the Bookings queue use.
+///
+/// The bell and the Bookings tab badge both read this, so the number on the
+/// badge is the work the app can actually open. It used to be built from the
+/// Notifications screen's item list, which counts a submitted proof twice (once
+/// for the proof, once as "payment verification required") and includes OCR rows
+/// for bookkeeping that needs no decision.
+final pendingActionsCountProvider = Provider<int>((ref) {
+  final bookingsAsync = ref.watch(bookingsStreamProvider);
+  final now = DateTime.now();
+  return bookingsAsync.when(
+    data: (bookings) => bookings.where((b) {
+      return bookingNeedsApproval(b, now) ||
+          bookingNeedsPaymentReview(b) ||
+          bookingNeedsAdminAction(b, now);
+    }).length,
+    loading: () => 0,
+    error: (_, __) => 0,
+  );
+});
+
 /// The Activity log of one Booking, oldest first.
 final bookingActivityProvider =
     StreamProvider.family<List<Map<String, dynamic>>, String>((ref, id) {
@@ -184,7 +207,12 @@ final dashboardStatsProvider = Provider<DashboardStats>((ref) {
                 b.checkOutDate.isAfter(now));
       }).length;
 
-      final pendingCount = bookings.where((b) => b.status == BookingStatus.pending).length;
+      // The masthead's "Awaiting approval" figure uses the queue's own
+      // predicate, so it agrees with the Approvals row directly beneath it. This
+      // used to count every Pending Booking, including ones whose Date hold had
+      // already run out and which the queue therefore excludes.
+      final pendingCount =
+          bookings.where((b) => bookingNeedsApproval(b, now)).length;
 
       double revenue = 0.0;
       int guestCount = 0;
