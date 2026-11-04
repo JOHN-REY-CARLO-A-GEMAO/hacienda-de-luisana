@@ -178,7 +178,12 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final stats = ref.watch(dashboardStatsProvider);
+    // One number for both the bell's badge and the Bookings tab badge: the
+    // decisions the App can open, not the number of notification rows (a single
+    // submitted proof can produce two of those). Mirrors the dashboard bell, so
+    // the two never disagree. The stats provider is no longer read here: nothing
+    // in the shell needs the old Pending-only count.
+    final pendingActions = ref.watch(pendingActionsCountProvider);
     final wide = MediaQuery.sizeOf(context).width >= AppTheme.navigationBreakpoint;
 
     final List<Widget> screens = [
@@ -201,7 +206,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     return Scaffold(
       body: Row(
         children: [
-          if (wide) _buildNavigationRail(stats),
+          if (wide) _buildNavigationRail(pendingActions),
           Expanded(
             child: IndexedStack(
               index: _currentIndex,
@@ -210,11 +215,11 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: wide ? null : _buildBottomNavigation(stats),
+      bottomNavigationBar: wide ? null : _buildBottomNavigation(pendingActions),
     );
   }
 
-  Widget _buildNavigationRail(DashboardStats stats) {
+  Widget _buildNavigationRail(int pendingActions) {
     final selected = _currentIndex >= 5 ? 5 : _currentIndex;
     return SizedBox(
       key: TourKeys.bottomNav,
@@ -246,7 +251,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                 Positioned(
                   top: -5,
                   right: -7,
-                  child: AnimatedBadge(count: stats.pendingRequests),
+                  child: AnimatedBadge(count: pendingActions),
                 ),
               ],
             ),
@@ -277,7 +282,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     );
   }
 
-  Widget _buildBottomNavigation(DashboardStats stats) {
+  Widget _buildBottomNavigation(int pendingActions) {
     return Container(
       key: TourKeys.bottomNav,
       decoration: const BoxDecoration(
@@ -309,7 +314,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
                 Positioned(
                   top: -4,
                   right: -6,
-                  child: AnimatedBadge(count: stats.pendingRequests),
+                  child: AnimatedBadge(count: pendingActions),
                 ),
               ],
             ),

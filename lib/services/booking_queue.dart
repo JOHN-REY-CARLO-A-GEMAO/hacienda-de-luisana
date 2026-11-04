@@ -37,10 +37,35 @@ class BookingListFilter {
 bool _hasProof(BookingModel booking) =>
     booking.paymentProofUrl != null && booking.paymentProofUrl!.trim().isNotEmpty;
 
+/// True once the 24-hour Date hold on a Pending Booking has run out.
+///
+/// The stored status stays `Pending` until the Admin records the expiry, but
+/// every decision surface reads it as `Expired` — which means the Booking is no
+/// longer waiting on the Admin at all: the dates are released and the Guest sees
+/// an expired request. Counting it as approval work (and again as an "Other
+/// admin action") asks the Admin to decide something the lifecycle refuses and
+/// makes the dashboard claim work that does not exist.
+///
+/// Only a *recorded* expiry counts, matching `adminActionBlockedReason` on the
+/// website: a Booking stored before Date holds existed has no countdown to run
+/// out, and hiding it would strand it forever. Availability still treats that
+/// Booking as holding nothing — that is a different question from whether the
+/// Admin still has a decision to make.
+bool bookingHoldLapsed(BookingModel booking, DateTime now) {
+  if (booking.rawStatus != BookingStatuses.pending) return false;
+  final expiresAt = booking.holdExpiresAt;
+  if (expiresAt == null) return false;
+  return now.toUtc().isAfter(expiresAt.toUtc());
+}
+
 /// New website Bookings waiting for an approval decision. Approval itself still
 /// requires proof and the lifecycle/service checks; membership grants nothing.
-bool bookingNeedsApproval(BookingModel booking) =>
-    booking.rawStatus == BookingStatuses.pending;
+///
+/// A Pending whose Date hold has run out is excluded: it reads as Expired
+/// everywhere else, so it belongs in the archive, not in the queue.
+bool bookingNeedsApproval(BookingModel booking, [DateTime? now]) =>
+    booking.rawStatus == BookingStatuses.pending &&
+    !bookingHoldLapsed(booking, now ?? DateTime.now());
 
 /// Approved or reserved stays whose recorded check-in day is today.
 bool bookingArrivesToday(BookingModel booking, DateTime now) {
@@ -67,18 +92,64 @@ bool bookingNeedsPaymentReview(BookingModel booking) {
 }
 
 /// Bookings waiting on the Admin, using the canonical stored lifecycle state.
-bool bookingNeedsAdminAction(BookingModel booking) {
+///
+/// This is the Bookings "Needs action" chip: one working list holding every
+/// thing the Admin still has to decide — approve, verify a payment, close a
+/// checked-out stay, pay out a refund. The dashboard prints those as separate
+/// rows ([bookingNeedsApproval], [bookingNeedsPaymentReview] and
+/// [bookingIsUnattended]) and only prints the part nothing else owns, so a
+/// Booking is never counted twice on the page.
+bool bookingNeedsAdminAction(BookingModel booking, [DateTime? now]) {
+  final at = now ?? DateTime.now();
   switch (booking.rawStatus) {
     case BookingStatuses.pending:
-    case BookingStatuses.checkedOut:
-      return true;
+      // Still-owned work: a Pending whose Date hold lapsed is Expired
+      // everywhere else, so it is not waiting on the Admin any more.
+      return !bookingHoldLapsed(booking, at);
     case BookingStatuses.paymentPending:
       return _hasProof(booking);
+    case BookingStatuses.checkedOut:
+      return true;
     case BookingStatuses.cancelled:
       return booking.refundStatus == 'initiated';
     default:
       return false;
   }
+}
+
+/// The part of the "Needs action" list no other dashboard row owns: closing a
+/// checked-out stay and paying out an initiated refund.
+///
+/// Approvals and payment review each have a row of their own above the "Other
+/// admin actions" row. Counting them again there made the dashboard read
+/// "7 payments to verify" and "8 other admin actions" for the same seven
+/// screenshots — and a lapsed Pending counted as the admin's work when the
+/// dates had already been released.
+bool bookingIsUnattended(BookingModel booking) {
+  switch (booking.rawStatus) {
+    case BookingStatuses.checkedOut:
+      return true;
+    case BookingStatuses.cancelled:
+      return booking.refundStatus == 'initiated';
+    default:
+      return false;
+  }
+}
+
+/// The one decision a Booking is waiting on, as a row the dashboard can list.
+///
+/// The queues are five overlapping questions — an approval with a proof answers
+/// "approve" *and* "verify payment" — so a page that prints one row per queue
+/// prints the same Guest twice, with the same next step, under two headings.
+/// This collapses a Booking to the single next action, in lifecycle order:
+/// approve it, or verify the payment, or close the stay, or pay out the refund.
+/// Each row therefore names one Booking once, and every Booking the working
+/// queue contains appears exactly once.
+String? bookingQueueAction(BookingModel booking, DateTime now) {
+  if (bookingNeedsApproval(booking, now)) return BookingListFilter.pendingVerification;
+  if (bookingNeedsPaymentReview(booking)) return BookingListFilter.paymentQueue;
+  if (bookingIsUnattended(booking)) return BookingListFilter.needsAction;
+  return null;
 }
 
 /// Derived no-show: the dates were committed (Approved / Payment Verified /
@@ -110,11 +181,11 @@ bool bookingMatchesFilter(BookingModel booking, String filter, DateTime now) {
     case BookingListFilter.archivedNoShow:
       return bookingIsNoShow(booking, now);
     case BookingListFilter.needsAction:
-      return bookingNeedsAdminAction(booking);
+      return bookingNeedsAdminAction(booking, now);
     case BookingListFilter.paymentQueue:
       return bookingNeedsPaymentReview(booking);
     case BookingListFilter.pendingVerification:
-      return bookingNeedsApproval(booking);
+      return bookingNeedsApproval(booking, now);
     case BookingListFilter.arrivalsToday:
       return bookingArrivesToday(booking, now);
     case BookingListFilter.confirmed:

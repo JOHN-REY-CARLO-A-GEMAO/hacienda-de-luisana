@@ -41,6 +41,10 @@ class DashboardScreen extends ConsumerWidget {
     final stats = ref.watch(dashboardStatsProvider);
     final bookingsAsync = ref.watch(bookingsStreamProvider);
     final smartLockLogsAsync = ref.watch(smartLockLogsStreamProvider);
+    // The bell counts decisions, not notifications: the Notifications screen
+    // lists several rows about one Booking (a proof is both "submitted" and
+    // "to verify"), so its length was never the number of things to do.
+    final pendingActions = ref.watch(pendingActionsCountProvider);
 
     Widget queuesSection() {
       return Column(
@@ -91,8 +95,15 @@ class DashboardScreen extends ConsumerWidget {
 
     Widget quickActions() {
       // Category row in the explore-style kit (docs/DAILY_FLUTTER_UI_STYLE_GUIDE.md):
-      // icon tile + label per destination, replacing the old button wrap. The
-      // tour anchors on TourKeys.reviewBookings, so the key stays on the subtree.
+      // icon tile + label per destination. The tour anchors on
+      // TourKeys.reviewBookings, so the key stays on the subtree.
+      //
+      // Only destinations the bottom bar cannot reach are listed. Bookings, Chat,
+      // Stays and More were repeated here as tiles that did exactly what the tab
+      // four inches below them already does — the same icon, the same
+      // destination, twice on one screen. Smart lock is the only destination
+      // that lives behind "More"; with it here the card is the shortcut the tab
+      // bar cannot give.
       return HaciendaCard(
         padding: const EdgeInsets.all(14),
         child: KeyedSubtree(
@@ -100,30 +111,9 @@ class DashboardScreen extends ConsumerWidget {
           child: ExploreCategoryRow(
             items: [
               ExploreCategory(
-                label: 'Bookings',
-                icon: Icons.confirmation_number_outlined,
-                onTap: () => onNavigateTab(1),
-              ),
-              ExploreCategory(
-                label: 'Chat',
-                icon: Icons.chat_bubble_outline,
-                onTap: () => onNavigateTab(2),
-              ),
-              ExploreCategory(
-                label: 'Stays',
-                icon: Icons.night_shelter_outlined,
-                onTap: () => onNavigateTab(3),
-              ),
-              ExploreCategory(
                 label: 'Smart lock',
                 icon: Icons.lock_open_rounded,
-                badge: 'NEW',
                 onTap: () => onNavigateTab(5),
-              ),
-              ExploreCategory(
-                label: 'More',
-                icon: Icons.more_horiz,
-                onTap: () => onNavigateTab(4),
               ),
             ],
           ),
@@ -221,8 +211,9 @@ class DashboardScreen extends ConsumerWidget {
         actions: [
           Semantics(
             button: true,
-            label: stats.pendingRequests > 0
-                ? 'Notifications, ${stats.pendingRequests} bookings waiting'
+            label: pendingActions > 0
+                ? 'Notifications, $pendingActions booking'
+                    '${pendingActions == 1 ? '' : 's'} waiting'
                 : 'Notifications',
             child: Stack(
               clipBehavior: Clip.none,
@@ -236,7 +227,7 @@ class DashboardScreen extends ConsumerWidget {
                     ));
                   },
                 ),
-                if (stats.pendingRequests > 0)
+                if (pendingActions > 0)
                   Positioned(
                     top: 7,
                     right: 7,
@@ -249,7 +240,7 @@ class DashboardScreen extends ConsumerWidget {
                           shape: BoxShape.circle,
                         ),
                         child: Text(
-                          '${stats.pendingRequests}',
+                          '$pendingActions',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 10,
@@ -413,6 +404,13 @@ class _OperationalQueue {
   final Color color;
   final List<BookingModel> bookings;
 
+  /// True when the list this row opens is wider than the count on the row.
+  ///
+  /// "Needs action" is the one combined working list (approvals, payment
+  /// review, check-outs, refunds), so its row must say that the list continues
+  /// past the number it prints instead of implying the count is the whole list.
+  final bool opensWiderList;
+
   const _OperationalQueue({
     required this.title,
     required this.description,
@@ -420,6 +418,7 @@ class _OperationalQueue {
     required this.icon,
     required this.color,
     required this.bookings,
+    this.opensWiderList = false,
   });
 }
 
@@ -433,6 +432,26 @@ List<BookingModel> _sorted(Iterable<BookingModel> source, {bool byStayDate = fal
 
 List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
   final now = DateTime.now();
+
+  // One row per Booking. The queues overlap by nature — an approval carrying a
+  // payment proof answers both "approve this" and "verify this payment" — so
+  // printing a Booking under every queue it matched showed the same Guest twice,
+  // with the same next step, under two headings ("Payments to verify 7" above
+  // "Other admin actions 8").
+  //
+  // Each Booking is placed by the one action it is waiting on
+  // ([bookingQueueAction]), so no Booking is listed twice and the counts can be
+  // added up. The statuses behind the rows are disjoint, so this loses nothing.
+  final work = <String, List<BookingModel>>{
+    BookingListFilter.pendingVerification: [],
+    BookingListFilter.paymentQueue: [],
+    BookingListFilter.needsAction: [],
+  };
+  for (final booking in bookings) {
+    final action = bookingQueueAction(booking, now);
+    if (action != null) work[action]!.add(booking);
+  }
+
   return [
     _OperationalQueue(
       title: 'Approvals',
@@ -440,7 +459,7 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
       filter: BookingListFilter.pendingVerification,
       icon: Icons.fact_check_outlined,
       color: AppColors.statusWarning,
-      bookings: _sorted(bookings.where(bookingNeedsApproval)),
+      bookings: _sorted(work[BookingListFilter.pendingVerification]!),
     ),
     _OperationalQueue(
       title: 'Arrivals today',
@@ -467,17 +486,37 @@ List<_OperationalQueue> _operationalQueues(List<BookingModel> bookings) {
       filter: BookingListFilter.paymentQueue,
       icon: Icons.payments_outlined,
       color: AppColors.accentGoldDark,
-      bookings: _sorted(bookings.where(bookingNeedsPaymentReview)),
+      bookings: _sorted(work[BookingListFilter.paymentQueue]!),
     ),
     _OperationalQueue(
       title: 'Other admin actions',
-      description: 'Completion, payment review or refund work.',
+      description: 'Checked-out stays to close and refunds to pay out.',
       filter: BookingListFilter.needsAction,
+      // The Bookings list behind this row is the combined "Needs action" queue,
+      // which also holds the approvals and payments above. The row counts only
+      // what it owns, so it says plainly that the list it opens is wider.
+      opensWiderList: true,
       icon: Icons.assignment_late_outlined,
       color: AppColors.statusAlert,
-      bookings: _sorted(bookings.where(bookingNeedsAdminAction)),
+      bookings: _sorted(work[BookingListFilter.needsAction]!),
     ),
   ];
+}
+
+/// The one-line preview on a queue row: the Guest whose Booking is next, and
+/// what is waiting on it.
+///
+/// A lapsed Date hold is stated as what it is. [BookingModel.nextStep] is a
+/// pure function of the stored status, and a Pending whose hold ran out still
+/// reads `Pending` in the document — so printing `nextStep` there told the Admin
+/// "Suriin ang downpayment screenshot" about a request whose dates had already
+/// been released and whose approval the lifecycle refuses.
+String _previewLine(BookingModel booking, DateTime now) {
+  if (bookingHoldLapsed(booking, now)) {
+    return '${booking.guestName}, the Date hold ran out — the dates were released, '
+        'so this one needs no decision.';
+  }
+  return '${booking.guestName}, ${booking.nextStep}';
 }
 
 class _QueueRow extends StatelessWidget {
@@ -488,13 +527,18 @@ class _QueueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
     final count = queue.bookings.length;
     final next = count == 0 ? null : queue.bookings.first;
     final tone = count > 0 ? queue.color : AppColors.textMuted;
+    final nextLine = next == null ? queue.description : _previewLine(next, now);
+    final countLabel = queue.opensWiderList
+        ? '$count in this row; the list it opens also holds approvals and payments'
+        : '$count bookings';
 
     return Semantics(
       button: true,
-      label: '${queue.title}, $count bookings. Open the queue.',
+      label: '${queue.title}, $countLabel. Open the queue.',
       child: HaciendaCard(
         padding: EdgeInsets.zero,
         borderColor: count > 0
@@ -521,12 +565,15 @@ class _QueueRow extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(queue.title, style: AppTheme.title(fontSize: 14)),
+                      Text(
+                        queue.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTheme.title(fontSize: 14),
+                      ),
                       const SizedBox(height: 3),
                       Text(
-                        next == null
-                            ? queue.description
-                            : '${next.guestName}, ${next.nextStep}',
+                        nextLine,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: AppTheme.body(
@@ -538,10 +585,15 @@ class _QueueRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                // Count and chevron share one line so the numeral cannot stack
+                // on top of the chevron and shove the two lines of copy into a
+                // narrower column than the row has room for.
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text('$count', style: AppTheme.metric(fontSize: 22, color: tone)),
+                    const SizedBox(width: 2),
                     const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
                   ],
                 ),

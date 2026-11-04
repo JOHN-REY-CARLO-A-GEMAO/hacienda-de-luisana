@@ -734,7 +734,9 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
         booking.rawStatus == BookingStatuses.pending &&
         effective == BookingStatuses.expired;
     final statusColor = StatusStyle.colorForEnum(booking.status);
-    final needsAction = bookingNeedsAdminAction(booking);
+    // Same `now` the expiry check above used, so a lapsed Date hold is never
+    // highlighted as live work on one line and called Expired on the next.
+    final needsAction = bookingNeedsAdminAction(booking, now);
     final quick = _quickAction(booking);
     final hold = holdRemaining(doc, now);
     final paymentStatus = (booking.paymentStatus ?? 'unpaid').toLowerCase();
