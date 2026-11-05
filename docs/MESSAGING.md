@@ -8,10 +8,10 @@ Application validation is the courtesy; `firestore.rules`, `storage.rules`, and 
 
 ## 1. The data model
 
-One continuous conversation exists per booking (`convoId = booking-${bookingId}`), shared identically by the React Guest website (`src/pages/MessagesPage.tsx`, `src/lib/chatCloud.ts`) and the Flutter Admin application (`lib/views/inbox/inbox_screen.dart`, `lib/services/guest_conversation_lookup.dart`). Earlier topic-based threads (`inquiry-${uid}-${category}`) remain readable and replyable in place without destructive migration.
+The general Message the Admin action opens `guest-${guestUid}`, one booking-independent conversation per Guest account. The Flutter Admin inbox reads and replies to that same document. Existing `booking-${bookingId}` threads remain accessible through their reservation links; earlier topic-based threads (`inquiry-${uid}-${category}`) remain stored in place. No existing messages or attachments are migrated or combined into the new general conversation.
 
 ```
-conversations/{convoId}                    Firestore (`booking-${bookingId}`, or legacy `inquiry-${uid}-${category}`)
+conversations/{convoId}                    Firestore (`guest-${guestUid}`, `booking-${bookingId}`, or legacy `inquiry-${uid}-${category}`)
   booking_id     string   OPTIONAL — the linked Booking id (for booking-scoped threads)
   guest_uid      string   the Guest who owns it
   guest_name     string   OPTIONAL — human-readable Guest display name

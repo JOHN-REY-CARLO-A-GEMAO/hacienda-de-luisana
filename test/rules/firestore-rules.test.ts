@@ -2210,6 +2210,11 @@ describe('public_reviews', () => {
 describe('conversations and messages', () => {
   const convo = conversationDoc()
 
+  it('reserves a guest-wide conversation id for its matching Guest', () => {
+    expect(allow({ path: `conversations/guest-${GUEST_UID}`, method: 'create', auth: anonymousGuest(), requestData: convo })).toBe(true)
+    expect(deny({ path: `conversations/guest-${GUEST_UID}`, method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: conversationDoc({ guest_uid: OTHER_GUEST_UID }) })).toBe(true)
+  })
+
   it('lets a Guest open their own conversation', () => {
     expect(allow({ path: `conversations/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: convo })).toBe(true)
   })

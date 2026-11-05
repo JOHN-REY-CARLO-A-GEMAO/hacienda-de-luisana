@@ -691,6 +691,15 @@ describe('chat', () => {
     await seedBaseline()
   })
 
+  it('reserves each guest-wide conversation id for its owner', async () => {
+    const own = doc(anonymousGuest().firestore(), 'conversations', `guest-${GUEST_UID}`)
+    const squat = doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', `guest-${GUEST_UID}`)
+    await assertFails(setDoc(squat, { guest_uid: OTHER_GUEST_UID, category: 'booking', created_at: serverTimestamp(), updated_at: serverTimestamp() }))
+    await assertSucceeds(setDoc(own, { guest_uid: GUEST_UID, category: 'booking', created_at: serverTimestamp(), updated_at: serverTimestamp() }))
+    await assertFails(getDoc(squat))
+    await assertSucceeds(getDoc(doc(admin().firestore(), 'conversations', `guest-${GUEST_UID}`)))
+  })
+
   it('keeps a conversation to its Guest and to the Admin', async () => {
     await assertSucceeds(getDoc(doc(anonymousGuest().firestore(), 'conversations', CONVO_ID)))
     await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'conversations', CONVO_ID)))

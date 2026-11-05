@@ -18,6 +18,7 @@ import {
 } from '../lib/chatAttachments'
 import {
   ensureBookingConversation,
+  ensureGuestConversation,
   fetchConversationSummaries,
   loadMessagePage,
   markConversationReadByGuest,
@@ -86,7 +87,8 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
     [profile?.first_name, profile?.last_name],
   )
 
-  // Load the Guest's unified booking conversation summaries (+ any legacy threads).
+  // General messages use a stable Guest-owned thread. Booking links still open
+  // their existing threads so past messages and attachments are not lost.
   useEffect(() => {
     if (!user?.uid) {
       setConversations([])
@@ -97,10 +99,26 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
     let cancelled = false
     setConvosState('loading')
 
-    fetchConversationSummaries(user.uid, {
-      email: user.email,
-      guestName: profileFullName || user.displayName || 'Guest',
-    })
+    const name = profileFullName || user.displayName || 'Guest'
+    const load = bookingId
+      ? fetchConversationSummaries(user.uid, { email: user.email, guestName: name })
+      : ensureGuestConversation(user.uid, name).then((conversation): ConversationSummary[] => [{
+          conversationId: conversation.id,
+          guestId: user.uid,
+          bookingId: null,
+          guestName: name,
+          bookingReference: null,
+          propertyName: null,
+          latestMessageText: null,
+          latestMessageAt: null,
+          unreadCount: 0,
+          unreadAdminCount: 0,
+          adminLastReadAt: null,
+          retentionExpiresAt: conversation.retentionExpiresAt,
+          isLegacy: false,
+          booking: null,
+        }])
+    load
       .then((list) => {
         if (cancelled) return
         setConversations(list)
@@ -114,12 +132,12 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
     return () => {
       cancelled = true
     }
-  }, [profileFullName, retryKey, user?.displayName, user?.email, user?.uid])
+  }, [bookingId, profileFullName, retryKey, user?.displayName, user?.email, user?.uid])
 
-  // Resolve only an explicitly selected booking owned by this guest. Never
-  // default to the most recent conversation or a legacy inquiry.
+  // Resolve either the Guest-wide thread or the explicitly selected Booking.
+  // Never substitute another Booking or a legacy inquiry.
   const selectedConvo = useMemo(() => {
-    if (!bookingId) return null
+    if (!bookingId) return conversations.find((item) => item.bookingId === null) ?? null
     const matches = conversations.filter((item) => !item.isLegacy && item.bookingId === bookingId && item.booking?.uid === user?.uid)
     return matches.length === 1 ? matches[0] : null
   }, [bookingId, conversations, user?.uid])
@@ -437,7 +455,7 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
               <a href="tel:+639258507707" className="btn-ghost btn-sm">
                 <Phone size={15} /> Call
               </a>
-              {selectedConvo && (
+              {selectedConvo?.bookingId && (
                 <button type="button" className="btn-quiet btn-sm" aria-expanded={bookingDrawerOpen}
                   onClick={() => setBookingDrawerOpen((open) => !open)}>
                   <Calendar size={15} /> Booking details
@@ -449,7 +467,7 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
 
         {convosState === 'loading' ? (
           <section className="guest-panel mt-8 p-10" aria-label="Loading conversations">
-            <LoadingPanel label="Loading your stay conversations…" bare />
+            <LoadingPanel label="Opening your conversation…" bare />
           </section>
         ) : convosState === 'error' ? (
           <div className="mt-8">

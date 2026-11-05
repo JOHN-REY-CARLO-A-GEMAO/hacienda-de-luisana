@@ -1,6 +1,6 @@
 // The guest-count input is capped by the selected accommodation's capacity
-// (falling back to the platform-wide 100-guest online limit), so a guest can
-// never type or step past what the unit sleeps.
+// (falling back to the platform-wide 100-guest online limit). The online
+// processing limit is not a claim about physical capacity.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -83,6 +83,15 @@ beforeEach(() => {
           weekend_holiday: { min_guests: 1, base_max_guests: 10, base_rate: 6000, excess_per_guest: 500 },
         },
       },
+      annex: {
+        property_name: 'HDL Annex', rate_unit: 'standard_stay', active: true,
+        security_deposit: 0, down_payment_percent: 50,
+        guest_pricing: {
+          units_per_booking: 1,
+          weekday: { min_guests: 1, base_max_guests: 6, base_rate: 4000, excess_per_guest: 500 },
+          weekend_holiday: { min_guests: 1, base_max_guests: 6, base_rate: 5000, excess_per_guest: 500 },
+        },
+      },
     },
   }))
   resetRateLimit('booking:create')
@@ -98,10 +107,45 @@ afterEach(() => {
 })
 
 describe('guest-count limit follows the selected accommodation', () => {
-  it('defaults to the 100-guest online cap before a unit is chosen', async () => {
+  it('distinguishes the Main House base rate from the online limit and capacity', async () => {
     open()
     await until(() => Boolean(container.querySelector('#guest-count')))
     expect(input('#guest-count').max).toBe('100')
+    await until(() => container.textContent?.includes('Kasama sa base rate ang hanggang 10 bisita') === true)
+    expect(container.textContent).toContain('₱500 bawat dagdag na bisita kada standard stay')
+    expect(container.textContent).toContain('Hanggang 100 bisita ang tinatanggap ng online form')
+    expect(container.textContent).not.toContain('100 bisita ang kasya')
+    expect(input('#guest-count').getAttribute('aria-describedby')).toBe('guest-count-message')
+    fill('#guest-count', '11')
+    expect(input('#guest-count').value).toBe('11')
+  })
+
+  it('uses the published Annex allowance rather than the Main House allowance', async () => {
+    open()
+    await until(() => Boolean(container.querySelector('select')))
+    choose('select', 'annex')
+    await until(() => container.textContent?.includes('Kasama sa base rate ang hanggang 6 bisita') === true)
+    expect(container.textContent).toContain('₱500 bawat dagdag na bisita kada standard stay')
+    expect(input('#guest-count').max).toBe('100')
+    expect(container.textContent).not.toContain('100 bisita ang kasya')
+  })
+
+  it('does not invent included guests or charges if no rates are published', async () => {
+    localStorage.removeItem(LOCAL_RATES_KEY)
+    open()
+    await until(() => Boolean(container.querySelector('#guest-count')))
+    expect(container.textContent).toContain('kumpirmahin ang aktuwal na kapasidad sa Hacienda')
+    expect(container.textContent).not.toContain('Kasama sa base rate ang hanggang')
+    expect(container.textContent).not.toContain('100 bisita ang kasya')
+  })
+
+  it('does not claim a fixed allowance when weekday and weekend schedules differ', async () => {
+    const rates = JSON.parse(localStorage.getItem(LOCAL_RATES_KEY)!)
+    rates.accommodations['main-house'].guest_pricing.weekend_holiday.excess_per_guest = 750
+    localStorage.setItem(LOCAL_RATES_KEY, JSON.stringify(rates))
+    open()
+    await until(() => container.textContent?.includes('Nag-iiba ang bilang ng kasamang bisita') === true)
+    expect(container.textContent).not.toContain('₱500 bawat dagdag na bisita kada standard stay')
   })
 
   it('caps the input, the steppers and typed values at the unit capacity (A-House: 3)', async () => {

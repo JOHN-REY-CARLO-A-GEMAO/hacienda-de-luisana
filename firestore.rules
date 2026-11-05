@@ -1559,6 +1559,8 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['guest_uid', 'category', 'created_at', 'updated_at'])
         && request.resource.data.guest_uid == request.auth.uid
+        // Reserve the deterministic guest-wide id for its actual owner.
+        && (!convoId.matches('guest-.*') || convoId == 'guest-' + request.auth.uid)
         // A Guest may not open their own thread with an expiry already on it.
         && !request.resource.data.keys().hasAny(['messages_expires_at']);
       // READ — the Admin, and the Guest the conversation belongs to, plus one
