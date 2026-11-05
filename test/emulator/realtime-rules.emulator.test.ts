@@ -390,3 +390,95 @@ describe('live location, the ephemeral stream', () => {
     )
   })
 })
+
+/**
+ * A conversation the migration has folded into the account conversation
+ * (`docs/MESSAGING-MIGRATION.md` § 2b) is closed to live location for good.
+ *
+ * The position node's `.write` is `auth.uid == $guestUid` and knows nothing
+ * about Firestore — and a Realtime Database rule cannot read Firestore, so the
+ * Firestore fence on `location_sessions` create cannot be consulted from here.
+ * What CAN be consulted is a mirror: the migration writes the retired id to
+ * `retired_conversations/{conversationId}` with the Admin SDK, and `.validate`
+ * reads it back with `root.child(...)`, exactly as the Admin allowlist mirror
+ * two blocks up already does.
+ *
+ * The mirror is written only AFTER the thread is retired in Firestore, and only
+ * for threads with no live session under them — so nothing here may interfere
+ * with a share that is still running.
+ */
+describe('a retired conversation is closed to live location', () => {
+  const RETIRED_CONVO = 'booking-bk-retired'
+  const OTHER_CONVO = 'booking-bk-untouched'
+  const retiredPath = (uid = GUEST_UID) => `live_location/${RETIRED_CONVO}/${uid}`
+
+  /** What the migration does, with the Admin SDK: no client can write this node. */
+  async function retireConversation(conversationId: string): Promise<void> {
+    await env.withSecurityRulesDisabled(async (owner) => {
+      await owner.database().ref(`retired_conversations/${conversationId}`).set({
+        superseded_by: `guest-${GUEST_UID}`,
+        at_ms: Date.now(),
+      })
+    })
+  }
+
+  it('closes every client out of writing the mirror, the way the migration writes it', async () => {
+    // The migration uses the Admin SDK, which bypasses these rules. If a client
+    // could write here it could un-retire a thread — or read the list of Guests
+    // who have been folded, which is none of a Guest's business.
+    await assertDenied(() => guest().ref('retired_conversations/anything').set(true), 'a Guest writing the mirror')
+    await assertDenied(() => admin().ref('retired_conversations/anything').set(true), 'the Admin writing the mirror')
+    await assertDenied(() => signedOut().ref('retired_conversations/anything').set(true), 'a signed-out writer')
+    await assertDenied(() => admin().ref('retired_conversations').once('value'), 'reading the mirror')
+  })
+
+  it('refuses a position under a conversation the migration has folded in', async () => {
+    await retireConversation(RETIRED_CONVO)
+    await assertDenied(
+      () => guest().ref(retiredPath()).set(fix({ conversation_id: RETIRED_CONVO })),
+      'a fix on a retired conversation',
+    )
+  })
+
+  it('leaves every other conversation exactly as it was', async () => {
+    await retireConversation(RETIRED_CONVO)
+    // Folding one Guest's threads closes those ids and nothing else: not another
+    // conversation, and above all not the account conversation, which is where a
+    // Guest shares from now on.
+    await assertSucceeds(
+      guest().ref(`live_location/${OTHER_CONVO}/${GUEST_UID}`).set(fix({ conversation_id: OTHER_CONVO })),
+    )
+    await assertSucceeds(
+      guest()
+        .ref(`live_location/guest-${GUEST_UID}/${GUEST_UID}`)
+        .set(fix({ conversation_id: `guest-${GUEST_UID}` })),
+    )
+    await assertSucceeds(guest().ref(path()).set(fix()))
+  })
+
+  it('still lets the Guest STOP sharing on a retired conversation', async () => {
+    // The reason the guard sits in `.validate` and not in `.write`. A delete has
+    // no `newData`, and Realtime Database skips `.validate` for one — so
+    // `stopSharing`, and the `onDisconnect().remove()` the server runs when the
+    // Guest's phone dies, keep working on a retired thread. Putting the guard in
+    // `.write` would strand the very sessions this exists to protect.
+    await assertSucceeds(guest().ref(retiredPath()).set(fix({ conversation_id: RETIRED_CONVO })))
+    await retireConversation(RETIRED_CONVO)
+    await assertSucceeds(guest().ref(retiredPath()).remove())
+  })
+
+  it('refuses the Admin a read of a position stranded on a retired conversation', async () => {
+    // A node written in the moment before the mirror landed cannot be deleted by
+    // the rule, but it is not readable either: `.read` is refused past
+    // `expires_at_ms`, and the no-extend clause means that window can never be
+    // pushed out. So the worst case is debris with a closing date.
+    await assertSucceeds(guest().ref(retiredPath()).set(fix({ conversation_id: RETIRED_CONVO })))
+    await assertSucceeds(admin().ref(retiredPath()).once('value'))
+    await retireConversation(RETIRED_CONVO)
+    // The read rule is unchanged by retirement, and still serves a node whose
+    // window is open — retirement stops NEW positions, it does not blind the
+    // Admin to one already there.
+    await assertSucceeds(admin().ref(retiredPath()).once('value'))
+    await assertDenied(() => guest().ref(retiredPath()).once('value'), 'a Guest reading any position')
+  })
+})

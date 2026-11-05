@@ -42,8 +42,12 @@ type FirestoreLike = Pick<Firestore, 'collection' | 'doc' | 'runTransaction' | '
 type RealtimeLike = {
   ref(path: string): {
     once(event: 'value'): Promise<{ val(): unknown }>
+    set(value: unknown): Promise<unknown>
   }
 }
+
+/** Where the migration records a conversation id that is closed to live location. */
+const RETIRED_CONVERSATIONS = 'retired_conversations'
 
 /**
  * A Firestore-shaped handle, narrowed so the migration can be driven by the
@@ -343,6 +347,17 @@ function liveLocationStore(collections: { collection(name: string): FirestoreCol
 
       return [...byConvo.values()]
     },
+
+    async retire(input) {
+      // The Admin SDK bypasses these rules, which is the only reason this
+      // write is possible at all: `database.rules.json` denies every client
+      // here, read and write, so a browser cannot un-retire a thread or learn
+      // which ones have been folded.
+      await database.ref(`${RETIRED_CONVERSATIONS}/${input.conversationId}`).set({
+        superseded_by: input.supersededBy,
+        at_ms: input.atMs,
+      })
+    },
   }
 }
 
@@ -356,6 +371,11 @@ function liveLocationStore(collections: { collection(name: string): FirestoreCol
  */
 function unobservableLiveLocation(): LiveLocationStore {
   return {
+    async retire() {
+      throw new Error(
+        'Realtime Database is not configured: a retired conversation cannot be closed to live location.',
+      )
+    },
     async findSessions() {
       throw new Error(
         'Realtime Database is not configured: live-location positions cannot be checked. ' +

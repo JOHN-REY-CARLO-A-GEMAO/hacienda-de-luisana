@@ -185,6 +185,21 @@ export type LiveLocationStore = {
    * an empty list that reads as "the coast is clear".
    */
   findSessions(conversationIds: readonly string[]): Promise<readonly LiveLocationSession[]>
+  /**
+   * Close a conversation id to any further position, for good.
+   *
+   * Called only AFTER the thread has been retired in Firestore — never before,
+   * and that ordering is the whole safety argument. Writing this first would
+   * stop the position of a session that was still running, which is exactly what
+   * this migration promises never to do.
+   *
+   * It is a second, independent lock rather than the primary one: the Firestore
+   * fence on `location_sessions` create is what stops new sessions, and this is
+   * what stops a browser that still holds a session object in memory from
+   * keeping a retired thread alive. Best effort — a failure here is reported,
+   * not fatal, because the Firestore fence is already holding the door.
+   */
+  retire(input: { conversationId: string; supersededBy: string; atMs: number }): Promise<void>
 }
 
 export type MigrationStores = {
@@ -566,6 +581,12 @@ export type MigrationResult = {
   copied: number
   attachments: number
   superseded: string[]
+  /**
+   * Retired threads whose live-location closure could not be written to the
+   * Realtime Database. Empty is the normal case. Non-empty is not fatal — see
+   * the `retire` port — but it is never silently dropped.
+   */
+  liveLocationClosureFailures?: string[]
   liveLocation?: LiveLocationReport
   /** Present once a run has copied anything. Read-only; see `verifyGuestConversation`. */
   verification?: VerificationReport
@@ -832,6 +853,7 @@ export async function runGuestHistoryMigration(
     //       before any thread is marked, leaving the run cleanly restartable
     //       rather than half-annotated.
     const superseded: string[] = []
+    const markerFailures: string[] = []
     const at = now()
     const sourceIds = [...new Set(plan.map((copy) => copy.sourceConversationId))].sort()
 
@@ -904,6 +926,29 @@ export async function runGuestHistoryMigration(
         }
       }
       superseded.push(id)
+      // Now that the thread IS retired, and not before: tell the Realtime
+      // Database, so no browser still holding a session object can keep
+      // publishing positions under an id nobody reads any more.
+      try {
+        await stores.liveLocation.retire({
+          conversationId: id,
+          supersededBy: conversationId,
+          atMs: timestampMs(at) ?? timestampMs(now()) ?? 0,
+        })
+      } catch (error) {
+        // Reported, not fatal. The Firestore fence is the primary control and it
+        // is already in force; an unreachable Realtime Database here narrows the
+        // guarantee from "no writes, ever" to "no writes that outlive the
+        // session's own window", which is still a bounded and unrenderable
+        // orphan. Say so, so the operator is not told everything is fine.
+        const message = error instanceof Error ? error.message : String(error)
+        markerFailures.push(`${id}: ${message}`)
+        logger.warn?.('[migration] could not close the retired thread to live location', {
+          uid,
+          conversationId: id,
+          message,
+        })
+      }
     }
 
     // 8. Verify the new paths, before the run is allowed to call itself done.
@@ -954,6 +999,7 @@ export async function runGuestHistoryMigration(
       superseded,
       liveLocation,
       verification,
+      ...(markerFailures.length ? { liveLocationClosureFailures: markerFailures } : {}),
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

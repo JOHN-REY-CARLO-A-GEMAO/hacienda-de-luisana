@@ -298,6 +298,16 @@ async function main(): Promise<number> {
         }
         console.warn('[migration]   nothing was copied and no session was touched. Run again when it has ended.')
       }
+      if (result.liveLocationClosureFailures?.length) {
+        console.error(
+          `[migration]   ${result.liveLocationClosureFailures.length} retired thread(s) could NOT be closed to live location:`,
+        )
+        for (const failure of result.liveLocationClosureFailures) console.error(`[migration]     ! ${failure}`)
+        console.error(
+          '[migration]   The Firestore fence is still holding — no NEW session can open on them — ' +
+            'but a browser already holding one could keep writing until its own window closes.',
+        )
+      }
       if (result.verification && !result.verification.ok) {
         console.error(`[migration]   VERIFICATION FAILED for ${result.uid}:`)
         for (const problem of result.verification.problems) console.error(`[migration]     ! ${problem}`)
@@ -310,7 +320,8 @@ async function main(): Promise<number> {
   // ahead, and the operator is told which to come back to.
   const failed = results.some((result) => result.status === 'failed')
   const unverified = results.some((result) => result.verification && !result.verification.ok)
-  return failed || unverified ? 1 : 0
+  const unclosed = results.some((result) => (result.liveLocationClosureFailures?.length ?? 0) > 0)
+  return failed || unverified || unclosed ? 1 : 0
 }
 
 main()

@@ -98,7 +98,20 @@ those fields: `firestore.rules` omits them from the message's allowed keys.
   `location_sessions` document on a conversation carrying `superseded_by`.
   That last one is the only mechanism an old browser bundle cannot argue with,
   and it is on `create` only: a Guest must always be able to stop sharing, and
-  gating `update` would strand the sessions this exists to protect. See
+  gating `update` would strand the sessions this exists to protect.
+
+  A fourth closes the position side, which the Firestore rules cannot reach: the
+  migration records each retired id in the Realtime Database, and
+  `database.rules.json` refuses any position under an id carrying it. That guard
+  sits in `.validate` rather than `.write`, for the same reason from the other
+  side — a delete has no `newData`, so `stopSharing` and `onDisconnect` keep
+  working on a retired thread.
+
+  Complete prevention of a stranded position is not technically possible without
+  a cross-database transaction, which neither product offers. A Realtime
+  Database rule cannot read Firestore, so the mirror can be a moment stale; the
+  residual is a node that cannot be refreshed, cannot be rendered without a
+  matching session, and expires on the schedule its own session set. See
   `docs/MESSAGING-MIGRATION.md` § 2b.
 - Pagination, the 1,000-character limit, and the 5 MiB private image rules.
 

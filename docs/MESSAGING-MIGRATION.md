@@ -119,12 +119,66 @@ Three things close it, because no single one can:
 | --- | --- | --- |
 | **Recheck before annotating** | The copy loop | One more read of both databases before the first thread is marked, so the common case blocks before anything is retired. |
 | **Atomic retirement** | The instant of retirement | `superseded_by` is written inside a transaction that first reads the session. A Firestore transaction cannot read the Realtime Database, so the *consent* is what is made atomic — and the consent is the half that matters: `startSharing` writes it before publishing any position, so a consent the transaction cannot see has not put anyone on the map. |
-| **A rule, in `firestore.rules`** | Everything after | No client may create a `location_sessions` document on a conversation carrying `superseded_by`. This is the only one an old browser bundle cannot argue with, and it holds for as long as the thread exists. |
+| **A rule, in `firestore.rules`** | New sessions | No client may create a `location_sessions` document on a conversation carrying `superseded_by`. This is the only one an old browser bundle cannot argue with, and it holds for as long as the thread exists. |
+| **A mirror, in `database.rules.json`** | Position writes | The migration writes the retired id to `retired_conversations/{conversationId}` with the Admin SDK, and `.validate` on the position node reads it back with `root.child(...)`. No new position may be written under a retired id, by anyone. |
 
-The rule is on **`create` only, never `update`**. A Guest must always be able to
-*stop* sharing, on any thread, forever — gating `update` would strand the very
-sessions this is meant to protect. It costs nothing before a thread is folded,
-because `superseded_by` does not exist until then.
+The Firestore rule is on **`create` only, never `update`**. A Guest must always
+be able to *stop* sharing, on any thread, forever — gating `update` would strand
+the very sessions this is meant to protect. It costs nothing before a thread is
+folded, because `superseded_by` does not exist until then.
+
+The Realtime Database guard is on **`.validate`, never `.write`**, for the same
+reason from the other side. A delete has no `newData`, and Realtime Database
+skips `.validate` for one — so `stopSharing` and the `onDisconnect().remove()`
+the server runs when a Guest's phone dies keep working on a retired thread.
+Putting the guard in `.write` would strand the sessions this exists to protect.
+
+**Ordering is the whole safety argument for the mirror.** It is written *after*
+the retirement, never before. Writing it first would stop the position of a
+session that was still running — precisely what this migration exists never to
+do. A thread the run refused to retire is therefore *not* closed, and a Guest
+sharing on it keeps sharing while the rest of their history is folded in behind
+them.
+
+### What cannot be prevented, and how bad it is
+
+**Complete prevention is not technically possible.** A Realtime Database rule
+cannot read Firestore — so no rule here can consult the consent, the
+`superseded_by` stamp, or anything else that lives across the boundary. The
+mirror is a copy of that state, and like any copy it can be a moment stale.
+
+The residual is a position written to a retired id in the interval between the
+Firestore retirement and the mirror landing — milliseconds in practice. It is
+bounded and it is inert:
+
+- **Bounded.** The no-extend clause in `.validate` means a node's window can
+  never be pushed out, so it expires on the schedule the original session set —
+  15, 30 or 60 minutes, at the outside.
+- **Inert.** The Admin renders a position only when it matches a live Firestore
+  session (`checkFix`), and `.read` is refused past `expires_at_ms` in any case.
+  `.validate` refuses any further write, so the node cannot be refreshed.
+- **Collected.** `onDisconnect().remove()` and `stopSharing` both still work on
+  a retired thread, by design.
+
+One hardening that was considered and **rejected**: bounding `at_ms` against
+`now`. `publishFix` sends the browser's own `Date.now()`, which is not
+skew-corrected the way the session window is, so a Guest whose device clock runs
+fast would have every fix refused and would appear permanently offline. The
+rules must not be stricter than the feature can satisfy.
+
+If the mirror cannot be written at all — the Realtime Database is unreachable —
+the run **succeeds and reports it**. The Firestore fence is the primary control
+and it is already in force, so the guarantee narrows from "no writes, ever" to
+"no writes that outlive the session's own window". The CLI exits non-zero and
+names every thread it could not close:
+
+```
+[migration] guest-uid-7: applied — planned 11, copied 11, attachments 1, superseded 5
+[migration]   5 retired thread(s) could NOT be closed to live location:
+[migration]     ! booking-bk_1: database unavailable
+[migration]   The Firestore fence is still holding — no NEW session can open on them —
+[migration]   but a browser already holding one could keep writing until its own window closes.
+```
 
 **If the race cannot be closed, the run aborts.** It does not mark the thread,
 does not copy over the top of a live session, and does not guess. Copies already
@@ -271,6 +325,16 @@ a share from the website, watch it appear in the Admin's panel, stop it, and
 start again. Both ends now resolve `guest-<uid>`, which is the point — the old
 `booking-<id>` stream would have had nowhere to be read from.
 
+Then confirm the closure took, which `database.rules.json` is what enforces:
+`retired_conversations/{conversationId}` holds one entry per retired thread, and
+`live_location/{retiredId}/{guestUid}` accepts no new write. A Guest whose share
+was running when the migration reached them is **not** in that list, and is
+still sharing.
+
+```
+[migration] verify guest-uid-7: OK — 11 message(s), 1 attachment(s), 5 superseded thread(s), 0 live session(s)
+```
+
 Then, in the apps: the Guest's thread shows the whole history in one timeline,
 each message labelled with the reservation it is about; the Admin's inbox shows
 one row for that Guest; and **no push notification was sent for any copied
@@ -293,6 +357,7 @@ to recover, because the sources were never modified.
 | --- | --- | --- |
 | `functions/test/guest-history-migration.test.ts` | `npm --prefix functions test` | audit writes nothing; dry-run writes nothing; copies keep sender/role/text/timestamp/booking; nothing is deleted; a retry duplicates nothing; a crash resumes; a second worker is locked out; a message that cannot be reproduced stops the run; copies never notify; **a live session blocks and writes nothing; a session on the account thread is reported not blocking; an expired session no longer blocks; waiting lets one end and the run then goes ahead; one that outlasts the wait aborts the Guest; one that starts mid-run is caught by the recheck and the lease goes back; one that starts during the copies stops every thread being retired; one that lands between the pre-annotate read and the retirement is caught by the atomic guard, which retires the four before it and not the one with the session; a session the Guest has ended is not a block; an unreachable RTDB refuses to run; verification catches a stray attachment and a session on a retired thread** |
 | `test/rules/firestore-rules.test.ts` | `npm run test:rules` | **no client, including the Admin, can open a live-location session on a thread the migration has folded; the Guest can still stop one; threads that have not been folded behave exactly as before** |
+| `test/emulator/realtime-rules.emulator.test.ts` | `npm run test:emulator` | **no client can read or write the retirement mirror; a position is refused under a retired conversation; other conversations and the account conversation are untouched; the Guest can still STOP sharing and `onDisconnect` still cleans up on a retired thread** |
 | `test/web/guest-conversation-identity.test.ts` | `npm test` | the id formula, its stability, classification, and what counts as usable booking context |
 | `test/web/chat-messaging.test.ts` | `npm test` | one conversation per account, booking context on messages, superseded threads still readable |
 | `test/rules/firestore-rules.test.ts` | `npm run test:rules` | no client creates a non-account conversation id; message booking context is validated; clients cannot stamp migration provenance |

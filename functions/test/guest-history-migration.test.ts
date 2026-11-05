@@ -55,6 +55,8 @@ function createStores(seed: {
    */
   liveLocation?: Array<Partial<LiveLocationSession> & { conversationId: string; active?: boolean }>
   liveLocationUnobservable?: boolean
+  /** Make the live-location closure fail, to prove it is reported and not fatal. */
+  failRetire?: string
   /** Appended to the session list on the second and later reads. */
   liveLocationAfter?: Array<Partial<LiveLocationSession> & { conversationId: string }>
   /**
@@ -69,7 +71,14 @@ function createStores(seed: {
    * per-thread transaction can catch this one.
    */
   startSessionOnAnnotate?: { conversationId: string; expiresAtMs: number }
-}): { stores: MigrationStores; audit: Audit; clock: { now: number }; liveLocationReads: () => number } {
+}): {
+  stores: MigrationStores
+  audit: Audit
+  clock: { now: number }
+  liveLocationReads: () => number
+  /** Conversation ids the run has closed to live location, in order. */
+  retired: string[]
+} {
   const conversations = new Map<string, Record<string, unknown>>(
     (seed.conversations ?? []).map((entry) => [entry.id, { ...entry.data }]),
   )
@@ -292,7 +301,15 @@ function createStores(seed: {
     },
   }
 
+  const retired: string[] = []
   const liveLocationStore: LiveLocationStore = {
+    async retire(input) {
+      if (seed.liveLocationUnobservable) {
+        throw new Error('Realtime Database is not configured')
+      }
+      if (seed.failRetire) throw new Error(seed.failRetire)
+      retired.push(input.conversationId)
+    },
     async findSessions(conversationIds) {
       liveLocationReads += 1
       if (seed.liveLocationUnobservable) {
@@ -316,6 +333,7 @@ function createStores(seed: {
     audit: { writes },
     clock,
     liveLocationReads: () => liveLocationReads,
+    retired,
   }
 }
 
@@ -1069,4 +1087,95 @@ test('a session the Guest has already ended is not a block, and never strands th
   assert.deepEqual(result.liveLocation?.watching, [])
   assert.equal(result.superseded.length, 5)
   assert.ok(result.verification?.ok, result.verification?.problems.join('; '))
+})
+
+// ---------------------------------------------------------------------------
+// Closing a retired thread to live location.
+//
+// The Firestore fence stops a NEW session being opened on a folded thread. What
+// it cannot stop is a browser that already holds a session object in memory
+// from keeping a retired id alive with position writes — `.write` on
+// `live_location/$conversationId/$guestUid` is `auth.uid == $guestUid` and
+// knows nothing about Firestore. So the migration records the retirement in the
+// Realtime Database too, and `database.rules.json` refuses any position under
+// an id that carries it.
+//
+// The ordering is the whole safety argument: the closure is written AFTER the
+// thread is retired, never before. Writing it first would stop the position of
+// a session that was still running — precisely the thing this migration exists
+// never to do.
+// ---------------------------------------------------------------------------
+
+test('every retired thread is closed to live location, and only after it is retired', async () => {
+  const { stores, clock, retired } = createStores(fiveBookingThreads())
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  assert.equal(result.status, 'applied')
+  assert.deepEqual(result.superseded, [
+    'booking-bk_1',
+    'booking-bk_2',
+    'booking-bk_3',
+    'booking-bk_4',
+    'booking-bk_5',
+  ])
+  // One closure per retired thread, and none for the account conversation —
+  // that path is the destination, and a Guest must be able to keep sharing on it
+  // while their own history is being folded in behind them.
+  assert.deepEqual(retired, [
+    'booking-bk_1',
+    'booking-bk_2',
+    'booking-bk_3',
+    'booking-bk_4',
+    'booking-bk_5',
+  ])
+  assert.equal(result.liveLocationClosureFailures, undefined)
+})
+
+test('a thread the run refused to retire is NOT closed to live location', async () => {
+  const { stores, clock, retired } = createStores({
+    ...fiveBookingThreads(),
+    // A Guest starts sharing on bk_5 in the instant before it would be retired.
+    // The run retires the four before it and stops there.
+    startSessionOnAnnotate: { conversationId: 'booking-bk_5', expiresAtMs: NOW + 600_000 },
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  assert.equal(result.status, 'blocked-live-location')
+  assert.deepEqual(result.superseded, ['booking-bk_1', 'booking-bk_2', 'booking-bk_3', 'booking-bk_4'])
+  // The live session's thread is left open. Cutting it off is the one thing
+  // this migration must never do, however tempting it is to tidy up.
+  assert.deepEqual(retired, ['booking-bk_1', 'booking-bk_2', 'booking-bk_3', 'booking-bk_4'])
+  assert.equal(retired.includes('booking-bk_5'), false)
+})
+
+test('a closure the Realtime Database refused is reported, not silently swallowed', async () => {
+  const { stores, clock } = createStores({ ...fiveBookingThreads(), failRetire: 'database unavailable' })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  // The migration itself still succeeds: the Firestore fence is the primary
+  // control and it is already in force, so an unwritten closure narrows the
+  // guarantee rather than breaking it.
+  assert.equal(result.status, 'applied')
+  assert.equal(result.superseded.length, 5)
+  // .but it is never reported as though everything were fine.
+  assert.equal(result.liveLocationClosureFailures?.length, 5)
+  assert.match(result.liveLocationClosureFailures?.[0] ?? '', /database unavailable/)
+})
+
+test('an unreachable Realtime Database closes nothing and blocks the run, as before', async () => {
+  const { stores, retired } = createStores({ ...fiveBookingThreads(), liveLocationUnobservable: true })
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false })
+
+  // The check is a precondition, so the run never reaches the point of retiring
+  // anything — and therefore never reaches the point of closing anything either.
+  assert.equal(result.status, 'failed')
+  assert.match(result.error ?? '', /Live-location check unavailable/)
+  assert.deepEqual(retired, [])
 })
