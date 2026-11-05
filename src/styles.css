@@ -1021,59 +1021,45 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 /* Chat — a correspondence desk, not an admin inbox                   */
 /* ------------------------------------------------------------------ */
 
-/* One restrained workspace. The topic rail is separated by a structural rule;
-   the conversation owns the remaining width and scrolls independently. */
+/* The page clears the fixed navigation using Page's top padding. Its flex
+   column gives the chat the remaining viewport height without a width cap. */
+.messages-page {
+  height: 100dvh;
+  min-height: 42rem;
+  padding-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+.messages-page-content {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
 .messages-workspace {
-  @apply mt-8 flex overflow-hidden;
-  height: clamp(34rem, calc(100dvh - 16rem), 45rem);
-  /* The desk's brass edge — the one structural accent on this page. */
+  @apply mt-6 flex overflow-hidden;
+  flex: 1 1 0%;
+  min-height: 20rem;
   border-top: 3px solid rgb(184 154 100 / 0.85);
 }
 .dark .messages-workspace {
   border-top-color: rgb(184 154 100 / 0.5);
 }
-.messages-topics {
-  display: none;
-  @apply w-full shrink-0 flex-col border-r border-forest-900/10 bg-cream-100/45 dark:border-cream-100/10 dark:bg-forest-950/30;
-}
 .messages-conversation {
-  display: none;
-  @apply min-w-0 flex-1 flex-col bg-white dark:bg-forest-900/60;
+  @apply flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-forest-900/60;
 }
-.messages-topics.messages-mobile-visible,
-.messages-conversation.messages-mobile-visible {
-  display: flex;
+.messages-switcher {
+  @apply flex shrink-0 flex-wrap items-center gap-2 border-b border-forest-900/8 bg-cream-100/45 px-4 py-2 text-xs text-forest-700 dark:border-cream-100/10 dark:bg-forest-950/30 dark:text-cream-100 sm:px-5;
 }
-@media (min-width: 768px) {
-  .messages-topics,
-  .messages-topics.messages-mobile-visible {
-    display: flex;
-    width: 18.5rem;
-  }
-  .messages-conversation,
-  .messages-conversation.messages-mobile-visible {
-    display: flex;
-  }
+.messages-switcher label {
+  @apply font-semibold;
 }
-@media (min-width: 1024px) {
-  .messages-topics,
-  .messages-topics.messages-mobile-visible {
-    width: 20rem;
-  }
+.messages-switcher select {
+  @apply min-w-0 max-w-full rounded-md border border-forest-900/15 bg-white px-2 py-1.5 text-forest-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400 dark:border-cream-100/15 dark:bg-forest-900 dark:text-cream-50;
 }
 
-.messages-topics-heading {
-  @apply border-b border-forest-900/8 px-5 py-5 dark:border-cream-100/10;
-}
-.messages-topics-heading h2 {
-  @apply font-serif text-2xl font-medium text-forest-900 dark:text-cream-50;
-}
-.messages-topics-heading p {
-  @apply mt-1.5 max-w-[15rem] text-xs leading-relaxed text-forest-600 dark:text-sage-400;
-}
-.messages-topic-list {
-  @apply flex-1 overflow-y-auto;
-}
 .messages-topic {
   @apply relative flex w-full items-start gap-3 border-b border-forest-900/8 px-4 py-4 text-left transition-colors duration-150 last:border-b-0 dark:border-cream-100/10;
 }
@@ -1096,31 +1082,6 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 .messages-topic-description {
   @apply mt-1 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400;
 }
-.messages-privacy-note {
-  @apply mt-auto flex items-start gap-2.5 border-t border-forest-900/8 px-5 py-4 text-forest-600 dark:border-cream-100/10 dark:text-sage-400;
-}
-.messages-privacy-note svg {
-  @apply mt-0.5 shrink-0;
-}
-.messages-privacy-note p {
-  @apply text-[11px] leading-relaxed;
-}
-
-/* Inbox filter chips (All / Unread) — tokens so the page composes instead of
-   re-typing colours. Active chip is the forest pill; its count goes brass. */
-.msg-chip {
-  @apply inline-flex items-center gap-1.5 rounded-full border border-forest-900/15 bg-white px-4 py-1.5 text-sm font-semibold text-forest-800 shadow-sm transition-colors hover:bg-forest-50 dark:border-cream-100/15 dark:bg-forest-900 dark:text-cream-100 dark:hover:bg-forest-800;
-}
-.msg-chip[aria-pressed='true'] {
-  @apply border-forest-900 bg-forest-900 text-cream-50;
-}
-.msg-chip-count {
-  @apply rounded-full bg-forest-100 px-1.5 py-0.5 text-[11px] font-bold text-forest-800 dark:bg-forest-800 dark:text-cream-100;
-}
-.msg-chip[aria-pressed='true'] .msg-chip-count {
-  @apply bg-brass-400 text-forest-950;
-}
-
 .messages-conversation-header {
   @apply flex min-h-[4.5rem] shrink-0 items-center gap-3 border-b border-forest-900/8 px-4 py-3 dark:border-cream-100/10 sm:px-5;
 }
