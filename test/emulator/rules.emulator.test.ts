@@ -24,7 +24,7 @@ import {
 } from '@firebase/rules-unit-testing'
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, where, serverTimestamp, Timestamp } from 'firebase/firestore'
 import { ref, uploadBytes, deleteObject, getBlob, getDownloadURL, getMetadata } from 'firebase/storage'
-import { conversationDocId } from '../../src/lib/chatCloud'
+import { guestConversationId } from '../../src/lib/chatCloud'
 
 /** `firebase emulators:exec` puts the project id in the environment. */
 const PROJECT = process.env.GCLOUD_PROJECT ?? process.env.FIREBASE_PROJECT ?? 'demo-hacienda'
@@ -749,10 +749,11 @@ describe('chat', () => {
     expect((listed as { code?: string }).code).toBe('permission-denied')
   })
 
-  it('opens the derived conversation id, and finds the same thread a second time', async () => {
-    // What `ensureConversation` now does: one document read, then create if it
-    // is not there, then the same read again. No collection scan either time.
-    const id = conversationDocId(GUEST_UID, 'booking')
+  it('opens the account conversation id, and finds the same thread a second time', async () => {
+    // One thread per Guest account: `ensureGuestConversation` reads the derived
+    // id, creates it if it is not there, and reads it again. No collection scan
+    // either time, and the id does not depend on how many bookings exist.
+    const id = guestConversationId(GUEST_UID)
     const guestDb = anonymousGuest().firestore()
 
     expect((await getDoc(doc(guestDb, 'conversations', id))).exists()).toBe(false)
@@ -777,9 +778,63 @@ describe('chat', () => {
     await assertSucceeds(getDoc(doc(admin().firestore(), 'conversations', id)))
   })
 
-  it('gives two Guests two conversations even on the same category', async () => {
-    const mine = conversationDocId(GUEST_UID, 'access')
-    const theirs = conversationDocId(OTHER_GUEST_UID, 'access')
+  /**
+   * The superseded shapes are read, never written.
+   *
+   * `firestore.rules` allows exactly `guest-<uid>`, which is stronger than
+   * reserving a prefix: a `booking-<id>` thread cannot be re-created even by
+   * the Guest whose history it holds. That is what makes the duplicate this
+   * refactor retired unreachable rather than merely discouraged.
+   */
+  it('refuses to create any conversation id that is not the account one', async () => {
+    const guestDb = anonymousGuest().firestore()
+    const body = {
+      guest_uid: GUEST_UID, category: 'booking',
+      created_at: new Date(), updated_at: new Date(),
+      last_message: '', unread_admin: 0, unread_guest: 0,
+    }
+    await assertFails(setDoc(doc(guestDb, 'conversations', 'booking-bk_1'), body))
+    await assertFails(setDoc(doc(guestDb, 'conversations', `inquiry-${GUEST_UID}-booking`), body))
+    await assertFails(setDoc(doc(guestDb, 'conversations', 'local:guest-x'), body))
+    // .and even the Admin, who can read every thread, cannot open a new one.
+    await assertFails(setDoc(doc(admin().firestore(), 'conversations', 'booking-bk_1'), body))
+  })
+
+  /** A Booking may be named by a message, but only one the writer may speak of. */
+  it('carries the Booking a message is about as context, not as identity', async () => {
+    const guestDb = anonymousGuest().firestore()
+    // The seeded thread: message rules resolve membership by id, so the parent
+    // has to exist before any of these can be judged.
+    const messages = collection(guestDb, 'conversations', CONVO_ID, 'messages')
+    const base = { sender_uid: GUEST_UID, sender_role: 'guest', text: 'Hello?', created_at: new Date() }
+
+    // Several bookings, one thread — and a general message with none at all.
+    await assertSucceeds(addDoc(messages, { ...base, booking_id: 'bk_1' }))
+    await assertSucceeds(addDoc(messages, { ...base, booking_id: BOOKING_ID }))
+    await assertSucceeds(addDoc(messages, { ...base }))
+
+    // .but not a Booking that is not theirs, not an empty one, and not a path.
+    await assertFails(addDoc(messages, { ...base, booking_id: 'bk_someone_else' }))
+    await assertFails(addDoc(messages, { ...base, booking_id: '' }))
+    await assertFails(addDoc(messages, { ...base, booking_id: 'bookings/bk_1' }))
+  })
+
+  it('refuses a client that stamps its message as migrated history', async () => {
+    const guestDb = anonymousGuest().firestore()
+    // The seeded thread: message rules resolve membership by id, so the parent
+    // has to exist before any of these can be judged.
+    const messages = collection(guestDb, 'conversations', CONVO_ID, 'messages')
+    const base = { sender_uid: GUEST_UID, sender_role: 'guest', text: 'Hello?', created_at: new Date() }
+    // The migration's provenance is what stops a copy from notifying. It is
+    // omitted from the client's allowed keys, so it cannot be forged into a
+    // message the notification trigger will skip.
+    await assertFails(addDoc(messages, { ...base, migrated: true }))
+    await assertFails(addDoc(messages, { ...base, migration: { run_id: 'r1' } }))
+  })
+
+  it('gives two Guests two conversations', async () => {
+    const mine = guestConversationId(GUEST_UID)
+    const theirs = guestConversationId(OTHER_GUEST_UID)
     expect(mine).not.toBe(theirs)
     await assertSucceeds(
       setDoc(doc(anonymousGuest().firestore(), 'conversations', mine), {

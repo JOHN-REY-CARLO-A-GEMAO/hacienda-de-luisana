@@ -1,8 +1,9 @@
 // ----------------------------------------------------------------------------
 // Unified Guest Messaging UI & Data Flow Tests
-// Covers booking-scoped conversations, multi-stay switching, booking details
-// drawer, verified quick replies, private image attachments, compact live
-// location status (dismiss vs stop sharing), and strict zero-raw-ID hygiene.
+// Covers the one-conversation-per-account model (a Booking is context a message
+// carries), filing a message under a reservation, the booking details drawer,
+// verified quick replies, private image attachments, compact live location
+// status (dismiss vs stop sharing), and strict zero-raw-ID hygiene.
 // ----------------------------------------------------------------------------
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -154,7 +155,7 @@ afterAll(() => {
   document.body.innerHTML = ''
 })
 
-describe('unified booking-scoped conversation screen', () => {
+describe('one conversation per guest account', () => {
   it('opens a guest conversation without a reservation and can send a message', async () => {
     const container = renderPage(undefined, null)
     await pump(4)
@@ -192,20 +193,89 @@ describe('unified booking-scoped conversation screen', () => {
     expect(container.querySelector('[role="log"]')?.textContent).not.toContain('Private to another guest')
   })
 
-  it('does not open an unknown booking', async () => {
+  // A Booking is context, not a key to a room of its own: an id this account
+  // does not own cannot gate the conversation, so it is dropped instead.
+  it('ignores a reservation it does not recognise, and still opens the conversation', async () => {
     seedBookings([makeBooking()])
     const container = renderPage(undefined, 'foreign-booking')
     await pump(4)
-    expect(container.textContent).toContain('Reservation unavailable')
-    expect(container.querySelector('textarea')).toBeNull()
+    expect(container.textContent).not.toContain('Reservation unavailable')
+    expect(container.querySelector('[role="log"]')).toBeTruthy()
+    expect(container.querySelector('textarea')).toBeTruthy()
+    expect(container.querySelector('.messages-context-chip')).toBeNull()
   })
 
-  it('does not open a booking owned by a different account even if the email matches', async () => {
+  it('ignores a reservation owned by another account even if the email matches', async () => {
     seedBookings([makeBooking({ uid: 'different-guest' })])
     const container = renderPage()
     await pump(4)
-    expect(container.textContent).toContain('Reservation unavailable')
-    expect(container.querySelector('[role="log"]')).toBeNull()
+    expect(container.textContent).not.toContain('Reservation unavailable')
+    expect(container.querySelector('[role="log"]')).toBeTruthy()
+    // No booking chip: a stranger's reservation is never filed as context.
+    expect(container.querySelector('.messages-context-chip')).toBeNull()
+    expect(container.querySelector('button[aria-label="Booking details"]')).toBeNull()
+  })
+
+  it('files a message under one reservation without opening a second conversation', async () => {
+    seedBookings([
+      makeBooking({ id: 'bk_stay_one', ref_id: 'HDL-7821' }),
+      makeBooking({ id: 'bk_stay_two', ref_id: 'HDL-9042', accommodation: 'house-a-camping' }),
+    ])
+    const first = renderPage(undefined, 'bk_stay_one')
+    await pump(4)
+    expect(first.querySelector('.messages-context-chip')?.textContent).toContain('HDL-7821')
+    const textarea = first.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
+    act(() => setTextareaValue(textarea, 'About my first stay'))
+    await pump(1)
+    act(() => findButton(first, /^Send message$/i).click())
+    await pump(3)
+
+    const stored = JSON.parse(localStorage.getItem('hdl:chat')!)
+    expect(stored).toHaveLength(1)
+    // One account, one thread — the Booking rides along with the message.
+    expect(stored[0].convo_id).toBe('local:guest-guest-uid-alpha-991')
+    expect(stored[0].booking_id).toBe('bk_stay_one')
+    expect(first.querySelector('[role="log"]')?.textContent).toContain('Re: HDL-7821')
+
+    // The other reservation opens the SAME thread, with its own context.
+    const second = renderPage(undefined, 'bk_stay_two')
+    await pump(4)
+    expect(second.querySelector('[role="log"]')?.textContent).toContain('About my first stay')
+    expect(second.querySelector('.messages-context-chip')?.textContent).toContain('HDL-9042')
+  })
+
+  it('sends a general message with no reservation at all', async () => {
+    seedBookings([makeBooking()])
+    const container = renderPage(undefined, null)
+    await pump(4)
+    expect(container.querySelector('.messages-context-chip')).toBeNull()
+    const textarea = container.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
+    act(() => setTextareaValue(textarea, 'Do you allow day tours?'))
+    await pump(1)
+    act(() => findButton(container, /^Send message$/i).click())
+    await pump(3)
+    const stored = JSON.parse(localStorage.getItem('hdl:chat')!)
+    expect(stored[0].convo_id).toBe('local:guest-guest-uid-alpha-991')
+    expect(stored[0].booking_id).toBeNull()
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('Re: HDL')
+  })
+
+  it('keeps an earlier thread readable but never writable', async () => {
+    seedBookings([makeBooking({ id: 'bk_legacy', ref_id: 'HDL-3003' })])
+    localStorage.setItem('hdl:chat', JSON.stringify([{
+      id: 'old', convo_id: 'local:booking-bk_legacy', sender_uid: 'guest-uid-alpha-991',
+      mine: true, text: 'Filed before the threads were unified', at: '2026-10-20T10:00:00Z',
+    }]))
+    const container = render(
+      <AuthContext.Provider value={asGuest() as never}><MessagesPage /></AuthContext.Provider>,
+      '/messages?thread=local%3Abooking-bk_legacy',
+    )
+    await pump(4)
+    expect(container.querySelector('[role="log"]')?.textContent)
+      .toContain('Filed before the threads were unified')
+    // Read-only: the composer cannot send into history.
+    const textarea = container.querySelector('textarea') as HTMLTextAreaElement
+    expect(textarea.disabled).toBe(true)
   })
 
   it('offers a booking-specific message link on each reservation', async () => {
@@ -239,7 +309,7 @@ describe('unified booking-scoped conversation screen', () => {
     expect(container.querySelector('[role="log"]')).toBeTruthy()
   })
 
-  it('sends to the explicitly selected booking without mixing another booking', async () => {
+  it('opens one workspace for every reservation, with no per-booking switcher', async () => {
     seedBookings([
       makeBooking({ id: 'bk_stay_one', ref_id: 'HDL-7821' }),
       makeBooking({ id: 'bk_stay_two', ref_id: 'HDL-9042', accommodation: 'house-a-camping' }),
@@ -252,20 +322,24 @@ describe('unified booking-scoped conversation screen', () => {
     act(() => findButton(first, /^Send message$/i).click())
     await pump(3)
     expect(first.querySelector('[role="log"]')?.textContent).toContain('Hello from first booking')
+
     const second = renderPage(undefined, 'bk_stay_two')
     await pump(4)
-    expect(second.querySelector('[role="log"]')?.textContent).not.toContain('Hello from first booking')
-    expect(second.querySelector('[role="log"]')?.textContent).toContain('Start your conversation')
+    // The SAME conversation: what the Guest said about the other stay is here,
+    // because the Guest is one person and this is their one thread.
+    expect(second.querySelector('[role="log"]')?.textContent).toContain('Hello from first booking')
+    expect(second.querySelector('.messages-switcher')).toBeNull()
+    expect(second.querySelector('select')).toBeNull()
   })
 
-  it('clears the old thread and draft when the booking URL changes in place', async () => {
+  it('switches the filing context in place without losing the conversation', async () => {
     seedBookings([
       makeBooking({ id: 'bk_1', ref_id: 'HDL-1111' }),
       makeBooking({ id: 'bk_2', ref_id: 'HDL-2222' }),
     ])
     localStorage.setItem('hdl:chat', JSON.stringify([{
-      id: 'old', convo_id: 'local:booking-bk_1', sender_uid: 'guest-uid-alpha-991',
-      mine: true, text: 'First booking only', at: '2026-10-20T10:00:00Z',
+      id: 'kept', convo_id: 'local:guest-guest-uid-alpha-991', sender_uid: 'guest-uid-alpha-991',
+      mine: true, text: 'My whole correspondence', at: '2026-10-20T10:00:00Z',
     }]))
     function Screen() {
       const navigate = useNavigate()
@@ -273,13 +347,17 @@ describe('unified booking-scoped conversation screen', () => {
     }
     const container = render(<AuthContext.Provider value={asGuest() as never}><Screen /></AuthContext.Provider>, '/messages?booking=bk_1')
     await pump(4)
-    expect(container.querySelector('[role="log"]')?.textContent).toContain('First booking only')
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('My whole correspondence')
+    expect(container.querySelector('.messages-context-chip')?.textContent).toContain('HDL-1111')
     const textarea = container.querySelector('textarea')!
     act(() => setTextareaValue(textarea, 'Draft for first booking'))
+
     act(() => findButton(container, /Next reservation/).click())
     await pump(4)
-    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('First booking only')
-    expect(container.querySelector('textarea')?.value).toBe('')
+    // The thread survives the switch — the filing context is what changed.
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('My whole correspondence')
+    expect(container.querySelector('.messages-context-chip')?.textContent).toContain('HDL-2222')
+    expect(container.querySelector('textarea')?.value).toBe('Draft for first booking')
   })
 
   it('populates verified Hacienda directions via Send Directions quick reply and opens BookingDetailsDrawer', async () => {
@@ -313,7 +391,7 @@ describe('unified booking-scoped conversation screen', () => {
     seedBookings([makeBooking({ id: 'bk_paged', ref_id: 'HDL-5050' })])
     const seededMessages = Array.from({ length: 140 }, (_, i) => ({
       id: `msg-${i + 1}`,
-      convo_id: 'local:booking-bk_paged',
+      convo_id: 'local:guest-guest-uid-alpha-991',
       sender_uid: 'guest-uid-alpha-991',
       mine: true,
       text: `MessageEntry-${String(i + 1).padStart(3, '0')}`,

@@ -88,21 +88,50 @@ class AppConstants {
   /// The inquiry category a Guest opens first, and the one a Booking is about.
   static const String categoryBooking = 'booking';
 
-  /// The document id a Guest's conversation for a booking has.
+  /// The document id the one conversation a Guest ACCOUNT has.
   ///
-  /// One continuous conversation per guest booking — no topic-based threads.
+  /// One conversation per Guest, not one per Booking. A Booking is *context* a
+  /// single message carries, so five reservations, a general inquiry and a
+  /// follow-up question all live in this one thread — which is what lets the
+  /// Admin see what a Guest has actually been saying.
+  ///
   /// Derived, not random, and **the website derives it identically** — see
-  /// `ensureBookingConversation` in `src/lib/chatCloud.ts`. The two apps share
-  /// one Firestore project, so a Guest's thread on the website has to be the
-  /// same document the Admin app opens, and a formula both sides write down is
-  /// what guarantees that.
+  /// `guestConversationId` in `src/lib/conversationIdentity.ts`. The two apps
+  /// share one Firestore project, so a Guest's thread on the website has to be
+  /// the same document the Admin app opens, and a formula both sides write down
+  /// is what guarantees that.
   ///
   /// It is derived rather than looked up because the rules refuse the lookup.
   /// `firestore.rules` reads membership with `isConversationMember(convoId)`,
   /// which resolves the conversation *by id*; on a `where('guest_uid','==',uid)`
   /// query the id is unbound, so Firestore cannot prove the query is safe and
   /// refuses it.
+  static String guestConversationId(String guestUid) => 'guest-$guestUid';
+
+  /// The SUPERSEDED one-thread-per-Booking id.
+  ///
+  /// Read-only history. No client creates a conversation with this id any more:
+  /// `firestore.rules` allows exactly `guest-<uid>`, so the duplicate threads
+  /// this refactor retires cannot come back. Keep it for reading threads filed
+  /// before the unification, and for the migration that folds them in
+  /// (`functions/src/guestConversationMigration.ts`).
+  // Not annotated @Deprecated on purpose: the migration and the pre-migration
+  // read path still name it, and an annotation there would only add noise.
   static String conversationId(String bookingId) => 'booking-$bookingId';
+
+  /// True when a conversation id is the canonical, account-wide one.
+  static bool isGuestConversationId(String convoId) => convoId.startsWith('guest-');
+
+  /// True when a conversation id is a superseded one-thread-per-Booking thread.
+  static bool isLegacyBookingConversationId(String convoId) =>
+      convoId.startsWith('booking-');
+
+  /// The Booking a superseded `booking-<id>` thread was filed under, if any.
+  static String? bookingIdFromConversationId(String convoId) {
+    if (!convoId.startsWith('booking-')) return null;
+    final candidate = convoId.substring('booking-'.length);
+    return candidate.isEmpty ? null : candidate;
+  }
 
   /// Legacy deterministic topic conversation id (`inquiry-<uid>-<category>`),
   /// preserved for non-destructive backward compatibility with earlier stays.

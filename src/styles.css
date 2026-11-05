@@ -1206,6 +1206,17 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 .messages-message-text {
   display: block;
 }
+/* One thread, several stays: which reservation a single message is about. */
+.messages-bubble-booking {
+  @apply mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70;
+}
+/* The booking a new message will be filed under, above the composer. */
+.messages-context-bar {
+  @apply flex flex-wrap items-center gap-2 border-b border-forest-900/10 px-3 py-2 text-[11px] text-forest-600 dark:border-cream-100/10 dark:text-cream-200/70 sm:px-5;
+}
+.messages-context-chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-forest-900/15 bg-forest-900/5 px-2.5 py-1 font-semibold text-forest-800 dark:border-cream-100/20 dark:bg-cream-100/10 dark:text-cream-100;
+}
 .messages-bubble-has-attachment {
   max-width: min(88%, 22rem);
   padding: 6px;

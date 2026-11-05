@@ -73,13 +73,17 @@ String _friendlyBookingReference(
   String? storedRef,
   BookingModel? booking, {
   required bool isLegacy,
+  bool isCanonical = false,
 }) {
   final candidate = (booking?.refId ?? storedRef ?? '').trim();
   if (candidate.isNotEmpty && candidate.toUpperCase().startsWith('HDL-')) {
     return candidate.toUpperCase();
   }
   if (booking != null) return 'Pending reference';
-  return isLegacy ? 'Earlier inquiry' : 'Pre-stay inquiry';
+  if (isLegacy) return 'Earlier inquiry';
+  // The account-wide conversation is not about one reservation: saying so is
+  // more honest than inventing a reference from the Guest's latest stay.
+  return isCanonical ? 'All reservations' : 'Pre-stay inquiry';
 }
 
 String _initialsOf(String name) {
@@ -141,6 +145,8 @@ class _ResolvedConversation {
     required this.retentionStamp,
     required this.booking,
     required this.isLegacy,
+    this.isCanonical = false,
+    this.supersededBy,
   });
 
   final String id;
@@ -156,6 +162,12 @@ class _ResolvedConversation {
   final Timestamp? retentionStamp;
   final BookingModel? booking;
   final bool isLegacy;
+  /// True for the account-wide conversation (`guest-<uid>`).
+  final bool isCanonical;
+  /// Set when the migration has folded this thread's history into another one.
+  final String? supersededBy;
+
+  bool get isSuperseded => supersededBy != null && supersededBy!.trim().isNotEmpty;
 
   bool matchesQuery(String rawQuery) {
     final q = rawQuery.trim().toLowerCase();
@@ -218,7 +230,10 @@ _ResolvedConversation _resolveConversation({
   final guestUid = data['guest_uid']?.toString().trim() ?? '';
   final booking = _matchBookingForConversation(convoId, data, bookings);
   final profile = _matchProfile(guestUid, profiles);
-  final isLegacy = convoId.startsWith('inquiry-');
+  // Anything that is not the account conversation is superseded history: a
+  // thread filed per Booking or per topic before the unification, still read,
+  // never written to again.
+  final isLegacy = !AppConstants.isGuestConversationId(convoId);
 
   final storedName = data['guest_name']?.toString().trim() ?? '';
   final bookingName = booking?.guestName.trim() ?? '';
@@ -240,6 +255,7 @@ _ResolvedConversation _resolveConversation({
     data['booking_reference']?.toString(),
     booking,
     isLegacy: isLegacy,
+    isCanonical: AppConstants.isGuestConversationId(convoId),
   );
 
   final rawPreview = data['last_message']?.toString().trim() ?? '';
@@ -267,12 +283,16 @@ _ResolvedConversation _resolveConversation({
         : null,
     booking: booking,
     isLegacy: isLegacy,
+    isCanonical: AppConstants.isGuestConversationId(convoId),
+    supersededBy: data['superseded_by'] is String
+        ? (data['superseded_by'] as String).trim()
+        : null,
   );
 }
 
 /// Admin Guest Messages Inbox (`conversations/*`).
 ///
-/// Displays one unified conversation per booking (plus non-destructive access
+/// Displays one unified conversation per Guest (plus non-destructive access
 /// to any legacy threads), with Guest avatar/initials, full name, assigned
 /// property, human-readable booking reference, 1-line preview, relative local
 /// timestamp, accurate `unread_admin` badge, search, and responsive split view.
@@ -490,9 +510,20 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                     return bt.compareTo(at);
                   });
 
+                // A thread the migration has already folded into the Guest's
+                // account conversation is history that now lives there. Showing
+                // it as a second row for the same person is exactly the
+                // duplicate this refactor removed, so it drops to the bottom and
+                // is labelled — never deleted, never hidden with no explanation.
                 final filtered = allItems
                     .where((item) => item.matchesQuery(_query))
-                    .toList();
+                    .toList()
+                  ..sort((a, b) {
+                    if (a.supersededBy != b.supersededBy) {
+                      return a.supersededBy == null ? -1 : 1;
+                    }
+                    return 0;
+                  });
 
                 return LayoutBuilder(
                   builder: (context, constraints) {
@@ -1392,7 +1423,7 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
 
             // Message timeline
             Expanded(
-              child: _buildMessagesTimeline(resolved),
+              child: _buildMessagesTimeline(resolved, bookings),
             ),
 
             // Quick replies + Multiline Composer
@@ -1487,7 +1518,28 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
     );
   }
 
-  Widget _buildMessagesTimeline(_ResolvedConversation resolved) {
+  /// The `HDL-…` reference a single message is about, or null for a general
+  /// message. One thread holds every stay a Guest has, so the bubble — not the
+  /// conversation — is what says which one this is.
+  String? _bookingReferenceForMessage(
+    Map<String, dynamic> message,
+    List<BookingModel> bookings,
+  ) {
+    final raw = message['booking_id']?.toString().trim() ?? '';
+    if (raw.isEmpty) return null;
+    for (final b in bookings) {
+      if (b.id == raw) {
+        final ref = b.refId.trim();
+        return ref.toUpperCase().startsWith('HDL-') ? ref.toUpperCase() : null;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildMessagesTimeline(
+    _ResolvedConversation resolved,
+    List<BookingModel> bookings,
+  ) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       key: ValueKey('thread-messages-${widget.convoId}-$_streamEpoch'),
       stream: _messages
@@ -1578,6 +1630,8 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
             final attachment = ChatAttachment.fromMessage(m);
             final createdAt = _toDateTime(m['created_at']);
             final pendingWrite = doc.metadata.hasPendingWrites;
+            final messageBookingRef =
+                _bookingReferenceForMessage(m, bookings);
 
             // Date separator above the first message of each calendar day.
             DateTime? olderNeighborDate;
@@ -1640,6 +1694,34 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (messageBookingRef != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.confirmation_number_outlined,
+                                    size: 12,
+                                    color: isAdminSender
+                                        ? AppColors.accentGoldLight
+                                        : AppColors.textMuted,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Re: $messageBookingRef',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.2,
+                                      color: isAdminSender
+                                          ? AppColors.accentGoldLight
+                                          : AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           if (attachment != null)
                             PrivateChatImage(
                               key: ValueKey(attachment.path),
