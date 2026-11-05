@@ -43,7 +43,7 @@ A rentable unit: the Main House, the Annex, or one A-House camping unit. There a
 _Avoid_: Room, villa, property (the property is the whole estate)
 
 **Unit**:
-One rentable instance of an Accommodation. Three numbers stay apart and are not interchangeable: `available_units` is how many the estate holds at once (the A-House has 2), `units_per_booking` is how many one Booking takes (the A-House takes 1), and `max_guests` is how many guests fit in that unit (the A-House takes 3).
+One rentable instance of an Accommodation. Three numbers stay apart and are not interchangeable: `available_units` is how many the estate holds at once (the A-House has 2), `units_per_booking` is how many one Booking takes (the A-House takes 1), and the per-booking guest limit is 10 for the Main House, 6 for the Annex, and 3 per A-House. These limits apply regardless of excess-guest prices in published rates. Existing Bookings are not retroactively changed.
 _Avoid_: Room, inventory count, "a house"
 
 **Booking**:

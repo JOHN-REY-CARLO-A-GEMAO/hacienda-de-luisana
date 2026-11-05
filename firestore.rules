@@ -240,6 +240,14 @@ service cloud.firestore {
         || (units is number && units >= 1);
     }
 
+    // Maximum guests per booking, independent of published pricing thresholds.
+    function guestCapacityAllows(data) {
+      return data.guests is int && data.guests >= 1
+        && (data.accommodation != 'main-house' || data.guests <= 10)
+        && (data.accommodation != 'annex' || data.guests <= 6)
+        && (data.accommodation != 'house-a-camping' || data.guests <= 3);
+    }
+
     function validGuestCreate(data) {
       return !callableBookingRequired()
         && isSignedIn()
@@ -1044,6 +1052,7 @@ service cloud.firestore {
         && request.resource.data.get('amount_verified', 0) == 0
         && request.resource.data.get('payment_verified_by', '') == ''
         && request.resource.data.get('payment_verified_at', '') == ''
+        && guestCapacityAllows(request.resource.data)
         // Single role evaluation: Admin manual bookings bypass Guest policy
         // checks; Guest creates evaluate `validGuestCreate` once.
         && (isAdmin() || validGuestCreate(request.resource.data));
@@ -1073,6 +1082,10 @@ service cloud.firestore {
         let old = resource.data;
         let next = request.resource.data;
         return isAdmin()
+          // Do not make existing over-capacity records impossible to process,
+          // but never allow an edit to change the party or unit beyond the cap.
+          && (!next.diff(old).affectedKeys().hasAny(['guests', 'accommodation'])
+              || guestCapacityAllows(next))
           && approvedIsEarned()
           && !(old.status in ['Rejected', 'Cancelled', 'Completed', 'Expired']
                && next.status != old.status)

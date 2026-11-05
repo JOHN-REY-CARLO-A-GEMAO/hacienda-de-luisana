@@ -171,6 +171,11 @@ export function parseQuoteRequest(raw: unknown): { ok: true; value: QuoteRequest
   if (!isWhole(body.guests) || (body.guests as number) < 1 || (body.guests as number) > 100) {
     return refuse('REQUEST_SHAPE', '`guests` must be a whole number from 1 to 100', 'invalid-argument')
   }
+  const capacity: Record<string, number> = { 'main-house': 10, annex: 6, 'house-a-camping': 3 }
+  const maximum = capacity[accommodation]
+  if (maximum !== undefined && body.guests > maximum) {
+    return refuse('REQUEST_SHAPE', `Maximum ${maximum} guests for ${accommodation}.`, 'invalid-argument')
+  }
   // Absent means none. A number here that is not a whole non-negative count is a
   // refusal, not a zero: silently dropping a declared pet would price a stay that
   // the Admin later finds has one.

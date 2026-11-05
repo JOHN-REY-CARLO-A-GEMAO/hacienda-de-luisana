@@ -156,7 +156,7 @@ export function Hero() {
           <dl className="hidden lg:grid grid-cols-3 gap-6 rounded-2xl border border-cream-50/15 bg-forest-950/35 backdrop-blur-md px-6 py-4 text-cream-50 lg:mr-28">
             <div>
               <dt className="text-xs uppercase tracking-eyebrow text-cream-100/60">Main House capacity</dt>
-              <dd className="font-serif text-2xl leading-tight mt-1">{BUSINESS.policies.mainHouseIncludedGuests} guests included</dd>
+              <dd className="font-serif text-2xl leading-tight mt-1">Up to {BUSINESS.policies.mainHouseIncludedGuests} guests</dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-eyebrow text-cream-100/60">Check-in</dt>

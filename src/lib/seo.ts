@@ -303,7 +303,7 @@ export function llmsTxt(routes: readonly RouteMeta[] = indexableRoutes()): strin
     `- Coordinates: ${BUSINESS.coordinates.lat}, ${BUSINESS.coordinates.lng}`,
     `- Phone: ${BUSINESS.contact.phoneDisplay} · Email: ${BUSINESS.contact.email}`,
     `- Check-in ${BUSINESS.policies.checkIn} · check-out ${BUSINESS.policies.checkOut} · a ${BUSINESS.policies.standardStayHours}-hour standard stay`,
-    `- Guests: the Main House base rate includes ${BUSINESS.policies.mainHouseIncludedGuests}; the Annex includes ${BUSINESS.policies.annexIncludedGuests}. These are included counts, not absolute caps.`,
+    `- Maximum guests per booking: Main House ${BUSINESS.policies.mainHouseIncludedGuests}, Annex ${BUSINESS.policies.annexIncludedGuests}, A-House 3.`,
     `- Pets: ${BUSINESS.policies.petFriendly ? 'welcome, for a cleaning and sanitising fee' : 'not allowed'}. Smoking: ${BUSINESS.policies.smokingAllowed ? 'allowed' : 'not allowed'}.`,
     `- Free Wi-Fi and free on-site parking.`,
     `- Airbnb: ${AIRBNB_RATING.rating.toFixed(1)} from ${AIRBNB_RATING.reviewCount} reviews${

@@ -147,12 +147,12 @@ void main() {
       expect(a.unitsPerBooking, 1);
     });
 
-    test('the Main House and the Annex price a guest above their included count', () {
+    test('the Main House and Annex enforce their confirmed guest maximums', () {
       final parsed = Accommodation.fromRatesDocument(publishedRates())!;
       expect(Accommodation.byId(parsed, 'main-house')!.includedGuests, 10);
-      expect(Accommodation.byId(parsed, 'main-house')!.maxGuests, isNull);
+      expect(Accommodation.byId(parsed, 'main-house')!.maxGuests, 10);
       expect(Accommodation.byId(parsed, 'annex')!.includedGuests, 6);
-      expect(Accommodation.byId(parsed, 'annex')!.maxGuests, isNull);
+      expect(Accommodation.byId(parsed, 'annex')!.maxGuests, 6);
     });
 
     test('the canonical document is one the Admin could publish unchanged', () {

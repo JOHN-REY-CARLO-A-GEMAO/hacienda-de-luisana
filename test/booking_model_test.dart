@@ -109,7 +109,7 @@ void main() {
       expect(unitsForAccommodation('house-a-camping', published), 2);
       expect(unitsForAccommodation('main-house', published), 1);
       // The Main House has no ceiling: a guest above the included count is priced.
-      expect(Accommodation.byId(published, 'main-house')!.maxGuests, isNull);
+      expect(Accommodation.byId(published, 'main-house')!.maxGuests, 10);
     });
 
     test('an unknown Accommodation is one unit, never unlimited inventory', () {
