@@ -2232,12 +2232,40 @@ describe('conversations and messages', () => {
     expect(deny({ path: `conversations/guest-${GUEST_UID}`, method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: conversationDoc({ guest_uid: OTHER_GUEST_UID }) })).toBe(true)
   })
 
-  it('lets a Guest open their own conversation', () => {
-    expect(allow({ path: `conversations/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: convo })).toBe(true)
+  it('lets a Guest open their own conversation — and only their own, under their own id', () => {
+    expect(allow({ path: `conversations/guest-${GUEST_UID}`, method: 'create', auth: anonymousGuest(), requestData: convo })).toBe(true)
   })
 
-  it('refuses a conversation opened under somebody else\'s uid', () => {
+  /**
+   * One conversation per Guest account, enforced where a browser cannot argue:
+   * the id a client may create is the one derived from its own uid. That retires
+   * the booking-scoped and topic-scoped ids, and with them the duplicate thread
+   * a second booking used to open (docs/adr/0025).
+   */
+  it('refuses every conversation id that is not the account\'s own', () => {
+    for (const path of [
+      `conversations/${CONVO_ID}`,
+      `conversations/booking-${BOOKING_ID}`,
+      `conversations/inquiry-${GUEST_UID}-booking`,
+    ]) {
+      expect(deny({ path, method: 'create', auth: anonymousGuest(), requestData: convo })).toBe(true)
+    }
+    // Not even under somebody else's uid, and not by the Admin.
     expect(deny({ path: `conversations/${CONVO_ID}`, method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: convo })).toBe(true)
+    expect(deny({ path: `conversations/${CONVO_ID}`, method: 'create', auth: allowlistedAdmin(), requestData: conversationDoc({ guest_uid: ADMIN_UID }) })).toBe(true)
+  })
+
+  it('refuses a client marking a thread merged, which is the migration\'s to say', () => {
+    for (const key of ['superseded_by', 'migrated', 'migration', 'migration_run_id']) {
+      expect(
+        deny({
+          path: `conversations/guest-${GUEST_UID}`,
+          method: 'create',
+          auth: anonymousGuest(),
+          requestData: conversationDoc({ [key]: 'guest-somebody-else' }),
+        }),
+      ).toBe(true)
+    }
   })
 
   it('lets a Guest read their own conversation, and not another Guest\'s', () => {
@@ -2255,6 +2283,77 @@ describe('conversations and messages', () => {
     expect(deny({ path: `conversations/${CONVO_ID}`, method: 'update', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: convo, requestData: { ...convo, unread_admin: 1 } })).toBe(true)
     // Even the Admin cannot hand one Guest's history to another.
     expect(deny({ path: `conversations/${CONVO_ID}`, method: 'update', auth: allowlistedAdmin(), resourceData: convo, requestData: { ...convo, guest_uid: OTHER_GUEST_UID } })).toBe(true)
+  })
+
+  it('lets a message name the Booking it is about, and refuses one that is not theirs', () => {
+    // The message's own `booking_id` is the context. Several stays may be
+    // discussed in one thread; a message with none is a general inquiry.
+    expect(
+      allow({
+        path: `conversations/${CONVO_ID}/messages/m-booking`,
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: messageDoc(GUEST_UID, 'guest', { booking_id: BOOKING_ID }),
+      }),
+    ).toBe(true)
+    // A booking that does not exist cannot be named.
+    expect(
+      deny({
+        path: `conversations/${CONVO_ID}/messages/m-no-booking`,
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: messageDoc(GUEST_UID, 'guest', { booking_id: 'booking-invented' }),
+      }),
+    ).toBe(true)
+    // Neither can a booking belonging to somebody else — and a message with no
+    // booking at all is still an ordinary, allowed message.
+    expect(
+      allow({
+        path: `conversations/${CONVO_ID}/messages/m-general`,
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: messageDoc(GUEST_UID, 'guest'),
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `conversations/${CONVO_ID}/messages/m-empty-booking`,
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: messageDoc(GUEST_UID, 'guest', { booking_id: '' }),
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `conversations/${CONVO_ID}/messages/m-long-booking`,
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: messageDoc(GUEST_UID, 'guest', { booking_id: `bookings/${BOOKING_ID}` }),
+      }),
+    ).toBe(true)
+  })
+
+  it('refuses a client stamping a message as migrated history', () => {
+    // Provenance is how the notification trigger tells a copied message from a
+    // new one. A client that could stamp it could silence its own notifications.
+    expect(
+      deny({
+        path: `conversations/${CONVO_ID}/messages/m-fake-migration`,
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: messageDoc(GUEST_UID, 'guest', { migrated: true }),
+      }),
+    ).toBe(true)
+    expect(
+      deny({
+        path: `conversations/${CONVO_ID}/messages/m-fake-provenance`,
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: messageDoc(GUEST_UID, 'guest', {
+          migration: { source_conversation_id: 'booking-old', source_message_id: 'm1' },
+        }),
+      }),
+    ).toBe(true)
   })
 
   it('lets the Admin delete a conversation, and no Guest', () => {

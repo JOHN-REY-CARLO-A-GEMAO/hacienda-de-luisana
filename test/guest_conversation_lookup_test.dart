@@ -10,6 +10,7 @@ GuestConversation thread({
   String category = AppConstants.categoryBooking,
   DateTime? updatedAt,
   bool isLegacy = false,
+  String? supersededBy,
 }) => GuestConversation(
   id: id,
   guestUid: guestUid,
@@ -18,6 +19,7 @@ GuestConversation thread({
   category: category,
   updatedAt: updatedAt,
   isLegacy: isLegacy,
+  supersededBy: supersededBy,
 );
 
 void main() {
@@ -108,6 +110,57 @@ void main() {
       );
 
       expect(selectConversationCandidate([other, booking], guestUid: 'guest-1'), same(booking));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // One conversation per Guest account.
+  //
+  // The Admin app opens the same document the website writes to. The formula
+  // lives in AppConstants and is mirrored by `guestConversationId` in
+  // `src/lib/conversationIdentity.ts`; if the two ever drift, a Guest's
+  // messages land in a thread the Admin is not reading.
+  // -------------------------------------------------------------------------
+  group('conversation identity', () {
+    test('derives the account conversation id from the uid, not a booking', () {
+      expect(AppConstants.guestConversationId('guest-1'), 'guest-guest-1');
+      expect(AppConstants.guestConversationId('guest-1'),
+          AppConstants.guestConversationId('guest-1'));
+      expect(AppConstants.guestConversationId('guest-2'),
+          isNot(AppConstants.guestConversationId('guest-1')));
+    });
+
+    test('recognises the canonical id and reads the superseded shapes', () {
+      expect(AppConstants.isGuestConversationId('guest-guest-1'), isTrue);
+      expect(AppConstants.isGuestConversationId('booking-bk_1'), isFalse);
+      expect(AppConstants.isGuestConversationId('inquiry-guest-1-general'), isFalse);
+
+      expect(AppConstants.isLegacyBookingConversationId('booking-bk_1'), isTrue);
+      expect(AppConstants.isLegacyBookingConversationId('guest-guest-1'), isFalse);
+      expect(AppConstants.bookingIdFromConversationId('booking-bk_1'), 'bk_1');
+      expect(AppConstants.bookingIdFromConversationId('booking-'), isNull);
+      expect(AppConstants.bookingIdFromConversationId('guest-guest-1'), isNull);
+    });
+
+    test('a thread is canonical only when it is the account conversation', () {
+      final canonical = thread(id: 'guest-guest-1', guestUid: 'guest-1');
+      final booking = thread(id: 'booking-bk_1', guestUid: 'guest-1');
+
+      expect(canonical.isCanonical, isTrue);
+      expect(booking.isCanonical, isFalse);
+    });
+
+    test('marks a thread whose history has been folded in, without deleting it', () {
+      final merged = thread(
+        id: 'booking-bk_1',
+        guestUid: 'guest-1',
+        supersededBy: 'guest-guest-1',
+      );
+      final live = thread(id: 'booking-bk_2', guestUid: 'guest-1');
+
+      expect(merged.isSuperseded, isTrue);
+      expect(merged.supersededBy, 'guest-guest-1');
+      expect(live.isSuperseded, isFalse);
     });
   });
 }

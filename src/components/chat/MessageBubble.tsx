@@ -9,6 +9,13 @@ export type MessageBubbleProps = {
   senderName?: string
   showTimestamp?: boolean
   deliveryStatus?: DeliveryStatus
+  /**
+   * Human-readable reference (`HDL-…`) of the Booking this one message is about.
+   *
+   * A thread holds every Booking a Guest has, so the bubble says which stay a
+   * message belongs to — the conversation is one, the subjects are not.
+   */
+  bookingReference?: string | null
 }
 
 function formatBubbleTime(iso: string): string {
@@ -41,6 +48,7 @@ export function MessageBubble({
   senderName,
   showTimestamp = true,
   deliveryStatus = null,
+  bookingReference = null,
 }: MessageBubbleProps) {
   const isMine = message.mine
   const hasAttachment = Boolean(message.attachment)
@@ -61,6 +69,11 @@ export function MessageBubble({
           isMine ? 'guest-bubble-mine' : 'guest-bubble-theirs'
         } ${hasAttachment ? 'messages-bubble-has-attachment' : ''}`}
       >
+        {bookingReference && (
+          <span className="messages-bubble-booking" title={`About reservation ${bookingReference}`}>
+            Re: {bookingReference}
+          </span>
+        )}
         {message.attachment && (
           <MessageAttachmentView
             attachment={message.attachment}

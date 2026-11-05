@@ -17,12 +17,12 @@ import {
   type PendingChatImage,
 } from '../lib/chatAttachments'
 import {
-  ensureBookingConversation,
   ensureGuestConversation,
   fetchConversationSummaries,
   loadMessagePage,
   markConversationReadByGuest,
   mergeMessages,
+  sanitizeBookingReference,
   sendChatMessage,
   subscribeConversationMeta,
   subscribeMessages,
@@ -39,13 +39,25 @@ import { MESSAGE_MAX, validateMessage } from '../lib/validation'
 export function MessagesPage() {
   const [params] = useSearchParams()
   const { user } = useAuth()
+  // `booking` is what a message is ABOUT — context, never the identity of the
+  // thread. `thread` opens a superseded thread read-only, so history filed
+  // before the unification stays reachable.
   const bookingId = params.get('booking')?.trim() || null
-  // Reset listeners, drafts and location sessions when the selected booking or
-  // signed-in account changes, including navigation within this same route.
-  return <MessagesWorkspace key={JSON.stringify([user?.uid, bookingId])} bookingId={bookingId} />
+  const threadId = params.get('thread')?.trim() || null
+  // Reset listeners and drafts when the signed-in account or the opened thread
+  // changes. Switching the filing Booking is deliberately NOT a remount: it is
+  // the same conversation, and remounting would throw away the draft and
+  // re-subscribe for no reason.
+  return (
+    <MessagesWorkspace
+      key={JSON.stringify([user?.uid, threadId])}
+      bookingId={bookingId}
+      threadId={threadId}
+    />
+  )
 }
 
-function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
+function MessagesWorkspace({ bookingId, threadId }: { bookingId: string | null; threadId: string | null }) {
   const { user, profile } = useAuth()
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
@@ -87,8 +99,9 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
     [profile?.first_name, profile?.last_name],
   )
 
-  // General messages use a stable Guest-owned thread. Booking links still open
-  // their existing threads so past messages and attachments are not lost.
+  // One conversation per account. The account thread is created on first open
+  // (idempotently — derived id, in a transaction) and the list afterwards also
+  // carries any superseded threads whose history has not been merged yet.
   useEffect(() => {
     if (!user?.uid) {
       setConversations([])
@@ -100,24 +113,10 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
     setConvosState('loading')
 
     const name = profileFullName || user.displayName || 'Guest'
-    const load = bookingId
-      ? fetchConversationSummaries(user.uid, { email: user.email, guestName: name })
-      : ensureGuestConversation(user.uid, name).then((conversation): ConversationSummary[] => [{
-          conversationId: conversation.id,
-          guestId: user.uid,
-          bookingId: null,
-          guestName: name,
-          bookingReference: null,
-          propertyName: null,
-          latestMessageText: null,
-          latestMessageAt: null,
-          unreadCount: 0,
-          unreadAdminCount: 0,
-          adminLastReadAt: null,
-          retentionExpiresAt: conversation.retentionExpiresAt,
-          isLegacy: false,
-          booking: null,
-        }])
+    const load = ensureGuestConversation(user.uid, name)
+      .then(() => fetchConversationSummaries(user.uid, { email: user.email, guestName: name }))
+      .catch(() => fetchConversationSummaries(user.uid, { email: user.email, guestName: name }))
+
     load
       .then((list) => {
         if (cancelled) return
@@ -132,22 +131,38 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
     return () => {
       cancelled = true
     }
-  }, [bookingId, profileFullName, retryKey, user?.displayName, user?.email, user?.uid])
+  }, [profileFullName, retryKey, user?.displayName, user?.email, user?.uid])
 
-  // Resolve either the Guest-wide thread or the explicitly selected Booking.
-  // Never substitute another Booking or a legacy inquiry.
+  // The thread is the account's one conversation. `?thread=` opens a superseded
+  // one for reading; nothing here will ever create a second thread.
   const selectedConvo = useMemo(() => {
-    if (!bookingId) return conversations.find((item) => item.bookingId === null) ?? null
-    const matches = conversations.filter((item) => !item.isLegacy && item.bookingId === bookingId && item.booking?.uid === user?.uid)
-    return matches.length === 1 ? matches[0] : null
-  }, [bookingId, conversations, user?.uid])
+    if (threadId) {
+      return conversations.find((item) => item.conversationId === threadId && item.guestId === user?.uid) ?? null
+    }
+    return conversations.find((item) => item.isCanonical) ?? null
+  }, [conversations, threadId, user?.uid])
+
+  // The Booking a new message will be filed against — context, and always one
+  // of this account's own bookings. An id that is not theirs is dropped rather
+  // than trusted, so a hand-edited URL cannot tag a message with a stranger's
+  // reservation.
+  const contextBooking = useMemo(() => {
+    if (!selectedConvo || selectedConvo.isLegacy || !bookingId) return null
+    return (
+      selectedConvo.linkedBookings.find(
+        (booking) => booking.id === bookingId && (booking.uid === user?.uid || !booking.uid),
+      ) ?? null
+    )
+  }, [bookingId, selectedConvo, user?.uid])
 
   const activeConvoId = selectedConvo?.conversationId ?? null
   currentConversationRef.current = activeConvoId
-  const activeBookingId = selectedConvo?.bookingId ?? null
+  const activeBookingId = contextBooking?.id ?? null
   const activeGuestName = selectedConvo?.guestName ?? (profileFullName || user?.displayName || 'Guest')
-  const activeBookingRef = selectedConvo?.bookingReference ?? null
-  const activeAccommodationId = selectedConvo?.booking?.accommodation ?? null
+  const activeBookingRef = contextBooking?.ref_id
+    ? sanitizeBookingReference(contextBooking.ref_id)
+    : null
+  const activeAccommodationId = contextBooking?.accommodation ?? null
   const activeIsLegacy = selectedConvo?.isLegacy ?? false
 
   // Ensure the active booking's conversation doc exists and subscribe to its
@@ -175,26 +190,9 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
 
     const openAndSubscribe = async () => {
       try {
-        let resolvedConvoId = activeConvoId
-        if (!activeIsLegacy && activeBookingId) {
-          const ensured = await ensureBookingConversation({
-            uid: user.uid,
-            bookingId: activeBookingId,
-            guestName: activeGuestName,
-            bookingReference: activeBookingRef,
-            accommodationId: activeAccommodationId,
-          })
-          resolvedConvoId = ensured.id
-          if (!cancelled && ensured.retentionExpiresAt) {
-            setConversations((prev) =>
-              prev.map((item) =>
-                item.conversationId === activeConvoId
-                  ? { ...item, retentionExpiresAt: ensured.retentionExpiresAt }
-                  : item,
-              ),
-            )
-          }
-        }
+        // The thread already exists and its id is derived from the account, so
+        // there is nothing to resolve and nothing to race: subscribe to it.
+        const resolvedConvoId = activeConvoId
 
         if (cancelled) return
 
@@ -270,16 +268,7 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
       unsubMessages?.()
       unsubMeta?.()
     }
-  }, [
-    activeAccommodationId,
-    activeBookingId,
-    activeBookingRef,
-    activeConvoId,
-    activeGuestName,
-    activeIsLegacy,
-    retryKey,
-    user?.uid,
-  ])
+  }, [activeConvoId, retryKey, user?.uid])
 
   const sharing = useLiveLocation({
     convoId: activeConvoId,
@@ -362,7 +351,7 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
         return
       }
 
-      const fingerprint = JSON.stringify([selectedConvo.conversationId, draftText.trim(), imageDraft?.id ?? null])
+      const fingerprint = JSON.stringify([selectedConvo.conversationId, draftText.trim(), imageDraft?.id ?? null, activeBookingId])
       if (pendingSendRef.current?.fingerprint !== fingerprint) {
         pendingSendRef.current = { fingerprint, id: imageDraft?.id ?? crypto.randomUUID() }
       }
@@ -371,17 +360,9 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
       setSendStage(imageDraft ? 'uploading' : 'sending')
 
       try {
-        let targetConvoId = selectedConvo.conversationId
-        if (!selectedConvo.isLegacy && selectedConvo.bookingId) {
-          const ensured = await ensureBookingConversation({
-            uid: user.uid,
-            bookingId: selectedConvo.bookingId,
-            guestName: activeGuestName,
-            bookingReference: selectedConvo.bookingReference,
-            accommodationId: selectedConvo.booking?.accommodation ?? null,
-          })
-          targetConvoId = ensured.id
-        }
+        // Always the account thread. A Booking travels with the message as
+        // context; it never decides where the message is stored.
+        const targetConvoId = selectedConvo.conversationId
 
         let uploadedAttachment
         if (imageDraft) {
@@ -400,6 +381,7 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
           text: draftText,
           attachment: uploadedAttachment,
           messageId,
+          bookingId: activeBookingId,
         })
 
         if (!result.ok) {
@@ -420,7 +402,7 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
         setSendStage('idle')
       }
     },
-    [activeGuestName, clearPendingImage, pendingImage, selectedConvo, sendStage, text, user?.uid],
+    [activeBookingId, activeGuestName, clearPendingImage, pendingImage, selectedConvo, sendStage, text, user?.uid],
   )
 
   const handleQuickReply = useCallback((reply: QuickReplyOption) => {
@@ -428,6 +410,9 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
     setText(reply.text)
   }, [])
 
+  // A superseded thread is history: readable, never written to. New messages
+  // always belong to the account's one conversation.
+  const readOnlyThread = activeIsLegacy
   const retentionStamp = selectedConvo?.retentionExpiresAt ?? null
   const retentionDays = retentionDaysLeft(retentionStamp)
   const retentionSwept = retentionElapsed(retentionStamp)
@@ -439,6 +424,16 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
       : sendStage === 'sending'
         ? 'Sending message…'
         : null
+
+  // One thread, several stays: resolve a message's `booking_id` to the
+  // reference a person actually recognises. A raw document id is never shown.
+  const bookingReferenceFor = useCallback(
+    (id: string): string | null => {
+      const booking = selectedConvo?.linkedBookings.find((item) => item.id === id)
+      return booking ? sanitizeBookingReference(booking.ref_id) : null
+    },
+    [selectedConvo],
+  )
 
   return (
     <Page className="guest-ground messages-page">
@@ -455,7 +450,7 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
               <a href="tel:+639258507707" className="btn-ghost btn-sm">
                 <Phone size={15} /> Call
               </a>
-              {selectedConvo?.bookingId && (
+              {contextBooking && (
                 <button type="button" className="btn-quiet btn-sm" aria-expanded={bookingDrawerOpen}
                   onClick={() => setBookingDrawerOpen((open) => !open)}>
                   <Calendar size={15} /> Booking details
@@ -552,6 +547,7 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
                     isLocalDemo={!isFirebaseConfigured || selectedConvo.conversationId.startsWith('local:')}
                     unreadAdminCount={selectedConvo.unreadAdminCount}
                     adminLastReadAt={selectedConvo.adminLastReadAt}
+                    bookingReferenceFor={bookingReferenceFor}
                   />
                 )}
 
@@ -568,10 +564,45 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
                   }}
                 />
 
+                {readOnlyThread ? (
+                  <div className="messages-context-bar" role="status">
+                    <span>
+                      This is an earlier conversation, kept so your history stays readable. New
+                      messages belong to your main conversation.
+                    </span>
+                    <Link to="/messages" className="btn-quiet btn-sm">
+                      Open my conversation
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="messages-context-bar">
+                    {contextBooking ? (
+                      <>
+                        <span className="messages-context-chip">
+                          <Calendar size={12} />
+                          {activeBookingRef ? `About ${activeBookingRef}` : 'About your reservation'}
+                        </span>
+                        <span>
+                          Filed under this reservation only — your conversation stays the same one.
+                        </span>
+                        <Link to="/messages" className="btn-quiet btn-sm">
+                          General message
+                        </Link>
+                      </>
+                    ) : (
+                      <span>
+                        One conversation for every reservation and any general question — pick a
+                        reservation above to file a message under it.
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <MessageComposer
                   value={text}
                   onChange={setText}
                   onSend={handleSend}
+                  readOnly={readOnlyThread}
                   onAttach={() => fileInputRef.current?.click()}
                   attachment={
                     pendingImage
@@ -611,9 +642,9 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
         <BookingDetailsDrawer
           open={bookingDrawerOpen}
           onClose={() => setBookingDrawerOpen(false)}
-          booking={selectedConvo?.booking}
-          fallbackPropertyName={selectedConvo?.propertyName}
-          fallbackReference={selectedConvo?.bookingReference}
+          booking={contextBooking}
+          fallbackPropertyName={null}
+          fallbackReference={activeBookingRef}
         />
       </Container>
     </Page>

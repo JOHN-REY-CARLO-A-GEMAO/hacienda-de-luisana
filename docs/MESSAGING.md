@@ -8,16 +8,22 @@ Application validation is the courtesy; `firestore.rules`, `storage.rules`, and 
 
 ## 1. The data model
 
-The general Message the Admin action opens `guest-${guestUid}`, one booking-independent conversation per Guest account. The Flutter Admin inbox reads and replies to that same document. Existing `booking-${bookingId}` threads remain accessible through their reservation links; earlier topic-based threads (`inquiry-${uid}-${category}`) remain stored in place. No existing messages or attachments are migrated or combined into the new general conversation.
+**One conversation per Guest account**: `conversations/guest-${guestUid}`. Not one per Booking, not one per topic — a Booking is *context* a single message carries, the way a subject line belongs to one email and not to the mailbox. Five reservations, a general inquiry and a follow-up question all live in that one document, and both apps open it by the same derived id (ADR-0025).
+
+Superseded shapes are still in Firestore and still read, but no client may create them any more — `firestore.rules` allows exactly `guest-<uid>`, which is what stops the duplicate thread from coming back:
+
+| Id | Status |
+| --- | --- |
+| `guest-${uid}` | **Canonical.** The one a Guest account has. |
+| `booking-${bookingId}` | Superseded history. Read until `docs/MESSAGING-MIGRATION.md` folds it in. |
+| `inquiry-${uid}-${category}` | Superseded history, as above. |
+| `local:*` | Demo mode — the same identities, in this browser only. |
 
 ```
-conversations/{convoId}                    Firestore (`guest-${guestUid}`, `booking-${bookingId}`, or legacy `inquiry-${uid}-${category}`)
-  booking_id     string   OPTIONAL — the linked Booking id (for booking-scoped threads)
+conversations/guest-${uid}                 Firestore — the account's one conversation
   guest_uid      string   the Guest who owns it
   guest_name     string   OPTIONAL — human-readable Guest display name
-  booking_reference string OPTIONAL — human-readable `HDL-…` reference (never raw doc IDs)
-  property_name  string   OPTIONAL — human-readable accommodation display name
-  category       string   'booking' for unified booking threads (required by create rule)
+  category       string   'booking' (required by create rule)
   created_at     ts
   updated_at     ts       bumped on every message
   last_message   string   ≤140 chars, the inbox 1-line preview
@@ -25,17 +31,35 @@ conversations/{convoId}                    Firestore (`guest-${guestUid}`, `book
   unread_guest   int      unread count for Guest (reset to 0 when Guest opens thread)
   admin_last_read_at   ts OPTIONAL — Admin read watermark (Admin-writable)
   messages_expires_at  ts OPTIONAL — the retention stamp (Admin-writable only)
+  superseded_by  string   OPTIONAL — set on a SUPERSEDED thread once its history
+                          has been folded into `guest-${uid}`. Stamped by the
+                          migration only; never by a client.
 
-conversations/{convoId}/messages/{messageId}    Firestore, append-only
+conversations/guest-${uid}/messages/{messageId}    Firestore, append-only
   sender_uid     string   the writer's own uid
   sender_role    'guest' | 'admin'   must match what the writer actually is
   text           string   0…1,000 characters; empty only with an image
   created_at     ts
+  booking_id     string   OPTIONAL — the Booking this ONE message is about.
+                          Context, not identity: several stays share a thread,
+                          and a message with none is a general inquiry. Must be
+                          a real Booking the writer may speak about.
   attachment     OPTIONAL map: path, content_type, size
+  migrated       bool     OPTIONAL — stamped by the history migration. Server-only.
+  migration      OPTIONAL map: source_conversation_id, source_message_id,
+                          migrated_at, run_id. Server-only provenance: it is how
+                          the notification trigger tells history from news.
 
 messageAttachments/{convoId}/{messageId}       Firebase Storage, create-only
   JPEG, PNG or WebP bytes; 1 byte…5 MiB
 ```
+
+**Migrating the old threads.** `functions/src/guestConversationMigration.ts`
+copies every message of a Guest's superseded threads into `guest-${uid}` —
+keeping sender, role, text, original timestamp, booking context and private
+images — then annotates each source `superseded_by` and leaves it in place.
+Nothing is deleted. Dry-run is the default and writes nothing. The operator
+runbook is [docs/MESSAGING-MIGRATION.md](MESSAGING-MIGRATION.md).
 
 `location_sessions/{convoId}` (live location) and `live_location/{convoId}/{guestUid}` (Realtime Database) are in [§ 5](#5-live-location).
 
@@ -269,7 +293,9 @@ The map panel is closed by default. Opening it is one tap; closing it releases t
 
 | Suite | Run by | Covers |
 | --- | --- | --- |
-| `test/web/chat-messaging.test.ts` | `npm test` | the 1,000 limit and the rules agreeing with it, empty messages, 40-message first page, a 500-message walk with no repeats or skips, the page cap, the bounded listener, merge-by-id, the whole retention policy, and the Admin-only stamp |
+| `test/web/chat-messaging.test.ts` | `npm test` | the 1,000 limit and the rules agreeing with it, empty messages, 40-message first page, a 500-message walk with no repeats or skips, the page cap, the bounded listener, merge-by-id, one conversation per account however many bookings, a Booking carried as message context, superseded threads still readable, and the whole retention policy with the Admin-only stamp |
+| `test/web/guest-conversation-identity.test.ts` | `npm test` | the `guest-${uid}` formula and its stability, classification of every id shape, and what counts as usable booking context |
+| `functions/test/guest-history-migration.test.ts` | `npm --prefix functions test` | audit and dry-run write nothing, copies keep sender/role/text/timestamp/booking, nothing is deleted, a retry duplicates nothing, a crash resumes, a second worker is locked out, history never notifies |
 | `test/web/live-location.test.ts` | `npm test` | the three durations and the one-hour cap, the countdown, the publish cadence, distance, the distance maths, every `checkFix` refusal (wrong secret, wrong Guest, wrong conversation, expired, stopped, malformed, out of world, future-dated), the secret's shape, and that a build with no transport cannot share |
 | `test/web/messages-page.test.tsx` | `npm test` | composer limits and pagination; image preview/remove/replace, optional captions, inline/larger viewing, failed-send retention and idempotent retry; live-location controls |
 | `test/web/chat-attachments.test.ts` | `npm test` | MIME/5 MiB validation, stable private paths, create-only retry behavior, authenticated byte reads and expired-session errors |
@@ -299,3 +325,4 @@ and native-device behavior still require the environment checks in
 5. **The Admin role mirror**: an allowlisted Admin opens the app once after step 3, which writes `live_location_admins/{uid}`. A Profile-promoted Admin becomes readable after that.
 6. **Private message images**: configure Firebase Storage, deploy `firestore.rules` and `storage.rules`, and run `flutter pub get` for `firebase_storage`. Verify participant/Admin reads, cross-conversation denial, 5 MiB/MIME refusal, overwrite denial, and Android picking on authorized test accounts.
 7. **Retention**: the Firestore TTL policy, message subcollection sweep, and attachment-prefix cleanup in [§ 4](#the-deletion-mechanism-required-not-implemented-here).
+8. **One conversation per Guest (ADR-0025)**: deploy `firestore.rules` and both apps first, then run the history migration — audit, dry-run, apply — following [docs/MESSAGING-MIGRATION.md](MESSAGING-MIGRATION.md). `migration_runs` needs no configuration; it is denied to every client by the catch-all rule. Deploying without migrating is a supported state (old threads stay readable); migrating without deploying is not.

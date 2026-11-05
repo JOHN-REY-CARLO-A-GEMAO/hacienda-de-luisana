@@ -1,9 +1,15 @@
 // ----------------------------------------------------------------------------
 // Finding the conversation a Guest and the Admin already have.
 // ----------------------------------------------------------------------------
-// One continuous conversation per booking (`booking-<bookingId>`), with full
-// non-destructive backward compatibility for earlier `inquiry-<uid>-<category>`
-// threads so historical messages remain reachable.
+// ONE conversation per Guest account (`guest-<uid>`). A Booking is context a
+// single message carries, not a thread of its own, so a Guest with five
+// reservations has one thread and the Admin sees the whole correspondence in
+// one place.
+//
+// Superseded `booking-<bookingId>` and `inquiry-<uid>-<category>` threads are
+// still readable — history is never dropped — and are preferred only when the
+// canonical thread does not exist yet, which is the state before the migration
+// has run for that Guest (`functions/src/guestConversationMigration.ts`).
 //
 // The Admin app answers one question from a Booking: "has this Guest written
 // to us, and if so where?". The message button on a Booking opens that thread
@@ -27,6 +33,7 @@ class GuestConversation {
     this.category = AppConstants.categoryBooking,
     this.updatedAt,
     this.isLegacy = false,
+    this.supersededBy,
   });
 
   final String id;
@@ -38,6 +45,16 @@ class GuestConversation {
   final String category;
   final DateTime? updatedAt;
   final bool isLegacy;
+
+  /// True when this is the account-wide conversation the Guest always has.
+  bool get isCanonical => AppConstants.isGuestConversationId(id);
+
+  /// True when a previous run has already folded this thread into the
+  /// account conversation, so its history is there rather than here.
+  bool get isSuperseded => supersededBy != null && supersededBy!.trim().isNotEmpty;
+
+  /// Where this thread's history now lives, when it has been folded in.
+  final String? supersededBy;
 
   bool get isBookingTopic => category == AppConstants.categoryBooking;
 
@@ -58,9 +75,10 @@ class GuestConversation {
     final rawBookingId = data['booking_id'] is String
         ? (data['booking_id'] as String).trim()
         : '';
-    final derivedBookingId = doc.id.startsWith('booking-')
-        ? doc.id.substring('booking-'.length)
-        : null;
+    final derivedBookingId = AppConstants.bookingIdFromConversationId(doc.id);
+    final rawSuperseded = data['superseded_by'] is String
+        ? (data['superseded_by'] as String).trim()
+        : '';
 
     return GuestConversation(
       id: doc.id,
@@ -73,7 +91,8 @@ class GuestConversation {
           ? (data['category'] as String).trim()
           : AppConstants.categoryBooking,
       updatedAt: updated is Timestamp ? updated.toDate() : null,
-      isLegacy: doc.id.startsWith('inquiry-'),
+      isLegacy: !AppConstants.isGuestConversationId(doc.id),
+      supersededBy: rawSuperseded.isEmpty ? null : rawSuperseded,
     );
   }
 }
@@ -153,11 +172,47 @@ Future<List<GuestConversation>> conversationsWith(
   }
 }
 
+/// The conversation a Guest has — the account-wide one, read directly by id.
+///
+/// Returns `null` when the Guest has never written and nothing exists yet, and
+/// when the document at that id is not theirs. Never creates anything: opening a
+/// thread is the Guest's side of the app, and the Admin can only read what is
+/// already there.
+Future<GuestConversation?> threadForGuest(
+  String guestUid, {
+  String? fallbackGuestName,
+  FirebaseFirestore? firestore,
+}) async {
+  final uid = guestUid.trim();
+  if (uid.isEmpty) return null;
+  final db = firestore ?? FirebaseFirestore.instance;
+  final defaultName = (fallbackGuestName != null && fallbackGuestName.trim().isNotEmpty)
+      ? fallbackGuestName.trim()
+      : 'Guest';
+  try {
+    final doc = await db
+        .collection(AppConstants.colConversations)
+        .doc(AppConstants.guestConversationId(uid))
+        .get();
+    if (!doc.exists) return null;
+    final data = doc.data();
+    if (data == null || data['guest_uid'] is! String ||
+        (data['guest_uid'] as String).trim() != uid) {
+      return null;
+    }
+    return GuestConversation.fromDoc(doc, fallbackGuestName: defaultName);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Resolves the conversation for a Booking:
-/// 1. Checks the unified booking-scoped document (`booking-<bookingId>`) directly.
-/// 2. Queries the exact Guest/Booking relationship (without a result cap that
-///    could hide it), refusing duplicates rather than opening an ambiguous one.
-/// 3. Falls back to recent, server-ordered Guest threads for legacy records.
+/// 1. The account-wide conversation (`guest-<uid>`) — the one a Guest actually
+///    writes to, whichever Booking the message is about.
+/// 2. Before that thread exists (a Guest whose history the migration has not
+///    folded in yet), the superseded booking-scoped document, so old messages
+///    stay reachable rather than appearing to have vanished.
+/// 3. Recent, server-ordered Guest threads for legacy topic records.
 ///
 /// Missing records, malformed ownership fields and Firebase read failures are
 /// represented as `null`; no conversation belonging to a different Guest is
@@ -177,6 +232,15 @@ Future<GuestConversation?> threadForBooking(
   final requestedBooking = bookingId?.trim();
 
   try {
+    // One account, one thread. When it exists it holds every Booking's
+    // correspondence, so there is nothing to look up per reservation.
+    final canonical = await threadForGuest(
+      uid,
+      fallbackGuestName: defaultName,
+      firestore: db,
+    );
+    if (canonical != null) return canonical;
+
     if (requestedBooking != null && requestedBooking.isNotEmpty) {
       final conversations = db.collection(AppConstants.colConversations);
       final direct = await conversations.doc(AppConstants.conversationId(requestedBooking)).get();

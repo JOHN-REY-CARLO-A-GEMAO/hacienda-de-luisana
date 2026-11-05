@@ -157,8 +157,12 @@ What the public website shows, held at `public_reviews/{reviewId}` — six field
 _Avoid_: Review (the Guest's own document, private), Public review, Feedback, Quote.
 
 **Conversation**:
-The one thread between a Guest and the Admin, held at `conversations/{id}` with its messages in a `messages` subcollection. It belongs to exactly one Guest, and knowing its id is not membership. A message carries text up to 1,000 characters, one private image, or an image with a caption, and is read a page at a time.
-_Avoid_: Thread (fine in the UI), inbox on the website, DM
+The one thread between a Guest and the Admin, held at `conversations/guest-{uid}` — one per Guest ACCOUNT, never one per Booking — with its messages in a `messages` subcollection. It belongs to exactly one Guest, and knowing its id is not membership. A message carries text up to 1,000 characters, one private image, or an image with a caption, an optional `booking_id` naming the stay it is about, and is read a page at a time. Superseded `booking-{bookingId}` and `inquiry-{uid}-{topic}` threads are read for history and never written to again (ADR-0025).
+_Avoid_: Thread (fine in the UI), inbox on the website, DM, booking conversation
+
+**Booking context**:
+The `booking_id` a single message may carry, naming the reservation that message is about. Context, not identity: one thread holds every stay a Guest has, and a message with no booking at all is a general inquiry. Must be a real Booking the writer may speak about, which `firestore.rules` checks.
+_Avoid_: Booking conversation, booking thread, reservation chat
 
 **Message page**:
 One read of a Conversation — the newest forty on opening, thirty older at a time behind a cursor. A Conversation is never read whole.

@@ -29,6 +29,7 @@ import {
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { createHash } from 'node:crypto'
 import { normalizeStatus } from './booking/statuses'
+import { isMigratedMessage } from './chatHistoryPlan'
 import { MinuteBudget } from './pricing'
 import { spendCallableQuota } from './rateLimit'
 
@@ -700,6 +701,13 @@ export function evaluateGuestMessageCreated(
 ): AdminPushEvent | null {
   if (!isSafeConvoId(convoId) || !isSafeDocId(messageId) || !messageData) return null
 
+  // History is not news. The migration copies a Guest's old threads into their
+  // one conversation, and every copy carries `migrated` / `migration`
+  // provenance. Waking the Admin up once per copied message — potentially years
+  // of them — would be the worst thing this trigger could do, so a copy is
+  // refused before anything else is looked at.
+  if (isMigratedMessage(messageId, messageData)) return null
+
   const senderRole = trimmedString(messageData.sender_role).toLowerCase()
   const senderUid = trimmedString(messageData.sender_uid)
   if (senderRole !== 'guest' || !isSafeDocId(senderUid)) return null
@@ -716,12 +724,19 @@ export function evaluateGuestMessageCreated(
   )
   if (!text && !hasAttachment) return null
 
-  const explicitBookingId = conversationData
+  // A Booking is context a message carries, not the identity of the thread. The
+  // message says which stay it is about; only if it does not, fall back to what
+  // the conversation is about, and then to the superseded `booking-<id>`
+  // document id this thread may still be filed under.
+  const messageBookingId = trimmedString(messageData.booking_id)
+  const conversationBookingId = conversationData
     ? trimmedString(conversationData.booking_id)
     : ''
-  const bookingId = isSafeDocId(explicitBookingId)
-    ? explicitBookingId
-    : bookingIdFromConversationId(convoId)
+  const bookingId = isSafeDocId(messageBookingId)
+    ? messageBookingId
+    : isSafeDocId(conversationBookingId)
+      ? conversationBookingId
+      : bookingIdFromConversationId(convoId)
 
   return {
     eventId: `guest_message:${convoId}:${messageId}`,

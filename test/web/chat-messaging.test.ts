@@ -23,6 +23,7 @@ import {
   CHAT_MAX_PAGE_SIZE,
   CHAT_PAGE_SIZE,
   fetchConversationSummaries,
+  guestConversationId,
   loadMessagePage,
   mergeMessages,
   propertyNameFromAccommodation,
@@ -275,7 +276,7 @@ describe('retention — a finished thread is disposable, a Booking is not', () =
   })
 })
 
-describe('unified booking-scoped conversation summaries & legacy backward compatibility', () => {
+describe('one conversation per Guest account', () => {
   it('sanitizes booking references and maps accommodation IDs to friendly display names', () => {
     expect(sanitizeBookingReference('HDL-4091')).toBe('HDL-4091')
     expect(sanitizeBookingReference('hdl-9921')).toBe('HDL-9921')
@@ -288,51 +289,23 @@ describe('unified booking-scoped conversation summaries & legacy backward compat
     expect(propertyNameFromAccommodation('house-a-camping')).toBe('A-House')
   })
 
-  it('sorts booking conversations by newest activity descending and preserves legacy inquiry threads', async () => {
+  it('gives an account exactly one conversation however many bookings it has', async () => {
     localStorage.setItem(
       'hdl:bookings',
       JSON.stringify([
-        {
-          id: 'bk_older',
-          ref_id: 'HDL-1001',
-          uid: 'guest-u1',
-          guest_name: 'Maria Clara',
-          email: 'maria@example.com',
-          accommodation: 'annex',
-          check_in: '2026-11-10',
-          check_out: '2026-11-12',
-          guests: 4,
-          status: 'Reserved',
-          created_at: '2026-10-01T00:00:00.000Z',
-        },
-        {
-          id: 'bk_newer',
-          ref_id: 'HDL-2002',
-          uid: 'guest-u1',
-          guest_name: 'Maria Clara',
-          email: 'maria@example.com',
-          accommodation: 'main-house',
-          check_in: '2026-12-10',
-          check_out: '2026-12-12',
-          guests: 8,
-          status: 'Reserved',
-          created_at: '2026-10-15T00:00:00.000Z',
-        },
+        { id: 'bk_older', ref_id: 'HDL-1001', uid: 'guest-u1', guest_name: 'Maria Clara',
+          email: 'maria@example.com', accommodation: 'annex', check_in: '2026-11-10',
+          check_out: '2026-11-12', guests: 4, status: 'Reserved', created_at: '2026-10-01T00:00:00.000Z' },
+        { id: 'bk_newer', ref_id: 'HDL-2002', uid: 'guest-u1', guest_name: 'Maria Clara',
+          email: 'maria@example.com', accommodation: 'main-house', check_in: '2026-12-10',
+          check_out: '2026-12-12', guests: 8, status: 'Reserved', created_at: '2026-10-15T00:00:00.000Z' },
       ]),
     )
 
-    // Pre-existing legacy topic message remains accessible non-destructively.
     await sendChatMessage({
-      convoId: 'local:payment-help',
+      convoId: guestConversationId('guest-u1'),
       uid: 'guest-u1',
-      text: 'Earlier GCash receipt inquiry',
-    })
-
-    // Sending a newer message on `bk_older` promotes it to the top of the list.
-    await sendChatMessage({
-      convoId: 'local:booking-bk_older',
-      uid: 'guest-u1',
-      text: 'Updated arrival note for Annex',
+      text: 'A general question, no reservation attached',
     })
 
     const summaries = await fetchConversationSummaries('guest-u1', {
@@ -340,13 +313,79 @@ describe('unified booking-scoped conversation summaries & legacy backward compat
       guestName: 'Maria Clara',
     })
 
-    expect(summaries.map((s) => s.conversationId)).toContain('local:booking-bk_older')
-    expect(summaries.map((s) => s.conversationId)).toContain('local:booking-bk_newer')
-    expect(summaries.map((s) => s.conversationId)).toContain('local:payment-help')
-    // `bk_older` received the newest message so it sorts ahead of `bk_newer`.
-    const idxOlder = summaries.findIndex((s) => s.conversationId === 'local:booking-bk_older')
-    const idxNewer = summaries.findIndex((s) => s.conversationId === 'local:booking-bk_newer')
-    expect(idxOlder).toBeLessThan(idxNewer)
+    // Two bookings, one thread. This is the whole point of the change.
+    expect(summaries.filter((item) => item.isCanonical)).toHaveLength(1)
+    expect(summaries[0].conversationId).toBe('local:guest-guest-u1')
+    expect(summaries[0].bookingId).toBeNull()
+    // Every reservation the account holds is available as message context…
+    expect(summaries[0].linkedBookingIds.slice().sort()).toEqual(['bk_newer', 'bk_older'])
+    // …because no booking thread was opened for either of them.
+    expect(summaries.map((item) => item.conversationId)).not.toContain('local:booking-bk_newer')
+  })
+
+  it('keeps superseded threads readable, newest first, behind the account conversation', async () => {
+    localStorage.setItem('hdl:bookings', JSON.stringify([{
+      id: 'bk_older', ref_id: 'HDL-1001', uid: 'guest-u1', guest_name: 'Maria Clara',
+      email: 'maria@example.com', accommodation: 'annex', check_in: '2026-11-10',
+      check_out: '2026-11-12', guests: 4, status: 'Reserved', created_at: '2026-10-01T00:00:00.000Z',
+    }]))
+
+    await sendChatMessage({ convoId: 'local:booking-bk_older', uid: 'guest-u1', text: 'Arrival note' })
+    await sendChatMessage({ convoId: 'local:payment-help', uid: 'guest-u1', text: 'Earlier GCash receipt' })
+
+    const summaries = await fetchConversationSummaries('guest-u1', {
+      email: 'maria@example.com',
+      guestName: 'Maria Clara',
+    })
+
+    const ids = summaries.map((item) => item.conversationId)
+    expect(ids).toContain('local:booking-bk_older')
+    expect(ids).toContain('local:payment-help')
+    // The account conversation leads; history follows, newest activity first.
+    expect(ids[0]).toBe('local:guest-guest-u1')
+    expect(summaries.slice(1).every((item) => item.isLegacy)).toBe(true)
+    expect(summaries.slice(1).every((item) => item.isCanonical === false)).toBe(true)
+  })
+
+  it('carries the Booking a message is about without splitting the thread', async () => {
+    await sendChatMessage({
+      convoId: guestConversationId('guest-u1'),
+      uid: 'guest-u1',
+      text: 'About the Annex stay',
+      bookingId: 'bk_older',
+    })
+    await sendChatMessage({
+      convoId: guestConversationId('guest-u1'),
+      uid: 'guest-u1',
+      text: 'About the Main House stay',
+      bookingId: 'bk_newer',
+    })
+    await sendChatMessage({
+      convoId: guestConversationId('guest-u1'),
+      uid: 'guest-u1',
+      text: 'And a general question',
+    })
+
+    const page = await loadMessagePage({ convoId: 'local:guest-guest-u1', uid: 'guest-u1' })
+    expect(page.messages).toHaveLength(3)
+    // Different bookings, one thread — and a message with none is fine. Three
+    // messages written in the same millisecond have no meaningful order between
+    // them, so the contexts are compared as a set, not a sequence.
+    expect(new Set(page.messages.map((message) => message.booking_id))).toEqual(
+      new Set(['bk_older', 'bk_newer', null]),
+    )
+  })
+
+  it('drops a booking reference it cannot use rather than storing it', async () => {
+    const result = await sendChatMessage({
+      convoId: guestConversationId('guest-u1'),
+      uid: 'guest-u1',
+      text: 'Tagged with nonsense',
+      bookingId: 'bookings/../../escape',
+    })
+    expect(result.ok).toBe(true)
+    const page = await loadMessagePage({ convoId: 'local:guest-guest-u1', uid: 'guest-u1' })
+    expect(page.messages[0].booking_id).toBeNull()
   })
 })
 

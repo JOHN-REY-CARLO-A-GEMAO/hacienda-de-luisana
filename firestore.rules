@@ -1569,13 +1569,24 @@ service cloud.firestore {
     }
 
     match /conversations/{convoId} {
+      // ONE conversation per Guest account.
+      //
+      // The id is the account's own: `guest-<uid>`, and nothing else may be
+      // created. This is stronger than reserving the prefix — it removes the
+      // booking-scoped and topic-scoped ids entirely, so no caller, racing or
+      // otherwise, can open a second thread for a Guest who already has one.
+      // The duplicates being retired (`booking-<id>`, `inquiry-<uid>-<topic>`)
+      // stay readable until the migration folds them in, and are never written
+      // to again. See docs/adr/0025-one-conversation-per-guest-account.md.
       allow create: if isSignedIn()
         && request.resource.data.keys().hasAll(['guest_uid', 'category', 'created_at', 'updated_at'])
         && request.resource.data.guest_uid == request.auth.uid
-        // Reserve the deterministic guest-wide id for its actual owner.
-        && (!convoId.matches('guest-.*') || convoId == 'guest-' + request.auth.uid)
+        && convoId == 'guest-' + request.auth.uid
         // A Guest may not open their own thread with an expiry already on it.
-        && !request.resource.data.keys().hasAny(['messages_expires_at']);
+        && !request.resource.data.keys().hasAny(['messages_expires_at'])
+        // Provenance belongs to the migration, which writes through the Admin
+        // SDK. A client may not mark a thread merged, or claim one is a copy.
+        && !request.resource.data.keys().hasAny(['superseded_by', 'migrated', 'migration', 'migration_run_id']);
       // READ — the Admin, and the Guest the conversation belongs to, plus one
       // more case that is not a way in at all.
       //
@@ -1651,13 +1662,52 @@ service cloud.firestore {
           );
         }
 
+        // A Booking is CONTEXT a message carries, not the identity of the
+        // thread: one conversation holds every stay a Guest has, and a message
+        // with no `booking_id` at all is an ordinary general inquiry.
+        //
+        // When the context is named, it has to be a real Booking the writer is
+        // allowed to speak about — a Guest's own, anything at all for the
+        // Admin. So a message cannot be filed under a stranger's reservation,
+        // and the Admin can still see, per message, which stay it is about
+        // without the conversation being split.
+        function hasBookingContext() {
+          return request.resource.data.keys().hasAny(['booking_id']);
+        }
+
+        function bookingExists(bookingId) {
+          return exists(/databases/$(database)/documents/bookings/$(bookingId));
+        }
+
+        function bookingOwnedByWriter(bookingId) {
+          return get(/databases/$(database)/documents/bookings/$(bookingId)).data.get('uid', '')
+            == request.auth.uid;
+        }
+
+        function validBookingContext() {
+          return !hasBookingContext() ? true : (
+            request.resource.data.booking_id is string
+            && request.resource.data.booking_id.size() > 0
+            && request.resource.data.booking_id.size() <= 128
+            && bookingExists(request.resource.data.booking_id)
+            && (request.resource.data.sender_role == 'admin'
+                || bookingOwnedByWriter(request.resource.data.booking_id))
+          );
+        }
+
+        // `hasOnly` below deliberately omits `migrated` and `migration`: the
+        // history migration copies old messages in through the Admin SDK, and
+        // those two fields are how a reader — and the notification trigger —
+        // knows a message is a copy rather than something somebody just said.
+        // A client that could stamp them could silence its own notifications.
         allow create: if request.resource.data.keys().hasAll(['sender_uid', 'sender_role', 'text', 'created_at'])
-          && request.resource.data.keys().hasOnly(['sender_uid', 'sender_role', 'text', 'created_at', 'attachment'])
+          && request.resource.data.keys().hasOnly(['sender_uid', 'sender_role', 'text', 'created_at', 'attachment', 'booking_id'])
           && request.resource.data.sender_uid == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() <= 1000
           && (request.resource.data.text.size() > 0 || hasAttachment())
           && validAttachment()
+          && validBookingContext()
           && ((request.resource.data.sender_role == 'guest' && isConversationMember(convoId))
               || (request.resource.data.sender_role == 'admin' && isAdmin()));
       allow read: if isAdmin() || isConversationMember(convoId);
@@ -2063,9 +2113,11 @@ service cloud.firestore {
     }
 
     // Server-only collections (`booking_quotes`, `booking_inventory_locks`,
-    // `callable_rate_limits`, `notification_dispatches`) are written
-    // exclusively by Cloud Functions via the Admin SDK and denied to every
-    // client by the catch-all below.
+    // `callable_rate_limits`, `notification_dispatches`, `migration_runs`) are
+    // written exclusively by Cloud Functions via the Admin SDK and denied to
+    // every client by the catch-all below. `migration_runs/<guest-<uid>>` is
+    // the guest-history migration's lease and audit trail: no client may read
+    // it, take it over, or mark a migration finished.
     // Deny all other collections by default unless explicitly allowed
     match /{document=**} {
       allow read, write: if false;

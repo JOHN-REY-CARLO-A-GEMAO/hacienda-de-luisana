@@ -24,6 +24,8 @@ export type MessageComposerProps = {
   quickRepliesSlot?: ReactNode
   locationSlot?: ReactNode
   locationStatusSlot?: ReactNode
+  /** A superseded thread is readable history: no composer, and no way to write to it. */
+  readOnly?: boolean
 }
 
 export function MessageComposer({
@@ -41,6 +43,7 @@ export function MessageComposer({
   quickRepliesSlot,
   locationSlot,
   locationStatusSlot,
+  readOnly = false,
 }: MessageComposerProps) {
   const inputId = useId()
   const counterId = useId()
@@ -48,8 +51,9 @@ export function MessageComposer({
 
   const trimmed = value.trim()
   const overLimit = value.length > MESSAGE_MAX
+  const locked = disabled || readOnly
   const canSubmit =
-    !disabled && !sending && !overLimit && (trimmed.length > 0 || Boolean(attachment))
+    !locked && !sending && !overLimit && (trimmed.length > 0 || Boolean(attachment))
 
   // Auto-size multiline textarea smoothly between 1 and 4 lines.
   useEffect(() => {
@@ -69,6 +73,7 @@ export function MessageComposer({
     <form
       className="messages-composer"
       data-tour="message-composer"
+      aria-hidden={readOnly || undefined}
       onSubmit={(event) => {
         event.preventDefault()
         submit()
@@ -127,7 +132,7 @@ export function MessageComposer({
         <button
           type="button"
           className="messages-attach"
-          disabled={disabled || sending}
+          disabled={locked || sending}
           onClick={onAttach}
           aria-label={
             attachment
@@ -149,7 +154,7 @@ export function MessageComposer({
             id={inputId}
             rows={1}
             value={value}
-            disabled={disabled || sending}
+            disabled={locked || sending}
             maxLength={MESSAGE_MAX}
             data-tour-field="message"
             aria-describedby={counterId}

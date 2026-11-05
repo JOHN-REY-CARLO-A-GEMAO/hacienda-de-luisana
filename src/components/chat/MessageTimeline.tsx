@@ -20,6 +20,11 @@ export type MessageTimelineProps = {
   adminLastReadAt?: string | null
   emptyTitle?: string
   emptyDescription?: string
+  /**
+   * Resolves a message's `booking_id` to a human-readable `HDL-…` reference, so
+   * a thread that spans several stays still says which one a message is about.
+   */
+  bookingReferenceFor?: (bookingId: string) => string | null
 }
 
 type DayBucket = {
@@ -75,6 +80,7 @@ export function MessageTimeline({
   adminLastReadAt = null,
   emptyTitle = 'Start your conversation',
   emptyDescription = 'Ask us about your stay, arrival, or directions.',
+  bookingReferenceFor,
 }: MessageTimelineProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const nearBottomRef = useRef(true)
@@ -260,6 +266,9 @@ export function MessageTimeline({
                         showSenderLabel={showSenderLabel}
                         showTimestamp={showTimestamp}
                         deliveryStatus={statusForMessage(msg)}
+                        bookingReference={
+                          msg.booking_id ? bookingReferenceFor?.(msg.booking_id) ?? null : null
+                        }
                       />
                     )
                   })}
