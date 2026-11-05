@@ -53,9 +53,8 @@ OsmWorldPoint projectOsmCoordinate({
 // every Admin at once.
 //
 // CARTO's basemaps are the *same OpenStreetMap data* under a licence that is
-// meant to be served to applications, with a free key for up to five million
-// tile requests a month. So the map keeps looking like a map of Luisiana, and
-// the attribution says OSM and CARTO, because both are true.
+// meant to be served to applications. So the map keeps looking like a map of
+// Luisiana, and the attribution says OSM and CARTO, because both are true.
 //
 // The key itself is set in `lib/core/config/carto_config.dart` — one file, one
 // paste slot, and a build flag that overrides it. Read that file for why it is
