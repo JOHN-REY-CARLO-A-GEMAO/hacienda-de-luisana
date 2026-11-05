@@ -157,8 +157,8 @@ export function BookingPage() {
     [form.accommodation],
   )
 
-  /// Hard cap for the guest-count input: the selected accommodation's capacity,
-  /// falling back to the platform-wide 100-guest online limit.
+  // The A-House has a documented capacity; 100 is only the online form's
+  // processing limit for other accommodations, not their physical capacity.
   const maxGuests = selectedAcc?.capacity ?? 100
 
 
@@ -173,6 +173,24 @@ export function BookingPage() {
   // The estimate uses the Admin's published rates; no figure is invented
   // when the dates, guest count or rate document cannot be priced.
   const published = usePublishedRates()
+  const guestCountHint = useMemo(() => {
+    if (selectedAcc?.capacity != null) {
+      return `Hanggang ${selectedAcc.capacity} bisita ang kasya sa ${selectedAcc.name} (isang unit).`
+    }
+    const schedule = published?.accommodations[form.accommodation]?.guest_pricing
+    const weekday = schedule?.weekday
+    const weekend = schedule?.weekend_holiday
+    const onlineLimit = `Hanggang ${maxGuests} bisita ang tinatanggap ng online form; kumpirmahin ang aktuwal na kapasidad sa Hacienda.`
+    if (!weekday || !weekend) return onlineLimit
+    if (weekday.base_max_guests !== weekend.base_max_guests || weekday.excess_per_guest !== weekend.excess_per_guest) {
+      return `Nag-iiba ang bilang ng kasamang bisita at dagdag na bayad ayon sa petsa. ${onlineLimit}`
+    }
+    const included = `Kasama sa base rate ang hanggang ${weekday.base_max_guests} bisita.`
+    const excess = weekday.excess_per_guest != null
+      ? ` ₱${weekday.excess_per_guest.toLocaleString('en-PH')} bawat dagdag na bisita kada standard stay.`
+      : ''
+    return `${included}${excess} ${onlineLimit}`
+  }, [form.accommodation, maxGuests, published, selectedAcc])
   const options = useMemo(() => ACCOMMODATIONS
     .filter((a) => a.active && published?.accommodations[a.id]?.active !== false)
     .map((a) => ({
@@ -636,7 +654,7 @@ export function BookingPage() {
                     label="Bilang ng Bisita (Number of guests)"
                     error={errors.guests}
                     controlId="guest-count"
-                    hint={`Hanggang ${maxGuests} bisita${selectedAcc ? ` ang kasya sa ${selectedAcc.name}` : ''}.`}
+                    hint={guestCountHint}
                     required
                   >
                     <div className="flex items-center gap-2">
@@ -659,7 +677,7 @@ export function BookingPage() {
                         onBlur={() => handleBlur('guests')}
                         className="text-center"
                         invalid={Boolean(errors.guests)}
-                        aria-describedby={errors.guests ? 'guest-count-message' : undefined}
+                        aria-describedby="guest-count-message"
                       />
                       <button
                         type="button"

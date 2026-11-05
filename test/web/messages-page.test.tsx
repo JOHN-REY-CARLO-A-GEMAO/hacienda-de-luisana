@@ -155,13 +155,41 @@ afterAll(() => {
 })
 
 describe('unified booking-scoped conversation screen', () => {
-  it('requires an explicitly selected reservation even if bookings exist', async () => {
+  it('opens a guest conversation without a reservation and can send a message', async () => {
+    const container = renderPage(undefined, null)
+    await pump(4)
+    expect(container.textContent).not.toContain('Select a reservation')
+    const textarea = container.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
+    expect(textarea).toBeTruthy()
+    act(() => setTextareaValue(textarea, 'Hello, Admin'))
+    await pump(1)
+    act(() => findButton(container, /^Send message$/i).click())
+    await pump(3)
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('Hello, Admin')
+    const stored = JSON.parse(localStorage.getItem('hdl:chat')!)
+    expect(stored[0].convo_id).toBe('local:guest-guest-uid-alpha-991')
+  })
+
+  it('reopens the same guest conversation after bookings are added', async () => {
+    localStorage.setItem('hdl:chat', JSON.stringify([{
+      id: 'general-1', convo_id: 'local:guest-guest-uid-alpha-991',
+      sender_uid: 'guest-uid-alpha-991', text: 'General chat history', at: '2026-10-20T10:00:00Z',
+    }]))
     seedBookings([makeBooking()])
     const container = renderPage(undefined, null)
     await pump(4)
-    expect(container.textContent).toContain('Select a reservation')
-    expect(container.querySelector('a[href="/mybookings"]')).toBeTruthy()
-    expect(container.querySelector('[role="log"]')).toBeNull()
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('General chat history')
+    expect(container.querySelector('button[aria-label="Booking details"]')).toBeNull()
+  })
+
+  it('keeps general messages scoped to the signed-in guest in demo mode', async () => {
+    localStorage.setItem('hdl:chat', JSON.stringify([{
+      id: 'other', convo_id: 'local:guest-another-guest', sender_uid: 'another-guest',
+      text: 'Private to another guest', at: '2026-10-20T10:00:00Z',
+    }]))
+    const container = renderPage(undefined, null)
+    await pump(4)
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('Private to another guest')
   })
 
   it('does not open an unknown booking', async () => {

@@ -268,6 +268,38 @@ export type Conversation = {
 
 const inflightEnsure = new Map<string, Promise<Conversation>>()
 
+/** One booking-independent channel per signed-in guest. Existing booking and
+ * inquiry threads remain untouched, including their private attachments. */
+export async function ensureGuestConversation(uid: string, guestName: string): Promise<Conversation> {
+  if (!uid.trim()) throw new Error('Sign in to message the Hacienda.')
+  const id = `guest-${uid}`
+  if (offline()) return { id: `local:${id}`, retentionExpiresAt: null }
+  const existing = inflightEnsure.get(id)
+  if (existing) return existing
+  const task = runTransaction(db as never, async (tx) => {
+    const ref = doc(conversations(), id)
+    const snap = await tx.get(ref)
+    if (snap.exists()) {
+      const data = snap.data()
+      if (data.guest_uid !== uid) throw new Error('That conversation belongs to somebody else.')
+      return { id, retentionExpiresAt: parseDate(data.messages_expires_at) }
+    }
+    tx.set(ref, {
+      guest_uid: uid,
+      guest_name: guestName.trim() || 'Guest',
+      category: 'booking',
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+      last_message: '',
+      unread_admin: 0,
+      unread_guest: 0,
+    })
+    return { id, retentionExpiresAt: null }
+  }).finally(() => inflightEnsure.delete(id))
+  inflightEnsure.set(id, task)
+  return task
+}
+
 export async function ensureConversation(uid: string, category: string): Promise<Conversation> {
   if (!isActiveCategory(category, 'inquiry')) {
     throw new Error('Choose a valid inquiry category.')

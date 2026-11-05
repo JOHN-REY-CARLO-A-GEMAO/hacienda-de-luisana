@@ -171,6 +171,8 @@ BookingModel? _matchBookingForConversation(
   Map<String, dynamic> data,
   List<BookingModel> bookings,
 ) {
+  // A guest-wide chat must not be labelled as an arbitrary recent booking.
+  if (convoId.startsWith('guest-')) return null;
   final explicitId = data['booking_id']?.toString().trim() ?? '';
   final derivedId = convoId.startsWith('booking-')
       ? convoId.substring('booking-'.length)
