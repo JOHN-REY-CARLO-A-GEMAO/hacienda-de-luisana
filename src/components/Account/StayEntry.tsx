@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { StatusBadge, statusMeaning } from '../ui'
 import { BookingHistory } from '../Booking/BookingHistory'
 import { StatusTrack } from './StatusTrack'
@@ -131,7 +132,12 @@ export function StayEntry({
         )}
 
         {children && <div className="ledger-forms">{children}</div>}
-        {actions && <div className="ledger-actions">{actions}</div>}
+        <div className="ledger-actions">
+          {actions}
+          <Link className="btn-quiet btn-sm" to={`/messages?booking=${encodeURIComponent(booking.id)}`}>
+            Message about this reservation
+          </Link>
+        </div>
         {review && <div className="ledger-review">{review}</div>}
 
         <details className="ledger-record">

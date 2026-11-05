@@ -74,7 +74,7 @@ export function MessageTimeline({
   unreadAdminCount = 0,
   adminLastReadAt = null,
   emptyTitle = 'Start your conversation',
-  emptyDescription = 'Ask about arrival times, gate access, stay requests, or directions — everything for this booking stays in one thread.',
+  emptyDescription = 'Ask us about your stay, arrival, or directions.',
 }: MessageTimelineProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const nearBottomRef = useRef(true)

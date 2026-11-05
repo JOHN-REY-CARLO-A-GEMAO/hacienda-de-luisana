@@ -6,12 +6,14 @@
 // ----------------------------------------------------------------------------
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BookingDetailsDrawer } from '../../src/components/chat/BookingDetailsDrawer'
 import { ConversationHeader } from '../../src/components/chat/ConversationHeader'
 import { LiveLocationStatus } from '../../src/components/chat/LiveLocationStatus'
+import { ShareLocationBar } from '../../src/components/chat/ShareLocationBar'
+import { StayEntry } from '../../src/components/Account/StayEntry'
 import { MessageComposer } from '../../src/components/chat/MessageComposer'
 import { BUSINESS } from '../../src/config/site'
 import { AuthContext } from '../../src/context/AuthContext'
@@ -88,12 +90,12 @@ function makeBooking(overrides: Partial<Booking> = {}): Booking {
   } as Booking
 }
 
-function render(node: React.ReactNode): HTMLElement {
+function render(node: React.ReactNode, path = '/'): HTMLElement {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   act(() => {
-    root.render(<MemoryRouter>{node}</MemoryRouter>)
+    root.render(<MemoryRouter initialEntries={[path]}>{node}</MemoryRouter>)
   })
   mounted.push(root)
   return container
@@ -110,11 +112,12 @@ function asGuest(uid = 'guest-uid-alpha-991', email = 'maria@example.com', name 
   }
 }
 
-function renderPage(uid?: string): HTMLElement {
+function renderPage(uid?: string, bookingId: string | null = 'bk_internal_doc_88291'): HTMLElement {
   return render(
     <AuthContext.Provider value={asGuest(uid) as never}>
       <MessagesPage />
     </AuthContext.Provider>,
+    bookingId ? `/messages?booking=${encodeURIComponent(bookingId)}` : '/messages',
   )
 }
 
@@ -124,16 +127,6 @@ function findButton(container: ParentNode, label: RegExp): HTMLButtonElement {
   )
   if (!found) throw new Error(`no button matching ${label}`)
   return found
-}
-
-function selectConversation(container: ParentNode, label: RegExp) {
-  const select = container.querySelector<HTMLSelectElement>('#conversation-switcher')!
-  const option = [...select.options].find((item) => label.test(item.textContent ?? ''))
-  if (!option) throw new Error(`no conversation matching ${label}`)
-  act(() => {
-    select.value = option.value
-    select.dispatchEvent(new Event('change', { bubbles: true }))
-  })
 }
 
 function setTextareaValue(textarea: HTMLTextAreaElement, nextValue: string) {
@@ -162,108 +155,103 @@ afterAll(() => {
 })
 
 describe('unified booking-scoped conversation screen', () => {
-  it('renders an honest empty state with no topic sidebar when the Guest has no bookings', async () => {
-    const container = renderPage()
-    await pump(3)
-
-    expect(container.textContent).not.toContain('Conversation topics')
-    expect(container.textContent).not.toContain('Booking inquiry')
-    expect(container.textContent).not.toContain('Payment help')
-    expect(container.textContent).not.toContain('Access / smart lock')
-
-    expect(container.textContent).toContain('Guest Messages')
-    expect(container.textContent).toContain('One continuous conversation per booking')
-    expect(container.textContent).toContain('No conversations yet')
-    expect(container.querySelector('a[href="/book"]')).toBeTruthy()
+  it('requires an explicitly selected reservation even if bookings exist', async () => {
+    seedBookings([makeBooking()])
+    const container = renderPage(undefined, null)
+    await pump(4)
+    expect(container.textContent).toContain('Select a reservation')
+    expect(container.querySelector('a[href="/mybookings"]')).toBeTruthy()
+    expect(container.querySelector('[role="log"]')).toBeNull()
   })
 
-  it('opens the unified booking conversation directly with human-readable property & reference and zero raw IDs', async () => {
+  it('does not open an unknown booking', async () => {
+    seedBookings([makeBooking()])
+    const container = renderPage(undefined, 'foreign-booking')
+    await pump(4)
+    expect(container.textContent).toContain('Reservation unavailable')
+    expect(container.querySelector('textarea')).toBeNull()
+  })
+
+  it('does not open a booking owned by a different account even if the email matches', async () => {
+    seedBookings([makeBooking({ uid: 'different-guest' })])
+    const container = renderPage()
+    await pump(4)
+    expect(container.textContent).toContain('Reservation unavailable')
+    expect(container.querySelector('[role="log"]')).toBeNull()
+  })
+
+  it('offers a booking-specific message link on each reservation', async () => {
+    const container = render(<StayEntry booking={makeBooking({ id: 'bk/one' })} />)
+    await pump(2)
+    expect(container.querySelector('a[href="/messages?booking=bk%2Fone"]')?.textContent)
+      .toContain('Message about this reservation')
+  })
+
+  it('keeps location consent in a compact control and starts only after choosing a duration', () => {
+    const start = vi.fn()
+    const container = render(<ShareLocationBar sharing={makeSharing({ start })} />)
+    expect(container.textContent).not.toContain('Sharing stops automatically')
+    act(() => findButton(container, /Share live location/i).click())
+    expect(container.textContent).toContain('Share your live location with the Admin')
+    act(() => findButton(container, /15 minutes/i).click())
+    expect(start).toHaveBeenCalledWith(15)
+  })
+
+  it('opens only the selected booking in a clean workspace', async () => {
     seedBookings([makeBooking()])
     const container = renderPage()
     await pump(4)
-
-    expect(container.textContent).toContain('Hacienda de LuisAna · Concierge')
-    expect(container.textContent).toContain('The Main House')
-    expect(container.textContent).toContain('HDL-7821')
-
-    // Guided tour anchors must be present in the live conversation composer.
+    expect(container.textContent).toContain('Guest Messages')
+    expect(container.textContent).toContain('Start your conversation')
+    expect(container.querySelector('.messages-topics, .messages-conversation-header, .messages-switcher')).toBeNull()
+    expect(container.querySelector('select')).toBeNull()
+    expect(container.textContent).not.toContain('Hacienda de LuisAna · Concierge')
     expect(container.querySelector('[data-tour="message-composer"]')).toBeTruthy()
-    expect(container.querySelector('textarea[data-tour-field="message"]')).toBeTruthy()
-
-    // Verified Hacienda phone action in header.
-    const callLink = container.querySelector('a[href="tel:+639258507707"]')
-    expect(callLink).toBeTruthy()
-
-    // Strict zero-raw-ID check across text, aria-label, and title attributes.
-    const allAttrs = [...container.querySelectorAll('*')]
-      .flatMap((el) => [el.getAttribute('aria-label') ?? '', el.getAttribute('title') ?? ''])
-      .join(' ')
-    expect(container.textContent).not.toMatch(/guest-uid-alpha-991|bk_internal_doc_88291|local:booking|main-house/)
-    expect(allAttrs).not.toMatch(/guest-uid-alpha-991|bk_internal_doc_88291|local:booking|inquiry-/)
+    expect(container.querySelector('a[href="tel:+639258507707"]')).toBeTruthy()
+    expect(container.querySelector('[role="log"]')).toBeTruthy()
   })
 
-  it('sends messages, updates the timeline chronologically, and keeps multi-booking threads isolated', async () => {
+  it('sends to the explicitly selected booking without mixing another booking', async () => {
     seedBookings([
-      makeBooking({
-        id: 'bk_stay_one',
-        ref_id: 'HDL-7821',
-        accommodation: 'main-house',
-        created_at: '2026-10-22T10:00:00.000Z',
-      }),
-      makeBooking({
-        id: 'bk_stay_two',
-        ref_id: 'HDL-9042',
-        accommodation: 'house-a-camping',
-        created_at: '2026-10-18T10:00:00.000Z',
-      }),
+      makeBooking({ id: 'bk_stay_one', ref_id: 'HDL-7821' }),
+      makeBooking({ id: 'bk_stay_two', ref_id: 'HDL-9042', accommodation: 'house-a-camping' }),
     ])
-
-    const container = renderPage()
+    const first = renderPage(undefined, 'bk_stay_one')
     await pump(4)
-
-    // Both bookings remain accessible through the compact switcher.
-    expect(container.textContent).toContain('The Main House')
-    expect(container.textContent).toContain('A-House')
-
-    // Send a message in Stay 1 (HDL-7821).
-    const textarea = container.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
-    act(() => setTextareaValue(textarea, 'Hello from Main House booking!'))
+    const textarea = first.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
+    act(() => setTextareaValue(textarea, 'Hello from first booking'))
     await pump(1)
-
-    act(() => findButton(container, /^Send message$/i).click())
+    act(() => findButton(first, /^Send message$/i).click())
     await pump(3)
-
-    expect(container.textContent).toContain('Hello from Main House booking!')
-    expect(textarea.value).toBe('')
-
-    // Switch to Stay 2 (A-House · HDL-9042) and verify isolation + navigation.
-    selectConversation(container, /A-House.*HDL-9042/i)
-    await pump(3)
-
-    const logRegion = container.querySelector('[role="log"]')!
-    expect(logRegion.textContent).not.toContain('Hello from Main House booking!')
-    expect(logRegion.textContent).toContain('Start your conversation')
+    expect(first.querySelector('[role="log"]')?.textContent).toContain('Hello from first booking')
+    const second = renderPage(undefined, 'bk_stay_two')
+    await pump(4)
+    expect(second.querySelector('[role="log"]')?.textContent).not.toContain('Hello from first booking')
+    expect(second.querySelector('[role="log"]')?.textContent).toContain('Start your conversation')
   })
 
-  it('keeps unsent drafts separate per booking', async () => {
+  it('clears the old thread and draft when the booking URL changes in place', async () => {
     seedBookings([
-      makeBooking({ id: 'bk_1', ref_id: 'HDL-1111', accommodation: 'main-house', created_at: '2026-10-23T10:00:00.000Z' }),
-      makeBooking({ id: 'bk_2', ref_id: 'HDL-2222', accommodation: 'annex', created_at: '2026-10-21T10:00:00.000Z' }),
+      makeBooking({ id: 'bk_1', ref_id: 'HDL-1111' }),
+      makeBooking({ id: 'bk_2', ref_id: 'HDL-2222' }),
     ])
-    const container = renderPage()
+    localStorage.setItem('hdl:chat', JSON.stringify([{
+      id: 'old', convo_id: 'local:booking-bk_1', sender_uid: 'guest-uid-alpha-991',
+      mine: true, text: 'First booking only', at: '2026-10-20T10:00:00Z',
+    }]))
+    function Screen() {
+      const navigate = useNavigate()
+      return <><button onClick={() => navigate('/messages?booking=bk_2')}>Next reservation</button><MessagesPage /></>
+    }
+    const container = render(<AuthContext.Provider value={asGuest() as never}><Screen /></AuthContext.Provider>, '/messages?booking=bk_1')
     await pump(4)
-    const textarea = container.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
-    act(() => setTextareaValue(textarea, 'Only for the first stay'))
-    selectConversation(container, /Annex.*HDL-2222/i)
-    await pump(2)
-    expect(textarea.value).toBe('')
-    act(() => setTextareaValue(textarea, 'Only for the second stay'))
-    selectConversation(container, /Main House.*HDL-1111/i)
-    await pump(2)
-    expect(textarea.value).toBe('Only for the first stay')
-    selectConversation(container, /Annex.*HDL-2222/i)
-    await pump(2)
-    expect(textarea.value).toBe('Only for the second stay')
+    expect(container.querySelector('[role="log"]')?.textContent).toContain('First booking only')
+    const textarea = container.querySelector('textarea')!
+    act(() => setTextareaValue(textarea, 'Draft for first booking'))
+    act(() => findButton(container, /Next reservation/).click())
+    await pump(4)
+    expect(container.querySelector('[role="log"]')?.textContent).not.toContain('First booking only')
+    expect(container.querySelector('textarea')?.value).toBe('')
   })
 
   it('populates verified Hacienda directions via Send Directions quick reply and opens BookingDetailsDrawer', async () => {
@@ -293,35 +281,6 @@ describe('unified booking-scoped conversation screen', () => {
     expect(dialog?.textContent).toContain(BUSINESS.contact.phoneDisplay)
   })
 
-  it('uses the full conversation pane and preserves switching without a stays sidebar', async () => {
-    seedBookings([
-      makeBooking({ id: 'bk_1', ref_id: 'HDL-1111', accommodation: 'main-house', created_at: '2026-10-23T10:00:00.000Z' }),
-      makeBooking({ id: 'bk_2', ref_id: 'HDL-2222', accommodation: 'annex', created_at: '2026-10-21T10:00:00.000Z' }),
-      makeBooking({ id: 'bk_3', ref_id: 'HDL-3333', accommodation: 'house-a-camping', created_at: '2026-10-19T10:00:00.000Z' }),
-    ])
-
-    const container = renderPage()
-    await pump(4)
-
-    expect(container.querySelector('.messages-topics')).toBeNull()
-    expect(container.querySelector('input[type="search"]')).toBeNull()
-    expect(container.querySelector('[aria-label="Filter conversations"]')).toBeNull()
-    expect(container.querySelector('.messages-privacy-note')).toBeNull()
-    expect(container.querySelector('.messages-page-content')).toBeTruthy()
-    const convoPane = container.querySelector('.messages-conversation')!
-    const selector = container.querySelector<HTMLSelectElement>('#conversation-switcher')!
-    expect(selector).toBeTruthy()
-    const option = [...selector.options].find((item) => item.textContent?.includes('HDL-2222'))!
-    act(() => {
-      selector.value = option.value
-      selector.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    await pump(3)
-    expect(convoPane.textContent).toContain('HDL Annex · HDL-2222')
-    expect(convoPane.querySelector('[role="log"]')).toBeTruthy()
-    expect(convoPane.querySelector('.messages-composer')).toBeTruthy()
-  })
-
   it('loads the newest 40 messages of a 140-message booking thread and paginates 30 older on demand', async () => {
     seedBookings([makeBooking({ id: 'bk_paged', ref_id: 'HDL-5050' })])
     const seededMessages = Array.from({ length: 140 }, (_, i) => ({
@@ -334,7 +293,7 @@ describe('unified booking-scoped conversation screen', () => {
     }))
     localStorage.setItem('hdl:chat', JSON.stringify(seededMessages))
 
-    const container = renderPage()
+    const container = renderPage(undefined, 'bk_paged')
     await pump(4)
 
     const logRegion = container.querySelector('[role="log"]')!
