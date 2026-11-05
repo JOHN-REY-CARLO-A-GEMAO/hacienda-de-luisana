@@ -67,6 +67,12 @@ describe('gallery imagery', () => {
     }
   })
 
+  it('includes all 21 Hacienda-provided gallery photos', () => {
+    const supplied = GALLERY.filter((g) => g.id.startsWith('guest-photo-'))
+    expect(supplied).toHaveLength(21)
+    expect(new Set(supplied.map((g) => g.url)).size).toBe(21)
+  })
+
   it('includes the Annex photograph and its filter', () => {
     expect(GALLERY.some((g) => g.category === 'Annex' && g.url === '/images/gmaps/annex_night_lit.jpg')).toBe(true)
     expect(TABS).toContain('Annex')
