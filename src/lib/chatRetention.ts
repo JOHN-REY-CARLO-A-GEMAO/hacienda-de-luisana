@@ -84,6 +84,28 @@ export function retentionPatch(input: {
 }
 
 /**
+ * Retention for a guest-wide conversation, based on a complete booking list.
+ * An empty or incomplete list must not cause deletion. Callers must obtain an
+ * authoritative snapshot and serialize any TTL write with booking creation;
+ * this pure calculation alone cannot protect against concurrent new bookings.
+ */
+export function guestConversationRetentionPatch(bookings: ReadonlyArray<{
+  status: string | null | undefined
+  closedAt: Date | string | number | null | undefined
+}>, days: number = CHAT_RETENTION_DAYS): { [RETENTION_FIELD]: Date } | null {
+  if (bookings.length === 0) return null
+  let latest = -Infinity
+  for (const booking of bookings) {
+    if (!isRetentionEligible(booking.status) || booking.closedAt == null) return null
+    const closed = booking.closedAt instanceof Date ? booking.closedAt : new Date(booking.closedAt)
+    const time = closed.getTime()
+    if (!Number.isFinite(time)) return null
+    latest = Math.max(latest, time)
+  }
+  return { [RETENTION_FIELD]: retentionExpiry(latest, days) }
+}
+
+/**
  * The other half of the policy: has this thread's retention window closed?
  *
  * The Admin app uses it to say "scheduled for deletion" rather than opening a

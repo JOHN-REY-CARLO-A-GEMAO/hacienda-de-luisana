@@ -34,6 +34,7 @@ import {
 } from '../../src/lib/chatCloud'
 import {
   CHAT_RETENTION_DAYS,
+  guestConversationRetentionPatch,
   RETENTION_FIELD,
   retentionDaysLeft,
   retentionElapsed,
@@ -213,6 +214,21 @@ describe('reading a thread a page at a time', () => {
 })
 
 describe('retention — a finished thread is disposable, a Booking is not', () => {
+  it('keeps guest-wide history if any booking is active or closure information is missing', () => {
+    const finished = { status: 'Completed', closedAt: '2026-10-01T00:00:00Z' }
+    expect(guestConversationRetentionPatch([])).toBeNull()
+    expect(guestConversationRetentionPatch([finished, { status: 'Pending', closedAt: null }])).toBeNull()
+    expect(guestConversationRetentionPatch([finished, { status: 'Completed', closedAt: null }])).toBeNull()
+    expect(guestConversationRetentionPatch([finished, { status: 'Completed', closedAt: 'invalid' }])).toBeNull()
+  })
+
+  it('starts guest-wide retention from the latest closed booking', () => {
+    const patch = guestConversationRetentionPatch([
+      { status: 'Cancelled', closedAt: '2026-11-01T00:00:00Z' },
+      { status: 'Completed', closedAt: '2026-10-01T00:00:00Z' },
+    ])
+    expect(patch?.[RETENTION_FIELD].toISOString()).toBe('2027-01-30T00:00:00.000Z')
+  })
   it('stamps nothing while the Booking is still live', () => {
     for (const status of ['Pending', 'Approved', 'Checked-In', 'Staying', 'Reserved']) {
       expect(retentionPatch({ status, closedAt: '2026-10-01T00:00:00.000Z' })).toBeNull()
