@@ -64,9 +64,17 @@ flutter test test/booking_lifecycle_test.dart
 ## 4. Release build
 
 ```bash
-flutter build apk --release          # android/app/build/outputs/apk/release/
-flutter build appbundle --release    # for Play Console
+# --dart-define supplies the CARTO basemap key. Without it the live-location
+# map still draws, but watermarked — see docs/LIMITATIONS.md.
+flutter build apk --release --dart-define=CARTO_KEY=your-key
+flutter build appbundle --release --dart-define=CARTO_KEY=your-key
 ```
+
+`CARTO_KEY` is free from <https://carto.com/basemaps/apikey/> — emailed back, no
+account, no approval queue, five million tile requests a month. It is not a
+secret in the cryptographic sense (it ships inside the binary either way); it is
+supplied at build time so that no key is ever committed, and so rotating it is a
+rebuild rather than a code change.
 
 `android/app/build.gradle` currently signs release with the debug key; generate a keystore and a `key.properties` before a real release.
 
