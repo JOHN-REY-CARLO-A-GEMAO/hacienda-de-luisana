@@ -75,8 +75,26 @@ approval queue, emailed back in a minute. The free tier is five million tile
 requests a month for non-commercial use and **one million for commercial use**,
 which is the tier a business's admin app falls into.
 
-**Where to set it:** `lib/core/config/carto_config.dart`, one paste slot. That is
-the file to open when the map is watermarked and you want to know why.
+**Where to set it — the easy way:** put it in `.env.local`, beside the Firebase
+keys already there, and run the app through npm:
+
+```bash
+# .env.local
+CARTO_KEY=your-key
+
+npm run app:run                 # forwards to `flutter run`
+npm run app:build               # forwards to `flutter build apk --release`
+```
+
+`scripts/flutter-web.mjs` reads `.env.local` and passes the value to Flutter as
+`--dart-define`. Dart has no dotenv loader of its own, which is the whole reason
+this script exists — without it the key would sit in the file and never reach the
+map. `VITE_CARTO_KEY` is accepted too, and a `--dart-define` typed on the command
+line wins over the file.
+
+**Or paste it** into `lib/core/config/carto_config.dart`, which is the one file to
+open when the map is watermarked and you want to know why, and which is what makes
+a build work on a machine with no `.env.local` at all.
 
 A build flag overrides it without an edit, which is what to use from a machine
 you would rather not paste into:
