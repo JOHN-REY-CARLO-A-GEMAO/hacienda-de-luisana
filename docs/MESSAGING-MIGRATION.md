@@ -95,13 +95,47 @@ never by this job.
 | **2. Match** | The session's conversation id is compared with the threads this run is about to fold. A session on the canonical `guest-<uid>` is *reported* but does not block — that path is the destination, not one being retired. |
 | **3. Wait** | With `--wait=<minutes>` the run re-checks every `--poll-seconds` until the sessions end on their own. It polls up to a wall-clock deadline, and never longer than 61 minutes, which is the longest a session can be. |
 | **4. Recheck** | Immediately before the first write — after the lease is taken — both databases are read again. A Guest can have pressed "share" during the wait, and the lease is not permission to ignore that. |
-| **5. Abort** | If anything is still live, the run copies nothing, annotates nothing, and hands the lease straight back with the reason on it. No session is stopped, invalidated or touched. |
-| **6. Verify** | After a successful run, the check in [§ 5](#5-verify) confirms no live session is left on a retired thread. |
+| **5. Recheck again** | Before any thread is marked, because the copies below take time — one round trip per message — and a Guest can start sharing in the middle of them. |
+| **6. Retire atomically** | Each thread is marked superseded inside a transaction that first reads `location_sessions/{conversationId}` and refuses if a session is live. Check and write are one step, so there is no instant in which a thread is retired and a live session is filed under it. |
+| **7. Abort** | If anything is still live, the run annotates nothing more, and records the block with the reason on it. No session is stopped, invalidated or touched. |
+| **8. Verify** | After a successful run, the check in [§ 5](#5-verify) confirms no live session is left on a retired thread. |
 
 A session counts as live until **one minute after** its own expiry: the rules
 stop serving a position at expiry, but `stopSharing()` and
 `onDisconnect().remove()` are what actually sweep the node, and either can land
 a moment late.
+
+### The race, and why the gate is where it is
+
+The copy loop is not instantaneous. A Guest can press "share my location"
+*after* the checks in steps 1–4 have all passed and *before* the thread is
+retired — and then the run would mark it superseded with a live session filed
+under it. Both apps have moved to `guest-<uid>`; the Guest believes they are
+being watched; nobody is watching anything, and no error appears anywhere.
+
+Three things close it, because no single one can:
+
+| | Closes | How |
+| --- | --- | --- |
+| **Recheck before annotating** | The copy loop | One more read of both databases before the first thread is marked, so the common case blocks before anything is retired. |
+| **Atomic retirement** | The instant of retirement | `superseded_by` is written inside a transaction that first reads the session. A Firestore transaction cannot read the Realtime Database, so the *consent* is what is made atomic — and the consent is the half that matters: `startSharing` writes it before publishing any position, so a consent the transaction cannot see has not put anyone on the map. |
+| **A rule, in `firestore.rules`** | Everything after | No client may create a `location_sessions` document on a conversation carrying `superseded_by`. This is the only one an old browser bundle cannot argue with, and it holds for as long as the thread exists. |
+
+The rule is on **`create` only, never `update`**. A Guest must always be able to
+*stop* sharing, on any thread, forever — gating `update` would strand the very
+sessions this is meant to protect. It costs nothing before a thread is folded,
+because `superseded_by` does not exist until then.
+
+**If the race cannot be closed, the run aborts.** It does not mark the thread,
+does not copy over the top of a live session, and does not guess. Copies already
+made are kept — they are idempotent and correct — and the sources left unmarked
+are retried on the next attempt. The report says which:
+
+```
+[migration] guest-uid-7: blocked-live-location — planned 11, copied 11, attachments 1
+[migration]   waiting on a live-location session on booking-bk_5 (seen in firestore)
+[migration]   nothing further was retired and no session was touched.
+```
 
 **If the Realtime Database cannot be reached, the run refuses to start.** Half a
 picture is not a picture — the Firestore side being empty is not evidence that
@@ -173,7 +207,8 @@ instead of creating a second copy. That makes all of these safe:
 | The run finished | run it again | `already-complete`. No writes. |
 | It crashed halfway | wait for the lease, or run with `--resume` | copies only what is missing; the crash is recorded on the lock |
 | Two operators started | nothing | the second gets `locked` and writes nothing |
-| It aborted on live location | run it again when the session has ended | nothing was written; the lease was handed back, so the retry may start at once |
+| It aborted on live location | run it again when the session has ended | nothing was retired and no session was touched |
+| It aborted *mid-run* on live location | run it again when the session has ended | the copies are kept (idempotent) and the threads already retired say so in `superseded`; the rest are finished on the retry |
 | A source thread received a new message after being merged | `--resume` | the plan is recomputed; only the new message is copied |
 | An attachment object is missing | the run fails | fix Storage, re-run; the message metadata is untouched |
 
@@ -256,7 +291,8 @@ to recover, because the sources were never modified.
 
 | Suite | Run by | Covers |
 | --- | --- | --- |
-| `functions/test/guest-history-migration.test.ts` | `npm --prefix functions test` | audit writes nothing; dry-run writes nothing; copies keep sender/role/text/timestamp/booking; nothing is deleted; a retry duplicates nothing; a crash resumes; a second worker is locked out; a message that cannot be reproduced stops the run; copies never notify; **a live session blocks and writes nothing; a session on the account thread is reported not blocking; an expired session no longer blocks; waiting lets one end and the run then goes ahead; one that outlasts the wait aborts the Guest; one that starts mid-run is caught by the recheck and the lease goes back; an unreachable RTDB refuses to run; verification catches a stray attachment and a session on a retired thread** |
+| `functions/test/guest-history-migration.test.ts` | `npm --prefix functions test` | audit writes nothing; dry-run writes nothing; copies keep sender/role/text/timestamp/booking; nothing is deleted; a retry duplicates nothing; a crash resumes; a second worker is locked out; a message that cannot be reproduced stops the run; copies never notify; **a live session blocks and writes nothing; a session on the account thread is reported not blocking; an expired session no longer blocks; waiting lets one end and the run then goes ahead; one that outlasts the wait aborts the Guest; one that starts mid-run is caught by the recheck and the lease goes back; one that starts during the copies stops every thread being retired; one that lands between the pre-annotate read and the retirement is caught by the atomic guard, which retires the four before it and not the one with the session; a session the Guest has ended is not a block; an unreachable RTDB refuses to run; verification catches a stray attachment and a session on a retired thread** |
+| `test/rules/firestore-rules.test.ts` | `npm run test:rules` | **no client, including the Admin, can open a live-location session on a thread the migration has folded; the Guest can still stop one; threads that have not been folded behave exactly as before** |
 | `test/web/guest-conversation-identity.test.ts` | `npm test` | the id formula, its stability, classification, and what counts as usable booking context |
 | `test/web/chat-messaging.test.ts` | `npm test` | one conversation per account, booking context on messages, superseded threads still readable |
 | `test/rules/firestore-rules.test.ts` | `npm run test:rules` | no client creates a non-account conversation id; message booking context is validated; clients cannot stamp migration provenance |

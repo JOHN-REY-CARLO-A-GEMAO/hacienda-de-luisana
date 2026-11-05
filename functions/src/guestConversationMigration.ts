@@ -84,8 +84,21 @@ export type ConversationsStore = {
     messageId: string,
     data: Record<string, unknown>,
   ): Promise<'created' | 'already-present'>
-  /** Non-destructive annotation. Never deletes, never touches messages. */
-  markSuperseded(convoId: string, supersededBy: string, at: unknown): Promise<void>
+  /**
+   * Non-destructive annotation. Never deletes, never touches messages.
+   *
+   * With `guard`, the check and the write happen in ONE transaction: read
+   * `location_sessions/{convoId}`, and refuse to mark while a session is still
+   * live on it. Returns `'blocked'` rather than throwing, so a caller can tell
+   * "a Guest started sharing mid-run" apart from "Firestore is unhappy" — the
+   * first is expected and recoverable, the second is not.
+   */
+  markSuperseded(
+    convoId: string,
+    supersededBy: string,
+    at: unknown,
+    guard?: { nowMs: number },
+  ): Promise<'marked' | 'blocked'>
   /** Creates the canonical thread when it is missing, otherwise leaves it be. */
   ensureCanonicalConversation(
     convoId: string,
@@ -274,6 +287,12 @@ export type LiveLocationReport = {
   /** Sessions on threads the run is about to retire. These block it. */
   blocking: LiveLocationSession[]
   /**
+   * When the block was discovered. `annotate` means the run had already copied
+   * when a session appeared — the copies are kept (they are idempotent) and the
+   * sources stay unmarked, so the next attempt finishes the job.
+   */
+  blockedAt?: 'pre-check' | 'recheck' | 'annotate'
+  /**
    * Sessions already on the account conversation. The migration does not move
    * that id, so these keep working — but a Guest who is sharing right now is on
    * the property and using the app, so the run says so rather than staying quiet.
@@ -292,8 +311,29 @@ export type LiveLocationReport = {
  * treated as live — an unreadable clock is not evidence that it stopped.
  */
 export function isLiveSession(session: LiveLocationSession, nowMs: number): boolean {
-  if (session.expiresAtMs == null) return true
-  return session.expiresAtMs + LIVE_LOCATION_CLEARANCE_MS > nowMs
+  return liveUntil(session.expiresAtMs, nowMs)
+}
+
+function liveUntil(expiresAtMs: number | null, nowMs: number): boolean {
+  if (expiresAtMs == null) return true
+  return expiresAtMs + LIVE_LOCATION_CLEARANCE_MS > nowMs
+}
+
+/**
+ * Is the raw `location_sessions/{conversationId}` document live at `nowMs`?
+ *
+ * The adapter calls this *inside* the transaction that marks a thread
+ * superseded, which is the only place the check and the write can be made
+ * atomic. The port's `findSessions` cannot be: a Firestore transaction cannot
+ * read the Realtime Database, so the position half of the picture is always one
+ * step behind. The consent half is not, and that is the half that matters —
+ * `startSharing` writes the consent before it publishes any position.
+ */
+export function isLiveSessionDoc(data: Record<string, unknown> | undefined, nowMs: number): boolean {
+  if (!data) return false
+  // A session the Guest has ended is not live, whatever its clock says.
+  if (data.active === false) return false
+  return liveUntil(timestampMs(data.expires_at), nowMs)
 }
 
 /**
@@ -652,7 +692,7 @@ export async function runGuestHistoryMigration(
     return {
       ...emptyResult(uid, conversationId, false, 'blocked-live-location', planHash),
       planned: plan.length,
-      liveLocation,
+      liveLocation: { ...liveLocation, blockedAt: 'pre-check' },
     }
   }
   if (liveLocation.watching.length > 0) {
@@ -747,7 +787,7 @@ export async function runGuestHistoryMigration(
       return {
         ...emptyResult(uid, conversationId, false, 'blocked-live-location', planHash),
         planned: plan.length,
-        liveLocation: { ...recheck, waitedMs: liveLocation.waitedMs },
+        liveLocation: { ...recheck, waitedMs: liveLocation.waitedMs, blockedAt: 'recheck' },
       }
     }
   } catch (error) {
@@ -783,11 +823,86 @@ export async function runGuestHistoryMigration(
       }
     }
 
-    // 7. Annotate the sources. The messages stay; only the thread is marked.
+    // 7. ANNOTATE — and close the race on the way in.
+    //
+    //    The copies above took time, and a Guest can have started sharing while
+    //    they ran. Two checks now, in order:
+    //
+    //    a) One more read of both databases, so the common case blocks here —
+    //       before any thread is marked, leaving the run cleanly restartable
+    //       rather than half-annotated.
     const superseded: string[] = []
     const at = now()
-    for (const id of [...new Set(plan.map((copy) => copy.sourceConversationId))].sort()) {
-      await stores.conversations.markSuperseded(id, conversationId, at)
+    const sourceIds = [...new Set(plan.map((copy) => copy.sourceConversationId))].sort()
+
+    const beforeAnnotating = await checkLiveLocationSessions(stores, {
+      conversationIds: sourceIds,
+      canonicalConversationId: conversationId,
+      nowMs: timestampMs(now()) ?? 0,
+    })
+    if (beforeAnnotating.blocking.length > 0) {
+      logger.warn?.('[migration] a live-location session started while history was being copied', {
+        uid,
+        sessions: beforeAnnotating.blocking.map((session) => session.conversationId),
+      })
+      await stores.runs
+        .release(uid, owner, now(), 'live-location session started while history was being copied')
+        .catch(() => undefined)
+      return {
+        ...emptyResult(uid, conversationId, false, 'blocked-live-location', planHash),
+        planned: plan.length,
+        copied,
+        attachments,
+        liveLocation: { ...beforeAnnotating, waitedMs: liveLocation.waitedMs, blockedAt: 'recheck' },
+      }
+    }
+
+    //    b) Per thread, atomically. A session can still land in the moment
+    //       between (a) and this write, so the check travels inside the
+    //       transaction that marks the thread: read the consent, refuse if it is
+    //       live, mark otherwise — one atomic step, so there is no instant in
+    //       which the thread is retired and a live session is filed under it.
+    for (const id of sourceIds) {
+      const outcome = await stores.conversations.markSuperseded(id, conversationId, at, {
+        nowMs: timestampMs(now()) ?? 0,
+      })
+      if (outcome === 'blocked') {
+        logger.warn?.('[migration] a live-location session started on a thread as it was retired', {
+          uid,
+          conversationId: id,
+        })
+        // The copies stay. They are idempotent, they are correct, and the
+        // sources are unmarked — so the next attempt verifies them in a moment
+        // and finishes the annotation instead of redoing any of the work.
+        await stores.runs
+          .fail(uid, owner, now(), `live-location session started on ${id} as it was being retired`)
+          .catch(() => undefined)
+        return {
+          // `superseded` reports what WAS retired before the block. The run is
+          // partial and saying so is the honest thing: an operator coming back
+          // to it needs to know which threads have already moved, not just that
+          // something went wrong somewhere.
+          ...emptyResult(uid, conversationId, false, 'blocked-live-location', planHash),
+          planned: plan.length,
+          copied,
+          attachments,
+          superseded,
+          liveLocation: {
+            blocking: [
+              {
+                conversationId: id,
+                guestUid: uid,
+                foundIn: ['firestore' as const],
+                expiresAtMs: null,
+                startedAtMs: null,
+              },
+            ],
+            watching: [],
+            waitedMs: liveLocation.waitedMs,
+            blockedAt: 'annotate' as const,
+          },
+        }
+      }
       superseded.push(id)
     }
 

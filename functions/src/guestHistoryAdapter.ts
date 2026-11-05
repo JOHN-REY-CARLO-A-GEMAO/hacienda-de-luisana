@@ -14,6 +14,7 @@ import type { Firestore, Timestamp } from 'firebase-admin/firestore'
 
 import {
   MIGRATION_RUNS,
+  isLiveSessionDoc,
   type ConversationsStore,
   type DocSnapshot,
   type LiveLocationSession,
@@ -125,13 +126,28 @@ function firestoreConversations(db: FirestoreLike): ConversationsStore {
       })
     },
 
-    async markSuperseded(convoId, supersededBy, at) {
+    async markSuperseded(convoId, supersededBy, at, guard) {
       // An annotation, never a delete: the thread and every message and
       // attachment inside it stay exactly where they are.
-      await convoRef(convoId).set(
-        { superseded_by: supersededBy, superseded_at: at, archived: true },
-        { merge: true },
-      )
+      const convo = convoRef(convoId)
+      return db.runTransaction(async (tx: TransactionLike) => {
+        if (guard) {
+          // THE RACE, CLOSED. The check and the write are one transaction, so
+          // there is no instant in which this thread is retired and a live
+          // session is still filed under it. `findSessions` cannot offer this:
+          // a Firestore transaction cannot read the Realtime Database, so the
+          // position half is always a step behind. The consent half is not, and
+          // it is the half that gates everything — `startSharing` writes the
+          // consent before it publishes any position, so a consent this
+          // transaction cannot see has not put a Guest on the map yet.
+          const session = await tx.get(db.collection(LOCATION_SESSIONS).doc(convoId))
+          if (isLiveSessionDoc(session.exists ? session.data() : undefined, guard.nowMs)) {
+            return 'blocked' as const
+          }
+        }
+        tx.set(convo, { superseded_by: supersededBy, superseded_at: at, archived: true }, { merge: true })
+        return 'marked' as const
+      })
     },
 
     async ensureCanonicalConversation(convoId, data) {

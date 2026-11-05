@@ -88,7 +88,17 @@ those fields: `firestore.rules` omits them from the message's allowed keys.
   live on any of them, waits for sessions to end on their own, rechecks both
   databases immediately before its first write, and aborts — copying nothing and
   touching no session — if one is still running. It does not treat the time of
-  day as evidence that nobody is sharing. See
+  day as evidence that nobody is sharing.
+
+  Closing that gate took three mechanisms, because no one of them is sufficient
+  alone. The copies take time, so a Guest can begin sharing after every check
+  has passed; the run therefore rechecks before retiring anything, retires each
+  thread inside a transaction that refuses if a session is live on it, and
+  relies on `firestore.rules` thereafter — no client may create a
+  `location_sessions` document on a conversation carrying `superseded_by`.
+  That last one is the only mechanism an old browser bundle cannot argue with,
+  and it is on `create` only: a Guest must always be able to stop sharing, and
+  gating `update` would strand the sessions this exists to protect. See
   `docs/MESSAGING-MIGRATION.md` § 2b.
 - Pagination, the 1,000-character limit, and the 5 MiB private image rules.
 

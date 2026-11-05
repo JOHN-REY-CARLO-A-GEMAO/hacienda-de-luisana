@@ -16,6 +16,7 @@ import {
   LIVE_LOCATION_CLEARANCE_MS,
   auditGuestConversations,
   isLiveSession,
+  isLiveSessionDoc,
   pathsForConversation,
   runGuestHistoryMigration,
   verifyGuestConversation,
@@ -52,10 +53,22 @@ function createStores(seed: {
    * Realtime Database the job cannot reach — the case that must fail loudly
    * rather than read as an empty coast.
    */
-  liveLocation?: Array<Partial<LiveLocationSession> & { conversationId: string }>
+  liveLocation?: Array<Partial<LiveLocationSession> & { conversationId: string; active?: boolean }>
   liveLocationUnobservable?: boolean
   /** Appended to the session list on the second and later reads. */
   liveLocationAfter?: Array<Partial<LiveLocationSession> & { conversationId: string }>
+  /**
+   * Model a Guest pressing "share my location" WHILE the run is copying: the
+   * session document appears after this many writes, which is exactly the race
+   * the annotate-time guard exists for.
+   */
+  startSessionAtWrite?: { after: number; conversationId: string; expiresAtMs: number }
+  /**
+   * Model the final instant: the session lands after the pre-annotate read has
+   * already reported clear, but before the thread is retired. Only the
+   * per-thread transaction can catch this one.
+   */
+  startSessionOnAnnotate?: { conversationId: string; expiresAtMs: number }
 }): { stores: MigrationStores; audit: Audit; clock: { now: number }; liveLocationReads: () => number } {
   const conversations = new Map<string, Record<string, unknown>>(
     (seed.conversations ?? []).map((entry) => [entry.id, { ...entry.data }]),
@@ -86,6 +99,47 @@ function createStores(seed: {
     ...session,
   }) as LiveLocationSession)
   let liveLocationReads = 0
+  // The raw `location_sessions/{convoId}` documents, as the annotate-time
+  // transaction would read them. Separate from `seeded` because the race is
+  // precisely a session that `findSessions` has not reported yet.
+  const liveSessions = new Map<string, Record<string, unknown>>(
+    (seed.liveLocation ?? []).map((entry) => [
+      entry.conversationId,
+      {
+        conversation_id: entry.conversationId,
+        guest_uid: entry.guestUid ?? GUEST,
+        // `active` is what says a session is over. The document stays put — the
+        // rules refuse to reopen it and nothing sweeps it — so a Guest who once
+        // shared carries the document for good, and the run must still be able
+        // to migrate them.
+        active: entry.active !== false,
+        expires_at: entry.expiresAtMs ?? null,
+      },
+    ]),
+  )
+  let startedMidRun = false
+  const startSession = (conversationId: string, expiresAtMs: number) => {
+    liveSessions.set(conversationId, {
+      conversation_id: conversationId,
+      guest_uid: GUEST,
+      active: true,
+      expires_at: expiresAtMs,
+    })
+    seeded.push({
+      conversationId,
+      guestUid: GUEST,
+      foundIn: ['firestore'],
+      expiresAtMs,
+      startedAtMs: null,
+    })
+  }
+  const maybeStartSession = () => {
+    const trigger = seed.startSessionAtWrite
+    if (!trigger || startedMidRun || writes.length < trigger.after) return
+    startedMidRun = true
+    startSession(trigger.conversationId, trigger.expiresAtMs)
+  }
+  let startedOnAnnotate = false
 
   const maybeFail = (key: string) => {
     const match = [...pending].find((pattern) => key.includes(pattern))
@@ -127,13 +181,27 @@ function createStores(seed: {
       }
       list.set(messageId, { ...data })
       writes.push(`message:${convoId}/${messageId}`)
+      maybeStartSession()
       return 'created'
     },
-    async markSuperseded(convoId, supersededBy, at) {
+    async markSuperseded(convoId, supersededBy, at, guard) {
+      if (seed.startSessionOnAnnotate && !startedOnAnnotate) {
+        startedOnAnnotate = true
+        startSession(seed.startSessionOnAnnotate.conversationId, seed.startSessionOnAnnotate.expiresAtMs)
+      }
       const data = conversations.get(convoId)
       if (!data) throw new Error(`Conversation ${convoId} is missing`)
+      // Mirrors the real adapter: with a guard, the session check and the write
+      // are one indivisible step, so no test can slip a session in between.
+      if (guard) {
+        const session = liveSessions.get(convoId)
+        if (session && session.active !== false && isLiveSessionDoc(session, guard.nowMs)) {
+          return 'blocked'
+        }
+      }
       conversations.set(convoId, { ...data, superseded_by: supersededBy, superseded_at: at, archived: true })
       writes.push(`supersede:${convoId}`)
+      return 'marked'
     },
     async ensureCanonicalConversation(convoId, data) {
       if (conversations.has(convoId)) return 'already-present'
@@ -233,6 +301,7 @@ function createStores(seed: {
       const active = liveLocationReads === 1 ? seeded : [...seeded, ...arriving]
       return active
         .filter((session) => conversationIds.includes(session.conversationId))
+        .filter((session) => liveSessions.get(session.conversationId)?.active !== false)
         .map((session) => ({ ...session }))
     },
   }
@@ -910,4 +979,94 @@ test('verification says plainly when the consolidated thread is not there', asyn
   assert.deepEqual(report.problems, [
     `conversations/guest-${GUEST} does not exist: neither app can open it.`,
   ])
+})
+
+// ---------------------------------------------------------------------------
+// The race: a Guest starts sharing AFTER the last check but BEFORE the thread
+// is retired.
+//
+// The copy loop takes time — one round trip per message, and a Guest with years
+// of correspondence takes a while. A Guest can press "share my location" during
+// it. The checks before the lease and before the first write have both already
+// passed by then, so without a guard at the point of retirement the run would
+// mark the thread superseded with a live session filed under it: the Guest
+// believes they are being watched, both apps have moved to `guest-<uid>`, and
+// nobody is watching anything.
+// ---------------------------------------------------------------------------
+
+test('a session started while history is being copied stops the thread being retired', async () => {
+  const { stores, audit, clock } = createStores({
+    ...fiveBookingThreads(),
+    // Nothing live when the run looked. Then, six messages in, the Guest
+    // starts sharing on a thread that is about to be folded away.
+    startSessionAtWrite: { after: 6, conversationId: 'booking-bk_2', expiresAtMs: NOW + 600_000 },
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  assert.equal(result.status, 'blocked-live-location')
+  // The copies are kept: they are correct, they are idempotent, and redoing
+  // them later would waste the work rather than improve on it.
+  assert.equal(result.copied, 11)
+  // .but NOT ONE thread is marked superseded, so nothing is stranded.
+  assert.deepEqual(result.superseded, [])
+  assert.equal(audit.writes.filter((write) => write.startsWith('supersede:')).length, 0)
+  // .and the run says where it stopped.
+  assert.equal(result.liveLocation?.blockedAt, 'recheck')
+  assert.deepEqual(
+    result.liveLocation?.blocking.map((session) => session.conversationId),
+    ['booking-bk_2'],
+  )
+})
+
+test('the guard is atomic: a session cannot land between the check and the retirement', async () => {
+  const { stores, audit, clock } = createStores({
+    ...fiveBookingThreads(),
+    // The session lands after the pre-annotate read has already reported clear.
+    // Only the per-thread transaction can catch it, and it must catch it for
+    // the thread it lands on.
+    startSessionOnAnnotate: { conversationId: 'booking-bk_5', expiresAtMs: NOW + 600_000 },
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  assert.equal(result.status, 'blocked-live-location')
+  assert.equal(result.liveLocation?.blockedAt, 'annotate')
+  assert.equal(result.copied, 11)
+  // Sources are retired in id order, so bk_5 is last: the four before it are
+  // marked, and the one with the live session under it is not.
+  assert.deepEqual(result.superseded, ['booking-bk_1', 'booking-bk_2', 'booking-bk_3', 'booking-bk_4'])
+  assert.equal(
+    audit.writes.filter((write) => write === 'supersede:booking-bk_5').length,
+    0,
+    'the thread with a live session under it must not be retired',
+  )
+  // The run is left resumable, not reported finished.
+  assert.equal(audit.writes.filter((write) => write === `complete:${GUEST}`).length, 0)
+  assert.ok(audit.writes.includes(`fail:${GUEST}`))
+})
+
+test('a session the Guest has already ended is not a block, and never strands them', async () => {
+  const { stores, clock } = createStores({
+    ...fiveBookingThreads(),
+    // A session document outlives the share: the rules refuse to reopen it and
+    // nothing sweeps it, so a Guest who ever shared carries one for good. That
+    // must not make them unmigratable — `active: false` is what says it is over,
+    // not the clock.
+    liveLocation: [
+      { conversationId: 'booking-bk_1', expiresAtMs: NOW + 600_000, active: false },
+      { conversationId: 'booking-bk_4', expiresAtMs: NOW + 600_000, active: false },
+    ],
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  assert.equal(result.status, 'applied')
+  assert.deepEqual(result.liveLocation?.blocking, [])
+  assert.deepEqual(result.liveLocation?.watching, [])
+  assert.equal(result.superseded.length, 5)
+  assert.ok(result.verification?.ok, result.verification?.problems.join('; '))
 })

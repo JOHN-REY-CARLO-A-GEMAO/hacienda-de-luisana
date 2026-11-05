@@ -2601,6 +2601,104 @@ describe('tracking_sessions: removed, and refused to everybody', () => {
 // Live location (ADR-0013)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// A retired conversation and live location.
+//
+// The migration folds a thread's history into the account conversation and
+// stamps `superseded_by` on it. From that instant the id is history: both apps
+// resolve `guest-<uid>`, so a session opened on the retired id would be watched
+// by nobody — the Guest would believe they were being watched, and no error
+// would appear anywhere. Nothing in the client can be trusted to know this,
+// least of all a browser bundle loaded before the migration ran, so the rule
+// has to say it.
+// ---------------------------------------------------------------------------
+describe('a retired conversation cannot open a live-location session', () => {
+  const during = { time: Date.parse('2026-10-01T09:00:00.000Z') }
+  // One store per conversation shape, built the way `profiles` is: profiles
+  // first, documents second. A store with no `conversations` document would be
+  // refused for the wrong reason — no membership at all — and the test would
+  // pass while proving nothing.
+  const withConversation = (data: DocData) =>
+    storeWith({ [GUEST_UID]: { uid: GUEST_UID, role: 'guest' } }, { [`conversations/${CONVO_ID}`]: data })
+  const retired = withConversation(
+    conversationDoc({
+      superseded_by: `guest-${GUEST_UID}`,
+      superseded_at: '2026-10-01T08:00:00.000Z',
+      archived: true,
+    }),
+  )
+
+  it('refuses a new session on a thread the migration has folded in', () => {
+    // The Guest still OWNS this conversation — `isConversationMember` is still
+    // true, and that is exactly why the membership test alone is not enough.
+    expect(
+      allow({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: locationSessionDoc(), time: during.time }, profiles),
+    ).toBe(true)
+    expect(
+      deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: locationSessionDoc(), time: during.time }, retired),
+    ).toBe(true)
+  })
+
+  it('refuses the Admin too: no session is started on a retired thread by anyone', () => {
+    expect(
+      deny({
+        path: `location_sessions/${CONVO_ID}`,
+        method: 'create',
+        auth: allowlistedAdmin(),
+        requestData: locationSessionDoc({ guest_uid: GUEST_UID }),
+        time: during.time,
+      }, retired),
+    ).toBe(true)
+  })
+
+  it('still lets the Guest STOP sharing on a retired thread', () => {
+    // The other half of the same requirement, and the reason the gate is on
+    // `create` and not on `update`. A Guest who was sharing when the thread was
+    // folded must always be able to end it — otherwise closing the door on new
+    // sessions would strand the ones already running.
+    expect(
+      allow({
+        path: `location_sessions/${CONVO_ID}`,
+        method: 'update',
+        auth: anonymousGuest(),
+        resourceData: locationSessionDoc(),
+        requestData: locationSessionDoc({
+          active: false,
+          expires_at: ruleTimestamp('2026-10-01T09:05:00.000Z'),
+        }),
+        time: during.time,
+      }, retired),
+    ).toBe(true)
+  })
+
+  it('leaves threads that have not been folded exactly as they were', () => {
+    // The gate costs nothing before the migration runs: `superseded_by` does not
+    // exist yet, so every conversation that is still live behaves as it always
+    // did — including the account conversation, which never carries the field.
+    for (const data of [conversationDoc(), conversationDoc({ category: 'booking' })]) {
+      expect(
+        allow({
+          path: `location_sessions/${CONVO_ID}`,
+          method: 'create',
+          auth: anonymousGuest(),
+          requestData: locationSessionDoc(),
+          time: during.time,
+        }, withConversation(data)),
+      ).toBe(true)
+    }
+    // .and a superseded_by that is present but empty is not a retirement.
+    expect(
+      allow({
+        path: `location_sessions/${CONVO_ID}`,
+        method: 'create',
+        auth: anonymousGuest(),
+        requestData: locationSessionDoc(),
+        time: during.time,
+      }, withConversation(conversationDoc({ superseded_by: '' }))),
+    ).toBe(true)
+  })
+})
+
 describe('location_sessions: the consent, never the position', () => {
   const live = (over: Partial<DocData> = {}) => locationSessionDoc(over)
   const during = { time: Date.parse('2026-10-01T09:00:00.000Z') }
