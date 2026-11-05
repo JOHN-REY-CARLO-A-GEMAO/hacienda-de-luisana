@@ -56,15 +56,22 @@ OsmWorldPoint projectOsmCoordinate({
 // the attribution says OSM and CARTO, because both are true.
 //
 // The key is not a secret in the cryptographic sense — it ships inside the binary
-// and anyone can read it — so it is supplied at build time rather than committed:
+// and anyone can read it — so it is supplied at build time rather than committed.
+// Both forms work:
 //
-//     flutter run   --dart-define=CARTO_KEY=your-key
-//     flutter build apk --release --dart-define=CARTO_KEY=your-key
+//     flutter run --dart-define=CARTO_KEY=your-key
+//     flutter run --dart-define-from-file=carto.json     # carto.json is ignored
 //
-// Request one at https://carto.com/basemaps/apikey/ — free, emailed back, no
-// account and no approval queue. Without it CARTO serves a watermarked tile; the
-// app deliberately stays usable in that state rather than refusing to draw a map
-// at all, and `osmTileAttribution` below still names both sources.
+// Request one at https://carto.com/basemaps/apikey/ — free, no account, emailed
+// back in a minute. Without it CARTO serves a watermarked tile; the app
+// deliberately stays usable in that state rather than refusing to draw a map at
+// all, and `osmTileAttribution` below still names both sources.
+//
+// Use is free to 5M tile requests a month for non-commercial projects, and to 1M
+// for commercial ones. This is a private hacienda's admin app, so it is the
+// latter: ~4 tiles per panel view means roughly 250,000 panel views a month
+// before the ceiling. Not a number this feature will reach, but it is the number,
+// not "unlimited".
 //
 // One place defines this. `lib/views/inbox/live_location_panel.dart` is the only
 // caller, so a later move to another provider — or to self-hosted tiles — is a

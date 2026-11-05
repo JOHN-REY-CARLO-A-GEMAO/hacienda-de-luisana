@@ -104,3 +104,9 @@ workers/.dev.vars.*
 
 # Phase 0 isolated scratch/tool downloads/reports (never datasets or release artifacts)
 .cache/
+
+# CARTO basemap key for the Admin app build. Not a cryptographic secret — it
+# ships inside the binary — but a committed key is copied into every fork, so it
+# arrives through --dart-define-from-file and never through a diff.
+# Copy carto.json.example to carto.json and paste the key in.
+carto.json

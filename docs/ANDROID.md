@@ -70,11 +70,19 @@ flutter build apk --release --dart-define=CARTO_KEY=your-key
 flutter build appbundle --release --dart-define=CARTO_KEY=your-key
 ```
 
-`CARTO_KEY` is free from <https://carto.com/basemaps/apikey/> — emailed back, no
-account, no approval queue, five million tile requests a month. It is not a
-secret in the cryptographic sense (it ships inside the binary either way); it is
-supplied at build time so that no key is ever committed, and so rotating it is a
-rebuild rather than a code change.
+`CARTO_KEY` is free from <https://carto.com/basemaps/apikey/> — no account, no
+approval queue, emailed back in a minute. The free tier is five million tile
+requests a month for non-commercial use and **one million for commercial use**,
+which is the tier a business's admin app falls into.
+
+It is not a secret in the cryptographic sense (it ships inside the binary either
+way), but it is supplied at build time so that no key is ever committed. To keep
+it out of your shell history as well:
+
+```bash
+cp carto.json.example carto.json     # paste the key in; carto.json is gitignored
+flutter build apk --release --dart-define-from-file=carto.json
+```
 
 `android/app/build.gradle` currently signs release with the debug key; generate a keystore and a `key.properties` before a real release.
 

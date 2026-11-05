@@ -51,6 +51,17 @@ describe('the basemap is served by someone who allows it', () => {
     expect(assignments.length).toBe(1)
   })
 
+  it('keeps the key file out of the repository', () => {
+    // `carto.json` is the alternative to a --dart-define on the command line, and
+    // it is the form that keeps the key out of shell history. It must also keep
+    // it out of git.
+    const ignore = read('.gitignore')
+    expect(ignore).toMatch(/^carto\.json$/m)
+    expect(read('carto.json.example')).toContain('CARTO_KEY')
+    // The example is a shape, never a value.
+    expect(JSON.parse(read('carto.json.example')).CARTO_KEY).toBe('')
+  })
+
   it('takes the key from the build, not from the repository', () => {
     // A committed key is a key that leaks the moment the repo is public, and it
     // is not even a secret worth guarding — but a `const key = 'abc'` would be

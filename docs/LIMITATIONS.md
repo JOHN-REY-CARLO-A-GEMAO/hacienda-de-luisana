@@ -63,13 +63,15 @@ Two different acceptances, and only one is stored. **At sign-up it is recorded:*
 
 **The map is a CARTO raster tile of OpenStreetMap data, not an interactive map.** `google_maps_flutter` is *not* a dependency of the Admin app: it needs a second API key, a billing account and a per-app entitlement to ship, and this feature's hard requirement is *see where a Guest is now, without storing where they were*. The panel draws the position on a tile refreshed no more than once every ten seconds and always prints the coordinates, accuracy and age beside it, so a tile that will not load costs the picture and not the information. The Guest's side has no map at all.
 
-**The basemap comes from CARTO, not from `tile.openstreetmap.org`.** It used to be the OpenStreetMap project's own tile server, and that server's usage policy says in as many words that *"heavy use (e.g. distributing an app that uses tiles from openstreetmap.org) is forbidden without prior permission"* — which is exactly what this app is. Nothing had broken yet, because one owner opening one panel is not heavy use; the failure would have arrived as a 403 and a grey panel for every Admin at once, with nothing in the app to explain it. CARTO serves the same OpenStreetMap data under terms meant for applications: free up to five million tile requests a month, with a key that is emailed back with no account and no approval queue.
+**The basemap comes from CARTO, not from `tile.openstreetmap.org`.** It used to be the OpenStreetMap project's own tile server, and that server's usage policy says in as many words that *"heavy use (e.g. distributing an app that uses tiles from openstreetmap.org) is forbidden without prior permission"* — which is exactly what this app is. Nothing had broken yet, because one owner opening one panel is not heavy use; the failure would have arrived as a 403 and a grey panel for every Admin at once, with nothing in the app to explain it. CARTO serves the same OpenStreetMap data under terms meant for applications: a key emailed back with no account and no approval queue, free to five million tile requests a month for non-commercial use and **one million for commercial use**. This is a private business's admin app, so the figure that applies is one million — about 250,000 panel views a month at four tiles each. That is the real ceiling, and it is worth knowing that it is a ceiling.
 
 The key is supplied at build time and is not in the repository:
 
 ```bash
+# Either form. The file one keeps the key out of your shell history, which on a
+# shared machine is the only place it would otherwise be recorded.
 flutter run --dart-define=CARTO_KEY=your-key
-flutter build apk --release --dart-define=CARTO_KEY=your-key
+flutter run --dart-define-from-file=carto.json     # copy carto.json.example
 ```
 
 Without it the map still draws, watermarked. That is deliberate: a build missing an environment value should cost a watermark, not a blank panel on the owner's phone. Attribution under the map names both OpenStreetMap and CARTO, because both licences require it.
