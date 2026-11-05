@@ -54,6 +54,25 @@ Map<String, dynamic>? retentionPatch({
   return <String, dynamic>{kRetentionField: retentionExpiry(closedAt, days: days)};
 }
 
+/// Calculate expiry only from a complete, authoritative list of Bookings.
+/// Callers must serialize a TTL write with Booking creation; this calculation
+/// by itself cannot prevent a concurrent new Booking from racing the stamp.
+Map<String, dynamic>? guestConversationRetentionPatch({
+  required List<({String? status, DateTime? closedAt})> bookings,
+  int days = kChatRetentionDays,
+}) {
+  if (bookings.isEmpty) return null;
+  DateTime? latest;
+  for (final booking in bookings) {
+    if (!isRetentionEligible(booking.status) || booking.closedAt == null) {
+      return null;
+    }
+    final closedAt = booking.closedAt!;
+    if (latest == null || closedAt.isAfter(latest)) latest = closedAt;
+  }
+  return <String, dynamic>{kRetentionField: retentionExpiry(latest!, days: days)};
+}
+
 /// Has the window closed? The Admin app says "scheduled for deletion" rather
 /// than opening a thread that is about to be swept.
 bool retentionElapsed(DateTime? expiresAt, {DateTime? now}) {

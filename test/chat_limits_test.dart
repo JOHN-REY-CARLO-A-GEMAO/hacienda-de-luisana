@@ -40,6 +40,22 @@ void main() {
   });
 
   group('retention', () {
+    test('guest-wide retention requires every Booking to be closed', () {
+      expect(guestConversationRetentionPatch(bookings: []), isNull);
+      expect(guestConversationRetentionPatch(bookings: [
+        (status: 'Completed', closedAt: closedAt),
+        (status: 'Pending', closedAt: null),
+      ]), isNull);
+      expect(guestConversationRetentionPatch(bookings: [
+        (status: 'Completed', closedAt: null),
+      ]), isNull);
+      final patch = guestConversationRetentionPatch(bookings: [
+        (status: 'Cancelled', closedAt: DateTime.utc(2026, 11, 1)),
+        (status: 'Completed', closedAt: closedAt),
+      ]);
+      expect(patch![kRetentionField], DateTime.utc(2027, 1, 30));
+    });
+
     test('stamps nothing while a Booking is still live', () {
       for (final status in ['Pending', 'Approved', 'Checked-In', 'Staying', 'Reserved']) {
         expect(retentionPatch(status: status, closedAt: closedAt), isNull,
