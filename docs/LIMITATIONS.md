@@ -61,7 +61,36 @@ Two different acceptances, and only one is stored. **At sign-up it is recorded:*
 
 **A refused write is now visible to the Guest, and it does not end the share.** If the Realtime Database refuses a position, the Guest's banner says the position is not reaching the hacienda and reports the database's own error code, while the session keeps retrying. The share is only ended by the Guest pressing Stop, by the window expiring, or by the server deleting the node.
 
-**The map is an OpenStreetMap raster tile, not an interactive map.** `google_maps_flutter` is *not* a dependency of the Admin app: it needs a second API key, a billing account and a per-app entitlement to ship, and this feature's hard requirement is *see where a Guest is now, without storing where they were*. The panel draws the position on a tile refreshed no more than once every ten seconds and always prints the coordinates, accuracy and age beside it, so a tile that will not load costs the picture and not the information. The Guest's side has no map at all.
+**The map is a CARTO raster tile of OpenStreetMap data, not an interactive map.** `google_maps_flutter` is *not* a dependency of the Admin app: it needs a second API key, a billing account and a per-app entitlement to ship, and this feature's hard requirement is *see where a Guest is now, without storing where they were*. The panel draws the position on a tile refreshed no more than once every ten seconds and always prints the coordinates, accuracy and age beside it, so a tile that will not load costs the picture and not the information. The Guest's side has no map at all.
+
+**The basemap comes from CARTO, not from `tile.openstreetmap.org`.** It used to be the OpenStreetMap project's own tile server, and that server's usage policy says in as many words that *"heavy use (e.g. distributing an app that uses tiles from openstreetmap.org) is forbidden without prior permission"* — which is exactly what this app is. Nothing had broken yet, because one owner opening one panel is not heavy use; the failure would have arrived as a 403 and a grey panel for every Admin at once, with nothing in the app to explain it. CARTO serves the same OpenStreetMap data under terms meant for applications: a key emailed back with no account and no approval queue, free to five million tile requests a month for non-commercial use and **one million for commercial use**. This is a private business's admin app, so the figure that applies is one million — about 250,000 panel views a month at four tiles each. That is the real ceiling, and it is worth knowing that it is a ceiling.
+
+The key is supplied at build time and is not in the repository:
+
+**The key is set in `lib/core/config/carto_config.dart`** — one paste slot, because
+a build machine that remembers a command-line flag is a build machine that fails
+the day somebody else builds the app. A build flag still overrides it, for a
+machine you would rather not paste into:
+
+```bash
+flutter run --dart-define=CARTO_KEY=your-key
+flutter run --dart-define-from-file=carto.json     # copy carto.json.example
+```
+
+**This is a public repository, and that was weighed.** A key compiled into an APK
+can be read back out of the binary whatever is done here; "set it in the app" and
+"publish it" are the same act for a mobile app. What the key protects is quota,
+not a secret: if it were abused, the ceiling is the monthly tile allowance and the
+map draws watermarked until the month turns — no invoice, no outage outside this
+one panel. CARTO's dashboard can rotate or delete a key without a code change, and
+that is the switch if one ever needs pulling. If that trade is not acceptable, the
+paste slot can stay empty and the key supplied at build time instead; both work,
+and the app draws a watermarked map when it has neither.
+
+Without it the map still draws, watermarked. That is deliberate: a build missing an environment value should cost a watermark, not a blank panel on the owner's phone. Attribution under the map names both OpenStreetMap and CARTO, because both licences require it.
+
+Opening a *link* to openstreetmap.org — the directions, the "open the map" href — is unaffected and stays as it is. A person pressing a link opens a web page; it asks the tile server for nothing.
+
 
 **Realtime Database has no per-node TTL, so nothing deletes a position for us.** This was wrong here until 2026-09-30: the feature claimed the server expired every fix at `expires_at_ms`, and it sent a `'.ttl'` field to ask. Two facts make that impossible — Realtime Database has no per-node TTL on any plan, and a key containing `.` is rejected by the Firebase client SDK before the write leaves the browser, so every fix threw `contains an invalid key (.ttl)` and the feature never published a position at all. Expiry is now enforced by `database.rules.json`: the Admin's read sits on the leaf node and is refused once `expires_at_ms` is in the past, so an expired position is unreadable by the server itself. The node is removed on an explicit Stop and by `onDisconnect().remove()` when the connection drops. **The residual:** an abandoned node's bytes can still exist, and the Firebase console — which bypasses rules — will show the coordinate to the owner. Making that disappear too would need a card (Firestore TTL policies require billing) or a scheduled sweeper. The rules case is `test/emulator/realtime-rules.emulator.test.ts`; the payload case is in `test/web/live-location.test.ts`.
 

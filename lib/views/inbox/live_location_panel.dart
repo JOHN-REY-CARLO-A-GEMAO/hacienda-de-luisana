@@ -466,7 +466,7 @@ class _Map extends StatelessWidget {
                     child: const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       child: Text(
-                        '© OpenStreetMap contributors',
+                        osmTileAttribution,
                         style: TextStyle(fontSize: 9, color: Colors.black87),
                       ),
                     ),
