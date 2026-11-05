@@ -81,8 +81,15 @@ those fields: `firestore.rules` omits them from the message's allowed keys.
 - Retention. `messages_expires_at` still belongs to the Admin, and is still
   stamped per conversation — the conversation is now the account's, which is
   what makes a single 90-day window coherent across all of a Guest's stays.
-- Live location. `location_sessions/{conversationId}` keys off the conversation
-  id, which is now always `guest-<uid>`.
+- Live location. `location_sessions/{conversationId}` and
+  `live_location/{conversationId}/{guestUid}` key off the conversation id, which
+  is now always `guest-<uid>`. That is a real cutover cost, and the migration
+  is **gated on it**: a run refuses to fold a Guest's threads while a session is
+  live on any of them, waits for sessions to end on their own, rechecks both
+  databases immediately before its first write, and aborts — copying nothing and
+  touching no session — if one is still running. It does not treat the time of
+  day as evidence that nobody is sharing. See
+  `docs/MESSAGING-MIGRATION.md` § 2b.
 - Pagination, the 1,000-character limit, and the 5 MiB private image rules.
 
 ## Contradictions, stated

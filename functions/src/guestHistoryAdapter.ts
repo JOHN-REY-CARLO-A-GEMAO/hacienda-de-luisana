@@ -9,12 +9,15 @@
 // ----------------------------------------------------------------------------
 
 import type { Bucket } from '@google-cloud/storage'
+import type { Database } from 'firebase-admin/database'
 import type { Firestore, Timestamp } from 'firebase-admin/firestore'
 
 import {
   MIGRATION_RUNS,
   type ConversationsStore,
   type DocSnapshot,
+  type LiveLocationSession,
+  type LiveLocationStore,
   type MessageDoc,
   type MigrationRunStore,
   type MigrationStores,
@@ -23,19 +26,44 @@ import {
 
 const CONVERSATIONS = 'conversations'
 const MESSAGES = 'messages'
+const LOCATION_SESSIONS = 'location_sessions'
+const LIVE_LOCATION = 'live_location'
 const ATTACHMENT_CHUNK = 500
 
 type FirestoreLike = Pick<Firestore, 'collection' | 'doc' | 'runTransaction' | 'batch'>
 
 /**
+ * A Realtime Database handle, narrowed to the one read the guard performs.
+ *
+ * `snapshot.val()` is `unknown` in the Admin SDK's own types, which is honest:
+ * the shape is whatever a browser wrote. It is parsed, never trusted.
+ */
+type RealtimeLike = {
+  ref(path: string): {
+    once(event: 'value'): Promise<{ val(): unknown }>
+  }
+}
+
+/**
  * A Firestore-shaped handle, narrowed so the migration can be driven by the
  * Admin SDK, by a transactional double in a test, or by nothing at all.
+ *
+ * `database` is the Realtime Database, and it is not optional in spirit. The
+ * live-location guard has to look in *both* databases, and an adapter that
+ * could only see one would report "clear" on half the evidence.
  */
-export function firestoreMigrationStores(db: FirestoreLike, bucket: Bucket | null): MigrationStores {
+export function firestoreMigrationStores(
+  db: FirestoreLike,
+  bucket: Bucket | null,
+  database: RealtimeLike | null = null,
+): MigrationStores {
   return {
     conversations: firestoreConversations(db),
     storage: bucket ? cloudStorageStore(bucket) : readOnlyStorage(),
     runs: firestoreRuns(db),
+    liveLocation: database
+      ? liveLocationStore(db as FirestoreLike & { collection(name: string): FirestoreCollection }, database)
+      : unobservableLiveLocation(),
   }
 }
 
@@ -196,6 +224,131 @@ function readOnlyStorage(): StorageStore {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Live location — the guard that keeps a Guest from being cut off mid-share
+// ----------------------------------------------------------------------------
+
+type FirestoreCollection = {
+  doc(id: string): {
+    get(): Promise<{ exists: boolean; data: () => Record<string, unknown> | undefined }>
+  }
+}
+
+/**
+ * Read the live-location state of a set of conversations, from both databases.
+ *
+ *   Firestore `location_sessions/{conversationId}` — the consent: who, since
+ *   when, until when, active or stopped.
+ *   RTDB      `live_location/{conversationId}/{guestUid}` — the position.
+ *
+ * They are written together and swept apart, so each is read independently and
+ * merged on the conversation id. A session that is live in either blocks the
+ * run: an expired consent with a lingering node is not live, and neither is an
+ * active consent whose node has already been removed by `onDisconnect` — but
+ * the run does not try to be clever about which to believe. It reports both and
+ * lets the caller wait.
+ */
+function liveLocationStore(collections: { collection(name: string): FirestoreCollection }, database: RealtimeLike): LiveLocationStore {
+  return {
+    async findSessions(conversationIds) {
+      const byConvo = new Map<string, LiveLocationSession>()
+
+      const merge = (
+        conversationId: string,
+        foundIn: 'firestore' | 'rtdb',
+        guestUid: string | null,
+        expiresAtMs: number | null,
+        startedAtMs: number | null,
+      ): void => {
+        const existing = byConvo.get(conversationId)
+        if (existing) {
+          if (!existing.foundIn.includes(foundIn)) existing.foundIn.push(foundIn)
+          // The later expiry wins: the two databases can disagree by a moment,
+          // and the conservative reading is that the session runs until the last
+          // of them says it has stopped.
+          if (expiresAtMs !== null && (existing.expiresAtMs === null || expiresAtMs > existing.expiresAtMs)) {
+            existing.expiresAtMs = expiresAtMs
+          }
+          if (existing.guestUid === null) existing.guestUid = guestUid
+          if (existing.startedAtMs === null) existing.startedAtMs = startedAtMs
+          return
+        }
+        byConvo.set(conversationId, {
+          conversationId,
+          guestUid,
+          foundIn: [foundIn],
+          expiresAtMs,
+          startedAtMs,
+        })
+      }
+
+      for (const conversationId of conversationIds) {
+        // Firestore: the consent. One document, keyed by the conversation id.
+        const snap = await collections.collection(LOCATION_SESSIONS).doc(conversationId).get()
+        if (snap.exists) {
+          const data = snap.data() ?? {}
+          const active = data.active !== false
+          const expiresAtMs = toMillis(data.expires_at)
+          // A session the Guest has stopped is not live, whatever its clock says.
+          if (active) {
+            merge(
+              conversationId,
+              'firestore',
+              typeof data.guest_uid === 'string' ? data.guest_uid.trim() || null : null,
+              expiresAtMs,
+              toMillis(data.started_at),
+            )
+          }
+        }
+      }
+
+      for (const conversationId of conversationIds) {
+        // RTDB: the position. One read of the conversation's node, whose
+        // children are keyed by guest uid.
+        const snapshot = await database.ref(`${LIVE_LOCATION}/${conversationId}`).once('value')
+        const children = snapshot.val()
+        if (!children || typeof children !== 'object') continue
+        for (const [guestUid, raw] of Object.entries(children as Record<string, unknown>)) {
+          if (!raw || typeof raw !== 'object') continue
+          const node = raw as Record<string, unknown>
+          // The rules refuse to serve a fix past its expiry, so a node sitting
+          // there with a closed window is debris, not a session.
+          const expiresAtMs = typeof node.expires_at_ms === 'number' ? node.expires_at_ms : null
+          if (expiresAtMs !== null && expiresAtMs <= Date.now()) continue
+          merge(
+            conversationId,
+            'rtdb',
+            typeof node.guest_uid === 'string' ? node.guest_uid.trim() || null : guestUid,
+            expiresAtMs,
+            typeof node.at_ms === 'number' ? node.at_ms : null,
+          )
+        }
+      }
+
+      return [...byConvo.values()]
+    },
+  }
+}
+
+/**
+ * Half a view is not a view.
+ *
+ * Without the Realtime Database the guard can see the consent but not the
+ * position, and "I could not see a session" is not "there is no session". So it
+ * throws, the run refuses to start, and the operator learns the configuration
+ * is incomplete — instead of a Guest quietly losing their live location.
+ */
+function unobservableLiveLocation(): LiveLocationStore {
+  return {
+    async findSessions() {
+      throw new Error(
+        'Realtime Database is not configured: live-location positions cannot be checked. ' +
+          'Point this job at the RTDB for the project (FIREBASE_DATABASE_EMULATOR_HOST, or the default instance) before applying.',
+      )
+    },
+  }
+}
+
 /** The largest page of messages a single delete batch would sweep, for the runbook. */
 export const MESSAGE_SWEEP_CHUNK = ATTACHMENT_CHUNK
 
@@ -268,6 +421,29 @@ function firestoreRuns(db: FirestoreLike): MigrationRunStore {
         tx.set(
           ref,
           { ...summary, status: 'complete', completed_at: now, updated_at: now, error: null },
+          { merge: true },
+        )
+      })
+    },
+
+    async release(uid, owner, now, reason) {
+      const ref = runRef(uid)
+      await db.runTransaction(async (tx: TransactionLike) => {
+        const existing = await tx.get(ref)
+        const data = existing.exists ? existing.data() ?? {} : {}
+        if (existing.exists && data.owner !== owner) return
+        // `aborted`, and the lease set to `now` so it is already expired: the
+        // next attempt may begin immediately, and the aborted attempt is on the
+        // record with its reason.
+        tx.set(
+          ref,
+          {
+            status: 'aborted',
+            error: reason,
+            updated_at: now,
+            completed_at: null,
+            lease_expires_at: now,
+          },
           { merge: true },
         )
       })

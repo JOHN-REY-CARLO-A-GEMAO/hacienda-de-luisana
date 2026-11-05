@@ -15,12 +15,18 @@
 //
 // SAFETY, IN THE ORDER IT MATTERS
 //   1. Dry-run is the default. Producing a plan writes nothing at all.
-//   2. Applying takes a leased lock per Guest (`migration_runs/guest-<uid>`),
+//   2. Live location is checked in BOTH databases before a single byte moves.
+//      A live-location session is keyed by conversation id
+//      (`location_sessions/{conversationId}`, `live_location/{conversationId}/`
+//      `{guestUid}`), and consolidating a thread retires the id that session is
+//      filed under — so a Guest mid-share would be silently cut off. The run
+//      waits, rechecks, and aborts rather than invalidate a session in flight.
+//   3. Applying takes a leased lock per Guest (`migration_runs/guest-<uid>`),
 //      so two operators cannot fold the same history twice at once, and a
 //      crashed worker's lock expires instead of blocking the work forever.
-//   3. Every copy is idempotent on a destination id derived from the source
+//   4. Every copy is idempotent on a destination id derived from the source
 //      (`migrated-<sha256>`), so a retry lands on the same document.
-//   4. A copy is never guessed: sender, role, text, original timestamp and
+//   5. A copy is never guessed: sender, role, text, original timestamp and
 //      attachment metadata are all carried across, or the run fails.
 // ----------------------------------------------------------------------------
 
@@ -126,12 +132,53 @@ export type MigrationRunStore = {
   heartbeat(uid: string, owner: string, now: unknown, progress: Record<string, unknown>): Promise<void>
   complete(uid: string, owner: string, now: unknown, summary: Record<string, unknown>): Promise<void>
   fail(uid: string, owner: string, now: unknown, error: string): Promise<void>
+  /**
+   * Give the lease back without having written anything.
+   *
+   * The abort path: the run changed its mind (a live-location session started
+   * between the check and the lease), and the next attempt should be free to
+   * start now rather than waiting out the expiry.
+   */
+  release(uid: string, owner: string, now: unknown, reason: string): Promise<void>
+}
+
+/**
+ * One live-location session, wherever it was found.
+ *
+ * A session is only reported while it is still live. Firestore is the consent
+ * and RTDB the position; they are written together and swept apart, so either
+ * one being live is enough to block — and the run reports which.
+ */
+export type LiveLocationSession = {
+  /** The conversation the session is filed under. This is the id being retired. */
+  conversationId: string
+  guestUid: string | null
+  foundIn: Array<'firestore' | 'rtdb'>
+  /** When the consent or the position says it stops, in epoch ms. */
+  expiresAtMs: number | null
+  startedAtMs: number | null
+}
+
+export type LiveLocationStore = {
+  /**
+   * The still-live sessions filed under any of `conversationIds`.
+   *
+   * Doc-id lookups, not queries: `location_sessions/{conversationId}` is keyed
+   * by the conversation id, and `live_location/{conversationId}/{guestUid}`
+   * nests under it, so a handful of conversations is a handful of reads.
+   *
+   * **Throws when it cannot see.** Half a picture is not a picture: if the
+   * Realtime Database is unreachable this must fail loudly rather than return
+   * an empty list that reads as "the coast is clear".
+   */
+  findSessions(conversationIds: readonly string[]): Promise<readonly LiveLocationSession[]>
 }
 
 export type MigrationStores = {
   conversations: ConversationsStore
   storage: StorageStore
   runs: MigrationRunStore
+  liveLocation: LiveLocationStore
 }
 
 /**
@@ -192,6 +239,157 @@ function sourceAuditOf(source: HistorySource): SourceAudit {
     attachmentCount: source.messages.filter((message) => message.attachment != null).length,
     supersededBy: source.supersededBy ?? null,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Live location — the one thing that must be quiet before anything moves
+// ----------------------------------------------------------------------------
+
+/**
+ * How long after a session's own expiry the run still treats it as live.
+ *
+ * The session expiring is when the *rules* stop serving it, not when the client
+ * has finished with it: `stopSharing()` and `onDisconnect().remove()` are what
+ * actually take the RTDB node away, and both can land a moment late. The wait
+ * is cheap and the alternative is cutting someone off, so the run waits.
+ */
+export const LIVE_LOCATION_CLEARANCE_MS = 60_000
+
+/** How long to wait between re-checks when the operator asks the run to wait. */
+export const DEFAULT_LIVE_LOCATION_POLL_MS = 30_000
+
+/** The longest a session can run for, which is also the longest useful wait. */
+export const MAX_LIVE_LOCATION_WAIT_MS = 61 * 60 * 1000
+
+export type LiveLocationWait = {
+  /** Keep re-checking for this long before giving up. 0 checks exactly once. */
+  timeoutMs?: number
+  /** Gap between re-checks. Defaults to `DEFAULT_LIVE_LOCATION_POLL_MS`. */
+  pollMs?: number
+  /** Injectable sleep, so waiting is testable without a clock to sit through. */
+  sleep?: (ms: number) => Promise<void>
+}
+
+export type LiveLocationReport = {
+  /** Sessions on threads the run is about to retire. These block it. */
+  blocking: LiveLocationSession[]
+  /**
+   * Sessions already on the account conversation. The migration does not move
+   * that id, so these keep working — but a Guest who is sharing right now is on
+   * the property and using the app, so the run says so rather than staying quiet.
+   */
+  watching: LiveLocationSession[]
+  /** How long the run waited for these to clear, in ms. */
+  waitedMs: number
+}
+
+/**
+ * Is this session still live at `nowMs`?
+ *
+ * Expiry is the contract both sides honour: `database.rules.json` refuses to
+ * serve a position past `expires_at_ms`, and the Firestore session is written
+ * `active: false` when the Guest stops. A session with no readable expiry is
+ * treated as live — an unreadable clock is not evidence that it stopped.
+ */
+export function isLiveSession(session: LiveLocationSession, nowMs: number): boolean {
+  if (session.expiresAtMs == null) return true
+  return session.expiresAtMs + LIVE_LOCATION_CLEARANCE_MS > nowMs
+}
+
+/**
+ * Check both databases for live sessions filed under `conversationIds`, and
+ * split them into what blocks the run and what merely watches it.
+ *
+ * A session on a thread being retired blocks: the id it is filed under stops
+ * being the conversation, and both apps would go looking for the stream at
+ * `guest-<uid>` and find nothing. A session already on `guest-<uid>` does not —
+ * that path is the destination, not one of the ones being folded away.
+ */
+export async function checkLiveLocationSessions(
+  stores: Pick<MigrationStores, 'liveLocation'>,
+  input: { conversationIds: readonly string[]; canonicalConversationId: string; nowMs: number },
+): Promise<{ blocking: LiveLocationSession[]; watching: LiveLocationSession[] }> {
+  if (input.conversationIds.length === 0) return { blocking: [], watching: [] }
+  const sessions = await stores.liveLocation.findSessions(input.conversationIds)
+  const blocking: LiveLocationSession[] = []
+  const watching: LiveLocationSession[] = []
+  for (const session of sessions) {
+    if (!isLiveSession(session, input.nowMs)) continue
+    if (session.conversationId === input.canonicalConversationId) watching.push(session)
+    else blocking.push(session)
+  }
+  return { blocking, watching }
+}
+
+/**
+ * Wait for the live-location sessions on the threads being retired to end on
+ * their own.
+ *
+ * Sessions are 15, 30 or 60 minutes, and they are ended by the Guest or by
+ * their own expiry — never by this job. So the run polls both databases until
+ * either the coast is clear or the operator's patience (`timeoutMs`) runs out,
+ * and returns what it found either way. It never touches a session.
+ */
+export async function waitForLiveLocationClear(
+  stores: Pick<MigrationStores, 'liveLocation'>,
+  input: {
+    conversationIds: readonly string[]
+    canonicalConversationId: string
+    now: () => number
+    wait?: LiveLocationWait
+    logger?: Logger
+  },
+): Promise<LiveLocationReport> {
+  const timeoutMs = Math.max(0, Math.min(input.wait?.timeoutMs ?? 0, MAX_LIVE_LOCATION_WAIT_MS))
+  const pollMs = Math.max(1_000, input.wait?.pollMs ?? DEFAULT_LIVE_LOCATION_POLL_MS)
+  const sleep = input.wait?.sleep ?? defaultSleep
+  const startedAt = input.now()
+  let waitedMs = 0
+
+  let found = await checkLiveLocationSessions(stores, {
+    conversationIds: input.conversationIds,
+    canonicalConversationId: input.canonicalConversationId,
+    nowMs: input.now(),
+  })
+  if (found.blocking.length === 0) return { ...found, waitedMs: 0 }
+
+  input.logger?.info?.('[migration] waiting for live-location sessions to end', {
+    conversationIds: input.conversationIds,
+    sessions: found.blocking.length,
+    timeoutMs,
+  })
+
+  // The deadline is a wall-clock bound, not a number of polls: sleeping past it
+  // is how a 60-minute session would otherwise hold the job overnight. The
+  // iteration cap is the second belt — a clock that does not advance (a `now`
+  // that lies, a sleep that returns immediately) must not become a loop that
+  // never ends, so the run also stops after the number of polls a real wait
+  // would have needed.
+  const maxPolls = Math.max(1, Math.ceil(timeoutMs / pollMs))
+  for (let poll = 0; poll < maxPolls && input.now() - startedAt < timeoutMs; poll += 1) {
+    await sleep(Math.min(pollMs, timeoutMs - (input.now() - startedAt)))
+    waitedMs = input.now() - startedAt
+    found = await checkLiveLocationSessions(stores, {
+      conversationIds: input.conversationIds,
+      canonicalConversationId: input.canonicalConversationId,
+      nowMs: input.now(),
+    })
+    if (found.blocking.length === 0) {
+      input.logger?.info?.('[migration] live location clear', { waitedMs })
+      return { ...found, waitedMs }
+    }
+  }
+
+  waitedMs = input.now() - startedAt
+  input.logger?.warn?.('[migration] live-location sessions still active; aborting this Guest', {
+    sessions: found.blocking.length,
+    waitedMs,
+  })
+  return { ...found, waitedMs }
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
 }
 
 /**
@@ -297,12 +495,23 @@ export type MigrationRequest = {
   leaseMs?: number
   logger?: Logger
   now?: () => unknown
+  /**
+   * Wait for live-location sessions to end instead of aborting on the first
+   * sight of one. Omit for a single check. The run re-checks both databases
+   * immediately before the first write either way.
+   */
+  liveLocation?: LiveLocationWait
 }
 
 export type MigrationStatus =
   | 'no-sources'
   | 'already-complete'
   | 'locked'
+  /**
+   * A live-location session is still running on a thread this run would retire.
+   * Nothing was copied, nothing was invalidated, and the lease was given back.
+   */
+  | 'blocked-live-location'
   | 'dry-run'
   | 'applied'
   | 'failed'
@@ -317,6 +526,9 @@ export type MigrationResult = {
   copied: number
   attachments: number
   superseded: string[]
+  liveLocation?: LiveLocationReport
+  /** Present once a run has copied anything. Read-only; see `verifyGuestConversation`. */
+  verification?: VerificationReport
   error?: string
 }
 
@@ -367,7 +579,89 @@ export async function runGuestHistoryMigration(
   const planHash = hashPlan(plan)
   const plannedAttachments = plan.filter((copy) => copy.attachment !== null).length
 
+  const guarded = [...sources.map((source) => source.id), conversationId]
+  const readLiveLocation = (): Promise<{ blocking: LiveLocationSession[]; watching: LiveLocationSession[] }> =>
+    checkLiveLocationSessions(stores, {
+      conversationIds: guarded,
+      canonicalConversationId: conversationId,
+      nowMs: timestampMs(now()) ?? 0,
+    })
+
   // 2. A dry run stops here — before the lock, before any write of any kind.
+  //
+  //    It still reports the live-location state, because "this Guest is sharing
+  //    right now, you will have to wait" is exactly what an operator planning a
+  //    run wants to know. But it does not wait, and it does not block: a dry run
+  //    moves nothing, and a plan that hangs for sixty minutes helps nobody.
+  if (dryRun) {
+    const seen = await readLiveLocation().catch((error: unknown) => {
+      logger.warn?.('[migration] live-location state could not be read', {
+        uid,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      return { blocking: [], watching: [] }
+    })
+    return {
+      uid,
+      conversationId,
+      dryRun: true,
+      status: 'dry-run',
+      planHash,
+      planned: plan.length,
+      copied: 0,
+      attachments: plannedAttachments,
+      superseded: [],
+      liveLocation: { ...seen, waitedMs: 0 },
+    }
+  }
+
+  // 3. LIVE LOCATION. Before the lock, before any write of any kind.
+  //
+  //    The threads in `sources` are about to stop being the conversation. A
+  //    live-location session filed under one of them would be left pointing at
+  //    an id neither app reads any more, and the Guest would simply stop being
+  //    watchable with no error anywhere. So: look in Firestore *and* RTDB, wait
+  //    for whatever is running to end on its own, and abort if it has not.
+  //
+  //    This can throw, and that is the point — if the Realtime Database is
+  //    unreachable the run cannot claim the coast is clear. Nothing has been
+  //    written yet, so a throw here costs nothing but the attempt.
+  let liveLocation: LiveLocationReport
+  try {
+    liveLocation = await waitForLiveLocationClear(stores, {
+      conversationIds: guarded,
+      canonicalConversationId: conversationId,
+      now: () => timestampMs(now()) ?? 0,
+      ...(request.liveLocation ? { wait: request.liveLocation } : {}),
+      logger,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error?.('[migration] live-location check failed; refusing to run blind', {
+      uid,
+      message,
+    })
+    return {
+      ...emptyResult(uid, conversationId, false, 'failed', planHash),
+      planned: plan.length,
+      error: `Live-location check unavailable: ${message}`,
+    }
+  }
+
+  if (liveLocation.blocking.length > 0) {
+    return {
+      ...emptyResult(uid, conversationId, false, 'blocked-live-location', planHash),
+      planned: plan.length,
+      liveLocation,
+    }
+  }
+  if (liveLocation.watching.length > 0) {
+    logger.warn?.('[migration] a live-location session is running on the account conversation', {
+      uid,
+      sessions: liveLocation.watching.length,
+    })
+  }
+
   if (dryRun) {
     return {
       uid,
@@ -382,7 +676,7 @@ export async function runGuestHistoryMigration(
     }
   }
 
-  // 3. The lease. A finished run with the same plan is simply not redone.
+  // 4. The lease. A finished run with the same plan is simply not redone.
   const existing = await stores.runs.get(uid)
   if (existing.exists) {
     const data = existing.data ?? {}
@@ -430,7 +724,44 @@ export async function runGuestHistoryMigration(
     return { ...emptyResult(uid, conversationId, false, 'locked', planHash), planned: plan.length }
   }
 
-  // 4. Copy. Every step is idempotent, so a retry does the missing ones only.
+  // 5. RECHECK, immediately before the first write.
+  //
+  //    The wait above can have been minutes ago, and a Guest can have pressed
+  //    "share my location" in the meantime. The lease is not permission to
+  //    ignore that: check both databases again, and if something is live now,
+  //    hand the lease straight back rather than copy a single message.
+  try {
+    const recheck = await checkLiveLocationSessions(stores, {
+      conversationIds: [...sources.map((source) => source.id), conversationId],
+      canonicalConversationId: conversationId,
+      nowMs: timestampMs(now()) ?? 0,
+    })
+    if (recheck.blocking.length > 0) {
+      logger.warn?.('[migration] a live-location session started during the run; aborting', {
+        uid,
+        sessions: recheck.blocking.map((session) => session.conversationId),
+      })
+      await stores.runs
+        .release(uid, owner, now(), 'live-location session started during the run')
+        .catch(() => undefined)
+      return {
+        ...emptyResult(uid, conversationId, false, 'blocked-live-location', planHash),
+        planned: plan.length,
+        liveLocation: { ...recheck, waitedMs: liveLocation.waitedMs },
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await stores.runs.release(uid, owner, now(), `live-location recheck failed: ${message}`).catch(() => undefined)
+    logger.error?.('[migration] live-location recheck failed; aborting', { uid, message })
+    return {
+      ...emptyResult(uid, conversationId, false, 'failed', planHash),
+      planned: plan.length,
+      error: `Live-location recheck unavailable: ${message}`,
+    }
+  }
+
+  // 6. Copy. Every step is idempotent, so a retry does the missing ones only.
   let copied = 0
   let attachments = 0
   try {
@@ -452,12 +783,31 @@ export async function runGuestHistoryMigration(
       }
     }
 
-    // 5. Annotate the sources. The messages stay; only the thread is marked.
+    // 7. Annotate the sources. The messages stay; only the thread is marked.
     const superseded: string[] = []
     const at = now()
     for (const id of [...new Set(plan.map((copy) => copy.sourceConversationId))].sort()) {
       await stores.conversations.markSuperseded(id, conversationId, at)
       superseded.push(id)
+    }
+
+    // 8. Verify the new paths, before the run is allowed to call itself done.
+    //
+    //    "It copied without throwing" is not the same as "the Guest and the
+    //    Admin can both read this". The check is read-only and re-runnable, and
+    //    a failure is reported rather than undone: the copies are idempotent, so
+    //    the honest thing is to say what is wrong and let a human look.
+    const verification = await verifyGuestConversation(stores, uid, {
+      nowMs: timestampMs(now()) ?? undefined,
+    }).catch((error: unknown) => ({
+      conversationId,
+      ok: false,
+      problems: [`Verification could not run: ${error instanceof Error ? error.message : String(error)}`],
+      checked: { messages: 0, attachments: 0, sources: 0, liveLocation: 0 },
+      paths: pathsForConversation(conversationId),
+    }))
+    if (!verification.ok) {
+      logger.error?.('[migration] verification FAILED', { uid, problems: verification.problems })
     }
 
     await stores.runs.complete(uid, owner, now(), {
@@ -466,6 +816,7 @@ export async function runGuestHistoryMigration(
       planned: plan.length,
       superseded,
       planHash,
+      verification_ok: verification.ok,
     })
 
     logger.info?.('[migration] complete', {
@@ -473,6 +824,7 @@ export async function runGuestHistoryMigration(
       copied,
       attachments,
       superseded: superseded.length,
+      verified: verification.ok,
     })
 
     return {
@@ -485,6 +837,8 @@ export async function runGuestHistoryMigration(
       copied,
       attachments,
       superseded,
+      liveLocation,
+      verification,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -505,6 +859,175 @@ export async function runGuestHistoryMigration(
       error: message,
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Verification — do the new paths actually work for the Guest and the Admin?
+// ----------------------------------------------------------------------------
+
+/**
+ * Every path the two apps will use for this Guest, after the consolidation.
+ *
+ * Listed so an operator can read the report and check the thing themselves,
+ * rather than trusting a boolean. The Guest and the Admin read the same
+ * document — that is the whole point of the refactor — so the paths are the
+ * proof that they agree.
+ */
+export function pathsForConversation(conversationId: string): {
+  conversation: string
+  messages: string
+  attachments: string
+  locationSession: string
+  liveLocation: string
+} {
+  return {
+    conversation: `conversations/${conversationId}`,
+    messages: `conversations/${conversationId}/messages`,
+    attachments: `messageAttachments/${conversationId}/`,
+    locationSession: `location_sessions/${conversationId}`,
+    liveLocation: `live_location/${conversationId}/{guestUid}`,
+  }
+}
+
+export type VerificationReport = {
+  conversationId: string
+  ok: boolean
+  /** Human-readable, in the order a reader would act on them. */
+  problems: string[]
+  checked: { messages: number; attachments: number; sources: number; liveLocation: number }
+  paths: ReturnType<typeof pathsForConversation>
+}
+
+/**
+ * Read-only post-condition check on one Guest's consolidated conversation.
+ *
+ * What it can prove without standing in for either signed-in user:
+ *   - the canonical thread exists and is owned by this Guest;
+ *   - every message in it is readable by both apps — a sender, a role the
+ *     renderer understands, a timestamp, and text inside the 1,000-character
+ *     limit both clients and rules enforce;
+ *   - every attachment is at the path the new conversation implies, at the size
+ *     the message claims, so neither app opens a broken image;
+ *   - every retired thread is annotated with where its history went, so a
+ *     reader landing on one is told rather than left guessing;
+ *   - no live-location session is still filed under a retired id.
+ *
+ * What it cannot prove, and says so: that the security rules answer yes for a
+ * real Guest token and a real Admin token. That needs the emulator or a
+ * signed-in session, and `npm run test:emulator` is where it is checked.
+ */
+export async function verifyGuestConversation(
+  stores: Pick<MigrationStores, 'conversations' | 'storage' | 'liveLocation'>,
+  uid: string,
+  options: { nowMs?: number } = {},
+): Promise<VerificationReport> {
+  const conversationId = guestConversationId(uid)
+  const problems: string[] = []
+  const paths = pathsForConversation(conversationId)
+  const nowMs = options.nowMs ?? Date.now()
+
+  const convo = await firstConversation(stores, uid, conversationId)
+
+  if (!convo || !convo.exists) {
+    return {
+      conversationId,
+      ok: false,
+      problems: [`${paths.conversation} does not exist: neither app can open it.`],
+      checked: { messages: 0, attachments: 0, sources: 0, liveLocation: 0 },
+      paths,
+    }
+  }
+
+  const data = convo.data ?? {}
+  const owner = typeof data.guest_uid === 'string' ? data.guest_uid.trim() : ''
+  if (owner !== uid) {
+    problems.push(
+      `${paths.conversation} is owned by "${owner || 'nobody'}", not ${uid}: the Guest would be refused and the Admin would show the wrong person.`,
+    )
+  }
+
+  const messages = await stores.conversations.listMessages(conversationId)
+  let attachments = 0
+  for (const row of messages) {
+    const message = row.data ?? {}
+    const senderUid = typeof message.sender_uid === 'string' ? message.sender_uid.trim() : ''
+    const role = message.sender_role
+    const text = typeof message.text === 'string' ? message.text : ''
+    if (!senderUid) problems.push(`${paths.messages}/${row.id} has no sender_uid: no avatar, no side of the thread.`)
+    if (role !== 'guest' && role !== 'admin') {
+      problems.push(`${paths.messages}/${row.id} has sender_role ${JSON.stringify(role)}: the timeline cannot place it.`)
+    }
+    if (message.created_at == null) {
+      problems.push(`${paths.messages}/${row.id} has no created_at: it would sort to the wrong place in history.`)
+    }
+    if (text.length > 1000) {
+      problems.push(`${paths.messages}/${row.id} is ${text.length} characters: over the 1,000 limit, the rules would refuse it.`)
+    }
+    const attachment = parseAttachment(message.attachment)
+    if (!attachment) continue
+    attachments += 1
+    if (!attachment.path.startsWith(`messageAttachments/${conversationId}/`)) {
+      problems.push(
+        `${paths.messages}/${row.id} points at ${attachment.path}, which is not under ${paths.attachments}: the image will not open.`,
+      )
+    }
+  }
+
+  let sources = 0
+  const docs = await stores.conversations.listConversations({ guestUid: uid })
+  for (const doc of docs) {
+    if (!doc.exists || doc.id === conversationId) continue
+    sources += 1
+    const supersededBy = typeof doc.data?.superseded_by === 'string' ? doc.data.superseded_by.trim() : ''
+    if (supersededBy !== conversationId) {
+      problems.push(
+        `${doc.id} is not annotated with superseded_by=${conversationId}: a reader landing on it is not told where the history went.`,
+      )
+    }
+  }
+
+  let liveLocation = 0
+  const sessions = await stores.liveLocation.findSessions([conversationId, ...docs.map((doc) => doc.id)])
+  for (const session of sessions) {
+    // Only a session that is still LIVE is a problem. A `location_sessions`
+    // document left behind on a retired thread is debris: neither app reads
+    // that id any more, and the run does not clean it up — nothing here
+    // deletes. What must not happen is a *running* session on a retired id.
+    if (!isLiveSession(session, nowMs)) continue
+    liveLocation += 1
+    if (session.conversationId !== conversationId) {
+      problems.push(
+        `A live-location session is still running on the retired thread ${session.conversationId}: nobody is watching it any more.`,
+      )
+    }
+  }
+
+  return {
+    conversationId,
+    ok: problems.length === 0,
+    problems,
+    checked: { messages: messages.length, attachments, sources, liveLocation },
+    paths,
+  }
+}
+
+async function firstConversation(
+  stores: Pick<MigrationStores, 'conversations'>,
+  uid: string,
+  conversationId: string,
+): Promise<DocSnapshot | null> {
+  const docs = await stores.conversations.listConversations({ guestUid: uid })
+  const match = docs.find((doc) => doc.id === conversationId)
+  return match ?? { id: conversationId, exists: false, data: undefined }
+}
+
+function parseAttachment(value: unknown): { path: string; size: number } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const data = value as Record<string, unknown>
+  const path = typeof data.path === 'string' ? data.path : ''
+  const size = typeof data.size === 'number' ? data.size : null
+  if (!path) return null
+  return { path, size: size ?? 0 }
 }
 
 function emptyResult(
@@ -540,6 +1063,10 @@ function timestampMs(value: unknown): number | null {
   if (typeof value === 'string') {
     const parsed = Date.parse(value)
     return Number.isNaN(parsed) ? null : parsed
+  }
+  if (value instanceof Date) {
+    const at = value.getTime()
+    return Number.isNaN(at) ? null : at
   }
   if (typeof value === 'object') {
     const record = value as { toMillis?: () => number; seconds?: number }

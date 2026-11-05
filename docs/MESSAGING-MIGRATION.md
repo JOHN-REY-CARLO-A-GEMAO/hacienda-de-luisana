@@ -26,14 +26,19 @@ The code change lands first and is safe on its own:
 So the order is: **deploy → audit → dry-run → apply → verify.** Deploying
 without migrating is a supported state; migrating without deploying is not.
 
-**One cutover cost, stated up front.** Live location is keyed by conversation
-id: `location_sessions/{conversationId}` and the Realtime Database node
-`live_location/{conversationId}/{guestUid}`. Consolidating to `guest-<uid>`
-moves those paths, so a session that is *in flight* when a Guest is switched to
-the account thread stops being found where either app is looking. Sessions
-expire on their own — 15, 30 or 60 minutes — so the exposure is bounded, and
-the Guest can simply start a new one. Migrate outside check-in hours and there
-is nothing to see.
+**Live location must be quiet. This is a hard gate, not a timing trick.** A
+live-location session is filed under the conversation id — the consent at
+`location_sessions/{conversationId}` and the position at
+`live_location/{conversationId}/{guestUid}`. Consolidating a thread retires the
+id that session hangs on, so migrating under a running session would leave a
+Guest sharing into a thread neither app reads any more: the Admin's panel would
+simply stop showing them, with no error anywhere.
+
+The job therefore refuses to migrate a Guest while a session is live on any of
+the threads it is about to fold. It does not stop sessions, does not shorten
+them, and does not assume anything about the time of day — a Guest can share at
+03:00, and "it is outside check-in hours" is not evidence that nobody is. The
+full procedure is [§ 2b](#2b-live-location-the-gate-that-decides-when).
 
 ## 1. Audit — read the structures, change nothing
 
@@ -58,7 +63,7 @@ Conversations that name **no** `guest_uid` are reported as orphans and left
 alone. An unattributable thread is never merged into somebody's account on a
 guess — that is the one thing this job must not get wrong.
 
-## 2. Dry-run — plan the fold, still change nothing
+## 2a. Dry-run — plan the fold, still change nothing
 
 ```bash
 node lib/src/scripts/migrateGuestHistory.js --uid=<uid>            # one Guest
@@ -67,6 +72,58 @@ node lib/src/scripts/migrateGuestHistory.js --all                  # everyone
 
 Dry-run is the **default**. It writes nothing — not the lock, not the canonical
 thread, not a single message. It stops before the lease is even considered.
+
+It *does* report the live-location state, because "this Guest is sharing right
+now, you will have to wait" is exactly what an operator planning a run needs to
+know. It does not wait, and it does not block: a dry run moves nothing, and a
+plan that hangs for an hour helps nobody.
+
+```bash
+node lib/src/scripts/migrateGuestHistory.js --all            # plan + live-location state
+node lib/src/scripts/migrateGuestHistory.js --all --json     # machine-readable
+```
+
+## 2b. Live location — the gate that decides when
+
+A session blocks the migration of every thread it is filed under. Sessions run
+for **15, 30 or 60 minutes** and are ended by the Guest or by their own expiry —
+never by this job.
+
+| Step | What happens |
+| --- | --- |
+| **1. Detect** | Both databases are read: `location_sessions/{conversationId}` in Firestore (the consent) and `live_location/{conversationId}/{guestUid}` in the Realtime Database (the position). Doc-id lookups, not queries, so one conversation is one read each. |
+| **2. Match** | The session's conversation id is compared with the threads this run is about to fold. A session on the canonical `guest-<uid>` is *reported* but does not block — that path is the destination, not one being retired. |
+| **3. Wait** | With `--wait=<minutes>` the run re-checks every `--poll-seconds` until the sessions end on their own. It polls up to a wall-clock deadline, and never longer than 61 minutes, which is the longest a session can be. |
+| **4. Recheck** | Immediately before the first write — after the lease is taken — both databases are read again. A Guest can have pressed "share" during the wait, and the lease is not permission to ignore that. |
+| **5. Abort** | If anything is still live, the run copies nothing, annotates nothing, and hands the lease straight back with the reason on it. No session is stopped, invalidated or touched. |
+| **6. Verify** | After a successful run, the check in [§ 5](#5-verify) confirms no live session is left on a retired thread. |
+
+A session counts as live until **one minute after** its own expiry: the rules
+stop serving a position at expiry, but `stopSharing()` and
+`onDisconnect().remove()` are what actually sweep the node, and either can land
+a moment late.
+
+**If the Realtime Database cannot be reached, the run refuses to start.** Half a
+picture is not a picture — the Firestore side being empty is not evidence that
+no position is being shared, and a job that cannot see must not claim the coast
+is clear. The check itself is the safety property, so it fails loudly.
+
+```bash
+# Check once and abort if anything is live (the default).
+node lib/src/scripts/migrateGuestHistory.js --all --apply --confirm <projectId>
+
+# Wait up to 70 minutes for sessions to end on their own, checking every 30s.
+node lib/src/scripts/migrateGuestHistory.js --all --apply --confirm <projectId> --wait=70
+```
+
+With `--all`, a Guest with a live session is **skipped, not failed** — the
+others go ahead, and the report names who to come back to:
+
+```
+[migration] guest-uid-7: blocked-live-location — planned 11, copied 0, attachments 0
+[migration]   waiting on a live-location session on booking-bk_4 (seen in firestore + rtdb, ends 2026-11-05T14:22:31.000Z)
+[migration]   nothing was copied and no session was touched. Run again when it has ended.
+```
 
 ## 3. Apply — the only step that writes
 
@@ -87,6 +144,8 @@ process is pointed at, and resolves one at all:
 
 What it does, in order:
 
+0. **Checks live location**, waits if asked, and rechecks immediately before
+   the first write. See [§ 2b](#2b-live-location-the-gate-that-decides-when).
 1. Takes a **leased lock** at `migration_runs/guest-<uid>` (15 minutes,
    renewed every 25 copies).
 2. Creates the canonical `guest-<uid>` thread if it is missing.
@@ -114,6 +173,7 @@ instead of creating a second copy. That makes all of these safe:
 | The run finished | run it again | `already-complete`. No writes. |
 | It crashed halfway | wait for the lease, or run with `--resume` | copies only what is missing; the crash is recorded on the lock |
 | Two operators started | nothing | the second gets `locked` and writes nothing |
+| It aborted on live location | run it again when the session has ended | nothing was written; the lease was handed back, so the retry may start at once |
 | A source thread received a new message after being merged | `--resume` | the plan is recomputed; only the new message is copied |
 | An attachment object is missing | the run fails | fix Storage, re-run; the message metadata is untouched |
 
@@ -124,6 +184,44 @@ run takes over on its own. `--resume` takes it over immediately.
 ## 5. Verify
 
 ```bash
+node lib/src/scripts/migrateGuestHistory.js --verify --uid=<uid>
+node lib/src/scripts/migrateGuestHistory.js --verify --all
+```
+
+Read-only and re-runnable, at any time after a run. It answers one question:
+**do the paths the Guest and the Admin both use actually work now?** It is also
+run automatically at the end of every applied migration, and a failure there
+makes the CLI exit non-zero — the copies happened, but the post-condition did
+not hold, which needs a human.
+
+It proves:
+
+- `conversations/guest-<uid>` exists and is owned by this Guest;
+- every message in it is renderable by both apps — a sender, a role the timeline
+  understands, a timestamp, and text inside the 1,000-character limit;
+- every attachment sits under `messageAttachments/guest-<uid>/`, so neither app
+  opens a broken image;
+- every retired thread carries `superseded_by`, so a reader landing on one is
+  told where the history went;
+- **no live session is left on a retired thread.**
+
+It cannot prove that the security rules answer yes for a real Guest token and a
+real Admin token — that needs signed-in sessions, and `npm run test:emulator` is
+where it is checked. The report prints the exact paths so you can confirm
+yourself rather than trust a boolean:
+
+```
+[migration] verify guest-uid-7: OK — 11 message(s), 1 attachment(s), 5 superseded thread(s), 0 live session(s)
+    conversations/guest-guest-uid-7
+    conversations/guest-guest-uid-7/messages
+    messageAttachments/guest-guest-uid-7/
+    location_sessions/guest-guest-uid-7
+    live_location/guest-guest-uid-7/{guestUid}
+```
+
+Then, by hand:
+
+```bash
 node lib/src/scripts/migrateGuestHistory.js --audit --uid=<uid>
 ```
 
@@ -132,6 +230,11 @@ node lib/src/scripts/migrateGuestHistory.js --audit --uid=<uid>
   the run.
 - The source threads still exist, still hold their messages, and carry
   `superseded_by`.
+
+**Live location, by hand.** With a Guest who has just been consolidated: start
+a share from the website, watch it appear in the Admin's panel, stop it, and
+start again. Both ends now resolve `guest-<uid>`, which is the point — the old
+`booking-<id>` stream would have had nowhere to be read from.
 
 Then, in the apps: the Guest's thread shows the whole history in one timeline,
 each message labelled with the reservation it is about; the Admin's inbox shows
@@ -153,7 +256,7 @@ to recover, because the sources were never modified.
 
 | Suite | Run by | Covers |
 | --- | --- | --- |
-| `functions/test/guest-history-migration.test.ts` | `npm --prefix functions test` | audit writes nothing; dry-run writes nothing; copies keep sender/role/text/timestamp/booking; nothing is deleted; a retry duplicates nothing; a crash resumes; a second worker is locked out; a message that cannot be reproduced stops the run; copies never notify |
+| `functions/test/guest-history-migration.test.ts` | `npm --prefix functions test` | audit writes nothing; dry-run writes nothing; copies keep sender/role/text/timestamp/booking; nothing is deleted; a retry duplicates nothing; a crash resumes; a second worker is locked out; a message that cannot be reproduced stops the run; copies never notify; **a live session blocks and writes nothing; a session on the account thread is reported not blocking; an expired session no longer blocks; waiting lets one end and the run then goes ahead; one that outlasts the wait aborts the Guest; one that starts mid-run is caught by the recheck and the lease goes back; an unreachable RTDB refuses to run; verification catches a stray attachment and a session on a retired thread** |
 | `test/web/guest-conversation-identity.test.ts` | `npm test` | the id formula, its stability, classification, and what counts as usable booking context |
 | `test/web/chat-messaging.test.ts` | `npm test` | one conversation per account, booking context on messages, superseded threads still readable |
 | `test/rules/firestore-rules.test.ts` | `npm run test:rules` | no client creates a non-account conversation id; message booking context is validated; clients cannot stamp migration provenance |

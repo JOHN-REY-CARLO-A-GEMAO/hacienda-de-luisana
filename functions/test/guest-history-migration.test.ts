@@ -13,10 +13,16 @@ import { test } from 'node:test'
 
 import {
   DEFAULT_LEASE_MS,
+  LIVE_LOCATION_CLEARANCE_MS,
   auditGuestConversations,
+  isLiveSession,
+  pathsForConversation,
   runGuestHistoryMigration,
+  verifyGuestConversation,
   type ConversationsStore,
   type DocSnapshot,
+  type LiveLocationSession,
+  type LiveLocationStore,
   type MessageDoc,
   type MigrationRunStore,
   type MigrationStores,
@@ -41,7 +47,16 @@ function createStores(seed: {
    * having to know which one that is.
    */
   failOnce?: string[]
-}): { stores: MigrationStores; audit: Audit; clock: { now: number } } {
+  /**
+   * Live-location sessions the double should report. `unobservable` models a
+   * Realtime Database the job cannot reach — the case that must fail loudly
+   * rather than read as an empty coast.
+   */
+  liveLocation?: Array<Partial<LiveLocationSession> & { conversationId: string }>
+  liveLocationUnobservable?: boolean
+  /** Appended to the session list on the second and later reads. */
+  liveLocationAfter?: Array<Partial<LiveLocationSession> & { conversationId: string }>
+}): { stores: MigrationStores; audit: Audit; clock: { now: number }; liveLocationReads: () => number } {
   const conversations = new Map<string, Record<string, unknown>>(
     (seed.conversations ?? []).map((entry) => [entry.id, { ...entry.data }]),
   )
@@ -56,6 +71,21 @@ function createStores(seed: {
   const writes: string[] = []
   const pending = new Set<string>(seed.failOnce ?? [])
   const clock = { now: 1_800_000_000_000 }
+  const seeded: LiveLocationSession[] = (seed.liveLocation ?? []).map((session) => ({
+    guestUid: null,
+    foundIn: ['firestore' as const],
+    expiresAtMs: null,
+    startedAtMs: null,
+    ...session,
+  }) as LiveLocationSession)
+  const arriving: LiveLocationSession[] = (seed.liveLocationAfter ?? []).map((session) => ({
+    guestUid: null,
+    foundIn: ['rtdb' as const],
+    expiresAtMs: null,
+    startedAtMs: null,
+    ...session,
+  }) as LiveLocationSession)
+  let liveLocationReads = 0
 
   const maybeFail = (key: string) => {
     const match = [...pending].find((pattern) => key.includes(pattern))
@@ -185,12 +215,38 @@ function createStores(seed: {
       runs.set(uid, { ...data, status: 'running', error, updated_at: now })
       writes.push(`fail:${uid}`)
     },
+    async release(uid, owner, now, reason) {
+      const data = runs.get(uid)
+      if (!data || data.owner !== owner) return
+      // The lease is set to `now`, so the very next attempt may begin.
+      runs.set(uid, { ...data, status: 'aborted', error: reason, updated_at: now, lease_expires_at: now })
+      writes.push(`release:${uid}`)
+    },
+  }
+
+  const liveLocationStore: LiveLocationStore = {
+    async findSessions(conversationIds) {
+      liveLocationReads += 1
+      if (seed.liveLocationUnobservable) {
+        throw new Error('Realtime Database is not configured')
+      }
+      const active = liveLocationReads === 1 ? seeded : [...seeded, ...arriving]
+      return active
+        .filter((session) => conversationIds.includes(session.conversationId))
+        .map((session) => ({ ...session }))
+    },
   }
 
   return {
-    stores: { conversations: conversationsStore, storage: storageStore, runs: runsStore },
+    stores: {
+      conversations: conversationsStore,
+      storage: storageStore,
+      runs: runsStore,
+      liveLocation: liveLocationStore,
+    },
     audit: { writes },
     clock,
+    liveLocationReads: () => liveLocationReads,
   }
 }
 
@@ -562,4 +618,296 @@ test('the push names the Booking the message is about, not the thread it lives i
   })
   assert.ok(general)
   assert.equal(general.bookingId, undefined)
+})
+
+// ---------------------------------------------------------------------------
+// Live location — the one thing that must be quiet before anything moves.
+//
+// A session is filed under `location_sessions/{conversationId}` and
+// `live_location/{conversationId}/{guestUid}`. Consolidating a thread retires
+// the id that session hangs on, so migrating under a running session would cut
+// a Guest off with no error anywhere: the Admin's panel would simply stop
+// showing them. Everything below is about refusing to do that.
+// ---------------------------------------------------------------------------
+
+const NOW = 1_800_000_000_000
+
+test('a session is live until it expires, and for a moment after', () => {
+  const session = (expiresAtMs: number | null): LiveLocationSession => ({
+    conversationId: 'booking-bk_1',
+    guestUid: GUEST,
+    foundIn: ['firestore'],
+    expiresAtMs,
+    startedAtMs: NOW - 60_000,
+  })
+
+  // Still running, and still running one second before it stops.
+  assert.equal(isLiveSession(session(NOW + 60_000), NOW), true)
+  // Expired — but the client has not swept the node yet, so the run waits.
+  assert.equal(isLiveSession(session(NOW - 1), NOW), true)
+  assert.equal(isLiveSession(session(NOW - LIVE_LOCATION_CLEARANCE_MS + 1), NOW), true)
+  // Clear, once the clearance window has passed.
+  assert.equal(isLiveSession(session(NOW - LIVE_LOCATION_CLEARANCE_MS - 1), NOW), false)
+  // A session with no readable expiry is treated as live: an unreadable clock
+  // is not evidence that the session stopped.
+  assert.equal(isLiveSession(session(null), NOW), true)
+})
+
+test('a running live-location session blocks the run, and nothing is written', async () => {
+  const { stores, audit, clock } = createStores({
+    ...fiveBookingThreads(),
+    liveLocation: [
+      { conversationId: 'booking-bk_2', guestUid: GUEST, foundIn: ['firestore', 'rtdb'], expiresAtMs: NOW + 600_000 },
+    ],
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  assert.equal(result.status, 'blocked-live-location')
+  assert.equal(result.planned, 11)
+  assert.equal(result.copied, 0)
+  assert.deepEqual(result.superseded, [])
+  // The block is specific: which thread, and where the session was seen.
+  assert.deepEqual(
+    result.liveLocation?.blocking.map((session) => session.conversationId),
+    ['booking-bk_2'],
+  )
+  // Not one byte: no lease, no conversation, no copy, no annotation.
+  assert.deepEqual(audit.writes, [])
+})
+
+test('a session already on the account conversation is reported, not treated as a block', async () => {
+  const { stores, clock } = createStores({
+    ...fiveBookingThreads(),
+    liveLocation: [
+      { conversationId: `guest-${GUEST}`, guestUid: GUEST, foundIn: ['rtdb'], expiresAtMs: NOW + 600_000 },
+    ],
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  // That path is the destination, not one of the threads being folded away, so
+  // it keeps working. The run says so rather than staying quiet about a Guest
+  // who is on the property and sharing right now.
+  assert.equal(result.status, 'applied')
+  assert.deepEqual(
+    result.liveLocation?.watching.map((session) => session.conversationId),
+    [`guest-${GUEST}`],
+  )
+  assert.deepEqual(result.liveLocation?.blocking, [])
+})
+
+test('a session that ended on its own no longer blocks', async () => {
+  const { stores, clock } = createStores({
+    ...fiveBookingThreads(),
+    // Expired well outside the clearance window: the Guest stopped, or the
+    // 15/30/60-minute window closed, and the node has been swept.
+    liveLocation: [
+      {
+        conversationId: 'booking-bk_1',
+        guestUid: GUEST,
+        foundIn: ['firestore', 'rtdb'],
+        expiresAtMs: NOW - LIVE_LOCATION_CLEARANCE_MS - 1,
+      },
+    ],
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  assert.equal(result.status, 'applied')
+  assert.deepEqual(result.liveLocation?.blocking, [])
+  assert.equal(result.copied, 11)
+})
+
+test('waiting lets a session end on its own, and the run then goes ahead', async () => {
+  const { stores, clock, liveLocationReads } = createStores({
+    ...fiveBookingThreads(),
+    liveLocation: [
+      { conversationId: 'booking-bk_4', guestUid: GUEST, expiresAtMs: NOW + 600_000 },
+    ],
+  })
+  clock.now = NOW
+
+  // The sessions the double reports are fixed, so "ending on its own" is
+  // modelled by the clock overtaking the expiry while the run waits.
+  const sleeps: number[] = []
+  const result = await runGuestHistoryMigration(stores, {
+    uid: GUEST,
+    dryRun: false,
+    now: () => clock.now,
+    liveLocation: {
+      timeoutMs: 60 * 60_000,
+      pollMs: 60_000,
+      sleep: async (ms) => {
+        sleeps.push(ms)
+        // Ten minutes pass between checks, as they would in the real wait.
+        clock.now += 600_000
+      },
+    },
+  })
+
+  assert.equal(result.status, 'applied')
+  assert.ok(result.liveLocation)
+  assert.ok(result.liveLocation.waitedMs > 0, 'the report says how long it waited')
+  assert.ok(liveLocationReads() > 1, 'both databases were read again')
+  assert.ok(sleeps.length > 0)
+  assert.ok(result.verification?.ok)
+})
+
+test('a session that outlasts the wait aborts the Guest and writes nothing', async () => {
+  const { stores, audit, clock } = createStores({
+    ...fiveBookingThreads(),
+    // A 60-minute share that will still be running when the patience runs out.
+    liveLocation: [
+      { conversationId: 'booking-bk_5', guestUid: GUEST, expiresAtMs: NOW + 60 * 60_000 },
+    ],
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, {
+    uid: GUEST,
+    dryRun: false,
+    now: () => clock.now,
+    liveLocation: { timeoutMs: 10 * 60_000, pollMs: 60_000, sleep: async (ms) => { clock.now += ms } },
+  })
+
+  assert.equal(result.status, 'blocked-live-location')
+  assert.equal(result.copied, 0)
+  assert.deepEqual(
+    result.liveLocation?.blocking.map((session) => session.conversationId),
+    ['booking-bk_5'],
+  )
+  // The wait is bounded, and it did not quietly give up early.
+  assert.ok(result.liveLocation!.waitedMs >= 10 * 60_000 - 1)
+  assert.deepEqual(audit.writes, [])
+})
+
+test('a session that starts DURING the run is caught by the recheck, and the lease goes back', async () => {
+  const { stores, audit, clock } = createStores({
+    ...fiveBookingThreads(),
+    liveLocation: [],
+    // Nothing live when the run looked the first time. The Guest presses
+    // "share my location" while the lease is being taken.
+    liveLocationAfter: [
+      { conversationId: 'booking-bk_1', guestUid: GUEST, foundIn: ['rtdb'], expiresAtMs: NOW + 600_000 },
+    ],
+  })
+  clock.now = NOW
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  assert.equal(result.status, 'blocked-live-location')
+  assert.equal(result.copied, 0)
+  // The lease was taken and then handed back with the reason on it, so the next
+  // attempt can start now instead of waiting out the 15 minutes.
+  assert.ok(audit.writes.includes('lease:guest-uid-1'))
+  assert.ok(audit.writes.includes('release:guest-uid-1'))
+  // .and not a single message was copied or thread annotated.
+  assert.equal(audit.writes.filter((write) => write.startsWith('message:')).length, 0)
+  assert.equal(audit.writes.filter((write) => write.startsWith('supersede:')).length, 0)
+})
+
+test('an unreachable Realtime Database refuses to run rather than read as clear', async () => {
+  const { stores, audit } = createStores({ ...fiveBookingThreads(), liveLocationUnobservable: true })
+
+  const result = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false })
+
+  // Half a picture is not a picture. The Firestore side is visible and empty;
+  // the RTDB side is not, so "no sessions" would be a guess about a Guest's
+  // safety, and the run refuses to make it.
+  assert.equal(result.status, 'failed')
+  assert.match(result.error ?? '', /Live-location check unavailable/)
+  assert.match(result.error ?? '', /Realtime Database/)
+  assert.deepEqual(audit.writes, [])
+})
+
+// ---------------------------------------------------------------------------
+// Verification — do the new paths work for the Guest and the Admin?
+// ---------------------------------------------------------------------------
+
+test('verification passes on a consolidated thread and names the paths both apps use', async () => {
+  const { stores, clock } = createStores(fiveBookingThreads())
+  clock.now = NOW
+
+  const applied = await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+  assert.equal(applied.status, 'applied')
+  assert.ok(applied.verification?.ok, `problems: ${applied.verification?.problems.join('; ')}`)
+  assert.equal(applied.verification?.checked.messages, 11)
+  assert.equal(applied.verification?.checked.attachments, 1)
+  assert.equal(applied.verification?.checked.sources, 5)
+
+  // The report is meant to be read by a human, not trusted as a boolean.
+  assert.deepEqual(applied.verification?.paths, {
+    conversation: `conversations/guest-${GUEST}`,
+    messages: `conversations/guest-${GUEST}/messages`,
+    attachments: `messageAttachments/guest-${GUEST}/`,
+    locationSession: `location_sessions/guest-${GUEST}`,
+    liveLocation: `live_location/guest-${GUEST}/{guestUid}`,
+  })
+
+  // .and it is re-runnable: the same answer tomorrow.
+  const again = await verifyGuestConversation(stores, GUEST, { nowMs: NOW })
+  assert.equal(again.ok, true)
+})
+
+test('verification catches an image still filed under the retired thread', async () => {
+  const { stores, clock } = createStores(fiveBookingThreads())
+  clock.now = NOW
+  await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  // The one failure mode that would look fine to the run and broken to a Guest:
+  // a message pointing at a path the new conversation does not own.
+  await stores.conversations.createMessageIfAbsent(`guest-${GUEST}`, 'stray', {
+    sender_uid: GUEST,
+    sender_role: 'guest',
+    text: 'photo',
+    created_at: NOW,
+    attachment: { path: 'messageAttachments/booking-bk_3/stray', content_type: 'image/png', size: 10 },
+  })
+
+  const report = await verifyGuestConversation(stores, GUEST, { nowMs: NOW })
+  assert.equal(report.ok, false)
+  assert.ok(
+    report.problems.some((problem) => problem.includes('messageAttachments/booking-bk_3/stray')),
+    report.problems.join('; '),
+  )
+})
+
+test('verification refuses to call a thread consolidated while a session is still on it', async () => {
+  const { stores, clock } = createStores(fiveBookingThreads())
+  clock.now = NOW
+  await runGuestHistoryMigration(stores, { uid: GUEST, dryRun: false, now: () => clock.now })
+
+  const withSession = createStores({
+    ...fiveBookingThreads(),
+    conversations: [
+      ...fiveBookingThreads().conversations.map((entry) => ({
+        ...entry,
+        data: { ...entry.data, superseded_by: `guest-${GUEST}` },
+      })),
+      { id: `guest-${GUEST}`, data: { guest_uid: GUEST, category: 'booking' } },
+    ],
+    liveLocation: [{ conversationId: 'booking-bk_2', guestUid: GUEST, expiresAtMs: NOW + 600_000 }],
+  })
+
+  const report = await verifyGuestConversation(withSession.stores, GUEST, { nowMs: NOW })
+  assert.equal(report.ok, false)
+  assert.ok(
+    report.problems.some((problem) => problem.includes('booking-bk_2')),
+    report.problems.join('; '),
+  )
+})
+
+test('verification says plainly when the consolidated thread is not there', async () => {
+  const { stores } = createStores({ conversations: [], messages: {} })
+
+  const report = await verifyGuestConversation(stores, GUEST)
+
+  assert.equal(report.ok, false)
+  assert.deepEqual(report.problems, [
+    `conversations/guest-${GUEST} does not exist: neither app can open it.`,
+  ])
 })
