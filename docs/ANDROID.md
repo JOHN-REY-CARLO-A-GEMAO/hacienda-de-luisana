@@ -75,9 +75,11 @@ approval queue, emailed back in a minute. The free tier is five million tile
 requests a month for non-commercial use and **one million for commercial use**,
 which is the tier a business's admin app falls into.
 
-It is not a secret in the cryptographic sense (it ships inside the binary either
-way), but it is supplied at build time so that no key is ever committed. To keep
-it out of your shell history as well:
+**Where to set it:** `lib/core/config/carto_config.dart`, one paste slot. That is
+the file to open when the map is watermarked and you want to know why.
+
+A build flag overrides it without an edit, which is what to use from a machine
+you would rather not paste into:
 
 ```bash
 cp carto.json.example carto.json     # paste the key in; carto.json is gitignored

@@ -67,12 +67,25 @@ Two different acceptances, and only one is stored. **At sign-up it is recorded:*
 
 The key is supplied at build time and is not in the repository:
 
+**The key is set in `lib/core/config/carto_config.dart`** — one paste slot, because
+a build machine that remembers a command-line flag is a build machine that fails
+the day somebody else builds the app. A build flag still overrides it, for a
+machine you would rather not paste into:
+
 ```bash
-# Either form. The file one keeps the key out of your shell history, which on a
-# shared machine is the only place it would otherwise be recorded.
 flutter run --dart-define=CARTO_KEY=your-key
 flutter run --dart-define-from-file=carto.json     # copy carto.json.example
 ```
+
+**This is a public repository, and that was weighed.** A key compiled into an APK
+can be read back out of the binary whatever is done here; "set it in the app" and
+"publish it" are the same act for a mobile app. What the key protects is quota,
+not a secret: if it were abused, the ceiling is the monthly tile allowance and the
+map draws watermarked until the month turns — no invoice, no outage outside this
+one panel. CARTO's dashboard can rotate or delete a key without a code change, and
+that is the switch if one ever needs pulling. If that trade is not acceptable, the
+paste slot can stay empty and the key supplied at build time instead; both work,
+and the app draws a watermarked map when it has neither.
 
 Without it the map still draws, watermarked. That is deliberate: a build missing an environment value should cost a watermark, not a blank panel on the owner's phone. Attribution under the map names both OpenStreetMap and CARTO, because both licences require it.
 

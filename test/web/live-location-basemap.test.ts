@@ -28,6 +28,7 @@ import { join } from 'node:path'
 const read = (relative: string) => readFileSync(join(__dirname, '../..', relative), 'utf8')
 
 const tile = read('lib/views/inbox/osm_tile.dart')
+const cartoConfig = read('lib/core/config/carto_config.dart')
 const panel = read('lib/views/inbox/live_location_panel.dart')
 
 describe('the basemap is served by someone who allows it', () => {
@@ -62,13 +63,24 @@ describe('the basemap is served by someone who allows it', () => {
     expect(JSON.parse(read('carto.json.example')).CARTO_KEY).toBe('')
   })
 
-  it('takes the key from the build, not from the repository', () => {
-    // A committed key is a key that leaks the moment the repo is public, and it
-    // is not even a secret worth guarding — but a `const key = 'abc'` would be
-    // copied into every fork. `String.fromEnvironment` means it arrives by
-    // --dart-define and never appears in a diff.
-    expect(tile).toContain("String.fromEnvironment('CARTO_KEY')")
-    expect(tile).not.toMatch(/cartoKey\s*=\s*['"][^'"]+['"]/)
+  it('sets the key in exactly one file, and lets a build flag override it', () => {
+    // One paste slot, so nobody has to hunt for it, and one override, so a build
+    // can supply its own without editing code. The flag wins: a shared machine or
+    // a CI build must never be stuck with whatever is pasted in the repo.
+    expect(cartoConfig).toContain("const String kCartoKeyPasted = ''")
+    expect(cartoConfig).toContain("String.fromEnvironment('CARTO_KEY')")
+    expect(cartoConfig).toContain('kCartoKeyFromBuild.isNotEmpty ? kCartoKeyFromBuild : kCartoKeyPasted')
+
+    // The tile layer reads it; it does not have its own copy.
+    expect(tile).not.toContain('String.fromEnvironment')
+    expect(tile).toContain('hasCartoKey')
+
+    // The paste slot is empty in git. If this ever fails, a key was committed by
+    // paste rather than supplied at build time — which is a decision to make on
+    // purpose, not by accident, because this repository is public.
+    const pasted = cartoConfig.match(/const String kCartoKeyPasted = '([^']*)'/)
+    expect(pasted).not.toBeNull()
+    expect(pasted?.[1]).toBe('')
   })
 
   it('still draws a map when no key was supplied', () => {

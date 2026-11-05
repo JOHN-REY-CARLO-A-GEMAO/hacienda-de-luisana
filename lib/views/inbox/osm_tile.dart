@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import '../../core/config/carto_config.dart';
+
 /// Web Mercator projection helpers for the live-location map's raster tile
 /// layer.
 ///
@@ -55,12 +57,9 @@ OsmWorldPoint projectOsmCoordinate({
 // tile requests a month. So the map keeps looking like a map of Luisiana, and
 // the attribution says OSM and CARTO, because both are true.
 //
-// The key is not a secret in the cryptographic sense — it ships inside the binary
-// and anyone can read it — so it is supplied at build time rather than committed.
-// Both forms work:
-//
-//     flutter run --dart-define=CARTO_KEY=your-key
-//     flutter run --dart-define-from-file=carto.json     # carto.json is ignored
+// The key itself is set in `lib/core/config/carto_config.dart` — one file, one
+// paste slot, and a build flag that overrides it. Read that file for why it is
+// set there rather than kept out of the repository.
 //
 // Request one at https://carto.com/basemaps/apikey/ — free, no account, emailed
 // back in a minute. Without it CARTO serves a watermarked tile; the app
@@ -76,12 +75,6 @@ OsmWorldPoint projectOsmCoordinate({
 // One place defines this. `lib/views/inbox/live_location_panel.dart` is the only
 // caller, so a later move to another provider — or to self-hosted tiles — is a
 // single edit here.
-
-/// The CARTO basemap key, supplied by `--dart-define`. Empty when not set.
-const String cartoKey = String.fromEnvironment('CARTO_KEY');
-
-/// True when a key was supplied at build time.
-bool get hasCartoKey => cartoKey.isNotEmpty;
 
 /// The tile URL template's origin, with no scheme-free subdomain games: CARTO
 /// serves from one host and browsers are not involved.
