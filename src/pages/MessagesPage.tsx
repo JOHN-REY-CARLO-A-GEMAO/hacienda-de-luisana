@@ -2,14 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookingDetailsDrawer } from '../components/chat/BookingDetailsDrawer'
 import { ConversationHeader } from '../components/chat/ConversationHeader'
-import { ConversationListItem } from '../components/chat/ConversationListItem'
 import { LiveLocationStatus } from '../components/chat/LiveLocationStatus'
 import { MessageComposer } from '../components/chat/MessageComposer'
 import { QuickReplyActions, type QuickReplyOption } from '../components/chat/QuickReplyActions'
 import { ShareLocationBar } from '../components/chat/ShareLocationBar'
 import { MessageTimeline } from '../components/chat/MessageTimeline'
 import { EmailVerificationNotice } from '../components/Auth/EmailVerificationNotice'
-import { Alert, Container, EmptyState, Input, LoadingPanel, Page, PageHeader } from '../components/ui'
+import { Alert, Container, EmptyState, LoadingPanel, Page, PageHeader } from '../components/ui'
 import { useAuth } from '../hooks/useAuth'
 import { canShareLocation, useLiveLocation } from '../hooks/useLiveLocation'
 import {
@@ -42,11 +41,6 @@ export function MessagesPage() {
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [selectedConvoId, setSelectedConvoId] = useState<string | null>(null)
-  const [mobileView, setMobileView] = useState<'inbox' | 'conversation'>('conversation')
-  const [searchQuery, setSearchQuery] = useState('')
-  // Inbox filter chips (reference set 2, messages screen): All / Unread.
-  const [inboxFilter, setInboxFilter] = useState<'all' | 'unread'>('all')
-
   const [convosState, setConvosState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [threadState, setThreadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [retryKey, setRetryKey] = useState(0)
@@ -135,18 +129,6 @@ export function MessagesPage() {
     () => conversations.reduce((total, item) => total + Math.max(0, item.unreadCount), 0),
     [conversations],
   )
-
-  const filteredConversations = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    return conversations.filter((item) => {
-      if (inboxFilter === 'unread' && item.unreadCount <= 0) return false
-      if (!q) return true
-      const prop = (item.propertyName ?? '').toLowerCase()
-      const ref = (item.bookingReference ?? '').toLowerCase()
-      const name = item.guestName.toLowerCase()
-      return prop.includes(q) || ref.includes(q) || name.includes(q)
-    })
-  }, [conversations, searchQuery, inboxFilter])
 
   const activeConvoId = selectedConvo?.conversationId ?? null
   currentConversationRef.current = activeConvoId
@@ -472,7 +454,6 @@ export function MessagesPage() {
       setLoadingOlder(false)
     }
     setSelectedConvoId(summary.conversationId)
-    setMobileView('conversation')
     setComposerError(null)
   }, [activeConvoId, pendingImage, sendStage, text])
 
@@ -490,8 +471,8 @@ export function MessagesPage() {
         : null
 
   return (
-    <Page className="guest-ground">
-      <Container width="content">
+    <Page className="guest-ground messages-page">
+      <Container width="content" className="messages-page-content">
         <EmailVerificationNotice className="mb-6" />
         <PageHeader
           eyebrow="Messages"
@@ -571,95 +552,13 @@ export function MessagesPage() {
             className="messages-workspace guest-panel"
             aria-label="Booking correspondence workspace"
           >
-            {/* Left stay switcher rail (shown when Guest has 2+ stay threads) */}
-            {hasMultipleThreads && (
-              <aside
-                aria-label="Your stays"
-                className={`messages-topics ${
-                  mobileView === 'inbox' ? 'messages-mobile-visible' : ''
-                }`}
-              >
-                <div className="messages-topics-heading">
-                  <h2>Your Stays</h2>
-                  <p>Select a booking to view or continue its conversation.</p>
-                  {conversations.length > 2 && (
-                    <div className="mt-3">
-                      <Input
-                        type="search"
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                        placeholder="Search property or HDL ref…"
-                        aria-label="Search stays by property or booking reference"
-                      />
-                    </div>
-                  )}
-                  {/* Filter chips — reference set 2 messages screen: All / Unread */}
-                  <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter conversations">
-                    {(
-                      [
-                        { id: 'all' as const, label: 'Lahat · All' },
-                        { id: 'unread' as const, label: 'Hindi pa nababasa · Unread' },
-                      ]
-                    ).map((chip) => (
-                      <button
-                        key={chip.id}
-                        type="button"
-                        aria-pressed={inboxFilter === chip.id}
-                        onClick={() => setInboxFilter(chip.id)}
-                        className="msg-chip"
-                      >
-                        {chip.label}
-                        {chip.id === 'unread' && unreadTotal > 0 && (
-                          <span className="msg-chip-count">{unreadTotal}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="messages-topic-list">
-                  {filteredConversations.length === 0 ? (
-                    <div className="p-5 text-center text-xs text-forest-600 dark:text-sage-400">
-                      {inboxFilter === 'unread'
-                        ? 'No unread messages right now — you are all caught up.'
-                        : <>No stays matched &ldquo;{searchQuery.trim()}&rdquo;.</>}
-                    </div>
-                  ) : (
-                    filteredConversations.map((summary) => (
-                      <ConversationListItem
-                        key={summary.conversationId}
-                        summary={summary}
-                        selected={summary.conversationId === selectedConvo?.conversationId}
-                        disabled={sendStage !== 'idle'}
-                        onSelect={handleSelectConversation}
-                      />
-                    ))
-                  )}
-                </div>
-
-                <div className="messages-privacy-note">
-                  <Lock size={14} />
-                  <p>Messages and photos are private between your account and Hacienda Admin.</p>
-                </div>
-              </aside>
-            )}
-
-            {/* Main unified conversation pane */}
             {selectedConvo && (
-              <div
-                className={`messages-conversation ${
-                  !hasMultipleThreads || mobileView === 'conversation'
-                    ? 'messages-mobile-visible'
-                    : ''
-                }`}
-              >
+              <div className="messages-conversation">
                 <ConversationHeader
                   guestName={selectedConvo.guestName}
                   propertyName={selectedConvo.propertyName}
                   bookingReference={selectedConvo.bookingReference}
                   lastActiveAtMs={selectedConvo.latestMessageAt}
-                  showBack={hasMultipleThreads}
-                  onBack={() => setMobileView('inbox')}
                   detailsOpen={bookingDrawerOpen}
                   onToggleBookingDetails={() => setBookingDrawerOpen((open) => !open)}
                   liveLocationActive={sharing.phase === 'active' && Boolean(sharing.session)}
@@ -667,6 +566,27 @@ export function MessagesPage() {
                   liveLocationDismissed={locationDismissed}
                   onExpandLiveLocation={() => setLocationDismissed(false)}
                 />
+
+                {hasMultipleThreads && (
+                  <div className="messages-switcher">
+                    <label htmlFor="conversation-switcher">Conversation</label>
+                    <select
+                      id="conversation-switcher"
+                      value={selectedConvo.conversationId}
+                      disabled={sendStage !== 'idle'}
+                      onChange={(event) => {
+                        const next = conversations.find((item) => item.conversationId === event.target.value)
+                        if (next) handleSelectConversation(next)
+                      }}
+                    >
+                      {conversations.map((item) => (
+                        <option key={item.conversationId} value={item.conversationId}>
+                          {[item.propertyName || item.legacyLabel || 'Stay conversation', item.bookingReference].filter(Boolean).join(' · ')}{item.unreadCount > 0 ? ` (${item.unreadCount} unread)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Compact active live-location bar (separates minimize vs Stop Sharing) */}
                 <LiveLocationStatus

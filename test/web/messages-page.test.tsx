@@ -126,6 +126,16 @@ function findButton(container: ParentNode, label: RegExp): HTMLButtonElement {
   return found
 }
 
+function selectConversation(container: ParentNode, label: RegExp) {
+  const select = container.querySelector<HTMLSelectElement>('#conversation-switcher')!
+  const option = [...select.options].find((item) => label.test(item.textContent ?? ''))
+  if (!option) throw new Error(`no conversation matching ${label}`)
+  act(() => {
+    select.value = option.value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
 function setTextareaValue(textarea: HTMLTextAreaElement, nextValue: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
   setter?.call(textarea, nextValue)
@@ -211,8 +221,7 @@ describe('unified booking-scoped conversation screen', () => {
     const container = renderPage()
     await pump(4)
 
-    // Both bookings appear in the stay switcher rail with friendly names.
-    expect(container.textContent).toContain('Your Stays')
+    // Both bookings remain accessible through the compact switcher.
     expect(container.textContent).toContain('The Main House')
     expect(container.textContent).toContain('A-House')
 
@@ -228,8 +237,7 @@ describe('unified booking-scoped conversation screen', () => {
     expect(textarea.value).toBe('')
 
     // Switch to Stay 2 (A-House · HDL-9042) and verify isolation + navigation.
-    const secondStayBtn = findButton(container, /A-House.*HDL-9042/i)
-    act(() => secondStayBtn.click())
+    selectConversation(container, /A-House.*HDL-9042/i)
     await pump(3)
 
     const logRegion = container.querySelector('[role="log"]')!
@@ -246,14 +254,14 @@ describe('unified booking-scoped conversation screen', () => {
     await pump(4)
     const textarea = container.querySelector('textarea[data-tour-field="message"]') as HTMLTextAreaElement
     act(() => setTextareaValue(textarea, 'Only for the first stay'))
-    act(() => findButton(container, /Annex.*HDL-2222/i).click())
+    selectConversation(container, /Annex.*HDL-2222/i)
     await pump(2)
     expect(textarea.value).toBe('')
     act(() => setTextareaValue(textarea, 'Only for the second stay'))
-    act(() => findButton(container, /Main House.*HDL-1111/i).click())
+    selectConversation(container, /Main House.*HDL-1111/i)
     await pump(2)
     expect(textarea.value).toBe('Only for the first stay')
-    act(() => findButton(container, /Annex.*HDL-2222/i).click())
+    selectConversation(container, /Annex.*HDL-2222/i)
     await pump(2)
     expect(textarea.value).toBe('Only for the second stay')
   })
@@ -285,7 +293,7 @@ describe('unified booking-scoped conversation screen', () => {
     expect(dialog?.textContent).toContain(BUSINESS.contact.phoneDisplay)
   })
 
-  it('switches cleanly between mobile stays rail and conversation pane and filters by HDL reference', async () => {
+  it('uses the full conversation pane and preserves switching without a stays sidebar', async () => {
     seedBookings([
       makeBooking({ id: 'bk_1', ref_id: 'HDL-1111', accommodation: 'main-house', created_at: '2026-10-23T10:00:00.000Z' }),
       makeBooking({ id: 'bk_2', ref_id: 'HDL-2222', accommodation: 'annex', created_at: '2026-10-21T10:00:00.000Z' }),
@@ -295,35 +303,23 @@ describe('unified booking-scoped conversation screen', () => {
     const container = renderPage()
     await pump(4)
 
-    const topicsAside = container.querySelector('.messages-topics')!
+    expect(container.querySelector('.messages-topics')).toBeNull()
+    expect(container.querySelector('input[type="search"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Filter conversations"]')).toBeNull()
+    expect(container.querySelector('.messages-privacy-note')).toBeNull()
+    expect(container.querySelector('.messages-page-content')).toBeTruthy()
     const convoPane = container.querySelector('.messages-conversation')!
-    expect(convoPane.classList.contains('messages-mobile-visible')).toBe(true)
-
-    // Tap mobile Back ("Stays") button -> mobile inbox rail becomes visible.
-    act(() => findButton(container, /Back to stays list/i).click())
-    await pump(1)
-    expect(topicsAside.classList.contains('messages-mobile-visible')).toBe(true)
-    expect(convoPane.classList.contains('messages-mobile-visible')).toBe(false)
-
-    // Filter stays by reference "HDL-2222".
-    const searchInput = container.querySelector('input[type="search"]') as HTMLInputElement
-    expect(searchInput).toBeTruthy()
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    const selector = container.querySelector<HTMLSelectElement>('#conversation-switcher')!
+    expect(selector).toBeTruthy()
+    const option = [...selector.options].find((item) => item.textContent?.includes('HDL-2222'))!
     act(() => {
-      setter?.call(searchInput, 'HDL-2222')
-      searchInput.dispatchEvent(new Event('input', { bubbles: true }))
-      searchInput.dispatchEvent(new Event('change', { bubbles: true }))
+      selector.value = option.value
+      selector.dispatchEvent(new Event('change', { bubbles: true }))
     })
-    await pump(1)
-
-    expect(topicsAside.textContent).toContain('HDL Annex')
-    expect(topicsAside.textContent).not.toContain('HDL-3333')
-
-    // Tap filtered stay -> mobile conversation pane opens for HDL-2222!
-    act(() => findButton(topicsAside, /HDL Annex.*HDL-2222/i).click())
     await pump(3)
-    expect(convoPane.classList.contains('messages-mobile-visible')).toBe(true)
     expect(convoPane.textContent).toContain('HDL Annex · HDL-2222')
+    expect(convoPane.querySelector('[role="log"]')).toBeTruthy()
+    expect(convoPane.querySelector('.messages-composer')).toBeTruthy()
   })
 
   it('loads the newest 40 messages of a 140-message booking thread and paginates 30 older on demand', async () => {
