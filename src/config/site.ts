@@ -494,7 +494,7 @@ export const FAQS: FAQ[] = [
 ]
 
 // -----------------------------------------------------------------------------
-// GALLERY (real property imagery — Google Maps listing photos in public/images)
+// GALLERY (property imagery stored locally under public/images)
 //
 // Every entry must point at a file that exists under `public/`. A tile whose
 // image fails to load falls back to a gradient placeholder showing only the
@@ -507,6 +507,29 @@ export const FAQS: FAQ[] = [
 // the tests. See assets/images/gmaps/README.md.
 // -----------------------------------------------------------------------------
 export const GALLERY: GalleryImage[] = [
+  // Photographs provided by the Hacienda for the website gallery.
+  { id: 'guest-photo-01', url: '/images/guest-gallery/hacienda-01.jpg', category: 'Camping', caption: 'A-frame cabins among the garden flowers', aspect: 'tall' },
+  { id: 'guest-photo-02', url: '/images/guest-gallery/hacienda-02.jpg', category: 'Hacienda', caption: 'A welcoming entrance porch', aspect: 'tall' },
+  { id: 'guest-photo-03', url: '/images/guest-gallery/hacienda-03.jpg', category: 'Main House', caption: 'Stairway and piano inside the house', aspect: 'tall' },
+  { id: 'guest-photo-04', url: '/images/guest-gallery/hacienda-04.jpg', category: 'Main House', caption: 'A bright upstairs room with a colorful rug', aspect: 'tall' },
+  { id: 'guest-photo-05', url: '/images/guest-gallery/hacienda-05.jpg', category: 'Outdoors', caption: 'A leafy garden path and footbridge', aspect: 'tall' },
+  { id: 'guest-photo-06', url: '/images/guest-gallery/hacienda-06.jpg', category: 'Hacienda', caption: 'A covered porch with a table and chairs', aspect: 'tall' },
+  { id: 'guest-photo-07', url: '/images/guest-gallery/hacienda-07.jpg', category: 'Hacienda', caption: 'Wooden windows along a covered balcony', aspect: 'tall' },
+  { id: 'guest-photo-08', url: '/images/guest-gallery/hacienda-08.jpg', category: 'Main House', caption: 'Dining table beside the windows', aspect: 'tall' },
+  { id: 'guest-photo-09', url: '/images/guest-gallery/hacienda-09.jpg', category: 'Main House', caption: 'Sleeping area under the sloped ceiling', aspect: 'wide' },
+  { id: 'guest-photo-10', url: '/images/guest-gallery/hacienda-10.jpg', category: 'Main House', caption: 'The dining and living area', aspect: 'tall' },
+  { id: 'guest-photo-11', url: '/images/guest-gallery/hacienda-11.jpg', category: 'Main House', caption: 'Sleeping area with beds arranged on the wooden floor', aspect: 'wide' },
+  { id: 'guest-photo-12', url: '/images/guest-gallery/hacienda-12.jpg', category: 'Outdoors', caption: 'A guest on a garden walkway', aspect: 'tall' },
+  { id: 'guest-photo-13', url: '/images/guest-gallery/hacienda-13.jpg', category: 'Hacienda', caption: 'A balcony overlooking the gardens', aspect: 'tall' },
+  { id: 'guest-photo-14', url: '/images/guest-gallery/hacienda-14.jpg', category: 'Outdoors', caption: 'A campfire beneath the night sky', aspect: 'tall' },
+  { id: 'guest-photo-15', url: '/images/guest-gallery/hacienda-15.jpg', category: 'Hacienda', caption: 'The house and garden under a bright sky', aspect: 'wide' },
+  { id: 'guest-photo-16', url: '/images/guest-gallery/hacienda-16.jpg', category: 'Outdoors', caption: 'A garden picnic beneath an umbrella', aspect: 'tall' },
+  { id: 'guest-photo-17', url: '/images/guest-gallery/hacienda-17.jpg', category: 'Hacienda', caption: 'Hacienda de LuisAna sign among the greenery', aspect: 'tall' },
+  { id: 'guest-photo-18', url: '/images/guest-gallery/hacienda-18.jpg', category: 'Hacienda', caption: 'A welcome sign by the gate', aspect: 'tall' },
+  { id: 'guest-photo-19', url: '/images/guest-gallery/hacienda-19.jpg', category: 'Hacienda', caption: 'Hacienda de LuisAna wall sign', aspect: 'tall' },
+  { id: 'guest-photo-20', url: '/images/guest-gallery/hacienda-20.jpg', category: 'Main House', caption: 'A view down the stairs into the house', aspect: 'tall' },
+  { id: 'guest-photo-21', url: '/images/guest-gallery/hacienda-21.jpg', category: 'Camping', caption: 'A-frame cabins beside the garden path', aspect: 'wide' },
+
   // Hacienda — exterior / overview
   { id: 'g07', url: '/images/gmaps/img-07.jpg', category: 'Hacienda', caption: 'The Hacienda at dusk — main house, campfire, and camping units', aspect: 'wide' },
   { id: 'g13', url: '/images/gmaps/img-13.jpg', category: 'Hacienda', caption: 'Campfire in front of the main house at blue hour', aspect: 'tall' },
