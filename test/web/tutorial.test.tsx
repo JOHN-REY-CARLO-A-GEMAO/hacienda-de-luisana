@@ -247,8 +247,9 @@ describe('the interactive Guest tutorial', () => {
       expect(tutorialCookieSet()).toBe(true)
       expect(localStorage.getItem('hdl_tutorial_done')).toBe('1')
 
-      // The tour is closed; normal browsing is untouched, and Replay exists.
-      await page.wait('Replay tutorial')
+      // The tour is closed; the floating replay is hidden on the chat route.
+      await page.settle()
+      expect(page.container.querySelector('[aria-label="How to Book: Replay tutorial"]')).toBeNull()
       expect(page.text()).not.toContain('You know your way around now')
     },
     TIMEOUT_MS,

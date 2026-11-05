@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { BookingDetailsDrawer } from '../components/chat/BookingDetailsDrawer'
-import { ConversationHeader } from '../components/chat/ConversationHeader'
+import { Link, useSearchParams } from 'react-router-dom'
 import { LiveLocationStatus } from '../components/chat/LiveLocationStatus'
+import { BookingDetailsDrawer } from '../components/chat/BookingDetailsDrawer'
 import { MessageComposer } from '../components/chat/MessageComposer'
 import { QuickReplyActions, type QuickReplyOption } from '../components/chat/QuickReplyActions'
 import { ShareLocationBar } from '../components/chat/ShareLocationBar'
@@ -32,15 +31,23 @@ import {
 } from '../lib/chatCloud'
 import { retentionDaysLeft, retentionElapsed } from '../lib/chatRetention'
 import { isFirebaseConfigured } from '../lib/firebase'
-import { Clock, Lock, MessageCircle } from '../lib/icons'
+import { Calendar, Clock, Phone } from '../lib/icons'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { MESSAGE_MAX, validateMessage } from '../lib/validation'
 
 export function MessagesPage() {
+  const [params] = useSearchParams()
+  const { user } = useAuth()
+  const bookingId = params.get('booking')?.trim() || null
+  // Reset listeners, drafts and location sessions when the selected booking or
+  // signed-in account changes, including navigation within this same route.
+  return <MessagesWorkspace key={JSON.stringify([user?.uid, bookingId])} bookingId={bookingId} />
+}
+
+function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
   const { user, profile } = useAuth()
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
-  const [selectedConvoId, setSelectedConvoId] = useState<string | null>(null)
   const [convosState, setConvosState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [threadState, setThreadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [retryKey, setRetryKey] = useState(0)
@@ -57,11 +64,9 @@ export function MessagesPage() {
   const [composerError, setComposerError] = useState<string | null>(null)
 
   const [bookingDrawerOpen, setBookingDrawerOpen] = useState(false)
-  const [locationDismissed, setLocationDismissed] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const pendingImageRef = useRef<PendingChatImage | null>(null)
-  const draftByConversation = useRef(new Map<string, { text: string; image: PendingChatImage | null; pendingSend: { fingerprint: string; id: string } | null }>())
   const currentConversationRef = useRef<string | null>(null)
   const pendingSendRef = useRef<{ fingerprint: string; id: string } | null>(null)
 
@@ -73,10 +78,6 @@ export function MessagesPage() {
   useEffect(() => {
     return () => {
       if (pendingImageRef.current) URL.revokeObjectURL(pendingImageRef.current.previewUrl)
-      for (const draft of draftByConversation.current.values()) {
-        if (draft.image) URL.revokeObjectURL(draft.image.previewUrl)
-      }
-      draftByConversation.current.clear()
     }
   }, [])
 
@@ -89,7 +90,6 @@ export function MessagesPage() {
   useEffect(() => {
     if (!user?.uid) {
       setConversations([])
-      setSelectedConvoId(null)
       setConvosState('ready')
       return
     }
@@ -104,10 +104,6 @@ export function MessagesPage() {
       .then((list) => {
         if (cancelled) return
         setConversations(list)
-        setSelectedConvoId((prev) => {
-          if (prev && list.some((item) => item.conversationId === prev)) return prev
-          return list[0]?.conversationId ?? null
-        })
         setConvosState('ready')
       })
       .catch((err) => {
@@ -120,15 +116,13 @@ export function MessagesPage() {
     }
   }, [profileFullName, retryKey, user?.displayName, user?.email, user?.uid])
 
-  const selectedConvo = useMemo(
-    () => conversations.find((c) => c.conversationId === selectedConvoId) ?? conversations[0] ?? null,
-    [conversations, selectedConvoId],
-  )
-
-  const unreadTotal = useMemo(
-    () => conversations.reduce((total, item) => total + Math.max(0, item.unreadCount), 0),
-    [conversations],
-  )
+  // Resolve only an explicitly selected booking owned by this guest. Never
+  // default to the most recent conversation or a legacy inquiry.
+  const selectedConvo = useMemo(() => {
+    if (!bookingId) return null
+    const matches = conversations.filter((item) => !item.isLegacy && item.bookingId === bookingId && item.booking?.uid === user?.uid)
+    return matches.length === 1 ? matches[0] : null
+  }, [bookingId, conversations, user?.uid])
 
   const activeConvoId = selectedConvo?.conversationId ?? null
   currentConversationRef.current = activeConvoId
@@ -269,34 +263,10 @@ export function MessagesPage() {
     user?.uid,
   ])
 
-  const conversationIds = useMemo(() => conversations.map((item) => item.conversationId).sort().join('\n'), [conversations])
-  useEffect(() => {
-    const ids = conversationIds ? conversationIds.split('\n').filter((id) => id !== activeConvoId) : []
-    const unsubscribers = ids.map((id) => subscribeConversationMeta(id, (meta) => {
-      setConversations((previous) => previous.map((item) => item.conversationId === id ? {
-        ...item,
-        unreadCount: meta.unreadGuest,
-        unreadAdminCount: meta.unreadAdmin,
-        adminLastReadAt: meta.adminLastReadAt,
-        retentionExpiresAt: meta.retentionExpiresAt,
-        latestMessageText: meta.lastMessage || item.latestMessageText,
-        latestMessageAt: meta.updatedAtMs ?? item.latestMessageAt,
-      } : item))
-    }))
-    return () => { unsubscribers.forEach((unsubscribe) => unsubscribe()) }
-  }, [conversationIds, activeConvoId])
-
   const sharing = useLiveLocation({
     convoId: activeConvoId,
     uid: user?.uid,
   })
-
-  // Re-surface the compact status bar whenever a fresh live-location session opens.
-  useEffect(() => {
-    if (sharing.session?.stream_secret) {
-      setLocationDismissed(false)
-    }
-  }, [sharing.session?.stream_secret])
 
   const clearPendingImage = useCallback(() => {
     setPendingImage((prev) => {
@@ -440,24 +410,6 @@ export function MessagesPage() {
     setText(reply.text)
   }, [])
 
-  const handleSelectConversation = useCallback((summary: ConversationSummary) => {
-    if (sendStage !== 'idle') return
-    if (activeConvoId !== summary.conversationId) {
-      if (activeConvoId) draftByConversation.current.set(activeConvoId, { text, image: pendingImage, pendingSend: pendingSendRef.current })
-      const draft = draftByConversation.current.get(summary.conversationId)
-      draftByConversation.current.delete(summary.conversationId)
-      setText(draft?.text ?? '')
-      setPendingImage(draft?.image ?? null)
-      pendingSendRef.current = draft?.pendingSend ?? null
-      currentConversationRef.current = summary.conversationId
-      setOlderError(null)
-      setLoadingOlder(false)
-    }
-    setSelectedConvoId(summary.conversationId)
-    setComposerError(null)
-  }, [activeConvoId, pendingImage, sendStage, text])
-
-  const hasMultipleThreads = conversations.length > 1
   const retentionStamp = selectedConvo?.retentionExpiresAt ?? null
   const retentionDays = retentionDaysLeft(retentionStamp)
   const retentionSwept = retentionElapsed(retentionStamp)
@@ -475,35 +427,23 @@ export function MessagesPage() {
       <Container width="content" className="messages-page-content">
         <EmailVerificationNotice className="mb-6" />
         <PageHeader
-          eyebrow="Messages"
+          className="messages-page-header"
+          eyebrow=""
           title="Guest Messages"
-          lead={
-            <p>
-              One continuous conversation per booking. Only you and the Hacienda Admin can read
-              these messages.
-            </p>
-          }
-          aside={
-            conversations.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-forest-600 dark:text-sage-400">
-                <span className="inline-flex items-center gap-1.5">
-                  <Lock size={13} />
-                  Private to you and the Hacienda Admin
-                </span>
-                {unreadTotal > 0 && (
-                  <span className="inline-flex items-center rounded-full bg-brass-400/25 px-2 py-0.5 font-semibold text-forest-900 dark:text-brass-200">
-                    {unreadTotal} unread
-                  </span>
-                )}
-              </div>
-            ) : undefined
-          }
+          lead={<p>Private messages between you and the Hacienda Admin.</p>}
           actions={
-            conversations.length > 0 ? (
-              <Link to="/mybookings" className="btn-quiet btn-sm">
-                My reservations
-              </Link>
-            ) : undefined
+            <>
+              <Link to="/mybookings" className="btn-quiet btn-sm">My reservations</Link>
+              <a href="tel:+639258507707" className="btn-ghost btn-sm">
+                <Phone size={15} /> Call
+              </a>
+              {selectedConvo && (
+                <button type="button" className="btn-quiet btn-sm" aria-expanded={bookingDrawerOpen}
+                  onClick={() => setBookingDrawerOpen((open) => !open)}>
+                  <Calendar size={15} /> Booking details
+                </button>
+              )}
+            </>
           }
         />
 
@@ -529,22 +469,14 @@ export function MessagesPage() {
               Check your internet connection and try again. Your existing messages are safe.
             </Alert>
           </div>
-        ) : conversations.length === 0 ? (
-          <section className="guest-panel mt-8 p-8 sm:p-12" aria-label="No conversations yet">
+        ) : !selectedConvo ? (
+          <section className="guest-panel messages-selection" aria-label="Select a reservation">
             <EmptyState
-              icon={MessageCircle}
-              title="No conversations yet"
-              body="One continuous conversation per booking opens automatically as soon as you submit a stay request."
-              actions={
-                <>
-                  <Link to="/book" className="btn-primary">
-                    Book a stay
-                  </Link>
-                  <Link to="/contact" className="btn-ghost">
-                    Official contact channels
-                  </Link>
-                </>
-              }
+              title={bookingId ? 'Reservation unavailable' : 'Select a reservation'}
+              body={bookingId
+                ? 'This reservation could not be found on your account. Choose one from My reservations.'
+                : 'Choose a reservation to open its private conversation.'}
+              actions={<Link to="/mybookings" className="btn-primary">My reservations</Link>}
             />
           </section>
         ) : (
@@ -554,47 +486,6 @@ export function MessagesPage() {
           >
             {selectedConvo && (
               <div className="messages-conversation">
-                <ConversationHeader
-                  guestName={selectedConvo.guestName}
-                  propertyName={selectedConvo.propertyName}
-                  bookingReference={selectedConvo.bookingReference}
-                  lastActiveAtMs={selectedConvo.latestMessageAt}
-                  detailsOpen={bookingDrawerOpen}
-                  onToggleBookingDetails={() => setBookingDrawerOpen((open) => !open)}
-                  liveLocationActive={sharing.phase === 'active' && Boolean(sharing.session)}
-                  liveLocationCountdown={sharing.countdown}
-                  liveLocationDismissed={locationDismissed}
-                  onExpandLiveLocation={() => setLocationDismissed(false)}
-                />
-
-                {hasMultipleThreads && (
-                  <div className="messages-switcher">
-                    <label htmlFor="conversation-switcher">Conversation</label>
-                    <select
-                      id="conversation-switcher"
-                      value={selectedConvo.conversationId}
-                      disabled={sendStage !== 'idle'}
-                      onChange={(event) => {
-                        const next = conversations.find((item) => item.conversationId === event.target.value)
-                        if (next) handleSelectConversation(next)
-                      }}
-                    >
-                      {conversations.map((item) => (
-                        <option key={item.conversationId} value={item.conversationId}>
-                          {[item.propertyName || item.legacyLabel || 'Stay conversation', item.bookingReference].filter(Boolean).join(' · ')}{item.unreadCount > 0 ? ` (${item.unreadCount} unread)` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Compact active live-location bar (separates minimize vs Stop Sharing) */}
-                <LiveLocationStatus
-                  sharing={sharing}
-                  dismissed={locationDismissed}
-                  onDismiss={() => setLocationDismissed(true)}
-                />
-
                 {/* Retention banner when a completed/cancelled stay is in its 90-day window */}
                 {retentionStamp && (
                   <div className="messages-retention" role="status">
@@ -685,8 +576,11 @@ export function MessagesPage() {
                       onSelect={handleQuickReply}
                     />
                   }
+                  locationStatusSlot={
+                    <LiveLocationStatus sharing={sharing} />
+                  }
                   locationSlot={
-                    locationAvailable && sharing.phase !== 'active' ? (
+                    locationAvailable ? (
                       <ShareLocationBar sharing={sharing} />
                     ) : undefined
                   }

@@ -1021,14 +1021,18 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 /* Chat — a correspondence desk, not an admin inbox                   */
 /* ------------------------------------------------------------------ */
 
-/* The page clears the fixed navigation using Page's top padding. Its flex
-   column gives the chat the remaining viewport height without a width cap. */
+/* A viewport-height desk with its own scrolling message history. On very
+   short screens, allow the document to scroll rather than clip the composer. */
 .messages-page {
-  height: 100dvh;
-  min-height: 42rem;
-  padding-bottom: 1rem;
+  height: max(100dvh, 42rem);
+  min-height: 100dvh;
+  padding-top: 5.5rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
+}
+@media (min-width: 1024px) {
+  .messages-page { padding-top: 6.25rem; }
 }
 .messages-page-content {
   width: 100%;
@@ -1038,27 +1042,30 @@ body[data-scroll-locked='true'] { overflow: hidden; }
   display: flex;
   flex-direction: column;
 }
+.messages-page-header { gap: 0.75rem; align-items: flex-start; }
+.messages-page-header .eyebrow { display: none; }
+.messages-page-header h1 { margin-top: 0; font-size: clamp(1.75rem, 2.4vw, 2.4rem); line-height: 1.1; }
+.messages-page-header .prose-lead { margin-top: 0.25rem; font-size: 0.875rem; }
+.messages-page-header > :last-child { flex-shrink: 1; }
+@media (min-width: 768px) {
+  .messages-page-header { align-items: center; }
+}
 .messages-workspace {
-  @apply mt-6 flex overflow-hidden;
+  @apply mt-4 flex overflow-hidden;
   flex: 1 1 0%;
-  min-height: 20rem;
+  min-height: 0;
   border-top: 3px solid rgb(184 154 100 / 0.85);
 }
-.dark .messages-workspace {
-  border-top-color: rgb(184 154 100 / 0.5);
-}
+.dark .messages-workspace { border-top-color: rgb(184 154 100 / 0.5); }
+.messages-selection { @apply mt-4 flex flex-1 items-center justify-center p-6; }
 .messages-conversation {
   @apply flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-forest-900/60;
 }
-.messages-switcher {
-  @apply flex shrink-0 flex-wrap items-center gap-2 border-b border-forest-900/8 bg-cream-100/45 px-4 py-2 text-xs text-forest-700 dark:border-cream-100/10 dark:bg-forest-950/30 dark:text-cream-100 sm:px-5;
+.messages-location-control { position: relative; flex-shrink: 0; }
+.messages-location-menu {
+  @apply absolute bottom-full left-0 z-20 mb-2 flex w-64 flex-wrap gap-2 rounded-xl border border-forest-900/15 bg-cream-50 p-3 text-xs text-forest-900 shadow-float dark:border-cream-100/15 dark:bg-forest-900 dark:text-cream-50;
 }
-.messages-switcher label {
-  @apply font-semibold;
-}
-.messages-switcher select {
-  @apply min-w-0 max-w-full rounded-md border border-forest-900/15 bg-white px-2 py-1.5 text-forest-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400 dark:border-cream-100/15 dark:bg-forest-900 dark:text-cream-50;
-}
+.messages-location-menu p { @apply w-full leading-relaxed; }
 
 .messages-topic {
   @apply relative flex w-full items-start gap-3 border-b border-forest-900/8 px-4 py-4 text-left transition-colors duration-150 last:border-b-0 dark:border-cream-100/10;
@@ -1175,7 +1182,7 @@ body[data-scroll-locked='true'] { overflow: hidden; }
 }
 
 .messages-composer {
-  @apply shrink-0 border-t border-forest-900/10 bg-white px-4 py-4 dark:border-cream-100/10 dark:bg-forest-900/80 sm:px-5;
+  @apply shrink-0 border-t border-forest-900/10 bg-white px-3 py-3 dark:border-cream-100/10 dark:bg-forest-900/80 sm:px-5;
 }
 .messages-composer-row {
   @apply flex items-center gap-2;

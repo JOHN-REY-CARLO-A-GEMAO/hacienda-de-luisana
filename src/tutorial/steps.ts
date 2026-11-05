@@ -164,10 +164,10 @@ export const GUEST_TOUR_STEPS: TourStep[] = [
     title: 'Chat with the Admin',
     body:
       'Questions about your dates, a GCash reference, a birthday setup? This chat goes straight to the Admin app — ' +
-      'only your conversation is visible here. Pick a topic and write below; the Admin answers from the same app ' +
+      'only your conversation is visible here. Choose a reservation from My reservations, then write below; the Admin answers from the same app ' +
       'that reviewed your Booking.',
     fallbackBody:
-      'The Messages page is a direct line to the Admin — topics, your own thread only, answers from the same app ' +
+      'The Messages page is a direct line to the Admin — select a reservation for its own thread, with answers from the same app ' +
       'that handles your Booking. Sign in as a Guest to use it.',
     actionHint: 'Type a message to try it — you don’t have to send it.',
     await: { type: 'fields', fields: [{ field: 'message', ok: (v) => v.trim().length > 0 }] },

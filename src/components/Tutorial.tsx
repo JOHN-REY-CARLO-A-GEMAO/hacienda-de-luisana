@@ -10,6 +10,7 @@
 // ----------------------------------------------------------------------------
 
 import { useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import { COOKIE, getCookie, setCookie } from '../lib/cookies'
 import { GUEST_TOUR_STEPS } from '../tutorial/steps'
 import { TourProvider, useTour } from '../tutorial/TourEngine'
@@ -61,7 +62,8 @@ const REPLAY_LABEL = 'How to Book: Replay tutorial'
 
 function ReplayButton() {
   const tour = useTour()
-  if (tour.running) return null
+  const location = useLocation()
+  if (tour.running || location.pathname === '/messages') return null
   return (
     <>
       {/* Phone and tablet: the last row of the document, after the footer. */}
