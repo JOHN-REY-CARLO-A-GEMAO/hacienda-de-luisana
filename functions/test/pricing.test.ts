@@ -104,8 +104,11 @@ describe('the price comes from the published card', () => {
     assert.equal(quote.rates_version, 'official-v9')
   })
 
-  it('charges each guest above the included count at the published excess', () => {
-    assert.equal(price({ guests: 13 }).money.stay_total, 6000 + 3 * 500)
+  it('enforces each accommodation maximum even when published pricing allows excess', () => {
+    for (const [accommodation, max] of [['main-house', 10], ['annex', 6], ['house-a-camping', 3]] as const) {
+      assert.equal(parseQuoteRequest(request({ accommodation, guests: max })).ok, true)
+      assert.equal(parseQuoteRequest(request({ accommodation, guests: max + 1 })).ok, false)
+    }
   })
 
   it('classifies a listed holiday over the day of the week', () => {
@@ -126,13 +129,7 @@ describe('the price comes from the published card', () => {
   it('holds the flat per-unit cap of the A-House, and its zero deposit', () => {
     assert.equal(price({ accommodation: 'house-a-camping', guests: 3 }).money.stay_total, 1000)
     assert.equal(price({ accommodation: 'house-a-camping', guests: 3 }).money.security_deposit, 0)
-    const fourth = (() => {
-      const parsed = parseQuoteRequest(request({ accommodation: 'house-a-camping', guests: 4 }))
-      assert.ok(parsed.ok)
-      return deriveQuote(published, parsed.value, { now: NOW })
-    })()
-    assert.equal(fourth.ok, false)
-    assert.equal((fourth as { cause: string }).cause, 'GUEST_COUNT_UNPRICED')
+    assert.equal(parseQuoteRequest(request({ accommodation: 'house-a-camping', guests: 4 })).ok, false)
   })
 
   it('refuses what the card does not price, naming why', () => {
@@ -178,7 +175,7 @@ describe('the price comes from the published card', () => {
 
 describe('the stay-length boundary is enforced on the server', () => {
   const derive = (checkIn: string, checkOut: string, accommodation = 'main-house') => {
-    const parsed = parseQuoteRequest(request({ check_in: checkIn, check_out: checkOut, accommodation }))
+    const parsed = parseQuoteRequest(request({ check_in: checkIn, check_out: checkOut, accommodation, guests: accommodation === 'house-a-camping' ? 3 : 10 }))
     assert.ok(parsed.ok, `the request itself was refused: ${(parsed as { detail: string }).detail}`)
     return deriveQuote(published, parsed.value, { now: NOW })
   }

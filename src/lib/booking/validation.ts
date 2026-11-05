@@ -14,6 +14,7 @@
 // being flattened into the generic "booking rules refused it" sentence.
 // ----------------------------------------------------------------------------
 
+import { ACCOMMODATIONS } from '../../config/site'
 import { assertSubmittable, type SubmissionProof } from './submit'
 import { MAX_STAY_NIGHTS, maximumCheckoutDate, nightsBetween } from './availability'
 import {
@@ -237,9 +238,11 @@ export function validateBookingSelection(
       'accommodation',
     )
   }
-  // Included occupancy is not a physical limit. Only the published schedule's
-  // explicit maximum is a cap; excess-guest pricing handles larger groups.
-  const maxCapacity = schedule.max_guests
+  // A published price never overrides the accommodation's guest capacity.
+  const unitCapacity = ACCOMMODATIONS.find((item) => item.id === selection.accommodation)?.capacity
+  const maxCapacity = unitCapacity !== undefined && schedule.max_guests !== undefined
+    ? Math.min(unitCapacity, schedule.max_guests)
+    : unitCapacity ?? schedule.max_guests
   if (!Number.isInteger(selection.guests) || selection.guests < schedule.min_guests || selection.guests > 100
       || (maxCapacity !== undefined && selection.guests > maxCapacity)) {
     return failure(

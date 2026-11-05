@@ -298,7 +298,8 @@ export const ACCOMMODATIONS: Accommodation[] = [
     shortName: 'Main House',
     description:
       'A private countryside home designed for groups and families looking for a comfortable place to stay together.',
-    capacityLabel: '10 guests included in the base rate',
+    capacity: 10,
+    capacityLabel: 'Maximum 10 guests',
     // No nightly figure is published anywhere the website can cite (the Airbnb
     // price only appears once dates are chosen). The Published rates document
     // supplies it when the Admin publishes one; until then the page says
@@ -337,8 +338,9 @@ export const ACCOMMODATIONS: Accommodation[] = [
     id: 'annex',
     name: 'HDL Annex',
     shortName: 'Annex',
-    description: 'A separate Hacienda stay option with 6 guests included and a per-guest excess rate under the weekday/weekend-holiday schedule.',
-    capacityLabel: '6 guests included in the base rate',
+    description: 'A separate Hacienda stay option for up to 6 guests.',
+    capacity: 6,
+    capacityLabel: 'Maximum 6 guests',
     priceLabel: 'From ₱4,000 / standard stay',
     priceSource: 'Official Hacienda rate card',
     amenities: [
@@ -443,7 +445,7 @@ export const NEARBY: NearbyAttraction[] = [
 export const FAQS: FAQ[] = [
   {
     q: 'How many guests can stay?',
-    a: 'The Main House and Annex rates include a set number of guests; additional guests may incur a charge. Included counts are not absolute caps. Each A-House holds up to 3 guests. See Rates & Fees for the current schedule, or contact the Hacienda about large groups or multiple units.',
+    a: 'The maximum per booking is 10 guests for the Main House, 6 for the Annex, and 3 for each A-House. Contact the Hacienda about multiple units.',
     link: { to: '/rates', label: 'View rates and fees' },
   },
   {
@@ -649,7 +651,7 @@ export const HOUSE_RULES: HouseRule[] = [
   {
     id: 'capacity',
     title: 'Headcount and included occupancy',
-    body: 'The Main House and Annex rates include a set number of guests; additional guests may incur a charge. Included counts are not absolute caps. Each A-House is one unit for up to 3 guests; ask the Hacienda about large groups or multiple units.',
+    body: 'Each booking has a maximum: 10 guests for the Main House, 6 for the Annex, and 3 for an A-House. Ask the Hacienda about multiple units.',
   },
   {
     id: 'pets',

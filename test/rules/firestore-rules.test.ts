@@ -171,7 +171,6 @@ describe('official guest-count rates', () => {
       officialBooking(),
       officialBooking({ check_in: '2026-10-30', check_out: '2026-10-31', rate_amount: 6000,
         rate_classification: 'weekend_holiday', stay_total: 6000, amount_due: 3000, balance_due: 3000 }),
-      officialBooking({ guests: 25, rate_amount: 12500, stay_total: 12500, amount_due: 6250, balance_due: 6250 }),
       officialBooking({ rate_amount: 6000.5, stay_total: 6000.5, amount_due: 3000.25, balance_due: 3000.25 }),
     ]) {
       expect(allow({
@@ -181,6 +180,24 @@ describe('official guest-count rates', () => {
         path: 'bookings/direct-guest-attempt', method: 'create', auth: anonymousGuest(), requestData,
       }, closedStore)).toBe(true)
     }
+  })
+
+  it('enforces each accommodation guest maximum for both Guest and Admin creates', () => {
+    for (const [accommodation, max] of [['main-house', 10], ['annex', 6], ['house-a-camping', 3]] as const) {
+      for (const auth of [anonymousGuest(), allowlistedAdmin()]) {
+        const within = officialBooking({ accommodation, guests: max })
+        const over = officialBooking({ accommodation, guests: max + 1 })
+        expect(allow({ path: `bookings/at-${accommodation}`, method: 'create', auth, requestData: within }, officialStore)).toBe(true)
+        expect(deny({ path: `bookings/over-${accommodation}`, method: 'create', auth, requestData: over }, officialStore)).toBe(true)
+      }
+    }
+  })
+
+  it('blocks capacity-increasing Admin edits without blocking historical bookings', () => {
+    const normal = officialBooking({ guests: 10 })
+    expect(deny({ path: 'bookings/limit-edit', method: 'update', auth: allowlistedAdmin(), resourceData: normal, requestData: { ...normal, guests: 11 } }, officialStore)).toBe(true)
+    const historical = officialBooking({ guests: 11 })
+    expect(allow({ path: 'bookings/old-limit', method: 'update', auth: allowlistedAdmin(), resourceData: historical, requestData: { ...historical, special_requests: 'Note' } }, officialStore)).toBe(true)
   })
 
   it('accepts the page’s floored half of a fractional total, and no centavo further', () => {

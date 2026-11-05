@@ -1,6 +1,4 @@
-// The guest-count input is capped by the selected accommodation's capacity
-// (falling back to the platform-wide 100-guest online limit). The online
-// processing limit is not a claim about physical capacity.
+// The guest-count input is capped at each accommodation’s confirmed capacity.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -107,45 +105,27 @@ afterEach(() => {
 })
 
 describe('guest-count limit follows the selected accommodation', () => {
-  it('distinguishes the Main House base rate from the online limit and capacity', async () => {
-    open()
-    await until(() => Boolean(container.querySelector('#guest-count')))
-    expect(input('#guest-count').max).toBe('100')
-    await until(() => container.textContent?.includes('Kasama sa base rate ang hanggang 10 bisita') === true)
-    expect(container.textContent).toContain('₱500 bawat dagdag na bisita kada standard stay')
-    expect(container.textContent).toContain('Hanggang 100 bisita ang tinatanggap ng online form')
-    expect(container.textContent).not.toContain('100 bisita ang kasya')
-    expect(input('#guest-count').getAttribute('aria-describedby')).toBe('guest-count-message')
-    fill('#guest-count', '11')
-    expect(input('#guest-count').value).toBe('11')
-  })
+  for (const [accommodation, maximum] of [['main-house', 10], ['annex', 6], ['house-a-camping', 3]] as const) {
+    it(`enforces the ${maximum}-guest limit for ${accommodation}`, async () => {
+      open()
+      await until(() => Boolean(container.querySelector('select')))
+      choose('select', accommodation)
+      await until(() => input('#guest-count').max === String(maximum))
+      expect(container.textContent).toContain(`Hanggang ${maximum} bisita lamang`)
+      expect(input('#guest-count').getAttribute('aria-describedby')).toBe('guest-count-message')
+      fill('#guest-count', String(maximum + 1))
+      expect(input('#guest-count').value).toBe(String(maximum))
+      click(stepper('Dagdagan ang bilang ng bisita'))
+      expect(input('#guest-count').value).toBe(String(maximum))
+    })
+  }
 
-  it('uses the published Annex allowance rather than the Main House allowance', async () => {
-    open()
-    await until(() => Boolean(container.querySelector('select')))
-    choose('select', 'annex')
-    await until(() => container.textContent?.includes('Kasama sa base rate ang hanggang 6 bisita') === true)
-    expect(container.textContent).toContain('₱500 bawat dagdag na bisita kada standard stay')
-    expect(input('#guest-count').max).toBe('100')
-    expect(container.textContent).not.toContain('100 bisita ang kasya')
-  })
-
-  it('does not invent included guests or charges if no rates are published', async () => {
+  it('enforces capacity even without published rates', async () => {
     localStorage.removeItem(LOCAL_RATES_KEY)
     open()
     await until(() => Boolean(container.querySelector('#guest-count')))
-    expect(container.textContent).toContain('kumpirmahin ang aktuwal na kapasidad sa Hacienda')
-    expect(container.textContent).not.toContain('Kasama sa base rate ang hanggang')
-    expect(container.textContent).not.toContain('100 bisita ang kasya')
-  })
-
-  it('does not claim a fixed allowance when weekday and weekend schedules differ', async () => {
-    const rates = JSON.parse(localStorage.getItem(LOCAL_RATES_KEY)!)
-    rates.accommodations['main-house'].guest_pricing.weekend_holiday.excess_per_guest = 750
-    localStorage.setItem(LOCAL_RATES_KEY, JSON.stringify(rates))
-    open()
-    await until(() => container.textContent?.includes('Nag-iiba ang bilang ng kasamang bisita') === true)
-    expect(container.textContent).not.toContain('₱500 bawat dagdag na bisita kada standard stay')
+    expect(input('#guest-count').max).toBe('10')
+    expect(container.textContent).toContain('Hanggang 10 bisita lamang')
   })
 
   it('caps the input, the steppers and typed values at the unit capacity (A-House: 3)', async () => {
@@ -170,6 +150,17 @@ describe('guest-count limit follows the selected accommodation', () => {
     click(stepper('Bawasan ang bilang ng bisita'))
     click(stepper('Bawasan ang bilang ng bisita'))
     expect(input('#guest-count').value).toBe('1')
+  })
+
+  it('reduces an old over-capacity draft and tells the guest', async () => {
+    sessionStorage.setItem('hdl:booking-draft', JSON.stringify({
+      check_in: '2026-12-10', check_out: '2026-12-11', guests: 15,
+      accommodation: 'main-house', name: 'Ana', email: 'ana@example.com', phone: '',
+    }))
+    open()
+    await until(() => Boolean(container.querySelector('#guest-count')))
+    expect(input('#guest-count').value).toBe('10')
+    expect(container.textContent).toContain('Binawasan ang bilang mula sa dati mong draft')
   })
 
   it('clamps an existing count down when a smaller unit is picked', async () => {

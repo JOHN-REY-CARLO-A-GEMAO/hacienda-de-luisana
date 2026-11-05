@@ -70,7 +70,7 @@ export function Rates() {
                 <div className="mt-5 font-serif text-4xl text-forest-900">{rate.label}</div>
                 <div className="mt-1 text-xs text-forest-700/70">{rate.source}</div>
                 {published?.accommodations[a.id]?.guest_pricing && (
-                  <GuestSchedule schedule={published.accommodations[a.id]!.guest_pricing!} />
+                  <GuestSchedule schedule={published.accommodations[a.id]!.guest_pricing!} capacity={a.capacity} />
                 )}
                 <div className="mt-4 text-sm text-forest-800">{a.capacityLabel}{a.availableUnits ? ` · ${a.availableUnits} units` : ''}</div>
                 <Link to={`/book?accommodation=${a.id}`} className="btn-ghost mt-6 btn-sm group">
@@ -166,9 +166,9 @@ export function Rates() {
   )
 }
 
-function scheduleLine(label: string, schedule: GuestRateSchedule): string {
+function scheduleLine(label: string, schedule: GuestRateSchedule, capacity?: number): string {
   const parts = [`${schedule.base_max_guests} guests included: ${peso(schedule.base_rate)}`]
-  if (schedule.excess_per_guest !== undefined) {
+  if (schedule.excess_per_guest !== undefined && (capacity === undefined || schedule.base_max_guests < capacity)) {
     parts.push(`each additional guest: +${peso(schedule.excess_per_guest)}/guest`)
   }
   if (schedule.max_guests !== undefined) {
@@ -177,11 +177,11 @@ function scheduleLine(label: string, schedule: GuestRateSchedule): string {
   return `${label}: ${parts.join(' · ')}`
 }
 
-function GuestSchedule({ schedule }: { schedule: GuestBracketPricing }) {
+function GuestSchedule({ schedule, capacity }: { schedule: GuestBracketPricing; capacity?: number }) {
   return (
     <div className="mt-4 rounded-xl bg-cream-50 p-3 text-xs leading-relaxed text-forest-800">
-      <p>{scheduleLine('Weekday (Sunday–Thursday check-in night)', schedule.weekday)}</p>
-      <p className="mt-1">{scheduleLine('Weekend / Admin holiday (Friday/Saturday check-in night)', schedule.weekend_holiday)}</p>
+      <p>{scheduleLine('Weekday (Sunday–Thursday check-in night)', schedule.weekday, capacity)}</p>
+      <p className="mt-1">{scheduleLine('Weekend / Admin holiday (Friday/Saturday check-in night)', schedule.weekend_holiday, capacity)}</p>
       <p className="mt-2 text-forest-700/70">One booking · per 22-hour standard stay (2:00 PM–12:00 noon), times the nights of your stay. The check-in night sets the rate; Sunday check-in is weekday unless it is an Admin-listed holiday.</p>
     </div>
   )

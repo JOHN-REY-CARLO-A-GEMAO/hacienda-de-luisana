@@ -76,11 +76,13 @@ describe('guest booking rule preflight', () => {
     }
   })
 
-  it('prices guests above the included count without inventing a capacity', () => {
-    const result = validateBookingSelection({ ...selection, guests: 25 }, { published, checkLeadTime: false })
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(result.quote.stayTotal).toBe(6000 + 15 * 500)
-    expect(validateBookingSelection({ ...selection, guests: 101 }, { published, checkLeadTime: false })).toMatchObject({ ok: false, failure: { code: 'GUEST_COUNT_NOT_SUPPORTED' } })
+  it('refuses guests above the accommodation capacity even when excess pricing is published', () => {
+    for (const [accommodation, max] of [['main-house', 10], ['annex', 6], ['house-a-camping', 3]] as const) {
+      const sample = published.accommodations['main-house']!
+      const rates = { ...published, accommodations: { ...published.accommodations, [accommodation]: sample } }
+      const result = validateBookingSelection({ ...selection, accommodation, guests: max + 1 }, { published: rates, checkLeadTime: false })
+      expect(result).toMatchObject({ ok: false, failure: { code: 'GUEST_COUNT_NOT_SUPPORTED' } })
+    }
   })
 
   it('does not invent a two-night weekend minimum', () => {

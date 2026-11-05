@@ -45,9 +45,8 @@ const List<String> kCanonicalAccommodationIds = [
 ///   [includedGuests]   guests inside the base rate — the A-House has 3
 ///   [maxGuests]        guests that fit in one unit at all — also 3 for A-House
 ///
-/// Only the A-House is a multi-unit Accommodation, so only the A-House has
-/// `availableUnits` above 1; only the A-House has a `maxGuests`, because it is
-/// the one with a hard physical limit.
+/// Only the A-House is a multi-unit Accommodation. The confirmed booking
+/// maximums are 10 for Main House, 6 for Annex, and 3 per A-House.
 class Accommodation {
   /// The canonical id. `firestore.rules` refuses a published document holding
   /// any other, so this cannot drift onto an invented property.
@@ -59,8 +58,7 @@ class Accommodation {
 
   final int includedGuests;
 
-  /// The documented ceiling for one unit, or null where there is no ceiling and
-  /// a guest above [includedGuests] is priced instead of refused.
+  /// The booking ceiling for one unit, including a stricter published cap.
   final int? maxGuests;
 
   /// Units that can be held at once. One unless published otherwise.
@@ -113,7 +111,11 @@ class Accommodation {
       // third spelling invented here.
       final name = _text(node['property_name']) ?? id;
 
-      final maxGuests = _int(weekday is Map ? weekday['max_guests'] : null);
+      final publishedMax = _int(weekday is Map ? weekday['max_guests'] : null);
+      const hardCaps = {'main-house': 10, 'annex': 6, 'house-a-camping': 3};
+      final hardCap = hardCaps[id];
+      final maxGuests = hardCap == null ? publishedMax
+          : publishedMax == null || hardCap < publishedMax ? hardCap : publishedMax;
       final availableUnits = _int(node['available_units']) ?? 1;
       final unitsPerBooking = _int(pricing['units_per_booking']) ?? 1;
 

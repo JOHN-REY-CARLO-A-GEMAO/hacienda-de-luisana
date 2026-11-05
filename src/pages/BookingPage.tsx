@@ -82,11 +82,13 @@ export function BookingPage() {
     ? restoredDraft
     : null
   const initialAccommodation = requestedAccommodation || draftToRestore?.accommodation || ACCOMMODATIONS[0].id
+  const initialCapacity = ACCOMMODATIONS.find((a) => a.id === initialAccommodation)?.capacity ?? 100
+  const draftExceededCapacity = (draftToRestore?.guests ?? 2) > initialCapacity
 
   const [form, setForm] = useState<FormState>({
     check_in: draftToRestore?.check_in ?? '',
     check_out: draftToRestore?.check_out ?? '',
-    guests: draftToRestore?.guests ?? 2,
+    guests: Math.min(initialCapacity, draftToRestore?.guests ?? 2),
     accommodation: initialAccommodation,
     name: draftToRestore?.name ?? '',
     phone: draftToRestore?.phone ?? '',
@@ -98,6 +100,7 @@ export function BookingPage() {
     event_purpose: draftToRestore?.event_purpose ?? '',
     event_purpose_detail: draftToRestore?.event_purpose_detail ?? '',
   })
+  const [draftGuestNotice, setDraftGuestNotice] = useState(draftExceededCapacity)
   const [errors, setErrors] = useState<Errors>({})
   const [status, setStatus] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string>('')
@@ -157,10 +160,7 @@ export function BookingPage() {
     [form.accommodation],
   )
 
-  // The A-House has a documented capacity; 100 is only the online form's
-  // processing limit for other accommodations, not their physical capacity.
   const maxGuests = selectedAcc?.capacity ?? 100
-
 
   const nights = useMemo(() => {
     if (!form.check_in || !form.check_out) return 0
@@ -173,24 +173,9 @@ export function BookingPage() {
   // The estimate uses the Admin's published rates; no figure is invented
   // when the dates, guest count or rate document cannot be priced.
   const published = usePublishedRates()
-  const guestCountHint = useMemo(() => {
-    if (selectedAcc?.capacity != null) {
-      return `Hanggang ${selectedAcc.capacity} bisita ang kasya sa ${selectedAcc.name} (isang unit).`
-    }
-    const schedule = published?.accommodations[form.accommodation]?.guest_pricing
-    const weekday = schedule?.weekday
-    const weekend = schedule?.weekend_holiday
-    const onlineLimit = `Hanggang ${maxGuests} bisita ang tinatanggap ng online form; kumpirmahin ang aktuwal na kapasidad sa Hacienda.`
-    if (!weekday || !weekend) return onlineLimit
-    if (weekday.base_max_guests !== weekend.base_max_guests || weekday.excess_per_guest !== weekend.excess_per_guest) {
-      return `Nag-iiba ang bilang ng kasamang bisita at dagdag na bayad ayon sa petsa. ${onlineLimit}`
-    }
-    const included = `Kasama sa base rate ang hanggang ${weekday.base_max_guests} bisita.`
-    const excess = weekday.excess_per_guest != null
-      ? ` ₱${weekday.excess_per_guest.toLocaleString('en-PH')} bawat dagdag na bisita kada standard stay.`
-      : ''
-    return `${included}${excess} ${onlineLimit}`
-  }, [form.accommodation, maxGuests, published, selectedAcc])
+  const guestCountHint = selectedAcc?.capacity != null
+    ? `Hanggang ${selectedAcc.capacity} bisita lamang ang puwede sa ${selectedAcc.name} (isang unit).${draftGuestNotice ? ' Binawasan ang bilang mula sa dati mong draft; pakisuri ito.' : ''}`
+    : 'Pumili ng matutuluyan upang makita ang maximum na bilang ng bisita.'
   const options = useMemo(() => ACCOMMODATIONS
     .filter((a) => a.active && published?.accommodations[a.id]?.active !== false)
     .map((a) => ({
@@ -633,6 +618,7 @@ export function BookingPage() {
                       value={form.accommodation}
                       onChange={(e) => {
                         const next = ACCOMMODATIONS.find((a) => a.id === e.target.value)
+                        setDraftGuestNotice(false)
                         set('accommodation', e.target.value)
                         // Clamp the guest count if the newly chosen unit sleeps fewer.
                         const cap = next?.capacity
@@ -673,7 +659,7 @@ export function BookingPage() {
                         max={maxGuests}
                         inputMode="numeric"
                         value={form.guests}
-                        onChange={(e) => set('guests', Math.min(maxGuests, Math.max(1, Number(e.target.value) || 1)))}
+                        onChange={(e) => { setDraftGuestNotice(false); set('guests', Math.min(maxGuests, Math.max(1, Number(e.target.value) || 1))) }}
                         onBlur={() => handleBlur('guests')}
                         className="text-center"
                         invalid={Boolean(errors.guests)}

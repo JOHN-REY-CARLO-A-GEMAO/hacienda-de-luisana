@@ -320,6 +320,13 @@ describe('bookings', () => {
     await seedBaseline()
   })
 
+  it('refuses bookings above the accommodation maximum', async () => {
+    const guest = anonymousGuest()
+    for (const [accommodation, maximum] of [['main-house', 10], ['annex', 6], ['house-a-camping', 3]] as const) {
+      await assertFails(addDoc(collection(guest.firestore(), 'bookings'), bookingDoc({ accommodation, guests: maximum + 1 })))
+    }
+  })
+
   it('lets a Guest read their own Booking and not another Guest\'s', async () => {
     await assertSucceeds(getDoc(doc(anonymousGuest().firestore(), 'bookings', BOOKING_ID)))
     await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'bookings', BOOKING_ID)))
