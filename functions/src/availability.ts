@@ -17,11 +17,12 @@ import {
   type AvailabilityCore,
   type AvailabilityReply,
   type AvailabilityRequest,
+  type PaymentReferenceStatusReply,
   type SubmitBookingReply,
 } from './availabilityCore'
 import { CallableError } from './callable'
 
-export type { AvailabilityReply, AvailabilityRequest, SubmitBookingReply }
+export type { AvailabilityReply, AvailabilityRequest, PaymentReferenceStatusReply, SubmitBookingReply }
 
 const options = {
   region: 'asia-southeast1',
@@ -84,6 +85,17 @@ export const bookingAvailability = onCall(options, async (request: CallableReque
 })))
 
 export const submitBooking = onCall(options, async (request: CallableRequest): Promise<SubmitBookingReply> => run(() => availabilityCore().submitBooking({
+  authUid: request.auth?.uid ?? null,
+  data: request.data,
+  ip: request.rawRequest?.ip ?? null,
+})))
+
+/**
+ * "Has this payment reference already been used?" — asked by the Guest website
+ * before it uploads a proof, so a duplicate is a popup rather than a silent
+ * second Booking. Advisory; `submitBooking` is the enforcement.
+ */
+export const paymentReferenceStatus = onCall(options, async (request: CallableRequest): Promise<PaymentReferenceStatusReply> => run(() => availabilityCore().paymentReferenceStatus({
   authUid: request.auth?.uid ?? null,
   data: request.data,
   ip: request.rawRequest?.ip ?? null,

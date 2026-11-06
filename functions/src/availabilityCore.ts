@@ -65,9 +65,25 @@ export interface SubmitBookingReply {
   hold_expires_at: string
 }
 
+export interface PaymentReferenceStatusReply {
+  duplicate: boolean
+  bookingId: string | null
+  /** The reference folded to letters and digits — the key that was checked. */
+  key: string
+}
+
 export interface AvailabilityCore {
   bookingAvailability(context: CallableContext): Promise<AvailabilityReply>
   submitBooking(context: CallableContext): Promise<SubmitBookingReply>
+  /**
+   * "Has this payment reference already been used?"
+   *
+   * Guests cannot read the Admin's reference catalogue or another Guest's
+   * Booking, so this is the one place the website can ask before uploading a
+   * proof. It is advisory: `submitBooking` refuses a duplicate inside the
+   * transaction that creates the Booking, which is the enforcement.
+   */
+  paymentReferenceStatus(context: CallableContext): Promise<PaymentReferenceStatusReply>
   resetRateLimits(): void
 }
 
@@ -187,8 +203,9 @@ const ALLOWED_BOOKING_KEYS = new Set([
   'special_requests', 'pet_count', 'pet_request', 'late_checkout_hours',
   'late_checkout_request', 'bonfire_wood_sets', 'event_purpose', 'event_purpose_detail',
   'uid', 'source', 'payment_proof_url', 'paymentProofUrl', 'payment_plan',
-  'payment_status', 'amount_claimed', 'payment_reference', 'extractedRefNumber',
-  'ocr_reference', 'ocr_amount', 'ocr_sender_name', 'ocr_payment_date',
+  'payment_status', 'amount_claimed', 'payment_reference', 'payment_reference_key',
+  'payment_time', 'extractedRefNumber',
+  'ocr_reference', 'ocr_amount', 'ocr_sender_name', 'ocr_payment_date', 'ocr_payment_time',
   'ocr_proof_url', 'ocr_engine', 'ocr_confidence',
   'nights', 'stay_total', 'amount_due', 'security_deposit', 'balance_due',
   'rate_amount', 'rate_unit', 'rate_classification', 'policy_version',
@@ -209,6 +226,23 @@ function requireString(
     throw new CallableError('invalid-argument', `The Booking ${key} is invalid.`)
   }
   return value
+}
+
+/** `HH:MM` on a 24-hour clock, or nothing. */
+function requireTime(input: DocumentData, key: string): string {
+  const value = requireString(input, key, { max: 5, optional: true })
+  if (value && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    throw new CallableError('invalid-argument', `The Booking ${key} is invalid.`)
+  }
+  return value
+}
+
+/**
+ * A reference folded to letters and digits: `BDO-1234 5678` and `bdo12345678`
+ * are the same number, which is what makes the duplicate check possible.
+ */
+export function normalizePaymentReference(value: unknown): string {
+  return typeof value === 'string' ? value.toUpperCase().replace(/[^A-Z0-9]/g, '') : ''
 }
 
 function validPendingRequest(value: unknown, kind: 'pet' | 'late'): boolean {
@@ -256,6 +290,14 @@ export function validateGuestBookingShape(raw: unknown, authUid: string): Docume
     throw new CallableError('invalid-argument', 'Enter the amount shown on the Payment proof.')
   }
   if (input.payment_reference !== undefined) requireString(input, 'payment_reference', { max: 200, optional: true })
+  if (input.payment_reference_key !== undefined) {
+    const value = requireString(input, 'payment_reference_key', { max: 40, optional: true })
+    if (value && !/^[A-Z0-9]{6,40}$/.test(value)) {
+      throw new CallableError('invalid-argument', 'The Booking payment_reference_key is invalid.')
+    }
+  }
+  if (input.payment_time !== undefined) requireTime(input, 'payment_time')
+  if (input.ocr_payment_time !== undefined) requireTime(input, 'ocr_payment_time')
   if (input.extractedRefNumber !== undefined) requireString(input, 'extractedRefNumber', { max: 40, optional: true })
   if (input.ocr_reference !== undefined) requireString(input, 'ocr_reference', { max: 40, optional: true })
   if (input.ocr_amount !== undefined) {
@@ -471,6 +513,27 @@ export function createAvailabilityCore(deps: AvailabilityCoreDependencies): Avai
           )
         }
 
+        // One reference pays for one Booking. The query runs inside the same
+        // transaction as the create, so two submissions racing with the same
+        // reference cannot both pass: Firestore re-runs the transaction when a
+        // matching document appears underneath it.
+        const referenceKey = normalizePaymentReference(booking.payment_reference_key ?? booking.payment_reference)
+        if (referenceKey) {
+          const duplicateSnapshot = await transaction.get(
+            deps.db.collection('bookings').where('payment_reference_key', '==', referenceKey),
+          )
+          const live = duplicateSnapshot.docs.find(
+            (document) => !['Cancelled', 'Rejected', 'Expired'].includes(String(document.data().status ?? '')),
+          )
+          if (live) {
+            throw new CallableError(
+              'already-exists',
+              'Duplicate reference — this reference number is already on another payment record. A reference can only be used once.',
+              { cause: 'DUPLICATE_PAYMENT_REFERENCE' },
+            )
+          }
+        }
+
         transaction.set(inventoryLockRef, {
           revision: currentRevision + 1,
           updated_at: SERVER_TIMESTAMP,
@@ -505,9 +568,34 @@ export function createAvailabilityCore(deps: AvailabilityCoreDependencies): Avai
     }
   }
 
+  async function paymentReferenceStatus(context: CallableContext): Promise<PaymentReferenceStatusReply> {
+    if (!context.authUid) throw new CallableError('unauthenticated', 'Reconnect your Guest session before checking a reference.')
+    const body = context.data && typeof context.data === 'object' && !Array.isArray(context.data)
+      ? context.data as DocumentData
+      : {}
+    const key = normalizePaymentReference(body.reference)
+    if (key.length < 6 || key.length > 40) {
+      throw new CallableError('invalid-argument', 'Enter the reference number printed on the receipt.')
+    }
+    await spendCallableQuota({
+      firestore: deps.db,
+      budget: availabilityBudget,
+      scope: 'paymentReferenceStatus',
+      key: callableKey(context),
+      limit: submitLimit,
+      label: 'Reference check',
+    })
+    const snapshot = await deps.db.collection('bookings').where('payment_reference_key', '==', key).get()
+    const live = snapshot.docs.find(
+      (document) => !['Cancelled', 'Rejected', 'Expired'].includes(String(document.data().status ?? '')),
+    )
+    return { duplicate: Boolean(live), bookingId: live?.id ?? null, key }
+  }
+
   return {
     bookingAvailability,
     submitBooking,
+    paymentReferenceStatus,
     resetRateLimits() {
       availabilityBudget.reset()
       submitBudget.reset()

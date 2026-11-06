@@ -31,6 +31,13 @@ export type OcrExtract = {
   paymentDate: string
   /** Payment date normalized to `YYYY-MM-DD`, or '' when it could not be normalized. */
   paymentDateIso: string
+  /**
+   * The payment time as printed — `10:23 AM`. Absent when the receipt printed
+   * no readable time (or OCR could not read it).
+   */
+  paymentTime?: string
+  /** The printed time normalized to `HH:MM` on a 24-hour clock. */
+  paymentTime24?: string
   confidence: 'high' | 'low' | 'none'
   notes: string[]
 }
@@ -161,6 +168,73 @@ const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ'.\s-]{2,60}$/
 
 /** A line that carries a number the receipt prints is not a name line. */
 const NUMBER_LINE_RE = /\d{4,}/
+
+/**
+ * A time as a GCash / Maya / bank receipt prints it: `10:23 AM`, `22:05`,
+ * `9:07:12 p.m.`. The meridiem is optional, and a trailing meridiem that
+ * Tesseract mistook for a stray word simply makes the time read as 24-hour.
+ *
+ * `extractPaymentTime` returns the first time that carries a meridiem, or the
+ * first valid time when the receipt prints none. A receipt always prints its
+ * payment time next to its date, and a proof with no time cannot be checked
+ * against the sharing window, so this is what the strict receipt rule reads.
+ */
+const PRINTED_TIME_RE = /(?:^|[^\d:])(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp]\.?[Mm]\.?)?/g
+
+export function extractPaymentTime(text: string): { display: string; time24: string } | null {
+  let fallback: { display: string; time24: string } | null = null
+  for (const m of text.matchAll(new RegExp(PRINTED_TIME_RE.source, 'g'))) {
+    const hour = Number(m[1])
+    const minute = Number(m[2])
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || minute > 59 || hour > 23) continue
+    const engraved = (m[3] ?? '').toUpperCase().replace(/[^APM]/g, '')
+    let hour24 = hour
+    if (engraved === 'PM' && hour < 12) hour24 = hour + 12
+    if (engraved === 'AM' && hour === 12) hour24 = 0
+    const display = `${m[1]}:${m[2]}${m[3] ? ` ${m[3].toUpperCase()}` : ''}`
+    const candidate = { display, time24: `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}` }
+    if (engraved) return candidate
+    if (!fallback) fallback = candidate
+  }
+  return fallback
+}
+
+/**
+ * An alphanumeric reference as bank apps print it — `BDO123456789`,
+ * `REF-8F2K9L`, `MBTC 0045 7781 22`.
+ *
+ * GCash and Maya print 10–13 digits, which `extractReferenceNumber` reads
+ * exactly. A bank transfer's reference is often shorter and often carries
+ * letters, so it needs its own read: a labelled token of 6–40 letters, digits
+ * and hyphens that contains at least one digit and is neither a date, a time,
+ * a month nor the next label on the receipt. Everything is returned
+ * upper-cased with its separators intact; `normalizePaymentReference` is what
+ * folds two spellings of it into one key for the duplicate check.
+ */
+const REF_TOKEN_STOP_RE =
+  /^(?:amount|total|paid|payment|date|time|sent|received|status|completed|successful|download|share|from|to|via|reference|ref|txn|transaction|confirmation|trace|number|no)$/i
+
+export function extractAlphanumericReference(text: string): string {
+  for (const line of text.split(/\r?\n/)) {
+    const label = REF_LABEL_RE.exec(line)
+    if (!label) continue
+    for (const raw of line.slice(label.index + label[0].length).split(/\s+/)) {
+      const token = raw.replace(/^[^A-Za-z0-9]+/, '').replace(/[^A-Za-z0-9]+$/, '')
+      if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(token)) continue
+      if (MONTH_RE.test(token) || MERIDIEM_RE.test(token) || DATE_TOKEN_RE.test(token)) continue
+      if (REF_TOKEN_STOP_RE.test(token)) {
+        // A stop word closes the label's own line: the reference, when there is
+        // one, was printed before it.
+        break
+      }
+      const key = token.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+      if (key.length < 6 || key.length > 40) continue
+      if (!/\d/.test(key)) continue
+      return token.toUpperCase()
+    }
+  }
+  return ''
+}
 
 /**
  * Pull the sender name a receipt prints under a sender label.
@@ -476,6 +550,8 @@ export function extractReceiptFields(text: string): OcrExtract {
       senderName: '',
       paymentDate: '',
       paymentDateIso: '',
+      paymentTime: '',
+      paymentTime24: '',
       confidence: 'none',
       notes: ['No text found on the receipt. Enter the details yourself.'],
     }
@@ -483,7 +559,9 @@ export function extractReceiptFields(text: string): OcrExtract {
 
   // A reference split across the rows of a two-column receipt only reads off the
   // text as it was recognised, so the collapse below is not enough for this one.
-  let reference = extractReferenceNumber(text)
+  // The 10–13 digit GCash/Maya shape is tried first; a labelled alphanumeric or
+  // short bank reference is the fallback.
+  let reference = extractReferenceNumber(text) || extractAlphanumericReference(text)
   if (!reference) {
     for (const re of REF_PATTERNS) {
       const m = compact.match(re)
@@ -508,9 +586,12 @@ export function extractReceiptFields(text: string): OcrExtract {
 
   const sender = extractSenderName(text)
   const paidDate = extractPaymentDate(text)
+  const paidTime = extractPaymentTime(text)
 
-  if (!reference) notes.push('Could not read a reference number. Please type it from the receipt.')
-  if (!amount) notes.push('Could not read an amount. Please type it from the receipt.')
+  if (!reference) notes.push('Could not read a reference number from this receipt.')
+  if (!amount) notes.push('Could not read an amount from this receipt.')
+  if (!paidDate?.iso) notes.push('Could not read the payment date from this receipt.')
+  if (!paidTime) notes.push('Could not read the payment time from this receipt.')
   // Two different figures is a question, not a detail: the receipt is describing
   // two different numbers and the Guest has to say which one they sent.
   if (amounts.length > 1) {
@@ -536,6 +617,8 @@ export function extractReceiptFields(text: string): OcrExtract {
     senderName: sender,
     paymentDate: paidDate?.display ?? '',
     paymentDateIso: paidDate?.iso ?? '',
+    paymentTime: paidTime?.display ?? '',
+    paymentTime24: paidTime?.time24 ?? '',
     confidence,
     notes,
   }
@@ -566,6 +649,8 @@ export async function runReceiptOcr(file: File): Promise<OcrExtract> {
       senderName: '',
       paymentDate: '',
       paymentDateIso: '',
+      paymentTime: '',
+      paymentTime24: '',
       confidence: 'none',
       notes: ['No text found on the receipt. Enter the details yourself.'],
     }
@@ -578,6 +663,8 @@ export async function runReceiptOcr(file: File): Promise<OcrExtract> {
       senderName: '',
       paymentDate: '',
       paymentDateIso: '',
+      paymentTime: '',
+      paymentTime24: '',
       confidence: 'none',
       notes: [
         'OCR could not read this image automatically. Enter the reference number and amount from your receipt, then submit for Admin verification.',

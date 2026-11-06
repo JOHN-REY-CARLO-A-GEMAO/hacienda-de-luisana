@@ -268,20 +268,6 @@ export const ROUTE_META: readonly RouteMeta[] = [
     index: false,
     prerender: false,
   },
-  // The one Admin screen the website has: the live-location reader. It is
-  // private to the Admin role and reads a consent that a Guest may end at any
-  // moment, so it is never indexed and never prerendered — and it is listed
-  // BEFORE `/admin` because the longest match wins and `/admin` answers for its
-  // whole subtree.
-  {
-    path: '/admin/live-location',
-    title: `Live Location | ${BRAND} Admin`,
-    description:
-      'A Guest’s shared position while they are sharing one: where they are, how old the fix is, and how long is left. Nothing is stored after the window closes.',
-    index: false,
-    prerender: false,
-    subtree: true,
-  },
   // The retired web dashboards. The pages exist only to say where that work
   // moved, so they are addressed here and kept out of every index.
   {

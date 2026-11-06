@@ -11,11 +11,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 vi.mock('../../src/lib/firebase', () => ({
   db: {}, auth: null, isFirebaseConfigured: true, isUsingEmulators: false,
   firebaseConfigReport: { source: 'env' },
-  // The live-location check asks these; there is no Realtime Database in a test
-  // run, and a missing URL is the answer it must give (a `fail` with the deploy
-  // instruction), not a throw that takes the whole report with it.
-  hasRealtimeDatabaseConfig: () => false,
-  ensureRealtimeDatabase: async () => null,
 }))
 vi.mock('firebase/auth', () => ({
   signInAnonymously: async () => ({ user: { uid: 'anon-1234567890', isAnonymous: true } }),

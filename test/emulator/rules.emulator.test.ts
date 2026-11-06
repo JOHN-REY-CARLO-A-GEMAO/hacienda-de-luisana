@@ -1118,7 +1118,7 @@ describe('smart lock and the retired tracker', () => {
     await assertFails(getDocs(admin().firestore().collection('tracking_sessions')))
   })
 
-  it('keeps a consent in location_sessions, and a coordinate out of it', async () => {
+  it('refuses location_sessions now that live location is gone', async () => {
     const session = {
       guest_uid: GUEST_UID,
       conversation_id: CONVO_ID,
@@ -1128,43 +1128,10 @@ describe('smart lock and the retired tracker', () => {
       duration_minutes: 30,
       stream_secret: 'a'.repeat(32),
     }
-    await assertSucceeds(setDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), session))
-    // The same Guest, in their own conversation, and the Admin, can read it.
-    await assertSucceeds(getDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID)))
-    await assertSucceeds(getDoc(doc(admin().firestore(), 'location_sessions', CONVO_ID)))
-    // Nobody else can.
-    await assertFails(getDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'location_sessions', CONVO_ID)))
-    // A Guest cannot open one in a conversation that is not theirs…
-    await assertFails(setDoc(doc(anonymousGuest(OTHER_GUEST_UID).firestore(), 'location_sessions', CONVO_ID), {
-      ...session, guest_uid: OTHER_GUEST_UID,
-    }))
-    // …cannot smuggle a position into it…
-    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), { ...session, lat: 14.1 }))
-    // …and cannot buy more than an hour.
-    await assertFails(setDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), {
-      ...session, duration_minutes: 60, expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-    }))
-    // Ending the session is allowed; moving its secret is not.
-    await assertSucceeds(updateDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), {
-      active: false, expires_at: new Date(),
-    }))
-    await assertFails(updateDoc(doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID), {
-      stream_secret: 'b'.repeat(32),
-    }))
-  })
-
-  it('restarts a stopped live-location consent by delete then create, never by reopening it', async () => {
-    const session = (secret: string) => ({
-      guest_uid: GUEST_UID, conversation_id: CONVO_ID, active: true,
-      started_at: new Date(), expires_at: new Date(Date.now() + 30 * 60 * 1000),
-      duration_minutes: 30, stream_secret: secret,
-    })
-    const reference = doc(anonymousGuest().firestore(), 'location_sessions', CONVO_ID)
-    await assertSucceeds(setDoc(reference, session('a'.repeat(32))))
-    await assertSucceeds(updateDoc(reference, { active: false, expires_at: new Date() }))
-    await assertFails(setDoc(reference, session('b'.repeat(32))))
-    await assertSucceeds(deleteDoc(reference))
-    await assertSucceeds(setDoc(reference, session('b'.repeat(32))))
+    const path = `location_sessions/${CONVO_ID}`
+    await assertFails(setDoc(doc(anonymousGuest().firestore(), path), session))
+    await assertFails(getDoc(doc(anonymousGuest().firestore(), path)))
+    await assertFails(getDoc(doc(admin().firestore(), path)))
   })
 
   it('leaves the Admin the delete that purges an old session', async () => {

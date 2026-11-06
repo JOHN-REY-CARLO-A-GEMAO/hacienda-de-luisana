@@ -1,8 +1,8 @@
 // ----------------------------------------------------------------------------
 // Unified Guest Messaging UI & Data Flow Tests
 // Covers booking-scoped conversations, multi-stay switching, booking details
-// drawer, verified quick replies, private image attachments, compact live
-// location status (dismiss vs stop sharing), and strict zero-raw-ID hygiene.
+// drawer, verified quick replies, private image attachments, and strict
+// zero-raw-ID hygiene.
 // ----------------------------------------------------------------------------
 import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -11,14 +11,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 import { BookingDetailsDrawer } from '../../src/components/chat/BookingDetailsDrawer'
 import { ConversationHeader } from '../../src/components/chat/ConversationHeader'
-import { LiveLocationStatus } from '../../src/components/chat/LiveLocationStatus'
-import { ShareLocationBar } from '../../src/components/chat/ShareLocationBar'
 import { StayEntry } from '../../src/components/Account/StayEntry'
 import { MessageComposer } from '../../src/components/chat/MessageComposer'
 import { BUSINESS } from '../../src/config/site'
 import { AuthContext } from '../../src/context/AuthContext'
-import type { UseLiveLocation } from '../../src/hooks/useLiveLocation'
-import type { LocationSession } from '../../src/lib/liveLocationPolicy'
 import { type Booking } from '../../src/lib/storage'
 import { LIMITS, resetRateLimit } from '../../src/lib/rateLimit'
 import { MESSAGE_MAX } from '../../src/lib/validation'
@@ -37,34 +33,6 @@ async function pump(turns = 3) {
 }
 
 const mounted: Root[] = []
-
-const SESSION: LocationSession = {
-  id: 'booking-bk_test_1',
-  conversation_id: 'booking-bk_test_1',
-  guest_uid: 'guest-uid-alpha-991',
-  active: true,
-  started_at_ms: 0,
-  expires_at_ms: 30 * 60_000,
-  duration_minutes: 30,
-  stream_secret: 'a'.repeat(32),
-}
-
-function makeSharing(over: Partial<UseLiveLocation> = {}): UseLiveLocation {
-  return {
-    phase: 'idle',
-    resuming: false,
-    session: null,
-    message: null,
-    countdown: null,
-    lastSentAtMs: null,
-    offline: false,
-    fixError: null,
-    blocked: null,
-    start: async () => {},
-    stop: async () => {},
-    ...over,
-  }
-}
 
 function seedBookings(bookings: Booking[]) {
   localStorage.setItem('hdl:bookings', JSON.stringify(bookings))
@@ -213,16 +181,6 @@ describe('unified booking-scoped conversation screen', () => {
     await pump(2)
     expect(container.querySelector('a[href="/messages?booking=bk%2Fone"]')?.textContent)
       .toContain('Message about this reservation')
-  })
-
-  it('keeps location consent in a compact control and starts only after choosing a duration', () => {
-    const start = vi.fn()
-    const container = render(<ShareLocationBar sharing={makeSharing({ start })} />)
-    expect(container.textContent).not.toContain('Sharing stops automatically')
-    act(() => findButton(container, /Share live location/i).click())
-    expect(container.textContent).toContain('Share your live location with the Admin')
-    act(() => findButton(container, /15 minutes/i).click())
-    expect(start).toHaveBeenCalledWith(15)
   })
 
   it('opens only the selected booking in a clean workspace', async () => {
@@ -450,70 +408,7 @@ describe('the composer', () => {
   })
 })
 
-describe('📍 LiveLocationStatus compact bar & dismiss/re-expand flow', () => {
-  it('renders nothing when sharing is idle', async () => {
-    const container = render(<LiveLocationStatus sharing={makeSharing()} />)
-    await pump(1)
-    expect(container.textContent).toBe('')
-  })
-
-  it('separates minimizing the banner from Stop Sharing and stays discoverable in header', async () => {
-    const stop = vi.fn(async () => {})
-    function Harness() {
-      const [dismissed, setDismissed] = useState(false)
-      const activeSharing = makeSharing({
-        phase: 'active',
-        session: SESSION,
-        countdown: '28:14',
-        lastSentAtMs: Date.now(),
-        stop,
-      })
-      return (
-        <div>
-          <ConversationHeader
-            guestName="Maria Clara Santos"
-            propertyName="The Main House"
-            bookingReference="HDL-7821"
-            onToggleBookingDetails={() => {}}
-            liveLocationActive={activeSharing.phase === 'active'}
-            liveLocationCountdown={activeSharing.countdown}
-            liveLocationDismissed={dismissed}
-            onExpandLiveLocation={() => setDismissed(false)}
-          />
-          <LiveLocationStatus
-            sharing={activeSharing}
-            dismissed={dismissed}
-            onDismiss={() => setDismissed(true)}
-          />
-        </div>
-      )
-    }
-
-    const container = render(<Harness />)
-    await pump(1)
-
-    expect(container.textContent).toContain('Live Location Active')
-    expect(container.textContent).toContain('28:14 remaining')
-    // Never invents a fake ETA.
-    expect(container.textContent).not.toMatch(/\bETA\b/i)
-
-    // Minimize banner: hides the bar WITHOUT stopping sharing, and reveals header pill.
-    act(() => findButton(container, /Minimize live location bar/i).click())
-    await pump(1)
-    expect(stop).not.toHaveBeenCalled()
-    expect(container.textContent).not.toContain('Live Location Active')
-    expect(container.textContent).toContain('Sharing · 28:14')
-
-    // Re-expand from header pill, then press Stop Sharing.
-    act(() => findButton(container, /Show active live location status bar/i).click())
-    await pump(1)
-    expect(container.textContent).toContain('Live Location Active')
-
-    act(() => findButton(container, /^Stop Sharing$/i).click())
-    await pump(1)
-    expect(stop).toHaveBeenCalledOnce()
-  })
-
+describe('BookingDetailsDrawer', () => {
   it('handles legacy/unlinked BookingDetailsDrawer gracefully without raw IDs', async () => {
     render(
       <BookingDetailsDrawer

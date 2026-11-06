@@ -79,11 +79,9 @@ class AppConstants {
   /// never updated. `activity` is NOT used: it is a Booking subcollection with a
   /// closed `knownAction()` vocabulary, and a PIN reset belongs to no Booking.
   static const String colAdminSecurityEvents = 'admin_security_events';
-  /// The Guest ↔ Admin conversation, its messages, and the live-location
-  /// consent (ADR-0013).
+  /// The Guest ↔ Admin conversation and its messages.
   static const String colConversations = 'conversations';
   static const String subMessages = 'messages';
-  static const String colLocationSessions = 'location_sessions';
 
   /// The inquiry category a Guest opens first, and the one a Booking is about.
   static const String categoryBooking = 'booking';

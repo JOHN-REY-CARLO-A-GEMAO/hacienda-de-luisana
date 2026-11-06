@@ -30,7 +30,6 @@ import {
   conversationDoc,
   emailGuest,
   guestPaymentPatch,
-  locationSessionDoc,
   DEFAULT_REVIEW_TIME,
   messageDoc,
   paidBookingDoc,
@@ -2499,153 +2498,35 @@ describe('tracking_sessions: removed, and refused to everybody', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Live location (ADR-0013)
+// Live location (removed — ADR-0025)
 // ---------------------------------------------------------------------------
 
-describe('location_sessions: the consent, never the position', () => {
-  const live = (over: Partial<DocData> = {}) => locationSessionDoc(over)
-  const during = { time: Date.parse('2026-10-01T09:00:00.000Z') }
+describe('location_sessions and clock_probes: closed now that live location is gone', () => {
+  const session: DocData = {
+    guest_uid: GUEST_UID,
+    conversation_id: CONVO_ID,
+    active: true,
+    started_at: ruleTimestamp('2026-10-01T09:00:00.000Z'),
+    expires_at: ruleTimestamp('2026-10-01T09:30:00.000Z'),
+    duration_minutes: 30,
+    stream_secret: '0123456789abcdef0123456789abcdef',
+  }
+  const probe: DocData = { uid: GUEST_UID, probed_at: ruleTimestamp('2026-10-01T09:00:00.000Z') }
 
-  it('lets the Guest of the conversation open a session for themselves', () => {
-    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: live(), time: during.time })).toBe(true)
-  })
-
-  it('refuses a Guest opening a session in somebody else\'s conversation', () => {
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(OTHER_GUEST_UID), requestData: locationSessionDoc({ guest_uid: OTHER_GUEST_UID }), time: during.time })).toBe(true)
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: emailGuest(OTHER_GUEST_UID), requestData: locationSessionDoc({ guest_uid: OTHER_GUEST_UID }), time: during.time })).toBe(true)
-  })
-
-  it('refuses a session claiming to be somebody else\'s', () => {
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: live({ guest_uid: OTHER_GUEST_UID }), time: during.time })).toBe(true)
-  })
-
-  it('caps the window at an hour, whatever the client asks for', () => {
-    const hour = live({ duration_minutes: 60, expires_at: ruleTimestamp('2026-10-01T10:00:00.000Z') })
-    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: hour, time: during.time })).toBe(true)
-    const greedy = live({ duration_minutes: 60, expires_at: ruleTimestamp('2027-10-01T09:00:00.000Z') })
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: greedy, time: during.time })).toBe(true)
-    const zero = live({ duration_minutes: 0, expires_at: ruleTimestamp('2026-10-01T09:30:00.000Z') })
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: zero, time: during.time })).toBe(true)
-  })
-
-  it('refuses a session that is already over when it is written', () => {
-    const stale = live({ expires_at: ruleTimestamp('2026-10-01T08:00:00.000Z') })
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: stale, time: during.time })).toBe(true)
-  })
-
-  it('refuses a secret that is not a 32-character secret', () => {
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: live({ stream_secret: 'short' }), time: during.time })).toBe(true)
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth: anonymousGuest(), requestData: live({ stream_secret: 42 }), time: during.time })).toBe(true)
-  })
-
-  /**
-   * The rule the whole feature rests on. A position written here would be a
-   * position stored forever, with no TTL to sweep it — so a document carrying
-   * one is refused, in every shape the rules name.
-   */
-  it('refuses a session that smuggles a position in', () => {
-    for (const field of ['lat', 'lng', 'latitude', 'longitude', 'position', 'fix', 'points', 'trail']) {
-      expect(
-        deny({
-          path: `location_sessions/${CONVO_ID}`,
-          method: 'create',
-          auth: anonymousGuest(),
-          requestData: live({ [field]: field === 'lat' ? 14.1 : 'anything' }),
-          time: during.time,
-        }),
-      ).toBe(true)
+  it('refuses the consent to every caller, the Guest and the Admin alike', () => {
+    for (const auth of [anonymousGuest(), emailGuest(), allowlistedAdmin()]) {
+      expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'create', auth, requestData: session })).toBe(true)
+      expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth, resourceData: session })).toBe(true)
+      expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'update', auth, resourceData: session, requestData: { ...session, active: false } })).toBe(true)
+      expect(deny({ path: 'location_sessions', method: 'list', auth })).toBe(true)
     }
   })
 
-  it('lets the Admin and the sharing Guest read it, and nobody else', () => {
-    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth: allowlistedAdmin(), resourceData: live() })).toBe(true)
-    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth: anonymousGuest(), resourceData: live() })).toBe(true)
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: live() })).toBe(true)
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'get', auth: null, resourceData: live() })).toBe(true)
-    expect(deny({ path: 'location_sessions', method: 'list', auth: anonymousGuest() })).toBe(true)
-  })
-
-  it('lets the Guest end their own session, and change nothing else about it', () => {
-    const stopped = live({ active: false, expires_at: ruleTimestamp('2026-10-01T09:10:00.000Z') })
-    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: live(), requestData: stopped, time: during.time })).toBe(true)
-    // The secret, the owner and the window are what a stream is bound to.
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: live(), requestData: live({ stream_secret: 'f'.repeat(32) }), time: during.time })).toBe(true)
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'update', auth: anonymousGuest(), resourceData: live(), requestData: live({ duration_minutes: 60, expires_at: ruleTimestamp('2026-10-01T10:00:00.000Z') }), time: during.time })).toBe(true)
-  })
-
-  it('will not let a stopped session be reopened', () => {
-    expect(deny({
-      path: `location_sessions/${CONVO_ID}`,
-      method: 'update',
-      auth: anonymousGuest(),
-      resourceData: live({ active: false, expires_at: ruleTimestamp('2026-10-01T09:10:00.000Z') }),
-      requestData: live({ active: true, expires_at: ruleTimestamp('2026-10-01T10:00:00.000Z') }),
-      time: during.time,
-    })).toBe(true)
-  })
-
-  it('lets the Admin or the owning Guest clear the document', () => {
-    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'delete', auth: allowlistedAdmin(), resourceData: live() })).toBe(true)
-    expect(allow({ path: `location_sessions/${CONVO_ID}`, method: 'delete', auth: anonymousGuest(), resourceData: live() })).toBe(true)
-    expect(deny({ path: `location_sessions/${CONVO_ID}`, method: 'delete', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: live() })).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// The clock probe (ADR-0013, amendment: the window is stated on the server's
-// clock)
-// ---------------------------------------------------------------------------
-
-describe('clock_probes: one throwaway document, so a Guest can be told the time', () => {
-  const probe = (over: Partial<DocData> = {}): DocData => ({
-    uid: GUEST_UID,
-    probed_at: ruleTimestamp('2026-10-01T09:00:00.000Z'),
-    ...over,
-  })
-
-  it('lets a signed-in Guest write a probe as themselves', () => {
-    expect(allow({ path: `clock_probes/${GUEST_UID}-1`, method: 'create', auth: anonymousGuest(), requestData: probe() })).toBe(true)
-    expect(allow({ path: `clock_probes/${GUEST_UID}-2`, method: 'create', auth: emailGuest(), requestData: probe() })).toBe(true)
-  })
-
-  it('refuses a probe written in somebody else\'s name, or by nobody', () => {
-    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'create', auth: anonymousGuest(), requestData: probe({ uid: OTHER_GUEST_UID }) })).toBe(true)
-    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'create', auth: null, requestData: probe() })).toBe(true)
-  })
-
-  it('refuses a probe carrying anything a probe does not need', () => {
-    // The narrowest write in the file, deliberately: a Guest who could park a
-    // coordinate or a note here would have found a way around the rule that
-    // keeps a position out of Firestore.
-    for (const extra of [{ lat: 14.1 }, { lng: 121.3 }, { note: 'anything' }]) {
-      expect(
-        deny({
-          path: `clock_probes/${GUEST_UID}-1`,
-          method: 'create',
-          auth: anonymousGuest(),
-          requestData: probe(extra as Partial<DocData>),
-        }),
-      ).toBe(true)
+  it('refuses the clock probe, which existed only to state a sharing window', () => {
+    for (const auth of [anonymousGuest(), emailGuest(), allowlistedAdmin()]) {
+      expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'create', auth, requestData: probe })).toBe(true)
+      expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'get', auth, resourceData: probe })).toBe(true)
     }
-  })
-
-  it('lets only its owner read a probe back, and nobody change one', () => {
-    expect(allow({ path: `clock_probes/${GUEST_UID}-1`, method: 'get', auth: anonymousGuest(), resourceData: probe() })).toBe(true)
-    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'get', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: probe() })).toBe(true)
-    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'get', auth: allowlistedAdmin(), resourceData: probe() })).toBe(true)
-    expect(deny({ path: 'clock_probes', method: 'list', auth: anonymousGuest() })).toBe(true)
-    expect(deny({
-      path: `clock_probes/${GUEST_UID}-1`,
-      method: 'update',
-      auth: anonymousGuest(),
-      resourceData: probe(),
-      requestData: probe({ probed_at: ruleTimestamp('2026-10-01T09:00:01.000Z') }),
-    })).toBe(true)
-  })
-
-  it('lets its owner clear it, because the probe is not a record', () => {
-    expect(allow({ path: `clock_probes/${GUEST_UID}-1`, method: 'delete', auth: anonymousGuest(), resourceData: probe() })).toBe(true)
-    expect(deny({ path: `clock_probes/${GUEST_UID}-1`, method: 'delete', auth: anonymousGuest(OTHER_GUEST_UID), resourceData: probe() })).toBe(true)
   })
 })
 

@@ -1,5 +1,5 @@
 import { Alert, Input } from '../ui'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePaymentInformation } from '../../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from './PaymentInformationPanel'
 import { cloudBookingsDB } from '../../lib/firestoreBookings'
@@ -17,9 +17,20 @@ import {
   amountMismatchNote,
   extractSenderName,
   extractPaymentDate,
+  type OcrExtract,
   type ReceiptAmount,
 } from '../../lib/payments/ocr'
 import { nextProofAttempt } from '../../lib/payments'
+import {
+  RECEIPT_MAX_AGE_DAYS_DEFAULT,
+  checkScannedReceipt,
+  configuredReceiptMaxAgeDays,
+  displayPaymentReference,
+  duplicateReferenceMessage,
+  normalizePaymentReference,
+} from '../../lib/payments/receipt-rules'
+import { checkPaymentReference } from '../../lib/payments/reference-check'
+import { bookingPolicyDB } from '../../lib/bookingPolicyDB'
 import { LIMITS, checkRateLimit } from '../../lib/rateLimit'
 import {
   REF_MAX,
@@ -65,6 +76,17 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   const [paymentDate, setPaymentDate] = useState('')
   /** The date OCR normalized — stored as-is so the Admin sees what the receipt said. */
   const [ocrPaymentDate, setOcrPaymentDate] = useState('')
+  /** The payment time the scan read (`HH:MM`), filed as `payment_time`. */
+  const [paymentTime, setPaymentTime] = useState('')
+  /** The whole read of the attached receipt, so the strict check can see it. */
+  const [ocrExtract, setOcrExtract] = useState<OcrExtract | null>(null)
+  /** What OCR read as the time — stored as-is as `ocr_payment_time`. */
+  const [ocrPaymentTime, setOcrPaymentTime] = useState('')
+  /** The Admin's receipt-age window. */
+  const [maxAgeDays, setMaxAgeDays] = useState(RECEIPT_MAX_AGE_DAYS_DEFAULT)
+  /** The Booking already carrying this reference, when one was found. */
+  const [duplicateOf, setDuplicateOf] = useState<string | null>(null)
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
   /** How much of the receipt OCR could read — stamped with the read as provenance. */
   const [ocrConfidence, setOcrConfidence] = useState<'high' | 'low' | 'none'>('none')
   const [ocrNotes, setOcrNotes] = useState<string[]>([])
@@ -75,6 +97,19 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   const [message, setMessage] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
   const [sent, setSent] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    bookingPolicyDB
+      .getGuestPolicy()
+      .then((policy) => {
+        if (!cancelled) {
+          setMaxAgeDays(configuredReceiptMaxAgeDays({ payment_proof_max_age_days: policy.paymentProofMaxAgeDays }))
+        }
+      })
+      .catch(() => { if (!cancelled) setMaxAgeDays(RECEIPT_MAX_AGE_DAYS_DEFAULT) })
+    return () => { cancelled = true }
+  }, [])
 
   const status = cloudBookingsDB.readStatus(booking)
   if (status !== 'Payment Pending') {
@@ -153,6 +188,30 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       setMessage({ tone: 'bad', text: amtCheck.message })
       return
     }
+    // The proof is judged against its own receipt before the screenshot leaves
+    // the device: readable reference, date and time, amount; the form carrying
+    // the scan's own values; a recent receipt; and a reference nothing else owns.
+    const verdict = checkScannedReceipt({
+      extract: ocrExtract,
+      claim: { reference, amount: amountClaimed, paymentDate, paymentTime },
+      maxAgeDays,
+      duplicateOf,
+    })
+    if (!verdict.ok) {
+      setMessage({ tone: 'bad', text: verdict.message })
+      if (verdict.problems.some((problem) => problem.code === 'duplicate')) setDuplicateOpen(true)
+      return
+    }
+    const duplicate = await checkPaymentReference({ reference, bookingId: booking.id })
+    if (duplicate.status === 'duplicate') {
+      setDuplicateOf(duplicate.bookingId)
+      setDuplicateOpen(true)
+      setMessage({
+        tone: 'bad',
+        text: duplicateReferenceMessage(displayPaymentReference(reference), duplicate.bookingId),
+      })
+      return
+    }
     const limited = checkRateLimit(`payment:${booking.id}`, LIMITS.payment)
     if (!limited.ok) {
       setMessage({ tone: 'bad', text: limited.message })
@@ -184,11 +243,14 @@ export function PaymentStep({ booking }: { booking: Booking }) {
           paymentProofUrl: uploaded.url,
           extractedRefNumber: extractedRef || undefined,
           amount_claimed: claimed,
-          payment_reference: refCheck.value,
+          payment_reference: displayPaymentReference(reference),
+          payment_reference_key: normalizePaymentReference(reference),
+          payment_time: paymentTime,
           ocr_reference: reference,
           ocr_amount: amtCheck.value,
           ocr_sender_name: ocrSenderName,
           ocr_payment_date: ocrPaymentDate,
+          ocr_payment_time: ocrPaymentTime,
           // Provenance for the read above: it describes *this* freshly
           // uploaded proof object and nothing older, so the Admin app treats
           // it as current instead of warning that the read came from the
@@ -218,6 +280,10 @@ export function PaymentStep({ booking }: { booking: Booking }) {
       setOcrSenderName('')
       setPaymentDate('')
       setOcrPaymentDate('')
+      setPaymentTime('')
+      setOcrPaymentTime('')
+      setDuplicateOf(null)
+      setDuplicateOpen(false)
       setOcrConfidence('none')
       setAmountCandidates([])
       setOcrNotes([])
@@ -238,6 +304,19 @@ export function PaymentStep({ booking }: { booking: Booking }) {
   }
 
   const owed = (booking.amount_due ?? 0) + (booking.security_deposit ?? 0)
+  /**
+   * The proof against its own receipt: the scan must carry the reference, amount,
+   * date and time, the form must carry the scan's values, the receipt must be
+   * inside the Admin's window, and the reference must not already be filed
+   * against another Booking.
+   */
+  const receiptCheck = checkScannedReceipt({
+    extract: ocrExtract,
+    claim: { reference, amount: amountClaimed, paymentDate, paymentTime },
+    maxAgeDays,
+    duplicateOf,
+  })
+  const receiptRefusal = receiptCheck.ok ? null : receiptCheck.message
   // The Admin's approval lands on `Payment Pending`, so the plan is chosen
   // *inside* that stage — only the stored plan says the choice has been made.
   const planChosen = booking.payment_plan !== undefined
@@ -357,6 +436,11 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                 setOcrSenderName('')
                 setPaymentDate('')
                 setOcrPaymentDate('')
+                setPaymentTime('')
+                setOcrPaymentTime('')
+                setOcrExtract(null)
+                setDuplicateOf(null)
+                setDuplicateOpen(false)
                 setOcrConfidence('none')
                 setAmountCandidates([])
                 setOcrNotes([])
@@ -370,6 +454,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                       setOcrBusy(true)
                       try {
                         const extracted = await runReceiptOcr(file)
+                        setOcrExtract(extracted)
                         const fromName = extractReceiptFields(file.name.replace(/[_-]/g, ' '))
                         const referenceGuess = extracted.reference || fromName.reference
                         const amountGuess = extracted.amount || fromName.amount
@@ -384,6 +469,23 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                         if (extracted.paymentDateIso) {
                           setOcrPaymentDate(extracted.paymentDateIso)
                           setPaymentDate(extracted.paymentDateIso)
+                        }
+                        if (extracted.paymentTime24) {
+                          setOcrPaymentTime(extracted.paymentTime24)
+                          setPaymentTime(extracted.paymentTime24)
+                        } else if (fromName.paymentTime24) {
+                          setOcrPaymentTime(fromName.paymentTime24)
+                          setPaymentTime(fromName.paymentTime24)
+                        }
+                        if (referenceGuess) {
+                          void checkPaymentReference({ reference: referenceGuess, bookingId: booking.id })
+                            .then((check) => {
+                              if (check.status === 'duplicate') {
+                                setDuplicateOf(check.bookingId)
+                                setDuplicateOpen(true)
+                              }
+                            })
+                            .catch(() => {})
                         }
                         setOcrConfidence(extracted.confidence)
                         // Every distinct figure the receipt prints, so a receipt
@@ -403,9 +505,20 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                         const defaultAmount =
                           suggestion?.value ?? (candidates.length === 1 ? candidates[0].value : '')
                         if (defaultAmount) setAmountClaimed(defaultAmount)
+                        const missing: string[] = []
+                        if (!referenceGuess) missing.push('reference number')
+                        if (candidates.length === 0) missing.push('amount')
+                        if (!extracted.paymentDateIso) missing.push('date')
+                        if (!extracted.paymentTime24) missing.push('time')
                         setOcrNotes([
                           ...extracted.notes,
-                          'Confirm or correct the fields below. OCR is not verification.',
+                          ...(missing.length > 0
+                            ? [
+                                `Could not read the ${missing.join(', ')} from this receipt. Only a receipt whose reference, date and time, and amount are all readable can be accepted — upload a clearer screenshot.`,
+                              ]
+                            : [
+                                'The reference, date and time, and amount below were read from this receipt.',
+                              ]),
                         ])
                       } catch {
                         setOcrNotes([
@@ -468,22 +581,18 @@ export function PaymentStep({ booking }: { booking: Booking }) {
               <label className="block">
                 <span className="guest-label">Reference number</span>
                 <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
-                  10–13 digits from your GCash, Maya or bank receipt · OCR fills this in — correct it
-                  if it misread
+                  Read from your GCash, Maya or bank receipt — digits or letters. If it was read
+                  wrongly, upload a clearer screenshot; it cannot be typed over.
                 </span>
                 <Input
                   value={reference}
-                  onChange={(e) => setReference(sanitizeReferenceInput(e.target.value))}
-                  onKeyDown={(e) => {
-                    if (/[^a-zA-Z0-9-]/.test(e.key) && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                      e.preventDefault()
-                    }
-                  }}
+                  readOnly
+                  aria-readonly="true"
                   maxLength={REF_MAX}
                   inputMode="text"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="e.g. 1234567890123"
+                  placeholder="Read from your receipt"
                 />
               </label>
               <label className="block">
@@ -500,54 +609,89 @@ export function PaymentStep({ booking }: { booking: Booking }) {
                   placeholder="e.g. Juan Dela Cruz"
                 />
               </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="guest-label">Date on the receipt</span>
+                  <Input
+                    value={paymentDate}
+                    readOnly
+                    aria-readonly="true"
+                    maxLength={10}
+                    inputMode="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="YYYY-MM-DD"
+                  />
+                </label>
+                <label className="block">
+                  <span className="guest-label">Time on the receipt</span>
+                  <Input
+                    value={paymentTime}
+                    readOnly
+                    aria-readonly="true"
+                    maxLength={5}
+                    inputMode="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="HH:MM"
+                  />
+                </label>
+              </div>
               <label className="block">
-                <span className="guest-label">Date on the receipt</span>
-                <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
-                  When the payment was sent, as YYYY-MM-DD — OCR fills this in, confirm or correct it
-                </span>
-                <Input
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value.trim())}
-                  maxLength={10}
-                  inputMode="text"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="e.g. 2026-08-26"
-                />
-                {paymentDate.length > 0 &&
-                  paymentDate.length < 10 &&
-                  !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) && (
-                  <span className="mt-0.5 block text-[10px] text-amber-800 dark:text-amber-300">
-                    Use YYYY-MM-DD
-                  </span>
-                )}
-              </label>
-              <label className="block">
-                <span className="guest-label">Amount you sent (₱)</span>
+                <span className="guest-label">Amount on the receipt (₱)</span>
                 {amountCandidates.length <= 1 && (
                   <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
-                    OCR fills this in — correct it if it misread
+                    Read from the receipt. If two figures are printed, choose the one you sent above.
                   </span>
                 )}
                 <Input
                   value={amountClaimed}
-                  onChange={(e) => setAmountClaimed(sanitizeAmountInput(e.target.value))}
-                  onKeyDown={(e) => {
-                    if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                      e.preventDefault()
-                    }
-                  }}
+                  readOnly
+                  aria-readonly="true"
                   maxLength={12}
                   inputMode="decimal"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="e.g. 10500"
+                  placeholder="Read from your receipt"
                 />
               </label>
+              {receiptRefusal && (
+                <Alert tone="danger" role="status" className="text-[11px]">
+                  {receiptRefusal}
+                </Alert>
+              )}
               {amountMismatchNote(Number(amountClaimed) || 0, owed) && (
                 <Alert tone="warning" role="status" className="text-[11px]">
                   {amountMismatchNote(Number(amountClaimed) || 0, owed)}
                 </Alert>
+              )}
+              <p className="text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
+                Receipts are accepted only within {maxAgeDays} {maxAgeDays === 1 ? 'day' : 'days'} of the
+                payment date and time printed on them.
+              </p>
+              {duplicateOpen && duplicateOf && (
+                <div
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby={`duplicate-reference-${booking.id}`}
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-forest-950/60 p-4"
+                >
+                  <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+                    <h4 id={`duplicate-reference-${booking.id}`} className="font-serif text-lg font-semibold text-forest-900">
+                      Duplicate reference
+                    </h4>
+                    <p className="mt-2 text-xs leading-relaxed text-forest-800">
+                      {duplicateReferenceMessage(displayPaymentReference(reference), duplicateOf)}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm mt-4 w-full"
+                      onClick={() => setDuplicateOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
               )}
               <label className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-forest-900/10 bg-white/60 px-3.5 py-3 text-[11px] leading-relaxed text-forest-700 transition-colors hover:border-forest-900/25 dark:border-cream-100/12 dark:bg-forest-900/40 dark:text-cream-100/80">
                 <input

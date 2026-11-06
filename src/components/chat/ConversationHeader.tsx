@@ -1,5 +1,5 @@
 import { BUSINESS } from '../../config/site'
-import { Calendar, Chevron, Lock, MapPin, Phone } from '../../lib/icons'
+import { Calendar, Chevron, Lock, Phone } from '../../lib/icons'
 import { formatConversationTimestamp } from './ConversationListItem'
 import { GuestAvatar } from './GuestAvatar'
 
@@ -16,10 +16,6 @@ export type ConversationHeaderProps = {
   perspective?: 'guest' | 'admin'
   contactPhoneHref?: string | null
   contactPhoneLabel?: string
-  liveLocationActive?: boolean
-  liveLocationCountdown?: string | null
-  liveLocationDismissed?: boolean
-  onExpandLiveLocation?: () => void
 }
 
 export function ConversationHeader({
@@ -34,10 +30,6 @@ export function ConversationHeader({
   perspective = 'guest',
   contactPhoneHref = 'tel:+639258507707',
   contactPhoneLabel = `Call ${BUSINESS.name} at ${BUSINESS.contact.phoneDisplay}`,
-  liveLocationActive = false,
-  liveLocationCountdown = null,
-  liveLocationDismissed = false,
-  onExpandLiveLocation,
 }: ConversationHeaderProps) {
   const title = perspective === 'admin' ? guestName : `${BUSINESS.name} · Concierge`
   const stayContext = [
@@ -90,20 +82,6 @@ export function ConversationHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-        {liveLocationActive && liveLocationDismissed && onExpandLiveLocation && (
-          <button
-            type="button"
-            onClick={onExpandLiveLocation}
-            className="inline-flex items-center gap-1.5 rounded-full border border-forest-700/25 bg-cream-100 px-2.5 py-1 text-[11px] font-semibold text-forest-800 transition-colors hover:bg-cream-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-400"
-            aria-label="Show active live location status bar"
-          >
-            <MapPin size={12} />
-            <span className="tabular-nums">
-              Sharing{liveLocationCountdown ? ` · ${liveLocationCountdown}` : ''}
-            </span>
-          </button>
-        )}
-
         {contactPhoneHref && (
           <a
             href={contactPhoneHref}

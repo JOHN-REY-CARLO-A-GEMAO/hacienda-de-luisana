@@ -91,7 +91,6 @@ export const PERMISSIONS = [
   'stays:complete',
   'access-logs:read',
   'access-logs:correct',
-  'guest-location:read',
   'analytics:read',
   'site:manage',
   'rates:publish',

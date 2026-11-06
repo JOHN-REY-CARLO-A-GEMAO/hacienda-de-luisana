@@ -1,6 +1,6 @@
 // Explicit SOURCE/SCHEMA/INVENTORY assertions only. No assertion in this file
 // proves cloud rules, a delivered notification, a purge, or a physical device.
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
@@ -53,23 +53,30 @@ it('F20-SOURCE: mobile simulator toJson omits required booking/UID/result fields
   expect(source('firestore.rules')).toContain("hasAll(['timestamp','uid','ref_id','result','reason'])")
   expect(source('lib/services/firestore_service.dart')).toContain('.add(event.toJson())')
 })
-it('F21-SOURCE: mobile consent and web writer both use stream_secret; only RTDB fixes use session_secret', () => {
-  expect(source('lib/services/live_location_service.dart')).toContain("data['stream_secret']")
-  expect(source('src/lib/liveLocation.ts')).toContain('stream_secret: secret')
-  // The stream's expiry bound is the longest share a Guest may start — the same
-  // figure `MAX_SHARE_MINUTES` gives the web client and `firestore.rules` caps the
-  // consent with. It read `now + 90000` until this was fixed, which no session the
-  // Guest can pick fits inside, so the first fix of every share was refused.
-  const cap = Number(source('src/lib/liveLocationPolicy.ts').match(/MAX_SHARE_MINUTES = (\d+)/)?.[1])
-  expect(source('database.rules.json')).toContain(`now + ${cap * 60_000}`)
+it('F21-SOURCE: live location was removed from both apps, not merely switched off (ADR-0025)', () => {
+  for (const gone of [
+    'src/lib/liveLocation.ts',
+    'src/lib/liveLocationPolicy.ts',
+    'src/lib/liveLocationReader.ts',
+    'src/hooks/useLiveLocation.ts',
+    'src/pages/AdminLiveLocationPage.tsx',
+    'lib/services/live_location_service.dart',
+    'lib/views/inbox/live_location_panel.dart',
+    'database.rules.json',
+  ]) {
+    expect(existsSync(resolve(gone)), `${gone} is gone`).toBe(false)
+  }
+  // No consent collection is left open, and nothing in either app names one.
+  expect(source('firestore.rules')).not.toContain('location_sessions')
+  expect(source('lib/core/constants/app_constants.dart')).not.toContain('location_sessions')
 })
 it('F26-SOURCE: checked-in Firestore indexes contain no reviews composites (deployment remains unknown)', () => {
   const indexes = JSON.parse(source('firestore.indexes.json'))
   expect(indexes.indexes.some((index: { collectionGroup: string }) => index.collectionGroup === 'reviews')).toBe(false)
 })
-it('F27-SOURCE: privacy text denies live tracking while the feature exists; no purge inferred from a retention helper', () => {
+it('F27-SOURCE: privacy text and the code now agree that no live tracker exists', () => {
   expect(source('src/lib/legal.ts')).toContain('We do not run a live location tracker.')
-  expect(source('src/lib/liveLocation.ts')).toContain('publishFix')
+  expect(existsSync(resolve('src/lib/liveLocation.ts'))).toBe(false)
   expect(source('src/lib/chatRetention.ts')).toContain('Nothing here deletes anything.')
 })
 it('F28-SOURCE: mobile totalAmount uses recorded money or the saved rate snapshot, never an invented default', () => {

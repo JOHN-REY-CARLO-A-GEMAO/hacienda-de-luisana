@@ -24,6 +24,12 @@ vi.mock('../../src/lib/guestAuth', () => ({ ensureGuestUid: async () => null }))
 vi.mock('../../src/lib/payments', () => ({
   uploadPaymentProof: async () => ({ ok: true, url: 'payments/demo/proof.png', uid: 'demo' }),
 }))
+// A readable receipt, so the strict receipt rule lets the page reach the
+// identity check this suite exists for.
+vi.mock('../../src/lib/payments/ocr', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/lib/payments/ocr')>()),
+  runReceiptOcr: vi.fn(async () => (await import('./receipt-fixture')).scannedNow()),
+}))
 vi.mock('../../src/lib/firestoreBookings', () => ({
   cloudBookingsDB: {
     get isCloud() {
