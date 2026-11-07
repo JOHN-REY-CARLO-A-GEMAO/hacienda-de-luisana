@@ -308,20 +308,20 @@ describe('the function the app calls', () => {
     // phone cannot redirect a code to an address its holder controls.
     const readBody = fnCode.slice(fnCode.indexOf('function readBody'), fnCode.indexOf('Deno.serve'))
     expect(readBody).not.toMatch(/record\.email|\bemail\s*:/)
-    expect(fnCode).toContain('sendCodeEmail(smtpUser, appPassword, email, code)')
+    expect(fnCode).toContain('sendCodeEmail(relayUrl, relaySecret, email, code)')
   })
 
   it('sends by mail, with no link to click', () => {
     // `fnSource`, not `fnCode`: the comment stripper cuts `//` out of URLs.
-    expect(fnSource).toContain("const GMAIL_SMTP_HOST = 'smtp.gmail.com'")
-    expect(fnSource).toContain("const GMAIL_SMTP_PORT = 465")
+    expect(fnSource).toContain('GMAIL_RELAY_TIMEOUT_MS = 15_000')
+    expect(fnSource).toContain("Deno.env.get('GMAIL_RELAY_URL')")
     // A link in a reset email is a phishing habit to teach; the code is typed
     // into the app that asked for it.
-    expect(fnSource).not.toMatch(/https?:\/\/(?!identitytoolkit|firebase)/)
+    expect(fnSource).not.toMatch(/https?:\/\/(?!identitytoolkit|firebase|script\.google\.com)/)
   })
 
   it('refuses to pretend when the mailer is unconfigured', () => {
-    expect(fnCode).toMatch(/GMAIL_SMTP_USER[\s\S]{0,600}?503/)
+    expect(fnCode).toMatch(/GMAIL_RELAY_URL[\s\S]{0,600}?503/)
   })
 
   it('imports only what its modules actually export', () => {
