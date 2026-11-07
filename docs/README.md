@@ -56,7 +56,7 @@ Build outputs (`dist/`, `build/`, `.dart_tool/`, `android/.gradle/`) are gitigno
 | Check-in → Staying → Check-out → Complete, revoke a Credential | — | ✅ app |
 | Publish rates & cancellation policy (`site_config/rates`) | — | ✅ app |
 | A deliberate second input on every sensitive action — a Security PIN (approve, delete, publish, revoke) or a confirm (stay transitions, sign-out, reader grant) | — | ✅ app ([ADR-0015](./adr/0015-a-sensitive-admin-action-needs-a-deliberate-second-input.md)) |
-| Set aside a forgotten Security PIN and choose a new one — once per 24 h, needs the server | — | ✅ app ([ADR-0016](./adr/0016-a-forgotten-security-pin-is-reset-by-disposing-of-the-record.md)) |
+| Set aside a forgotten Security PIN and choose a new one — proved by a code mailed to the Admin's verified email, needs the server | — | ✅ app ([ADR-0027](./adr/0027-a-forgotten-pin-is-reset-by-an-emailed-code.md)) |
 | Read every Booking, Access log, CRM, analytics | — | ✅ app |
 | Read a Guest's live location while they are sharing it | — | ✅ app ([ADR-0013](./adr/0013-live-location-as-a-stream.md)) |
 

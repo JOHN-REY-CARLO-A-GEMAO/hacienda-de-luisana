@@ -516,11 +516,15 @@ regenerate or re-encode that code — see `public/images/payment/README.md`.
   `/payments` path is readable only by the Guest it belongs to and the Admin, who may also delete them.
   (Government ID KYC is gone: the `/kyc` path was removed from the rules entirely — new payment proofs
   live in Supabase Storage's `payment-proofs` bucket, ADR-0011.)
-- `admin_security/{uid}` (the Admin's Security PIN) is own-document-only and, since ADR-0016,
-  **deletable once per 24 h by the Admin's own signed-in session** — the door a locked-out operator
-  uses to reset a forgotten PIN. It needs no console action and no extra configuration; deploying the
-  rules is the whole change. Its companion `admin_security_events` collection is append-only
-  (`update`/`delete` refused for everyone), so the trail that a PIN was reset outlives the record.
+- `admin_security/{uid}` (the Admin's Security PIN) is own-document-only and, since ADR-0027,
+  **not deletable by any client at all**. A forgotten PIN is reset through the Supabase Edge Function
+  `admin-pin-reset`, which mails six digits to the Admin's Firebase-verified address and disposes of
+  the record only when those digits come back. See the deployment block in `docs/adr/0027-a-forgotten-pin-is-reset-by-an-emailed-code.md`
+  — it needs `RESEND_API_KEY`, `PIN_RESET_FROM` and `BOOTSTRAP_ADMIN_EMAILS` as function secrets, or
+  the reset sheet reports that sending is not configured. `admin_security_events` stays append-only
+  (`create`, `update` and `delete` refused to every client), and the function writes the line, so the
+  trail that a PIN was reset outlives the record. `admin_security_resets/{uid}` holds the reset code's
+  salted hash and counters, and is refused to every client in the rules.
 - **No server-side infrastructure is required for anything on this page.** In particular there is no
   `functions/` directory and no Cloud Function anywhere in this project: Firebase Cloud Functions have
   no free tier, and nothing in the booking, payment, chat, review, live-location or PIN-reset flows

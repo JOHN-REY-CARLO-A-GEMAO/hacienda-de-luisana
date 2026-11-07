@@ -851,13 +851,16 @@ service cloud.firestore {
     //          while a lock is live, so rotating cannot become the way
     //          around the wait. The app offers rotation only after a
     //          current-PIN check.
-    //   - and a third door, for DELETE only (ADR-0016): the Admin's own
-    //     signed-in session may dispose of the record once 24 h have passed
-    //     since it was last stamped. This is the price ADR-0015 paid for
-    //     "never deletable — a lockout record is evidence", and it is the
-    //     one place the app can clear the lockout watermark. The cooldown
-    //     keys off `pin_updated_at`, which only a stamped rotation moves,
-    //     so failed guesses cannot buy their way to it.
+    //   - and NO delete door at all (ADR-0027). ADR-0016 opened one — the
+    //     Admin's own signed-in session could dispose of the record 24 h
+    //     after its last stamp — and it was honest that this let anyone
+    //     holding a signed-in, unlocked phone wipe the PIN. A forgotten PIN
+    //     is now reset by the `admin-pin-reset` function instead, which
+    //     proves the caller can read the Admin's own verified email address
+    //     and writes with the Admin SDK. The client can no longer delete the
+    //     record, so the phone alone is not enough to clear the lockout
+    //     watermark. ADR-0015's "never deletable — a lockout record is
+    //     evidence" is restored for every client; the server keeps the door.
     match /admin_security/{uid} {
       function isAdminSecurityShape() {
         return request.resource.data.uid == uid
@@ -945,25 +948,32 @@ service cloud.firestore {
       //     one is not deletable, so this cannot become a way to clear a
       //     malformed document.
       //
-      // A live lock is deliberately NOT consulted. Refusing here would restore
-      // the dead end this door exists to close, and the wait it replaces is
-      // shorter anyway. The reset is self-limiting: no document means
-      // `setUpNeeded`, the operator sets a new PIN, and a new
-      // `pin_updated_at` starts the 24 h over.
+      // The delete door ADR-0016 opened is closed (ADR-0027). Its reasoning is
+      // kept here rather than deleted, because it is the reasoning that made
+      // the door look acceptable and it is what changed:
       //
-      // Server connectivity is required, so ADR-0015 §5 still holds verbatim —
-      // a fresh install cannot mint a PIN for an account the server has a
-      // record for without reaching the server. The app writes the companion
-      // `admin_security_events/PinReset` line in the same batch below.
-      allow delete: if isAdmin()
-        && request.auth.uid == uid
-        && resource.data.pin_updated_at is timestamp
-        && request.time > resource.data.pin_updated_at + duration.value(24, 'h');
+      //   - the 24 h cooldown keyed off `pin_updated_at` was the brake that
+      //     replaced the live-lock check, and it was a real brake — failed
+      //     guesses cannot move that stamp;
+      //   - but the identity proof was "a signed-in session on this phone",
+      //     which is the same thing a thief holding an unlocked phone has.
+      //     A cooldown only slows that person down by a day.
+      //
+      // The replacement keeps the online-only property ADR-0015 §5 depends on
+      // and adds a second factor that never lives on the phone: a six-digit
+      // code mailed to the Admin's verified Firebase address by
+      // `admin-pin-reset`, verified server-side against a salted hash, and
+      // spent on use. That function holds the Admin SDK, which bypasses these
+      // rules; no client does.
+      //
+      // ADR-0015 §4 said the document is never deletable — a lockout record is
+      // evidence. For every client that is true again.
+      allow delete: if false;
     }
 
     // ------------------------------------------------------------------
     // admin_security_events — the append-only trail of a PIN reset
-    // (ADR-0016)
+    // (ADR-0016, narrowed by ADR-0027)
     // ------------------------------------------------------------------
     // `activity` is a Booking subcollection with a closed `knownAction()`
     // vocabulary and has no shape for a non-Booking event, so it is NOT
@@ -976,36 +986,27 @@ service cloud.firestore {
     //
     //   admin_security_events/{eventId} = { uid, action, at }
     //
-    // What the rule does NOT do, stated plainly rather than implied: it does
-    // not prove the delete happened alongside this line. A rule evaluating a
-    // `create` has no pre-write `resource` for the document being created, so
-    // it cannot read the stamp off the record that was just disposed of. The
-    // two are tied together by the app writing them in one batch, and by
-    // nothing else. An Admin could file a PinReset line without deleting
-    // anything; that is a noisy trail, not an escalation, because the delete
-    // above is gated on its own.
+    // WHO WRITES IT. Since ADR-0027 the line is written by the
+    // `admin-pin-reset` function with the Admin SDK, in the same batch that
+    // deletes the PIN record — so the trail still lands with the reset. Client
+    // writes are now refused, and that is the point rather than a tidy-up:
+    // ADR-0016 had to admit that a rule evaluating a `create` cannot bind the
+    // line to a delete, so an Admin could file a `PinReset` line without
+    // disposing of anything. With the client unable to delete the record at
+    // all, a line a client could write would describe a reset the client
+    // cannot perform. A line existing is now the server's record of one.
+    //
+    // The read stays Admin-wide: a second Admin promoted later can see what
+    // happened to the first one's gate.
     match /admin_security_events/{eventId} {
-      function isPinEventShape() {
-        return request.resource.data.keys().hasAll(['uid', 'action', 'at'])
-          && request.resource.data.keys().hasOnly(['uid', 'action', 'at'])
-          && request.resource.data.uid is string
-          && request.resource.data.action == 'PinReset'
-          // Server-stamped, so the line cannot claim to have been filed at a
-          // time of the writer's choosing.
-          && request.resource.data.at == request.time;
-      }
-
       // The Admin reads the trail. Read is Admin-wide rather than own-uid so
       // a second Admin promoted later can see what happened to the first
       // one's gate.
       allow read: if isAdmin();
 
-      // Only the Admin whose own gate it was — the same person the delete
-      // above required — and only for their own uid, so a Guest cannot file
-      // one and an Admin cannot file one naming somebody else.
-      allow create: if isAdmin()
-        && request.resource.data.uid == request.auth.uid
-        && isPinEventShape();
+      // Server-written only (ADR-0027). The Admin SDK is not subject to this
+      // rule; no client is the writer, so no client is given the door.
+      allow create: if false;
 
       // An audit record that can be edited or erased is not one. Same as
       // `activity`, and for the same reason: this line is the only surviving

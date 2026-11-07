@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hacienda_de_luisana/core/constants/app_constants.dart';
 import 'package:hacienda_de_luisana/providers/app_providers.dart';
 import 'package:hacienda_de_luisana/services/auth_store.dart';
+import 'package:hacienda_de_luisana/services/pin_reset_service.dart';
 import 'package:hacienda_de_luisana/services/pin_store.dart';
 import 'package:hacienda_de_luisana/views/security/pin_gate_screen.dart';
 import 'package:provider/provider.dart' as legacy;
@@ -30,20 +31,13 @@ class _DeadRemote implements PinSecurityRemote {
 
   @override
   Future<void> writeAdminSecurity(String uid, Map<String, dynamic> doc) async {}
-
-  /// A phone that cannot be reached cannot dispose of the PIN either — which is
-  /// why ADR-0016's reset needs the server and why the blocked phase keeps only
-  /// Retry and Sign out.
-  @override
-  Future<void> forgetPin(String uid) async => throw StateError('offline');
 }
 
-/// A remote that will dispose of the record when asked, and can be told to
-/// refuse the way the rules do inside ADR-0016's cooldown (ADR-0016).
+/// A remote that will hold the PIN record, as `admin_security/{uid}` does. The
+/// reset itself no longer happens here (ADR-0027): the server takes the record
+/// away when the emailed code comes back.
 class _ResettableRemote implements PinSecurityRemote {
   final Map<String, Map<String, dynamic>> docs = {};
-  bool refuse = false;
-  int resets = 0;
 
   @override
   Future<Map<String, dynamic>?> fetchAdminSecurity(String uid) async =>
@@ -58,11 +52,43 @@ class _ResettableRemote implements PinSecurityRemote {
     docs[uid] = Map<String, dynamic>.from(doc);
   }
 
+  /// The reset, as the server sees it: the record goes when the code matched.
+  void disposeOnServer(String uid) => docs.remove(uid);
+}
+
+/// The emailed-code service the sheet talks to (ADR-0027). It records what was
+/// asked and can be told how the server behaves, without a network.
+class _StubResetRemote implements PinResetRemote {
+  /// The code the "server" will accept.
+  String code = '246810';
+
+  /// What it says when the mail is asked for; `null` means "sent".
+  String? requestError;
+
+  int requests = 0;
+  final List<String> confirmations = [];
+
+  /// Called when a code matches, so the test's server copy of the record can go
+  /// the way the real function would take it away.
+  void Function()? onReset;
+
   @override
-  Future<void> forgetPin(String uid) async {
-    resets++;
-    if (refuse) throw StateError('permission-denied');
-    docs.remove(uid);
+  Future<PinResetRequest> requestCode() async {
+    requests++;
+    if (requestError != null) return PinResetRequest.refused(requestError!);
+    return const PinResetRequest.sentTo('a***n@example.com',
+        expiresIn: kPinResetCodeTtl);
+  }
+
+  @override
+  Future<PinResetCheck> confirmCode(String candidate) async {
+    confirmations.add(candidate);
+    if (candidate != code) {
+      return const PinResetCheck(
+          PinResetOutcome.wrongCode, 'That code is not right. Check the email.');
+    }
+    onReset?.call();
+    return const PinResetCheck(PinResetOutcome.reset, 'Set aside.');
   }
 }
 
@@ -75,20 +101,15 @@ Future<PinGate> _gateWithPin(String pin) async {
   return gate;
 }
 
-/// The same, but stamped a day and an hour ago — past ADR-0016's 24 h
-/// cooldown, so the reset is actually available.
-Future<PinGate> _gateWithStalePin(String pin, PinSecurityRemote remote) async {
-  final gate = PinGate(store: MemoryPinStore(), remote: remote);
+/// A gate whose PIN was set a day ago. The age no longer decides anything
+/// (ADR-0027 dropped the 24 h cooldown with the self-service door): a PIN that
+/// exists is one that can be forgotten, whether it is a day old or an hour.
+Future<PinGate> _gateWithStalePin(String pin, PinSecurityRemote remote,
+    {PinResetRemote? resetRemote}) async {
+  final gate = PinGate(
+      store: MemoryPinStore(), remote: remote, resetRemote: resetRemote);
   await gate.setPin('admin', pin, iterations: 100,
       now: DateTime.now().subtract(const Duration(hours: 25)));
-  return gate;
-}
-
-/// The same, but stamped just now — inside the cooldown, so the sheet has to say
-/// the wait instead of offering the reset.
-Future<PinGate> _gateWithFreshPin(String pin, PinSecurityRemote remote) async {
-  final gate = PinGate(store: MemoryPinStore(), remote: remote);
-  await gate.setPin('admin', pin, iterations: 100);
   return gate;
 }
 
@@ -386,11 +407,14 @@ void main() {
     expect(find.textContaining('turn it off'), findsNothing);
   });
 
-  // The way out of a gate nobody can open (ADR-0016).
-  testWidgets('a PIN past the cooldown offers the way out of the gate',
+  // The way out of a gate nobody can open (ADR-0027): six digits mailed to the
+  // Admin's own address, checked by the server.
+  testWidgets('a PIN exists and the server can mail: the way out is offered',
       (tester) async {
     await _pumpGate(
-        tester, await _gateWithStalePin('492713', _ResettableRemote()));
+        tester,
+        await _gateWithStalePin('492713', _ResettableRemote(),
+            resetRemote: _StubResetRemote()));
 
     expect(find.byKey(const Key('pin-gate-forgot')), findsOneWidget);
     // Offering it changes nothing about the gate: still six dots, no shell.
@@ -400,7 +424,7 @@ void main() {
 
   testWidgets('demo mode does not offer a reset it cannot perform',
       (tester) async {
-    // No remote: there is no server record to dispose of, and so no dead end.
+    // No remote: there is no server record to dispose of, and no dead end.
     await _pumpGate(tester, await _gateWithPin('492713'));
 
     expect(find.byKey(const Key('pin-gate-forgot')), findsNothing);
@@ -409,8 +433,8 @@ void main() {
 
   testWidgets('the blocked phase still offers no reset — the server is the '
       'point', (tester) async {
-    // ADR-0016's reset is online by construction, so an unreachable server is
-    // exactly where it must not appear.
+    // The reset needs the server for the mail and for the delete, so an
+    // unreachable server is exactly where it must not appear.
     await _pumpGate(
         tester, PinGate(store: MemoryPinStore(), remote: _DeadRemote()));
 
@@ -418,70 +442,99 @@ void main() {
     expect(find.byKey(const Key('pin-gate-retry')), findsOneWidget);
   });
 
-  testWidgets('a freshly set PIN says the wait instead of offering the reset',
-      (tester) async {
-    await _pumpGate(
-        tester, await _gateWithFreshPin('492713', _ResettableRemote()));
+  testWidgets('the code is mailed before anything is deleted: a wrong code '
+      'leaves the gate asking for the same PIN', (tester) async {
+    final remote = _ResettableRemote();
+    final reset = _StubResetRemote();
+    await _pumpGate(tester,
+        await _gateWithStalePin('492713', remote, resetRemote: reset));
 
     await tester.tap(find.byKey(const Key('pin-gate-forgot')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Available in'), findsOneWidget);
-    expect(find.byKey(const Key('forgot-pin-reset')), findsNothing);
-    // Back is still the way out of the sheet itself.
-    expect(find.byKey(const Key('forgot-pin-back')), findsOneWidget);
+    // Nothing has been sent yet: the sheet asks first.
+    expect(reset.requests, 0);
+    expect(find.byKey(const Key('forgot-pin-send')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('forgot-pin-send')));
+    await tester.pumpAndSettle();
+
+    // The mail went, the masked address is on screen, and the PIN is untouched.
+    expect(reset.requests, 1);
+    expect(find.text('a***n@example.com'), findsOneWidget);
+    expect(find.byKey(const Key('forgot-pin-code')), findsOneWidget);
+    expect(remote.docs['admin'], isNotNull);
+
+    await tester.enterText(find.byKey(const Key('forgot-pin-code')), '111111');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('forgot-pin-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(reset.confirmations, ['111111']);
+    expect(remote.docs['admin'], isNotNull);
+    expect(find.byKey(const Key('forgot-pin-note')), findsOneWidget);
+    expect(find.textContaining('not right'), findsOneWidget);
+    expect(_unlocked, isFalse);
+    // The gate behind the sheet is unchanged, and the trigger is still there.
+    expect(find.text('Cannot remember your PIN?'), findsOneWidget);
   });
 
-  testWidgets('a reset says what it costs, then returns the gate to setup',
-      (tester) async {
+  testWidgets('the right code sets the PIN aside, then the gate asks for a '
+      'new one', (tester) async {
     final remote = _ResettableRemote();
-    await _pumpGate(tester, await _gateWithStalePin('492713', remote));
+    final reset = _StubResetRemote()..onReset = () => remote.disposeOnServer('admin');
+    await _pumpGate(tester,
+        await _gateWithStalePin('492713', remote, resetRemote: reset));
 
     await tester.tap(find.byKey(const Key('pin-gate-forgot')));
     await tester.pumpAndSettle();
-
-    expect(find.text('Cannot remember your PIN?'), findsOneWidget);
-    // The cost is on screen before the button, not after it.
-    expect(find.textContaining('lockout count'), findsOneWidget);
-    expect(find.byKey(const Key('forgot-pin-reset')), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('forgot-pin-reset')));
+    await tester.tap(find.byKey(const Key('forgot-pin-send')));
     await tester.pumpAndSettle();
 
-    expect(remote.resets, 1);
+    await tester.enterText(find.byKey(const Key('forgot-pin-code')), '246810');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('forgot-pin-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(reset.confirmations, ['246810']);
     // Not the shell: the gate asks for a NEW PIN rather than opening.
     expect(_unlocked, isFalse);
     expect(find.text('Create your Security PIN'), findsOneWidget);
   });
 
-  testWidgets('a refused reset leaves the gate asking for the same PIN',
-      (tester) async {
-    final remote = _ResettableRemote()..refuse = true;
-    await _pumpGate(tester, await _gateWithStalePin('492713', remote));
+  testWidgets('a code that cannot be sent is said out loud, and nothing '
+      'changes', (tester) async {
+    final remote = _ResettableRemote();
+    final reset = _StubResetRemote()
+      ..requestError = 'Could not reach the reset service.';
+    await _pumpGate(tester,
+        await _gateWithStalePin('492713', remote, resetRemote: reset));
 
     await tester.tap(find.byKey(const Key('pin-gate-forgot')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('forgot-pin-reset')));
+    await tester.tap(find.byKey(const Key('forgot-pin-send')));
     await tester.pumpAndSettle();
 
-    expect(_unlocked, isFalse);
-    // Still the same gate, still the same PIN, and the sheet admits that
-    // nothing changed rather than pretending the reset worked.
-    expect(find.text('Enter your Security PIN'), findsOneWidget);
-    expect(find.text('Cannot remember your PIN?'), findsOneWidget);
-    expect(find.textContaining('Nothing was changed'), findsOneWidget);
+    expect(find.textContaining('Could not reach'), findsOneWidget);
+    // Still on the send step: there is no code to type.
+    expect(find.byKey(const Key('forgot-pin-code')), findsNothing);
+    expect(find.byKey(const Key('forgot-pin-send')), findsOneWidget);
+    expect(remote.docs['admin'], isNotNull);
   });
 
   testWidgets('Back closes the sheet without resetting anything', (tester) async {
     final remote = _ResettableRemote();
-    await _pumpGate(tester, await _gateWithStalePin('492713', remote));
+    final reset = _StubResetRemote();
+    await _pumpGate(tester,
+        await _gateWithStalePin('492713', remote, resetRemote: reset));
 
     await tester.tap(find.byKey(const Key('pin-gate-forgot')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('forgot-pin-back')));
     await tester.pumpAndSettle();
 
-    expect(remote.resets, 0);
+    expect(reset.requests, 0);
+    expect(reset.confirmations, isEmpty);
     // The sheet is gone; the gate and its trigger are not.
     expect(find.byKey(const Key('forgot-pin-back')), findsNothing);
     expect(find.byKey(const Key('pin-gate-forgot')), findsOneWidget);

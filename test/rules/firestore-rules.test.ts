@@ -529,20 +529,12 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
     })).toBe(true)
   })
 
-  // ADR-0015 said "never deletable — a lockout record is evidence". ADR-0016
-  // reverses that for one door: the Admin's own signed-in session may dispose of
-  // the record after 24 h, which is what lets a locked-out operator out. The
-  // name of this case changed with it; the case itself still denies, because the
-  // fixture's stamp is `request.time` and the cooldown has not passed.
-  it('refuses a delete inside the 24 h cooldown', () => {
-    expect(deny({ path: ownPath, method: 'delete', auth: own, resourceData: doc, time: at })).toBe(true)
-  })
-
-  // -------------------------------------------------------------------------
-  // delete door 3 — the forgotten-PIN reset (ADR-0016)
-  // -------------------------------------------------------------------------
-
-  describe('delete door 3 — the Admin may dispose of their own record', () => {
+  // ADR-0015 said "never deletable — a lockout record is evidence" and gave the
+  // document no delete door. ADR-0016 opened one after a 24 h cooldown; ADR-0027
+  // closed it again and moved the reset to the `admin-pin-reset` function, which
+  // proves the caller can read the Admin's verified email. What is left for a
+  // client is what ADR-0015 wrote.
+  describe('the record is not deletable by any client (ADR-0027)', () => {
     const DAY_MS = 24 * 60 * 60 * 1000
     const stamp = ADMIN_SECURITY_NOW
     /** The record as it stands when the stamp is `stamp`. */
@@ -554,68 +546,43 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
       resourceData: DocData,
     ) => deny({ path: ownPath, method: 'delete', auth, resourceData, time: stamp + ms })
 
-    it('allows it once 24 h have passed since the stamp', () => {
-      // Strictly after: at exactly 24 h the comparison is still false, which is
-      // the same edge the ratchet takes everywhere else — never equal, only
-      // later. Verified against the engine, not assumed.
+    it('refuses the Admin their own record, however long it has stood', () => {
+      // The door ADR-0016 opened is the one this case closes. A day, a week and
+      // a year after the stamp are all the same answer now, because the stamp
+      // is no longer the brake — the emailed code is.
+      expect(drop(own, 0, stale())).toBe(true)
       expect(drop(own, DAY_MS, stale())).toBe(true)
-      expect(drop(own, DAY_MS + 1, stale())).toBe(false)
-    })
-
-    it('refuses it a millisecond early', () => {
-      expect(drop(own, DAY_MS - 1, stale())).toBe(true)
-      expect(drop(own, 0, stale())).toBe(true)
-    })
-
-    it('refuses it before any time has passed at all', () => {
-      // The fixture's stamp is `request.time`, so this is "just rotated".
-      expect(drop(own, 0, stale())).toBe(true)
-      expect(drop(own, 1000, stale())).toBe(true)
+      expect(drop(own, DAY_MS + 1, stale())).toBe(true)
+      expect(drop(own, 365 * DAY_MS, stale())).toBe(true)
     })
 
     it.each([
       ['a Guest who is signed in', () => anonymousGuest()],
       ['a Guest by email', () => emailGuest()],
       ['somebody signed out', () => null],
+      ['another Admin, including one promoted in Firestore', () => promotedAdmin()],
     ])('refuses %s', (_name, who) => {
       expect(drop(who(), DAY_MS + 1, stale())).toBe(true)
     })
 
-    it("refuses another Admin, including one promoted in Firestore", () => {
-      expect(drop(promotedAdmin(), DAY_MS + 1, stale())).toBe(true)
-    })
-
-    it('refuses a record with no usable stamp', () => {
-      // The rules refuse a stamp that is not a timestamp, so the cooldown cannot
-      // be read and the record cannot be cleared — this cannot become a way to
-      // dispose of a malformed document.
-      const unstamped = adminSecurityDoc()
-      delete (unstamped as Record<string, unknown>).pin_updated_at
-      expect(drop(own, DAY_MS + 1, unstamped)).toBe(true)
-
-      const stringy = adminSecurityDoc({ pin_updated_at: '2026-09-24T00:00:00Z' })
-      expect(drop(own, DAY_MS + 1, stringy)).toBe(true)
-    })
-
-    it('ignores a live lockout — refusing one would restore the dead end', () => {
-      // The deliberate exception, stated as a case so it cannot be lost: a
-      // locked Admin can still get out, because the 24 h stamp is the brake
-      // that replaces the lock check.
+    it('refuses a locked record, an unlocked one, and a malformed one alike', () => {
+      // No client door means no carve-out to preserve: the lockout watermark
+      // can only be cleared through `admin-pin-reset`, which needs the mailbox.
       const locked = stale({
         failed_attempts: 9,
         locked_until: ruleTimestamp(stamp + DAY_MS + 60_000),
       })
-      expect(drop(own, DAY_MS + 1, locked)).toBe(false)
-    })
+      expect(drop(own, DAY_MS + 1, locked)).toBe(true)
 
-    it('a raised counter does not bring the cooldown forward', () => {
-      // `failed_attempts` is not the stamp, and guessing must not move it.
-      expect(drop(own, DAY_MS - 1, stale({ failed_attempts: 9 }))).toBe(true)
+      const unstamped = adminSecurityDoc()
+      delete (unstamped as Record<string, unknown>).pin_updated_at
+      expect(drop(own, DAY_MS + 1, unstamped)).toBe(true)
     })
   })
 
   // ---------------------------------------------------------------------------
-  // admin_security_events — the append-only trail of a PIN reset (ADR-0016)
+  // admin_security_events — the append-only trail of a PIN reset
+  // (ADR-0016, server-written since ADR-0027)
   // ---------------------------------------------------------------------------
 
   describe('admin_security_events: evidence that outlives the record', () => {
@@ -629,10 +596,6 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
       ...overrides,
     })
 
-    it('accepts the Admin\'s own line, server-stamped now', () => {
-      expect(allow({ path, method: 'create', auth: own2, requestData: line(), time: at2 })).toBe(true)
-    })
-
     it('lets any Admin read the trail, and no Guest', () => {
       expect(allow({ path, method: 'get', auth: own2, resourceData: line() })).toBe(true)
       expect(allow({ path, method: 'get', auth: promotedAdmin(), resourceData: line() })).toBe(true)
@@ -640,39 +603,17 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
       expect(deny({ path, method: 'get', auth: null, resourceData: line() })).toBe(true)
     })
 
-    it('refuses a line naming somebody else', () => {
-      const other = promotedAdmin()
-      expect(deny({
-        path, method: 'create', auth: other,
-        requestData: line({ uid: ADMIN_UID }), time: at2,
-      })).toBe(true)
-    })
-
     it.each([
-      ['a Guest', () => anonymousGuest()],
+      ['the Admin whose own gate it was', () => allowlistedAdmin()],
+      ['a promoted Admin', () => promotedAdmin()],
+      ['a Guest who is signed in', () => anonymousGuest()],
       ['a Guest by email', () => emailGuest()],
       ['somebody signed out', () => null],
-    ])('refuses a line from %s', (_name, who) => {
+    ])('refuses a line written by %s — the function is the only writer', (_name, who) => {
+      // ADR-0027 moved the write to `admin-pin-reset` with the Admin SDK. A
+      // client-writable line could describe a reset the client can no longer
+      // perform, which is exactly the gap ADR-0016 had to admit to.
       expect(deny({ path, method: 'create', auth: who(), requestData: line(), time: at2 })).toBe(true)
-    })
-
-    it.each([
-      ['an unknown action', line({ action: 'PinDeleted' })],
-      ['an action from the Booking vocabulary', line({ action: 'Submit' })],
-      ['an extra key', line({ note: 'anything' })],
-      ['a missing key', (() => { const l = line(); delete (l as Record<string, unknown>).action; return l })()],
-      ['a uid that is not a string', line({ uid: 7 })],
-    ])('refuses %s', (_name, bad: DocData) => {
-      expect(deny({ path, method: 'create', auth: own2, requestData: bad, time: at2 })).toBe(true)
-    })
-
-    it('refuses a timestamp the writer chose', () => {
-      // `at` must equal `request.time`, so the line cannot claim to have been
-      // filed at a moment of the writer's picking.
-      expect(deny({
-        path, method: 'create', auth: own2,
-        requestData: line({ at: ruleTimestamp(at2 - 86_400_000) }), time: at2,
-      })).toBe(true)
     })
 
     it('is append-only: no update, no delete, for anybody', () => {
@@ -681,6 +622,60 @@ describe('admin_security: the PIN the app checks sensitive actions against', () 
         expect(deny({ path, method: 'update', auth, resourceData: line(), requestData: line({ action: 'Nope' }) })).toBe(true)
         expect(deny({ path, method: 'delete', auth, resourceData: line() })).toBe(true)
       }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // admin_security_resets — the emailed one-time code (ADR-0027)
+  // ---------------------------------------------------------------------------
+  //
+  // The document holds a salted hash of a live reset code and the attempt and
+  // pace counters that protect it. It is written and read by
+  // `admin-pin-reset` with the Admin SDK, so the answer for every client has to
+  // be no: an Admin who could read their own record could still not use it
+  // (they would need the plaintext), but an Admin who could *write* it could
+  // clear their own attempt counter and keep guessing.
+  describe('admin_security_resets: the emailed code is the server\'s', () => {
+    const now = ADMIN_SECURITY_NOW
+    const path = `admin_security_resets/${ADMIN_UID}`
+    const record = (overrides: DocData = {}): DocData => ({
+      uid: ADMIN_UID,
+      email: ADMIN_EMAIL,
+      code_hash: 'a'.repeat(64),
+      code_salt: 'b'.repeat(32),
+      attempts: 0,
+      issued_at: now,
+      expires_at: now + 15 * 60 * 1000,
+      consumed_at: null,
+      window_started_at: now,
+      sent: 1,
+      last_sent_at: now,
+      ...overrides,
+    })
+
+    it.each([
+      ['the Admin whose uid it names', () => allowlistedAdmin()],
+      ['a promoted Admin', () => promotedAdmin()],
+      ['a Guest by email', () => emailGuest()],
+      ['somebody signed out', () => null],
+    ])('refuses a read by %s', (_name, who) => {
+      expect(deny({ path, method: 'get', auth: who(), resourceData: record() })).toBe(true)
+    })
+
+    it('refuses every write, by the Admin included', () => {
+      const own = allowlistedAdmin()
+      expect(deny({ path, method: 'create', auth: own, requestData: record(), time: now })).toBe(true)
+      expect(deny({
+        path, method: 'update', auth: own,
+        resourceData: record(), requestData: record({ attempts: 0 }), time: now,
+      })).toBe(true)
+      // The attempt counter is the interesting one: lowering it back to zero
+      // would make five hundred guesses as cheap as five.
+      expect(deny({
+        path, method: 'update', auth: own,
+        resourceData: record({ attempts: 4 }), requestData: record({ attempts: 0 }), time: now,
+      })).toBe(true)
+      expect(deny({ path, method: 'delete', auth: own, resourceData: record(), time: now })).toBe(true)
     })
   })
 

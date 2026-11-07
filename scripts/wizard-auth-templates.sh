@@ -225,7 +225,7 @@ do_template() {
   if confirm "Saved this template? (Enter/n if still working)"; then :; fi
 }
 
-TOTAL_STAGES=8
+TOTAL_STAGES=9
 
 # (message bodies defined once, below, before the first do_template call.)
 
@@ -328,6 +328,19 @@ step "Scroll to Your project → Public-facing name; it should read: Hacienda de
 step "If you used %APP_NAME% in any subject or message, this name is what Firebase substitutes for it."
 if confirm "Public-facing name is 'Hacienda de LuisAna'"; then :; fi
 
+# ── Stage 8: verify the Admin's own address ──────────────────────────────
+stage "Verify the Admin's address — the PIN reset depends on it"
+warn "ADR-0027 mails the Security-PIN reset code to this address, and refuses anything unverified. If 'email_verified' is false on the Admin's Firebase account, the reset sheet cannot help them."
+open_url "https://console.firebase.google.com/project/hacienda-de-luisana/authentication/users"
+step "Find the Admin row (gemaojohnreyarguilles@gmail.com) and check the Email verified column."
+step "If it is NOT verified: sign in to the Admin app as the Admin, and use the app's own 'Send verification email' on the sign-in screen — not the console's reset link."
+step "Open the mailbox and click the verification link. Then sign out and back in on the phone so the token carries email_verified: true."
+say "The reset also needs the admin-pin-reset function deployed with its secrets:"
+say "  supabase functions deploy admin-pin-reset"
+say "  supabase secrets set RESEND_API_KEY=re_... PIN_RESET_FROM='Hacienda de LuisAna <noreply@yourdomain>' BOOTSTRAP_ADMIN_EMAILS=\"gemaojohnreyarguilles@gmail.com\""
+warn "With RESEND_API_KEY unset the sheet answers 'Sending codes is not configured yet'. That is a refusal, not a bug — it will not claim a code was sent."
+if confirm "Admin address shows verified, and the function is deployed"; then :; fi
+
 # ── Stage 8: post-save test checklist ────────────────────────────────────
 stage "Post-save tests (on a real device, with a real inbox)"
 warn "These need the deployed website plus a test inbox you control — they cannot be verified from this terminal."
@@ -335,6 +348,7 @@ step "1. On the deployed Guest site, request a password reset from the sign-in s
 step "2. Confirm sender name, subject and message; open the link and finish the reset. Never share an action link with anyone."
 step "3. Register a NEW test Guest with an inbox you control; open the verification link from that email, then on the site choose 'I have verified my email' to refresh the token."
 step "4. If the request fails, the account still exists — retry from My Bookings / My Profile 'Send verification email'; do NOT register again. Google and browser-demo accounts skip this flow; verification is informational and does not block Guest access."
+step "5. On the Admin app, tap 'Cannot remember your PIN?' → 'Send the code'; the inbox should get six digits within a minute. Type a WRONG code first: the app must say so and the PIN must still be asked for. Then the right one: the gate must ask for a NEW PIN."
 warn "Saving console templates and pushing repo changes is not a deployment — an Auth-emulator test proves real delivery nothing."
 pause ""
 finish
