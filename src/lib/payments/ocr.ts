@@ -267,9 +267,9 @@ export function extractSenderName(text: string): string {
   return ''
 }
 
-/** `Aug 26, 2026`, `26/08/2026`, `2026-08-26`, `08/26/2026`, `26-08-2026`, `26 Aug 2026`. */
+/** `Aug 26, 2026`, `Oct. 1, 2025`, `26/08/2026`, `2026-08-26`, `08/26/2026`, `26-08-2026`, `26 Aug 2026`. */
 const PRINTED_DATE_RE =
-  /(?:(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}))|((\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2}))|((\w{3,9})\s+(\d{1,2}),?\s+(\d{4}))|((\d{1,2})\s+(\w{3,9}),?\s+(\d{4}))/gi
+  /(?:(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}))|((\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2}))|((\w{3,9})\.?\s+(\d{1,2}),?\s+(\d{4}))|((\d{1,2})\s+(\w{3,9})\.?,?\s+(\d{4}))/gi
 
 const MONTH_INDEX: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
@@ -362,9 +362,15 @@ export function extractPaymentDate(text: string): {
  *
  * The labels a real receipt uses, longest first so `Total Amount Sent` is read as
  * itself rather than as a bare `Total` followed by a stray `Amount Sent`:
- * `total amount sent`, `amount sent`, `total amount`, `amount paid`, `total paid`,
- * `total`, `amount`, `paid`, and a bare `₱`/`PHP` for a receipt that prints the
- * figure on its own line.
+ * `send money amount` (BDO Pay's principal figure), `total amount sent`,
+ * `amount sent`, `total amount`, `amount paid`, `total paid`, `total`, `amount`,
+ * `paid`, and a bare `₱`/`PHP` for a receipt that prints the figure on its own
+ * line.
+ *
+ * A figure that prices the transfer's fee is not an amount the Guest sent and is
+ * never offered: BDO Pay prints `Service Fee PHP 10.00` right under the amount,
+ * and offering it would ask the Guest to "choose" between what they sent and a
+ * ten-peso fee. See `FEE_LINE_RE` below.
  *
  * One figure printed under two labels is kept once, under the more specific of the
  * two — `Amount 1,020.00 Total Amount Sent 1,020.00` is one number, not a
@@ -377,6 +383,7 @@ export function extractReceiptAmounts(text: string): ReceiptAmount[] {
   // the reference number on the same line as an amount label.
   const lines = text.split(/\r?\n/)
   const LABELS: Array<[string, RegExp]> = [
+    ['Send Money Amount', /send\s*money\s*amount/i],
     ['Total Amount Sent', /total\s*amount\s*sent/i],
     ['Amount Sent', /amount\s*sent/i],
     ['Total Amount', /total\s*amount/i],
@@ -386,6 +393,17 @@ export function extractReceiptAmounts(text: string): ReceiptAmount[] {
     ['Amount', /amount/i],
     ['Paid', /paid/i],
   ]
+
+  /**
+   * A line that prices the transfer's fee, not the transfer: `Service Fee`,
+   * `Convenience Fee`, `Service Charge`. A fee word only kills a figure when no
+   * amount label stands before it on the same line — the label is the receipt
+   * saying "this figure is money again", and a two-column receipt the recognizer
+   * interleaved must not lose its real amount to a fee word from the next row.
+   */
+  const FEE_LINE_RE = /\bfees?\b|\bcharges?\b/i
+  const feeOwnsFigure = (before: string): boolean =>
+    FEE_LINE_RE.test(before) && !LABELS.some(([, re]) => re.test(before))
 
   // The figure alone, without its currency prefix: the prefix belongs to the
   // text *before* the run, which is exactly where a label is looked for. A
@@ -460,6 +478,8 @@ export function extractReceiptAmounts(text: string): ReceiptAmount[] {
       // Only the text before this figure, on this line, can be its label.
       const before = line.slice(0, run.index)
       if (before.length > refLabelEnd && referenceBetweenIsOneRun(before.slice(refLabelEnd))) continue
+      // `Service Fee PHP 10.00` prices the fee, not the payment.
+      if (feeOwnsFigure(before)) continue
 
       let label = ''
       let rank = LABELS.length
@@ -479,6 +499,9 @@ export function extractReceiptAmounts(text: string): ReceiptAmount[] {
       }
       labelFrom(before)
       if (!label && beforeIsOnlyCurrency(before, raw) && index > 0 && lines[index - 1].trim()) {
+        // A bare figure under a fee row is the fee's own figure (`Service Fee`
+        // then `PHP 10.00`), not a second payment.
+        if (FEE_LINE_RE.test(lines[index - 1])) continue
         // The label printed on its own row, the figure below it.
         labelFrom(lines[index - 1])
       }

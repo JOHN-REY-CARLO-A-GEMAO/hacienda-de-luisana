@@ -70,12 +70,17 @@ na na-verify na pala. Kung `ocr_reference` lamang ang may reference (walang taon
 
 - **GCash / Maya / bank reference**: 10–13 digits. Kasama ang pinakamahirap na kaso — ang GCash
   "Express Send" na `7044 357 122304` na hinahati ng date column sa dalawang linya.
-- **Amount**: lahat ng figure na may label (`Amount`, `Total Amount Sent`, `Total`, …). Kapag
-  dalawa at hindi tugma (may fee), **hindi pipili ang app** — tatanungin ka kung alin ang ipinadala.
+- **BDO Pay ("Sent!") reference**: alphanumeric na `BN-20251001-57580325` sa ilalim ng
+  `Reference no.` — kahit nasa sariling linya ang value. Hindi kailanman nagiging reference ang
+  `Invoice number` (6 digits lang).
+- **Amount**: lahat ng figure na may label (`Send Money Amount`, `Amount`, `Total Amount Sent`,
+  `Total`, …). Kapag dalawa at hindi tugma (may fee), **hindi pipili ang app** — tatanungin ka
+  kung alin ang ipinadala. Ang `Service Fee` / `Convenience Fee` / `Service Charge` ay hindi
+  kailanman inaalok bilang amount — hindi iyon ang ipinadala mo.
 - **Sender**: kung may label (`From`, `Sender`, `Remitter`, `Account name`, `Sent by`). Hindi
   tinatanggap ang numero lang bilang pangalan.
-- **Date**: `Aug 26, 2026`, `26/08/2026`, `2026-08-26`. Kapag ambiguous (`08/05/2026`), sinasabi
-  nito at ikaw ang magkukumpirma.
+- **Date**: `Aug 26, 2026`, `Oct. 1, 2025` (tuldok sa buwan, gaya ng BDO Pay), `26/08/2026`,
+  `2026-08-26`. Kapag ambiguous (`08/05/2026`), sinasabi nito at ikaw ang magkukumpirma.
 - **Hindi tinatanggap**: 14–16 digit na card number, wala pang 10 digits, o walang label at hindi
   tugma sa format.
 

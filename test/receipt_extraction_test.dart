@@ -28,6 +28,30 @@ Ref No. 7044 357    Aug 26, 2026 10:23
 Amount: PHP 4,500.00
 ''';
 
+/// A BDO Pay ("Sent!") receipt, as a text recognizer returns it: a dotted
+/// month date (`Oct. 1, 2025`), the principal under `Send Money Amount`, the
+/// fee on its own row (`Service Fee` / `PHP 10.00`), an invoice number, and an
+/// alphanumeric `BN-` reference on the row below its label.
+const bdoPaySent = '''
+Sent!
+PHP 3,310.00
+Oct. 1, 2025 06:25 PM
+Send Money Amount
+PHP 3,310.00
+Service Fee
+PHP 10.00
+To
+JUAN DELA CRUZ
+From
+BDO KABAYAN PESO SAVINGS ACCT ........4929
+Invoice number
+625868
+Reference no.
+BN-20251001-57580325
+Thank you for using
+BDO pay
+''';
+
 void main() {
   group('extractReferenceNumber', () {
     test('reads a 13-digit GCash reference printed with spacing', () {
@@ -132,6 +156,18 @@ void main() {
         const [ReceiptAmount('Amount', '1500.00')],
       );
     });
+
+    test('skips the service fee a BDO Pay receipt prints under its amount', () {
+      // The ten-peso fee is never money the Guest sent, so it is dropped
+      // rather than offered as a second amount to choose from.
+      expect(
+        extractReceiptAmounts(
+          'Send Money Amount\nPHP 3,310.00\nService Fee\nPHP 10.00',
+        ),
+        const [ReceiptAmount('Send Money Amount', '3310.00')],
+      );
+      expect(extractReceiptAmounts('Service Fee PHP 10.00'), isEmpty);
+    });
   });
 
   group('extractPaymentDate', () {
@@ -150,6 +186,13 @@ void main() {
       expect(date!.iso, '2026-11-01');
       expect(date.ambiguous, isFalse);
       expect(extractPaymentDate('Date 26 Aug 2026')!.iso, '2026-08-26');
+    });
+
+    test('reads a dotted month as BDO Pay prints it', () {
+      final date = extractPaymentDate('Oct. 1, 2025 06:25 PM');
+      expect(date, isNotNull);
+      expect(date!.iso, '2025-10-01');
+      expect(date.ambiguous, isFalse);
     });
 
     test('reads a day-first slash date', () {
@@ -318,6 +361,27 @@ ANA CRUZ
       final extraction = parseReceiptText('Ref No. 12\nAmount 1,020.00');
       expect(extraction.reference, '');
       expect(extraction.notes, isNotEmpty);
+    });
+
+    test('a BDO Pay receipt reads end to end', () {
+      final extraction = parseReceiptText(bdoPaySent);
+      expect(extraction.reference, 'BN-20251001-57580325');
+      expect(extraction.amount, '3310.00');
+      expect(extraction.amounts, const [
+        ReceiptAmount('Send Money Amount', '3310.00'),
+      ]);
+      expect(extraction.senderName, 'BDO KABAYAN PESO SAVINGS');
+      expect(extraction.recipientName, 'JUAN DELA CRUZ');
+      expect(extraction.paymentDateIso, '2025-10-01');
+      expect(extraction.paymentTime, '06:25 PM');
+      expect(extraction.confidence, ReceiptConfidence.high);
+      expect(extraction.notes, isEmpty);
+    });
+
+    test('never reads the invoice number as the reference', () {
+      final extraction = parseReceiptText(bdoPaySent);
+      expect(extraction.reference, isNot(contains('625868')));
+      expect(extraction.amount, isNot('625868.00'));
     });
   });
 
