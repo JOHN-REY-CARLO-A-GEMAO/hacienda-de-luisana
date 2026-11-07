@@ -1,19 +1,13 @@
 import { BUSINESS, LISTINGS } from '../config/site'
 import { Phone, Mail, Facebook, Messenger, MapPin, ArrowRight, House } from '../lib/icons'
-import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
-
 /**
- * The Hacienda's contact channels, and the anti-scam notice that goes with them.
+ * The Hacienda's contact channels.
  *
  * These used to sit at the foot of the homepage inside a booking banner, which
  * made the last screen of the site a list of phone numbers rather than a
  * decision. They are the reason a visitor goes looking, though — a question, a
  * date to check, a special gathering — so they are a page of their own now,
  * behind /contact.
- *
- * `OfficialChannelsNotice` is deliberately part of this page and not a footnote:
- * it is the statement of which channels are real, and a page whose whole job is
- * contact details is exactly where someone looks for the fake ones.
  */
 export function ContactDetails() {
   const tel = BUSINESS.contact.phone.replace(/\s+/g, '')
@@ -100,9 +94,6 @@ export function ContactDetails() {
           location with the Hacienda before travelling.
         </p>
 
-        <div className="mt-10">
-          <OfficialChannelsNotice />
-        </div>
       </div>
 
       <div className="reveal grid grid-cols-1 min-w-0 sm:grid-cols-2 gap-4">

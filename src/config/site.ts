@@ -239,8 +239,9 @@ export const AIRBNB_RATING = {
 // -----------------------------------------------------------------------------
 // OFFICIAL CHANNELS — the only places the Hacienda talks to guests or takes money
 // -----------------------------------------------------------------------------
-// Rendered on the booking page and in Contact. Everything listed here is
-// already verified elsewhere in this file (BUSINESS.contact, LISTINGS).
+// No longer rendered as a page notice; kept for the assistant-facing site
+// summary in `src/lib/seo.ts`. Everything listed here is already verified
+// elsewhere in this file (BUSINESS.contact, LISTINGS).
 // -----------------------------------------------------------------------------
 export const OFFICIAL_CHANNELS = {
   headline: 'Official channels only',
