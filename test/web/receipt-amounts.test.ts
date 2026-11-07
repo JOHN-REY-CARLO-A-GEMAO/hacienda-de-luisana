@@ -168,10 +168,15 @@ describe('the mismatch a Guest is warned about', () => {
     expect(amountMismatchNote(1050, 1050)).toBeNull()
   })
 
-  it('warns when the Guest claims more than is owed', () => {
+  it('warns when the receipt shows more than is owed, in the receipt\'s words', () => {
     const note = amountMismatchNote(2500, 1020)
     expect(note).toContain('2,500.00')
     expect(note).toContain('1,020.00')
+    // Read off the receipt, not typed: the sentence must not describe manual entry.
+    expect(note).toContain('The receipt shows')
+    expect(note).not.toContain('You entered')
+    expect(note).not.toMatch(/correct (it|the amount)/i)
+    expect(note).toContain('upload the receipt that shows it')
   })
 
   it('warns when the Guest underpaid', () => {
@@ -216,10 +221,14 @@ describe('the mismatch a Guest is warned about where an underpayment blocks the 
     expect(note).not.toContain('Admin will check')
   })
 
-  it('offers the two ways out that actually exist', () => {
+  it('offers the two ways out that actually exist, and none that do not', () => {
     const note = amountMismatchNote(500, 1020, blocks)
-    expect(note).toContain('Please correct it')
+    // The figure came off the receipt and the field is read-only, so "correct the
+    // amount" is not an action this Guest can take here.
+    expect(note).toMatch(/upload the receipt/i)
     expect(note).toContain('contact the Hacienda')
+    expect(note).not.toMatch(/correct (it|the amount)/i)
+    expect(note).not.toContain('You entered')
   })
 
   it('still promises the Admin a check once the claim clears the threshold', () => {

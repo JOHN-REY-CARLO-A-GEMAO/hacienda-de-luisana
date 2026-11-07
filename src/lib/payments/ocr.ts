@@ -727,57 +727,6 @@ function underpaid(claimed: number, owed: number): boolean {
 }
 
 /**
- * Whether the amount a Guest is claiming is one of the figures their own
- * screenshot prints.
- *
- * The claim is the Guest's statement about their money, and the screenshot is
- * the only evidence for it. When OCR reads a figure the Guest then claims a
- * different one, the two disagree and nothing else in the system can tell which
- * is true — so the page stops and says so, rather than filing a claim the Admin
- * has to disprove by hand.
- *
- * It is a check, never a wall. OCR is a hint engine (`canAutoVerifyFromOcr` is
- * hard-coded off, and ADR-0012 leaves the Admin the decision): a blurry photo, a
- * GCash/Maya/bank template the engine has not seen, or a plain OCR artifact all
- * read figures that are not there. So a screenshot with no readable figure at
- * all validates nothing — there is nothing to compare against — and the caller
- * offers the Guest a way to say, deliberately, that the receipt says something
- * else.
- *
- * `owed` decides the closing sentence only. What the Admin reads off a
- * screenshot is a promise about a path that exists, so it is made when the claim
- * clears the threshold — or when no threshold is published and the claim will
- * therefore be submitted at all — and withheld when an underpayment will stop it
- * before any Admin is involved.
- */
-export function claimAgainstReceipt(
-  claimed: string,
-  amounts: ReceiptAmount[],
-  owed?: number,
-): { ok: true } | { ok: false; message: string } {
-  if (amounts.length === 0) return { ok: true }
-  // `validateAmount` owns the shape of this field — an empty, malformed or
-  // out-of-range claim is its error to report, and reporting it twice here
-  // would only put two complaints about one typo on the page.
-  const parsed = validateAmount(claimed)
-  if (!parsed.ok) return { ok: true }
-  const value = Number(parsed.value)
-  if (amounts.some((candidate) => Math.abs(Number(candidate.value) - value) < 0.005)) return { ok: true }
-  const shown = amounts.map((a) => `${peso2(Number(a.value))} (${a.label})`).join(', ')
-  // An unknown `owed` is a missing quote, not a clearance — but it is also not a
-  // gate, so the claim reaches a person either way.
-  const reachesAdmin = owed === undefined || !Number.isFinite(owed) || owed <= 0 || !underpaid(value, owed)
-  return {
-    ok: false,
-    message:
-      `You entered ${peso2(value)} but your screenshot shows ${shown}. ` +
-      (reachesAdmin
-        ? 'Use one of those figures, or say so below and the Admin will read it off your screenshot.'
-        : 'Use one of those figures, or say so below. This amount is also below the down payment this Booking asks for, so it cannot be submitted until it is corrected.'),
-  }
-}
-
-/**
  * The sentence a Guest sees when the amount they entered is not the amount this
  * Booking asks for.
  *
@@ -804,14 +753,15 @@ export function amountMismatchNote(
   if (Math.abs(claimed - owed) < 0.005) return null
   if (underpay === 'blocks_submit' && underpaid(claimed, owed)) {
     return (
-      `Your claim of ${peso2(claimed)} is below the ${peso2(owed)} down payment this Booking asks for, ` +
-      'so the booking cannot be submitted with this amount. Please correct it, or contact the Hacienda ' +
-      'if you have already sent the full downpayment.'
+      `The receipt shows ${peso2(claimed)}, which is below the ${peso2(owed)} down payment this Booking asks for, ` +
+      `so this receipt cannot be submitted. Upload the receipt for at least ${peso2(owed)} once the difference has been sent, ` +
+      'or contact the Hacienda if you have already paid the full down payment.'
     )
   }
   return (
-    `You entered ${peso2(claimed)} but this Booking asks for ${peso2(owed)}. ` +
-    'If that is what you sent, the Admin will check it against your receipt — otherwise please correct the amount.'
+    `The receipt shows ${peso2(claimed)}, and this Booking asks for ${peso2(owed)}. ` +
+    'If that is what you sent, continue — the Admin will check it against your receipt. ' +
+    'To file a different amount, upload the receipt that shows it.'
   )
 }
 
