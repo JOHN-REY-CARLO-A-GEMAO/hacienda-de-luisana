@@ -2,13 +2,18 @@
  * Cloudflare Worker host for the Hacienda booking callables.
  *
  * Firestore and Firebase Auth remain the systems of record. This Worker
- * implements Firebase's HTTPS callable protocol for four existing endpoint
+ * implements Firebase's HTTPS callable protocol for the existing endpoint
  * names, verifies the caller's Firebase ID token itself, and delegates all
  * booking/money decisions to the shared core in `functions/src`.
  */
 
 import { CallableError, type CallableCode, type CallableContext } from '../../functions/src/callable'
-import { createAvailabilityCore, type AvailabilityReply, type SubmitBookingReply } from '../../functions/src/availabilityCore'
+import {
+  createAvailabilityCore,
+  type AvailabilityReply,
+  type PaymentReferenceStatusReply,
+  type SubmitBookingReply,
+} from '../../functions/src/availabilityCore'
 import { createQuotesCore, type QuoteBookingReply, type VerifyBookingMoneyReply } from '../../functions/src/quotesCore'
 import { hasServiceAccountSecret, parseWorkerConfig, type Env, type WorkerConfig } from './env'
 import { FirebaseTokenError, FirebaseTokenVerifier, type FirebaseIdTokenClaims } from './firebaseToken'
@@ -16,7 +21,13 @@ import { FirestoreRestClient, FirestoreRestError } from './firestoreRest'
 import { GoogleAccessTokenProvider } from './googleAuth'
 import { IdentityToolkitAuthUsers } from './identityToolkit'
 
-const ENDPOINTS = ['bookingAvailability', 'submitBooking', 'quoteBooking', 'verifyBookingMoney'] as const
+const ENDPOINTS = [
+  'bookingAvailability',
+  'submitBooking',
+  'paymentReferenceStatus',
+  'quoteBooking',
+  'verifyBookingMoney',
+] as const
 type EndpointName = (typeof ENDPOINTS)[number]
 const ENDPOINT_SET = new Set<string>(ENDPOINTS)
 const MAX_REQUEST_BYTES = 256 * 1024
@@ -24,6 +35,8 @@ const MAX_REQUEST_BYTES = 256 * 1024
 export interface WorkerServices {
   bookingAvailability(context: CallableContext): Promise<AvailabilityReply>
   submitBooking(context: CallableContext): Promise<SubmitBookingReply>
+  /** Advisory duplicate check; `submitBooking` is the authoritative one. */
+  paymentReferenceStatus(context: CallableContext): Promise<PaymentReferenceStatusReply>
   quoteBooking(context: CallableContext): Promise<QuoteBookingReply>
   verifyBookingMoney(context: CallableContext): Promise<VerifyBookingMoneyReply>
 }
@@ -79,6 +92,7 @@ function getRuntime(env: Env): WorkerRuntime {
     services: {
       bookingAvailability: availability.bookingAvailability,
       submitBooking: availability.submitBooking,
+      paymentReferenceStatus: availability.paymentReferenceStatus,
       quoteBooking: quotes.quoteBooking,
       verifyBookingMoney: quotes.verifyBookingMoney,
     },

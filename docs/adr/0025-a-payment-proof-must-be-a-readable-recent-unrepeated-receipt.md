@@ -68,6 +68,28 @@ titled **"Duplicate reference"**. The check runs in two places:
 and `validateGuestBookingShape` accept both, and the key is what the duplicate
 lookup queries.
 
+### Where the server check runs
+
+There is one implementation (`functions/src/availabilityCore.ts`), hosted two
+ways: the Firebase callable (`functions/src/availability.ts`) and the Cloudflare
+Worker (`workers/src/index.ts`, ADR-0024). `paymentReferenceStatus` is the fifth
+Worker endpoint, so the popup can see other Guests' Bookings without Firebase
+Blaze.
+
+That matters because `firestore.rules` cannot answer "is this reference already
+used?" — a rule can read one document by path, not query a collection — and
+`payment_references` is Admin-only. So:
+
+- **Worker or Functions deployed** — the browser gets a real answer early, and
+  `submitBooking` refuses a duplicate inside its transaction regardless.
+- **Neither deployed** (Spark, no Worker cutover) — the browser can only compare
+  against the Guest's own Bookings, and the direct-Firestore fallback create has
+  no transaction to lose. Duplicates are then advisory, caught by the Admin
+  during verification rather than by the system.
+
+Deploying the Worker and setting `VITE_WORKER_API_URL` is therefore part of this
+decision, not an optimisation of it.
+
 ## Consequences
 
 - A blurry photo, a cropped screenshot or a receipt for another person's payment

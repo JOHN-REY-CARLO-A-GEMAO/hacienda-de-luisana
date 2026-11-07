@@ -1,10 +1,11 @@
 # Hacienda Booking Worker
 
-This Cloudflare Worker is the free-tier host for the four browser-facing
-Booking endpoints that previously required Firebase Cloud Functions:
+This Cloudflare Worker is the free-tier host for the browser-facing Booking
+endpoints that otherwise required Firebase Cloud Functions:
 
 - `POST /bookingAvailability`
 - `POST /submitBooking`
+- `POST /paymentReferenceStatus`
 - `POST /quoteBooking`
 - `POST /verifyBookingMoney`
 
@@ -156,7 +157,7 @@ it under `workers/`.
 Invoke-RestMethod "https://hacienda-de-luisana-api.<subdomain>.workers.dev/health"
 ```
 
-Expected result: HTTP 200, `ok: true`, `configured: true`, and all four
+Expected result: HTTP 200, `ok: true`, `configured: true`, and all five
 endpoint names. Health proves configuration parsing only; it does not call
 Google or prove IAM/index readiness.
 
@@ -206,7 +207,12 @@ Before enabling any Firestore Admin enforcement switch, verify:
 2. Guest submit creates exactly one Booking and its first `activity/0` entry.
 3. A second overlapping submit cannot take the last unit.
 4. `verifyBookingMoney` accepts an authorized Admin and refuses a Guest.
-5. Cloudflare logs show no repeated `UNAUTHENTICATED`, `PERMISSION_DENIED`, or
+5. `paymentReferenceStatus` answers `{ duplicate: true, bookingId }` for a
+   reference already on another Booking, `{ duplicate: false, bookingId: null }`
+   for a free one, and refuses an unauthenticated caller. Without this endpoint
+   the website's duplicate popup can only see the Guest's own Bookings
+   (ADR-0025).
+6. Cloudflare logs show no repeated `UNAUTHENTICATED`, `PERMISSION_DENIED`, or
    `FAILED_PRECONDITION` errors.
 
 Watch logs with:

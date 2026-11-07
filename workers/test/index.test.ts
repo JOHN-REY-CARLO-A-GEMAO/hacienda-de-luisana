@@ -22,6 +22,10 @@ const services: WorkerServices = {
     seenContexts.push(context)
     return { bookingId: 'booking-1', status: 'Pending' } as never
   },
+  async paymentReferenceStatus(context) {
+    seenContexts.push(context)
+    return { duplicate: true, bookingId: 'booking-9', key: '7044357122304' }
+  },
   async quoteBooking() {
     throw new CallableError('failed-precondition', 'Quote refused for this test.', { cause: 'TEST' })
   },
@@ -76,6 +80,22 @@ test('returns Firebase callable results with exact-origin CORS and verified iden
   assert.deepEqual(await response.json(), { result: { bookingId: 'booking-1', matches: true } })
   assert.equal(seenContexts[0]?.authUid, 'guest-uid')
   assert.equal(seenContexts[0]?.ip, '203.0.113.8')
+})
+
+test('routes paymentReferenceStatus so the duplicate popup can see other Guests', async () => {
+  seenContexts.length = 0
+  const response = await invoke(callableRequest('paymentReferenceStatus', {
+    data: { reference: '7044 357 122304' },
+  }, {
+    Authorization: 'Bearer good-token',
+  }))
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    result: { duplicate: true, bookingId: 'booking-9', key: '7044357122304' },
+  })
+  assert.equal(seenContexts[0]?.authUid, 'guest-uid')
+  assert.deepEqual(seenContexts[0]?.data, { reference: '7044 357 122304' })
 })
 
 test('decodes Firebase Int64 wrappers before the Booking core sees data', async () => {
