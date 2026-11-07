@@ -9,6 +9,7 @@ import '../models/guest_crm_model.dart';
 import '../services/accommodations.dart';
 import '../services/booking_queue.dart';
 import '../services/firestore_service.dart';
+import '../services/pin_reset_service.dart';
 import '../services/pin_store.dart';
 import '../services/review_service.dart';
 
@@ -27,10 +28,17 @@ final firestoreServiceProvider = Provider<FirestoreService>((ref) {
 /// session ticket. The device copy lives in [SharedPrefsPinStore];
 /// `FirestoreService` is its [PinSecurityRemote] (a no-op in demo mode, so
 /// the gate works with the app fully offline).
+///
+/// The forgotten-PIN reset is the one thing here that cannot work offline
+/// (ADR-0027): its [PinResetRemote] is the Supabase function that mails a code
+/// to the Admin's verified address. It is wired in unconditionally — in demo
+/// mode the call simply fails and the sheet says the code could not be sent,
+/// which is the truth.
 final pinGateProvider = Provider<PinGate>((ref) {
   return PinGate(
     store: SharedPrefsPinStore(),
     remote: ref.watch(firestoreServiceProvider),
+    resetRemote: PinResetService.instance,
   );
 });
 

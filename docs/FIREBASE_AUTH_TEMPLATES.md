@@ -1,5 +1,14 @@
 # Firebase Authentication templates — Hacienda de LuisAna
 
+> **The Security PIN reset uses its own email, not a Firebase template.** Since
+> ADR-0027 a forgotten PIN is reset with six digits mailed by the
+> `admin-pin-reset` Supabase function through Resend. That message is written in
+> `supabase/functions/admin-pin-reset/index.ts`, not in the Firebase console, and
+> it carries no link. What this page still owns, and what the PIN reset *depends*
+> on, is the **email verification** template below: the reset refuses an
+> unverified address, so the Admin's own address must be verified once.
+
+
 **Draft only:** these settings have not been applied to the Firebase project. The
 Firebase Console stores Authentication templates separately from this repository;
 changing this file does not update them. The templates apply project-wide to

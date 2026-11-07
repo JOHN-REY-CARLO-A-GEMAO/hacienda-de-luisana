@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -1312,57 +1311,12 @@ class FirestoreService implements PinSecurityRemote {
     });
   }
 
-  /// Dispose of the PIN record and file its `PinReset` line in one batch
-  /// (ADR-0016).
-  ///
-  /// Unlike the three methods above, this one **propagates its failure**. The
-  /// two friends are best-effort by contract — a missed write costs a
-  /// reconciliation, because the device copy governs. This one cannot work that
-  /// way: if the delete does not happen, `PinGate.forgetPin` has to keep the
-  /// local record and the gate has to keep asking for the PIN. A swallowed
-  /// error here would show the Admin a fresh setup screen while the server
-  /// still held the old record, which is the one outcome ADR-0016 exists to
-  /// make impossible.
-  ///
-  /// The event and the delete go together so the trail never disagrees with the
-  /// store: a record that vanished with no companion line, or a line with no
-  /// record gone, is not a state this system should be able to be in.
-  @override
-  Future<void> forgetPin(String uid) async {
-    if (!isCloud) throw StateError('no cloud connection to dispose of the PIN in');
-    final firestore = _firestore!;
-    final batch = firestore.batch();
-
-    batch.delete(firestore.collection(AppConstants.colAdminSecurity).doc(uid));
-    batch.set(
-      firestore
-          .collection(AppConstants.colAdminSecurityEvents)
-          .doc(_pinResetEventId()),
-      {
-        'uid': uid,
-        'action': 'PinReset',
-        // Server-stamped: the rules hold `at == request.time`, so the line
-        // cannot claim to have been filed at a time of the writer's choosing.
-        'at': FieldValue.serverTimestamp(),
-      },
-    );
-
-    await batch.commit();
-  }
-
-  /// A fresh id for each reset, so the trail only ever grows.
-  ///
-  /// Deliberately NOT stable per uid: `admin_security_events` refuses `update`,
-  /// so reusing one document id would make an Admin's *second* reset — years
-  /// later, after a fresh PIN and another 24 h — an update the rules refuse.
-  /// Append-only means append-only.
-  String _pinResetEventId() {
-    final random = math.Random.secure();
-    final suffix = List<int>.generate(12, (_) => random.nextInt(36))
-        .map((n) => n.toRadixString(36))
-        .join();
-    return 'pin-reset-${DateTime.now().microsecondsSinceEpoch}-$suffix';
-  }
+  // The PIN-reset delete and its `PinReset` trail line used to live here
+  // (ADR-0016). They moved to `supabase/functions/admin-pin-reset` in ADR-0027:
+  // a client that can delete `admin_security/{uid}` is a client that a stolen,
+  // unlocked phone can drive. `firestore.rules` now refuses that delete for
+  // every client, and `admin_security_events` refuses every client write, so
+  // this class has no way to perform a reset even if a caller asked it to.
 
   void dispose() {
     _bookingsController.close();

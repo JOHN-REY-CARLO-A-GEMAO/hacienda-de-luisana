@@ -974,3 +974,51 @@ Deploy with enforcement off: yes. Activate: not until the emulator run above has
 `firestore.rules`, a Flutter toolchain has looked at the Admin screens, and the callables are live with
 `BOOKING_QUOTES_ENABLED=true`. `site_config/booking.quotes_required` stays absent until then, which is
 the state every suite above was run in.
+
+---
+
+## 18. ADR-0027 pass — the PIN reset is proved by an emailed code (2026-11-07)
+
+ADR-0016's self-service delete is gone. A forgotten Security PIN is now reset by a
+six-digit code mailed to the Admin's Firebase-verified address and checked by
+`supabase/functions/admin-pin-reset`. What this section records is what ran.
+
+### 18.1 What actually ran
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Rules suite (the real `firestore.rules`, in the isolated namespace) | `npm run test:rules` | **9 files, 359 / 359** — `admin_security` delete refused for every client at 0 s / 24 h / 24 h + 1 ms / a year; `admin_security_events` refuses every client create, update and delete; `admin_security_resets` refuses every read and write |
+| New web suite for the code | `vitest run test/web/pin-reset.test.ts` (under the same namespace) | **26 / 26** |
+| Whole web suite | `npm test` | **1,298 / 1,310**, 5 files red — all pre-existing and unrelated (see 18.3) |
+| TypeScript typecheck | `npm run check:phase0` | **PASS**, no output |
+| Rules file parses | `@firebase/eslint-plugin-security-rules` parser, via `test:rules` | **PASS** |
+
+### 18.2 What did NOT run, and why
+
+| Check | Why |
+| --- | --- |
+| The Edge Function itself | No Deno runtime in this environment. Its shared modules are typechecked by the app's `tsc`; the function's own wiring (Resend call, Firestore transaction, batch delete) is **reviewed, not executed**. |
+| Any real mail | `RESEND_API_KEY` is a deployment secret and is not in this repository. |
+| `flutter test`, `flutter analyze` | No Flutter or Dart SDK in this environment. The Dart written here (`pin_reset_service.dart`, the rewritten sheet, the two suites) is **reviewed, not compiled** — the same standing gap recorded in §2 and §14. |
+| The emulator suite | Still no `admin_security` coverage (an ADR-0015 gap, restated in `docs/LIMITATIONS.md`), so the new refusals are asserted by the in-repo evaluator only. |
+
+### 18.3 The five red web files
+
+`account-page-lists.test.tsx`, `availability-calendar-ui.test.tsx`,
+`booking-module-purity.test.ts`, `canonical-accommodations.test.ts` and
+`design-system.test.ts`. None imports anything this pass touched; the
+design-system failure ("`legal-title` is not an `h1`/`display` class") is visible in
+`src/pages/LegalPage.tsx`, which has not changed on this branch. They are recorded
+here rather than fixed, because they are outside this ADR's subject.
+
+### 18.4 What changed in the rules, in one sentence each
+
+- `admin_security`: `allow delete: if false;` — ADR-0016's third door is closed for
+  every client, and the Admin SDK inside `admin-pin-reset` is the only delete left.
+- `admin_security_events`: `allow create: if false;` — the trail is now written by
+  the server in the same batch as the delete, which closes ADR-0016's own admitted
+  gap (a client could file a line without disposing of anything).
+- `admin_security_resets` (new): no rule at all, so the catch-all deny refuses every
+  client read and write. That is deliberate: the collection holds a live code's
+  digest and the attempt counter, and a client that could lower its own counter
+  would make five hundred guesses as cheap as five. Tested rather than assumed.

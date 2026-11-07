@@ -38,6 +38,8 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'pin_reset_types.dart';
+
 // ---------------------------------------------------------------------------
 // Hashing — the one convention shared with the website's demo mode
 // ---------------------------------------------------------------------------
@@ -346,54 +348,31 @@ abstract class PinSecurityRemote {
   /// stamped by the implementer (the rules hold the stamp to the writer).
   Future<void> writeAdminSecurity(String uid, Map<String, dynamic> doc);
 
-  /// Dispose of the server PIN record and file its companion `PinReset` line,
-  /// in one batch (ADR-0016).
-  ///
-  /// **Throws** when the server refuses — the 24 h cooldown, a permission this
-  /// session does not hold, or an offline phone. Implementers must not swallow
-  /// it: [PinGate.forgetPin] keeps the local record unless this returns, and a
-  /// wipe that did not happen must never be allowed to look like one that did.
-  Future<void> forgetPin(String uid);
 }
 
 // ---------------------------------------------------------------------------
-// The forgotten-PIN reset (ADR-0016)
+// The forgotten-PIN reset (ADR-0027)
 // ---------------------------------------------------------------------------
-
-/// How long after a PIN was last stamped the server will accept disposing of
-/// its record. The rules hold the same 24 h against `pin_updated_at`, and this
-/// constant is here so the app can *say* the wait instead of discovering it
-/// from a refusal — not so the two can disagree silently. Only a stamped
-/// rotation moves that timestamp (ADR-0015 §4), so five wrong entries never
-/// bring the reset forward.
-const Duration kPinResetCooldown = Duration(hours: 24);
-
-/// When the server would accept a reset for [record], or null when the record
-/// carries no stamp — which the rules refuse as well, so null is not "now".
-DateTime? pinResetAvailableAt(PinRecord record) =>
-    record.updatedAt?.add(kPinResetCooldown);
-
-/// How a forgotten-PIN reset ended.
-enum PinForgetOutcome {
-  /// The server disposed of the record. The local copy is gone and the session
-  /// ticket is void; the gate asks for a new PIN next.
-  reset,
-
-  /// Refused by the client-side cooldown, without troubling the server: this
-  /// PIN was stamped less than [kPinResetCooldown] ago.
-  stillTooSoon,
-
-  /// The server said no — offline, refused by the rules, or the session is not
-  /// the Admin the record belongs to. Nothing local changed.
-  refused,
-}
+//
+// ADR-0016 let this app delete `admin_security/{uid}` itself after a 24 h
+// cooldown, and was honest that anyone holding a signed-in, unlocked phone could
+// therefore wipe the record. ADR-0027 moves the delete to the server: the
+// `admin-pin-reset` function mails six digits to the Admin's verified email and
+// disposes of the record only when those digits come back. This side of the
+// door is deliberately thin — [PinGate] never deletes anything; it asks the
+// server, and clears the device cache only when the server says the record is
+// gone.
+//
+// The types the sheet shows (`PinResetRequest`, `PinResetCheck`,
+// `PinResetOutcome`) live in `pin_reset_service.dart`, next to the HTTP that
+// produces them, so there is one vocabulary for the flow rather than two.
 
 // ---------------------------------------------------------------------------
 // PinGate
 // ---------------------------------------------------------------------------
 
 /// Whether the Admin has a PIN this device can check.
-  enum PinSetupState {
+enum PinSetupState {
   /// A record exists locally (just seeded from Firestore counts too).
   ready,
 
@@ -440,9 +419,14 @@ class PinVerifyResult {
 class PinGate {
   final PinStore store;
   final PinSecurityRemote? remote;
+
+  /// The emailed-code service (ADR-0027). Null in demo mode and in unit tests
+  /// that are not about the reset: the sheet then says codes cannot be sent in
+  /// this build, rather than pretending one went out.
+  final PinResetRemote? resetRemote;
   SecurityTicket? _ticket;
 
-  PinGate({required this.store, this.remote});
+  PinGate({required this.store, this.remote, this.resetRemote});
 
   /// The session's live ticket, or null. A fresh ticket is why the second
   /// sensitive action in two minutes does not ask again.
@@ -457,10 +441,11 @@ class PinGate {
 
   /// This device's cached PIN record, or null when it holds none.
   ///
-  /// For the reset sheet's cooldown copy only (ADR-0016) — the sheet has to say
-  /// the 24 h wait out loud rather than discover it from a refusal. Never for
-  /// answering a verification: [verify] reads the record itself, and a caller
-  /// holding a record is a caller who could have skipped the ladder.
+  /// Kept as a read-only window for callers that need to know *whether* a PIN
+  /// exists without asking the server — the reset sheet no longer uses it
+  /// (ADR-0027 dropped the 24 h cooldown it was written for), and nothing uses
+  /// it to answer a verification: [verify] reads the record itself, and a
+  /// caller holding a record is a caller who could have skipped the ladder.
   Future<PinRecord?> cachedRecord(String uid) => store.load(uid);
 
   /// First sign-in (or app data cleared): decide what this device can do.
@@ -531,52 +516,53 @@ class PinGate {
     return PinVerifyResult.verified(ticket);
   }
 
-  /// Dispose of the PIN record so a fresh one can be set (ADR-0016).
+  /// The emailed code is the way out of a gate nobody can open (ADR-0027).
   ///
-  /// This is the way out of a gate nobody can open: rotation needs the very PIN
-  /// that was lost, and the server record is what makes [setupState] answer
-  /// `ready` instead of `setUpNeeded`.
+  /// ADR-0016's version of this method deleted the server record itself after a
+  /// 24 h cooldown. That was the hole the product owner sent back: it asked for
+  /// nothing but a signed-in session, so a phone left unlocked was a phone that
+  /// could wipe the PIN. The delete now happens inside `admin-pin-reset`, after
+  /// six digits mailed to the Admin's own verified address have come back.
   ///
-  /// The proof of identity is a signed-in Admin session, never the PIN — the PIN
-  /// is a guard rail, not a trust boundary (ADR-0015 §2). What this closes is a
-  /// locked-out operator, and it is **online by construction**: with no remote
-  /// there is no record to dispose of and [PinSetupState.unreachable] still
-  /// refuses rather than fails open, so [PinForgetOutcome.refused] here is a
-  /// refusal to pretend.
+  /// What is left for this class is the device half, and it is deliberately
+  /// narrow:
   ///
-  /// Nothing local changes unless the server confirms. [store] keeps its record
-  /// and the session keeps its ticket on every refusal, which is the whole
-  /// point: a reset that did not happen must not read as one that did.
-  Future<PinForgetOutcome> forgetPin(String uid, {DateTime? now}) async {
-    final at = now ?? DateTime.now();
-    final api = remote;
-    if (api == null) return PinForgetOutcome.refused;
+  ///   - ask the server for a code ([requestPinResetCode]);
+  ///   - hand six digits to the server ([confirmPinResetCode]);
+  ///   - and only when the server says the record is **gone**, drop the cached
+  ///     copy and void the ticket. A refused or unreachable server changes
+  ///     nothing here, so a reset that did not happen can never read as one that
+  ///     did.
+  ///
+  /// The PIN itself is never an input to this. A forgotten PIN being the reason
+  /// for the reset is the whole point; the proof of identity is the mailbox.
+  Future<PinResetRequest> requestPinResetCode() {
+    final api = resetRemote;
+    if (api == null) {
+      return Future.value(const PinResetRequest.refused(
+          'This build cannot send codes. Sign in again and try once more.'));
+    }
+    return api.requestCode();
+  }
 
-    // The cooldown first, without troubling the server, so the sheet can say
-    // the wait out loud instead of guessing from a permission-denied.
-    final record = await store.load(uid);
-    if (record != null) {
-      final readyAt = pinResetAvailableAt(record);
-      if (readyAt != null && at.isBefore(readyAt)) {
-        return PinForgetOutcome.stillTooSoon;
-      }
+  Future<PinResetCheck> confirmPinResetCode(String uid, String code) async {
+    final api = resetRemote;
+    if (api == null) {
+      return const PinResetCheck(
+          PinResetOutcome.unavailable,
+          'This build cannot check codes. Sign in again and try once more.');
     }
 
-    try {
-      await api.forgetPin(uid);
-    } catch (_) {
-      // Offline, or the rules refused. Whatever the reason, the server still
-      // holds the record, so the device still answers `ready` and keeps asking
-      // for the PIN nobody has. Leave everything alone.
-      return PinForgetOutcome.refused;
-    }
+    final check = await api.confirmCode(code);
+    if (check.outcome != PinResetOutcome.reset) return check;
 
-    // Confirmed: the record is gone on both sides. Clearing the device copy is
-    // what lets `setupState` reach `setUpNeeded`, and voiding the ticket stops a
-    // stale proof from buying a sensitive action in the same breath.
+    // Confirmed by the server: the record is gone there, so clear the device
+    // copy — which is what lets `setupState` reach `setUpNeeded` — and void the
+    // ticket, so a proof minted before the reset cannot buy a sensitive action
+    // afterwards.
     await store.clear(uid);
     _ticket = null;
-    return PinForgetOutcome.reset;
+    return check;
   }
 
   /// Create (first sign-in) or rotate (Settings, after a current-PIN check

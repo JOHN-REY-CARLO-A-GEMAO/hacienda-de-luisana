@@ -250,13 +250,14 @@ class _PinGateScreenState extends ConsumerState<PinGateScreen> {
     ));
   }
 
-  /// The forgotten-PIN reset (ADR-0016), then straight back into setup.
+  /// The forgotten-PIN reset (ADR-0027), then straight back into setup.
   ///
-  /// Re-resolving rather than jumping to `setUpEnter` on purpose: the record is
-  /// gone on both sides now, so `setupState()` reaches
-  /// [PinSetupState.setUpNeeded] on its own — the same question the first run
-  /// asked, asked for the same reason. Forcing the phase here would be a
-  /// shortcut that could disagree with what the server actually holds.
+  /// The sheet only reports `true` when the server confirmed the emailed code
+  /// and disposed of the record, so by the time this reaches `_resolve()` both
+  /// copies are gone and `setupState()` reaches [PinSetupState.setUpNeeded] on
+  /// its own — the same question the first run asked, asked for the same
+  /// reason. Forcing the phase here would be a shortcut that could disagree
+  /// with what the server actually holds.
   Future<void> _forgetPin() async {
     if (_busy) return;
     final reset = await showForgotPinSheet(context, uid: _uid);
@@ -442,15 +443,20 @@ class _PinGateScreenState extends ConsumerState<PinGateScreen> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           // The way out of a gate nobody can
-                                          // open (ADR-0016). Offered only where
+                                          // open (ADR-0027). Offered only where
                                           // a PIN exists to be lost and only
-                                          // with a remote to dispose of it —
-                                          // demo mode has no server record, so
-                                          // it has no dead end to leave.
+                                          // when there is a server to mail a
+                                          // code from — a phone in demo mode has
+                                          // no address to prove anything with,
+                                          // and no record to dispose of either.
                                           if (_phase == PinGatePhase.enter &&
                                               ref
-                                                  .read(pinGateProvider)
-                                                  .remote !=
+                                                      .read(pinGateProvider)
+                                                      .resetRemote !=
+                                                  null &&
+                                              ref
+                                                      .read(pinGateProvider)
+                                                      .remote !=
                                                   null)
                                             TextButton(
                                               key: const Key(

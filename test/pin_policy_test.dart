@@ -5,6 +5,7 @@
 // Run: flutter test test/pin_policy_test.dart
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hacienda_de_luisana/services/pin_reset_service.dart';
 import 'package:hacienda_de_luisana/services/pin_store.dart';
 
 /// A PinSecurityRemote that records what the gate asked of it — the same
@@ -13,14 +14,6 @@ class _RecordingRemote implements PinSecurityRemote {
   final Map<String, Map<String, dynamic>> docs = {};
   final List<Map<String, dynamic>> failures = [];
   bool unreachable = false;
-
-  /// Every reset the gate asked for, whether or not the server then said yes
-  /// (ADR-0016).
-  final List<String> resets = [];
-
-  /// When true the server refuses the reset, the way the rules do inside the
-  /// cooldown and the way an offline phone does for everything else.
-  bool refuseReset = false;
 
   @override
   Future<Map<String, dynamic>?> fetchAdminSecurity(String uid) async {
@@ -46,14 +39,52 @@ class _RecordingRemote implements PinSecurityRemote {
     docs[uid] = Map<String, dynamic>.from(doc);
   }
 
-  /// A reset that succeeds takes the record away, which is the whole point of
-  /// it — and is why the gate may then answer `setUpNeeded`. One that is
-  /// refused throws and leaves `docs` exactly as it was.
+}
+
+/// The emailed-code service (ADR-0027), recorded rather than performed.
+///
+/// `requestCode` is the mail; `confirmCode` is the server's decision about the
+/// six digits. The two are separate on purpose: asking for a code must never
+/// touch the record, which is the bug a single "reset" call would invite.
+class _RecordingResetRemote implements PinResetRemote {
+  final List<int> requests = [];
+  final List<String> confirmations = [];
+
+  /// What the server does with a code this run: the only code that works.
+  String code = '492713';
+
+  /// When true the server cannot be reached at all.
+  bool offline = false;
+
+  /// Set by a test that wants the server to refuse the code as spent.
+  bool spent = false;
+
   @override
-  Future<void> forgetPin(String uid) async {
-    resets.add(uid);
-    if (refuseReset) throw Exception('permission-denied');
-    docs.remove(uid);
+  Future<PinResetRequest> requestCode() async {
+    if (offline) {
+      return const PinResetRequest.refused('Could not reach the reset service.');
+    }
+    requests.add(requests.length + 1);
+    return const PinResetRequest.sentTo('a***n@example.com',
+        expiresIn: kPinResetCodeTtl);
+  }
+
+  @override
+  Future<PinResetCheck> confirmCode(String candidate) async {
+    confirmations.add(candidate);
+    if (offline) {
+      return const PinResetCheck(
+          PinResetOutcome.unavailable, 'Could not reach the reset service.');
+    }
+    if (spent) {
+      return const PinResetCheck(
+          PinResetOutcome.unusable, 'That code has expired. Ask for a new one.');
+    }
+    if (candidate != code) {
+      return const PinResetCheck(
+          PinResetOutcome.wrongCode, 'That code is not right.');
+    }
+    return const PinResetCheck(PinResetOutcome.reset, 'Set aside.');
   }
 }
 
@@ -296,138 +327,122 @@ void main() {
     });
   });
 
-  // The forgotten-PIN reset (ADR-0016) — the way out of a gate nobody can open.
-  // Every case here is a refusal that must leave the device exactly as it was,
-  // or a confirmation that must change it; there is no third outcome.
-  group('forgetPin (ADR-0016)', () {
+  // The forgotten-PIN reset (ADR-0027) — the way out of a gate nobody can open
+  // is now an emailed code, not a self-service delete. Every case here is either
+  // a refusal that must leave the device exactly as it was, or a server
+  // confirmation that must clear it; there is no third outcome.
+  group('the emailed reset code (ADR-0027)', () {
     late MemoryPinStore store;
     late _RecordingRemote remote;
+    late _RecordingResetRemote reset;
     late PinGate gate;
-
-    /// The stamp the rules read, 24 h past it, and a moment inside the wait.
-    final day = kPinResetCooldown;
-    final justInside = t0.add(day - const Duration(minutes: 1));
-    final justOutside = t0.add(day);
 
     setUp(() {
       store = MemoryPinStore();
       remote = _RecordingRemote();
-      gate = PinGate(store: store, remote: remote);
+      reset = _RecordingResetRemote();
+      gate = PinGate(store: store, remote: remote, resetRemote: reset);
     });
 
-    test('the cooldown is the 24 h the rules hold', () {
-      expect(kPinResetCooldown, const Duration(hours: 24));
-
-      final stamped = PinRecord(
-        salt: 'c29tZXNhbHQ=',
-        hash: 'aGVsbG8=',
-        iterations: 100,
-        updatedAt: t0,
-      );
-      expect(pinResetAvailableAt(stamped), t0.add(const Duration(hours: 24)));
-
-      // No stamp means "the server will decide", not "now": the rules refuse a
-      // record whose `pin_updated_at` is not a timestamp.
-      final unstamped = PinRecord(
-        salt: 'c29tZXNhbHQ=',
-        hash: 'aGVsbG8=',
-        iterations: 100,
-      );
-      expect(pinResetAvailableAt(unstamped), isNull);
+    test('the app and the function agree on the numbers the sheet prints', () {
+      expect(kPinResetCodeTtl, const Duration(minutes: 15));
+      expect(kPinResetMaxAttempts, 5);
     });
 
-    test('inside the cooldown the server is never troubled', () async {
+    test('asking for a code deletes nothing — the record still asks for the PIN',
+        () async {
       await gate.setPin('admin-1', '492713', iterations: 100, now: t0);
 
-      final outcome = await gate.forgetPin('admin-1', now: justInside);
+      final request = await gate.requestPinResetCode();
 
-      expect(outcome, PinForgetOutcome.stillTooSoon);
-      expect(remote.resets, isEmpty);
-      // And the record is still here, still asking for the same PIN.
+      expect(request.sent, isTrue);
+      expect(request.maskedEmail, 'a***n@example.com');
+      expect(request.expiresIn, kPinResetCodeTtl);
+      expect(reset.requests, hasLength(1));
+      // The whole point of the two-step flow: the mail is not the reset.
       expect(await store.load('admin-1'), isNotNull);
+      expect(await gate.setupState('admin-1'), PinSetupState.ready);
       expect(
-        (await gate.verify('admin-1', '492713', now: justInside)).outcome,
+        (await gate.verify('admin-1', '492713', now: t0)).outcome,
         PinVerifyOutcome.verified,
       );
     });
 
-    test('five wrong entries do not bring the reset forward', () async {
-      // The point of the cooldown: it keys off `pin_updated_at`, which only a
-      // stamped rotation moves. Guessing must not move it.
-      await gate.setPin('admin-1', '492713', iterations: 100, now: t0);
-
-      for (var attempt = 0; attempt < 5; attempt++) {
-        final result =
-            await gate.verify('admin-1', '000000', now: t0.add(day + const Duration(hours: 1)));
-        expect(result.outcome, PinVerifyOutcome.wrongPin);
-      }
-
-      // Still an hour short of 24 h from the stamp, however many were guessed.
-      final outcome = await gate.forgetPin(
-        'admin-1',
-        now: t0.add(const Duration(hours: 23, minutes: 30)),
-      );
-      expect(outcome, PinForgetOutcome.stillTooSoon);
-      expect(remote.resets, isEmpty);
-      expect(await store.load('admin-1'), isNotNull);
-    });
-
-    test('a refusal changes nothing at all', () async {
+    test('a wrong code changes nothing at all', () async {
       await gate.setPin('admin-1', '492713', iterations: 100, now: t0);
       final before = await store.load('admin-1');
-      remote.refuseReset = true;
 
-      final outcome = await gate.forgetPin('admin-1', now: justOutside);
+      final check = await gate.confirmPinResetCode('admin-1', '111111');
 
-      expect(outcome, PinForgetOutcome.refused);
-      expect(remote.resets, ['admin-1']); // it was asked
-      // The local record survives intact — hash, salt, counters and stamp.
+      expect(check.outcome, PinResetOutcome.wrongCode);
+      expect(reset.confirmations, ['111111']);
       final after = await store.load('admin-1');
       expect(after, isNotNull);
       expect(after!.hash, before!.hash);
       expect(after.salt, before.salt);
       expect(after.updatedAt, before.updatedAt);
-      // And the gate is still ready, still asking for the PIN nobody has.
       expect(await gate.setupState('admin-1'), PinSetupState.ready);
     });
 
     test('an offline phone is refused rather than pretended away', () async {
       await gate.setPin('admin-1', '492713', iterations: 100, now: t0);
-      final noRemote = PinGate(store: store);
-      expect(noRemote.remote, isNull);
+      reset.offline = true;
 
+      expect((await gate.requestPinResetCode()).sent, isFalse);
+      final check = await gate.confirmPinResetCode('admin-1', '492713');
+      expect(check.outcome, PinResetOutcome.unavailable);
+      expect(await store.load('admin-1'), isNotNull);
+    });
+
+    test('a build with no reset remote says so instead of faking a send',
+        () async {
+      await gate.setPin('admin-1', '492713', iterations: 100, now: t0);
+      final demo = PinGate(store: store);
+
+      final request = await demo.requestPinResetCode();
+      expect(request.sent, isFalse);
+      expect(request.error, contains('cannot send codes'));
       expect(
-        await noRemote.forgetPin('admin-1', now: justOutside),
-        PinForgetOutcome.refused,
+        (await demo.confirmPinResetCode('admin-1', '492713')).outcome,
+        PinResetOutcome.unavailable,
       );
       expect(await store.load('admin-1'), isNotNull);
     });
 
-    test('a confirmed reset clears the device, the ticket, and the dead end',
+    test('an expired or spent code leaves the record asking for the same PIN',
         () async {
-      // Stamped at t0, so `justOutside` is exactly the 24 h mark.
+      await gate.setPin('admin-1', '492713', iterations: 100, now: t0);
+      reset.spent = true;
+
+      final check = await gate.confirmPinResetCode('admin-1', '492713');
+      expect(check.outcome, PinResetOutcome.unusable);
+      expect(await store.load('admin-1'), isNotNull);
+      expect(await gate.setupState('admin-1'), PinSetupState.ready);
+    });
+
+    test('a confirmed code clears the device, the ticket, and the dead end',
+        () async {
       await gate.setPin('admin-1', '492713', iterations: 100, now: t0);
 
       // A ticket is live at the moment of the reset, and must not survive it.
-      final verified =
-          await gate.verify('admin-1', '492713', now: justOutside);
+      final verified = await gate.verify('admin-1', '492713', now: t0);
       expect(verified.outcome, PinVerifyOutcome.verified);
-      expect(gate.freshTicket(justOutside), isNotNull);
+      expect(gate.freshTicket(t0), isNotNull);
 
-      final outcome = await gate.forgetPin('admin-1', now: justOutside);
+      final check = await gate.confirmPinResetCode('admin-1', '492713');
 
-      expect(outcome, PinForgetOutcome.reset);
-      expect(remote.resets, ['admin-1']);
+      expect(check.outcome, PinResetOutcome.reset);
+      expect(reset.confirmations, ['492713']);
       // Both copies gone, and the proof that opened the gate is void.
       expect(await store.load('admin-1'), isNull);
-      expect(remote.docs.containsKey('admin-1'), isFalse);
-      expect(gate.freshTicket(justOutside), isNull);
+      expect(gate.freshTicket(t0), isNull);
 
       // The dead end this ADR exists to close is closed: the gate now asks for
       // a NEW pin instead of the lost one.
       expect(await gate.setupState('admin-1'), PinSetupState.setUpNeeded);
-      final fresh = await gate.verify('admin-1', '492713', now: justOutside);
+      final fresh = await gate.verify('admin-1', '492713', now: t0);
       expect(fresh.outcome, PinVerifyOutcome.notSetUp);
     });
+
   });
 }

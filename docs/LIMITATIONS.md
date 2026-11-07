@@ -276,53 +276,56 @@ file-by-file without a deliberate pass.
 
 ADR-0007: Guest = website, Admin = Flutter. A Guest-facing mobile app is **not in this repository**. If the thesis requires a Guest APK, that remains a product gap.
 
-## The Security PIN reset (ADR-0016)
+## The Security PIN reset (ADR-0027)
 
-**A PIN reset is not an authentication factor, and it is not free.** Three things
-this page has to say plainly, because ADR-0016 changed an invariant to get here:
+**A PIN reset is not an authentication factor, and it now costs a mailbox.** The
+section that stood here described ADR-0016's self-service door, and the first
+thing it had to admit was that *anyone holding a signed-in, unlocked phone could
+wipe the record and set a new PIN*. That is the sentence ADR-0027 answers, so
+this section is rewritten around what is left:
 
-- **It closes a lockout; it does not stop anybody.** The proof is a signed-in
-  Admin session, which is why the door exists at the gate at all — the gate is
-  behind Firebase sign-in. Anyone holding a signed-in, unlocked phone can wipe the
-  record and set a new PIN. That was already true of the PIN itself (ADR-0015 §2:
-  a guard rail, not a trust boundary), so this does not widen the threat; it
-  removes the permanent lockout.
-- **It costs the server lockout watermark.** `failed_attempts` and `locked_until`
-  go with the record. That is precisely what ADR-0015 gave up ("a lockout record
-  is evidence"), and the brake that replaces the live-lock check is a 24-hour
-  cooldown keyed off `pin_updated_at` — a stamp only a real PIN change moves, so
-  failed guesses cannot bring it forward.
-- **The companion event does not prove the delete.** `admin_security_events` is
-  refused `update`/`delete` so the trail is tamper-proof, but a rule evaluating a
-  `create` has no pre-write `resource`, so it cannot bind the line to the record
-  that was disposed of. The two are tied by the app writing them in one batch and
-  by nothing else. An Admin could file a `PinReset` line without deleting
-  anything — a noisy trail, not an escalation.
+- **The proof is the Admin's own inbox.** A six-digit code is mailed to the
+  address Firebase has verified for the signed-in account, and the delete happens
+  on the server only when those digits come back. A phone without access to that
+  inbox cannot reset the PIN. What this does **not** do is defend the PIN itself:
+  it is still a guard rail, not a trust boundary (ADR-0015 §2), and a person who
+  has both the phone and the mailbox can still choose a new PIN — as they should.
+- **The lockout watermark still goes.** `failed_attempts` and `locked_until` are
+  deleted with the record, because the record is what holds them. The brake is no
+  longer a cooldown; it is the mailbox, plus three sends an hour and one a minute.
+- **The trail line is now the server's.** ADR-0016 had to admit that a rule
+  evaluating a `create` cannot bind a `PinReset` line to the delete it describes,
+  so an Admin could file a line without disposing of anything. `firestore.rules`
+  now refuses every client write to `admin_security_events`, and the function
+  writes the line in the same batch as the delete. The gap is closed by taking the
+  pen away, not by proving the rule could hold it.
+- **Nothing in the app can delete the record any more.** `PinSecurityRemote` has
+  no `forgetPin`; `FirestoreService` has no batch that touches `admin_security`.
+  The capability was removed rather than left unused, so no future call site can
+  reintroduce ADR-0016's door by accident.
 
-**Verification of this door is supplemental and partial.** `test:rules` executes
-the rules under a Linux network namespace (`scripts/phase0/boundary.mjs`: *"no
-weaker fallback is permitted"*), so it does not run on Windows or macOS at all. The
-ADR-0016 cases were checked by driving `test/rules/engine.ts` directly — a pure
-evaluator, no Firebase SDK and no network — but that is **not** the documented
-suite and must not be reported as one. Two further gaps:
+**What is new and not yet exercised end to end.** Three things this page will not
+pretend are verified:
 
-- **The emulator suite has no `admin_security` coverage at all**, so it has none
-  for the new delete door either. That gap is ADR-0015's, not ADR-0016's: the
-  collection was added with supplemental cases only and the canonical file was
-  never extended. **The emulator has therefore never evaluated this rule.**
-- **The fixture bug that sat next to these cases is fixed** (2026-10-21).
-  `adminSecurityDoc()` in `test/rules/context.ts` supplied a 36-character
-  `pin_hash` while `isAdminSecurityShape()` requires `size() >= 40`, so every
-  `admin_security` case in the suite failed on an unmodified repository; the
-  comment claimed 44. The fixture now pads to 44. The rotation case beside it
-  was also passing vacuously — it wrote the same `pin_hash` and `pin_updated_at`
-  back and expected a permission denial, which an *empty* diff grants; it now
-  changes the salt as well, so the door is really exercised.
+- **The Edge Function has never run.** There is no Deno runtime in this
+  environment, so `supabase/functions/admin-pin-reset/index.ts` is typechecked
+  (its shared modules, by the app's own `tsc`) and read, not executed. Its pure
+  pieces — the code shape, the digest, the Admin gate, the pacing, the usability
+  rules — are covered by `test/web/pin-reset.test.ts` (26 cases). The wiring that
+  calls Resend, the Firestore transaction and the batch delete is only reviewed.
+- **No mail has ever been sent.** `RESEND_API_KEY` is a deployment secret and is
+  not in this repository. In Resend's test mode the only permitted recipient is
+  the account owner's own address; a custom sender domain is the production step.
+  Until the secret is set the function answers 503 and the sheet says sending is
+  not configured — a deliberate refusal rather than a false "code sent".
+- **The emulator suite still has no `admin_security` coverage**, so its delete
+  refusal and the `admin_security_resets` deny-all are also asserted only by the
+  in-repo evaluator. That is ADR-0015's inherited gap, restated rather than fixed.
 
-**An Admin locked out of Firebase is not helped by any of this.** The PIN gate
-sits behind sign-in, so a forgotten *account password* is a different problem with
-no answer in the app: `sendPasswordResetEmail` would fix it natively and free, but
-it is a separate decision ([ADR-0016 § Consequences](#consequences)).
+**An Admin locked out of Firebase is still not helped by any of this.** The PIN
+gate sits behind sign-in, so a forgotten *account password* is a different problem
+with no answer in the app: `sendPasswordResetEmail` would fix it natively and free,
+but it is a separate decision ([ADR-0016 § Consequences](./adr/0016-a-forgotten-security-pin-is-reset-by-disposing-of-the-record.md#consequences)).
 
 ## The retired tracking module
 

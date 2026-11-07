@@ -93,7 +93,7 @@ the later recording wins:
 3. **Admin review replies:** removed from the *public* review UI but kept as a
    *private* Admin response (ADR-0014, `docs/REVIEWS.md`).
 4. **Biometrics:** suggested as an upgrade; explicitly rejected for now (ADR-0015),
-   security PIN remains (ADR-0016).
+   security PIN remains (ADR-0015, with the reset proved by an emailed code — ADR-0027).
 5. **Housekeeping RFID & loyalty points:** both nice-to-haves; neither implemented.
 6. **IoT hardware:** the lock pipeline is charted and **simulated in-app**, not driving
    live hardware (`HDL_FLOW_CORRECTED.md`); the check-in key write, check-out revoke,

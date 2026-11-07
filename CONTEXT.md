@@ -131,8 +131,12 @@ The two-tier rule that stands between an Admin tap and a sensitive action (ADR-0
 _Avoid_: Permission, role check, Credential check
 
 **PIN reset**:
-Deliberate disposal of a forgotten Security PIN's record so a fresh one may be set, leaving the lockout counters behind with it (ADR-0016). The proof is a signed-in Admin session, never the PIN — the PIN is a guard rail, not a trust boundary — and it needs the server, so it cannot be done offline. Once per 24 hours, counted from the PIN's last change.
+Deliberate disposal of a forgotten Security PIN's record so a fresh one may be set, leaving the lockout counters behind with it (ADR-0027, which reverses ADR-0016's self-service door). The proof is a six-digit **reset code** mailed to the Admin's own Firebase-verified email address and checked by the `admin-pin-reset` function, never the PIN — the PIN is a guard rail, not a trust boundary. It needs the server, so it cannot be done offline, and no phone can dispose of the record on its own.
 _Avoid_: password reset, forgot password, MPIN reset, recovery code, account recovery (it recovers a second input, not an account)
+
+**Reset code**:
+The six digits a PIN reset is proved by (ADR-0027). Mailed to the Admin's verified address, valid for 15 minutes, spent on use, and destroyed after five wrong entries. Only a salted SHA-256 of it is ever stored; the app never sees or hashes it. A reset code recovers a Security PIN, not an account.
+_Avoid_: OTP (that word belongs to a sign-in), recovery code, backup code, token
 
 ### Trust and records
 
