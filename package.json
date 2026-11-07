@@ -15,7 +15,7 @@
     "test": "node scripts/phase0/run.mjs web",
     "test:watch": "node scripts/phase0/run.mjs watch",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
-    "emulators": "firebase emulators:start --project demo-hacienda --only auth,firestore,database,storage,ui --import ./emulator-data --export-on-exit",
+    "emulators": "firebase emulators:start --project demo-hacienda --only auth,firestore,storage,ui --import ./emulator-data --export-on-exit",
     "test:rules": "node scripts/phase0/run.mjs rules",
     "test:emulator": "node scripts/phase0/run.mjs emulator",
     "test:e2e": "node scripts/phase0/run.mjs e2e",

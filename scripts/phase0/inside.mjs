@@ -109,7 +109,7 @@ try {
     fs.writeFileSync(configFile, JSON.stringify(config, null, 2) + '\n')
     // Fixed shell payload imposed by Firebase emulators:exec, no env override.
     const payload = `${JSON.stringify(node)} ${JSON.stringify(binary('vitest/vitest.mjs'))} run --config vitest.emulator.config.ts --reporter=default --reporter=json --outputFile=${JSON.stringify(result(action))}`
-    exitCode = await execute(node, [binary('firebase-tools/lib/bin/firebase.js'), 'emulators:exec', '--config', configFile, '--project', 'demo-hacienda', '--only', authOnly ? 'auth' : 'auth,firestore,database,storage', payload])
+    exitCode = await execute(node, [binary('firebase-tools/lib/bin/firebase.js'), 'emulators:exec', '--config', configFile, '--project', 'demo-hacienda', '--only', authOnly ? 'auth' : 'auth,firestore,storage', payload])
   } else if (action.startsWith('flutter')) {
     const version = spawnSync('flutter', ['--version'], { encoding: 'utf8' })
     if (version.error || version.status !== 0) throw Object.assign(new Error('Flutter/Dart SDK missing; native tests/build analysis are BLOCKED'), { blocked: true })
