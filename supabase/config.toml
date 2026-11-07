@@ -39,7 +39,7 @@ verify_jwt = false
 # 403. Nobody else causes a code to exist, let alone a PIN record to be deleted.
 #
 # Secrets it needs (none of them in the repository):
-#   supabase secrets set RESEND_API_KEY=re_...
-#   supabase secrets set PIN_RESET_FROM="Hacienda de LuisAna <noreply@yourdomain>"
+#   supabase secrets set GMAIL_SMTP_USER=your-gmail@gmail.com
+#   supabase secrets set GMAIL_SMTP_APP_PASSWORD=your-app-password
 #   supabase secrets set BOOTSTRAP_ADMIN_EMAILS="gemaojohnreyarguilles@gmail.com"
 verify_jwt = false

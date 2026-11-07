@@ -18,7 +18,7 @@
 //                                rate-limit, mint 6 digits
 //                                store the salted SHA-256     ─►  Firestore
 //                                                                 admin_security_resets/{uid}
-//                                POST /emails                 ─►  Resend  ─►  the Admin's inbox
+//                                SMTP over TLS                ─►  Gmail   ─►  the Admin's inbox
 //   ◄─────────────────────────  { email, masked, expiresIn }
 //
 //   "I have the code" + code ──► verify the JWT + the digest
@@ -39,11 +39,11 @@
 //   supabase secrets set FIREBASE_PROJECT_ID=hacienda-de-luisana
 //   supabase secrets set FIREBASE_SERVICE_ACCOUNT_JSON=<service account json>
 //   supabase secrets set BOOTSTRAP_ADMIN_EMAILS="gemaojohnreyarguilles@gmail.com"
-//   supabase secrets set RESEND_API_KEY=re_...            # required to send
-//   supabase secrets set PIN_RESET_FROM="Hacienda de LuisAna <noreply@yourdomain>"
+//   supabase secrets set GMAIL_SMTP_USER=your-gmail@gmail.com
+//   supabase secrets set GMAIL_SMTP_APP_PASSWORD=your-16-character-app-password
 //
-// `RESEND_API_KEY` is the one secret with no safe default: with it unset the
-// function answers 503 and says so, rather than pretending a code was sent.
+// Gmail SMTP uses the account address as the sender; only an App Password is
+// accepted here, never the account's regular password.
 
 import { cert, initializeApp, getApps, type App } from 'npm:firebase-admin@11/app'
 import { getAuth, type DecodedIdToken } from 'npm:firebase-admin@11/auth'
@@ -75,9 +75,9 @@ const SECURITY_COLLECTION = 'admin_security'
 /** The append-only trail (ADR-0016) the reset writes into. */
 const SECURITY_EVENTS_COLLECTION = 'admin_security_events'
 
-const RESEND_ENDPOINT = 'https://api.resend.com/emails'
-/** A refusal from Resend is retried once: a network blip should not cost the Admin a code. */
-const RESEND_ATTEMPTS = 2
+/** Gmail implicit-TLS SMTP endpoint. */
+const GMAIL_SMTP_HOST = 'smtp.gmail.com'
+const GMAIL_SMTP_PORT = 465
 
 /** Warn once per instance, not once per request, when the allowlist secret is unset. */
 let warnedMissingBootstrap = false
@@ -152,58 +152,112 @@ function codeEmail(code: string, minutes: number) {
 }
 
 /**
- * Hand the code to Resend, and say plainly whether it left.
+ * Hand the code to Gmail over SMTP/TLS, and say plainly whether it left.
  *
  * The code itself is never logged: a reset code in a log is a reset code in a
  * log reader's hands. Only the address is, because a failed send is diagnosed
  * by knowing where it was going.
  */
+function base64(value: string): string {
+  return btoa(value)
+}
+
+async function smtpWrite(connection: Deno.Conn, value: string): Promise<void> {
+  const bytes = new TextEncoder().encode(value)
+  let offset = 0
+  while (offset < bytes.length) {
+    offset += await connection.write(bytes.subarray(offset))
+  }
+}
+
+async function smtpResponse(connection: Deno.Conn): Promise<{ code: number; text: string }> {
+  const decoder = new TextDecoder()
+  const bytes = new Uint8Array(1)
+  const lines: string[] = []
+  let line = ''
+  while (true) {
+    const count = await connection.read(bytes)
+    if (count === null) throw new Error('Gmail closed the SMTP connection')
+    const char = decoder.decode(bytes.subarray(0, count))
+    line += char
+    if (line.endsWith('\n')) {
+      const clean = line.replace(/[\r\n]+$/, '')
+      lines.push(clean)
+      if (/^\d{3} /.test(clean)) break
+      line = ''
+    }
+    if (lines.join('\n').length > 8192) throw new Error('SMTP response was too long')
+  }
+  const code = Number(lines.at(-1)?.slice(0, 3))
+  if (!Number.isFinite(code)) throw new Error('Malformed SMTP response')
+  return { code, text: lines.join(' | ') }
+}
+
+async function smtpCommand(
+  connection: Deno.Conn,
+  command: string,
+  accepted: number[],
+): Promise<string> {
+  await smtpWrite(connection, `${command}\r\n`)
+  const response = await smtpResponse(connection)
+  if (!accepted.includes(response.code)) throw new Error(`SMTP ${response.code}: ${response.text}`)
+  return response.text
+}
+
+/** Gmail SMTP supports AUTH LOGIN with an App Password on port 465. */
 async function sendCodeEmail(
-  apiKey: string,
-  from: string,
+  username: string,
+  appPassword: string,
   to: string,
   code: string,
 ): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
-  const minutes = Math.round(PIN_RESET_CODE_TTL_MS / 60_000)
-  const body = JSON.stringify({
-    from,
-    to: [to],
-    subject: `Your Hacienda de LuisAna reset code: ${code}`,
-    ...codeEmail(code, minutes),
-  })
+  let connection: Deno.Conn | undefined
+  try {
+    connection = await Deno.connectTls({ hostname: GMAIL_SMTP_HOST, port: GMAIL_SMTP_PORT })
+    const greeting = await smtpResponse(connection)
+    if (greeting.code !== 220) throw new Error(`SMTP ${greeting.code}: ${greeting.text}`)
+    await smtpCommand(connection, `EHLO hacienda-de-luisana`, [250])
+    await smtpCommand(connection, 'AUTH LOGIN', [334])
+    await smtpCommand(connection, base64(username), [334])
+    await smtpCommand(connection, base64(appPassword.replace(/\s/g, '')), [235])
+    await smtpCommand(connection, `MAIL FROM:<${username}>`, [250])
+    await smtpCommand(connection, `RCPT TO:<${to}>`, [250, 251])
+    await smtpCommand(connection, 'DATA', [354])
 
-  let lastFailure = { status: 0, detail: 'no attempt made' }
-  for (let attempt = 0; attempt < RESEND_ATTEMPTS; attempt += 1) {
-    try {
-      const response = await fetch(RESEND_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          'content-type': 'application/json',
-        },
-        body,
-      })
-      if (response.ok) return { ok: true }
-
-      // Resend's own reason, flattened and capped: it is the difference between
-      // "the API key is revoked" and "this address is refused by the sandbox",
-      // and both are the operator's to fix.
-      const detail = (await response.text()).replace(/\s+/g, ' ').slice(0, 300)
-      lastFailure = { status: response.status, detail }
-      // 4xx apart from 429 is this request's fault; trying again cannot help.
-      if (response.status !== 429 && response.status < 500) break
-    } catch (error) {
-      lastFailure = {
-        status: 0,
-        detail: error instanceof Error ? error.message : 'network failure',
-      }
-    }
+    const minutes = Math.round(PIN_RESET_CODE_TTL_MS / 60_000)
+    const content = codeEmail(code, minutes)
+    const message = [
+      `From: Hacienda de LuisAna <${username}>`,
+      `To: <${to}>`,
+      `Subject: Your Hacienda de LuisAna reset code: ${code}`,
+      'MIME-Version: 1.0',
+      'Content-Type: multipart/alternative; boundary="hacienda-pin-reset"',
+      '',
+      '--hacienda-pin-reset',
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: 7bit',
+      '',
+      content.text,
+      '--hacienda-pin-reset',
+      'Content-Type: text/html; charset=UTF-8',
+      'Content-Transfer-Encoding: 7bit',
+      '',
+      content.html,
+      '--hacienda-pin-reset--',
+      '.',
+    ].join('\r\n').replace(/\r?\n\./g, '\r\n..')
+    await smtpWrite(connection, `${message}\r\n`)
+    const sent = await smtpResponse(connection)
+    if (sent.code !== 250) throw new Error(`SMTP ${sent.code}: ${sent.text}`)
+    await smtpCommand(connection, 'QUIT', [221])
+    return { ok: true }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'SMTP connection failed'
+    console.error(`[admin-pin-reset] Gmail SMTP delivery failed: ${detail.slice(0, 300)}`)
+    return { ok: false, status: 0, detail: detail.slice(0, 300) }
+  } finally {
+    try { connection?.close() } catch { /* already closed */ }
   }
-
-  console.error(
-    `[admin-pin-reset] mail refused for ${to} (${lastFailure.status}): ${lastFailure.detail}`,
-  )
-  return { ok: false, ...lastFailure }
 }
 
 /**
@@ -305,11 +359,10 @@ Deno.serve(async (request) => {
 
   // ---- request: mint, store, mail -----------------------------------------
   if (parsed.action === 'request') {
-    const apiKey = Deno.env.get('RESEND_API_KEY')?.trim() ?? ''
-    if (apiKey === '') {
-      // Said plainly instead of "code sent": a deployment without the secret
-      // cannot send, and a screen that lies about it strands the Admin.
-      console.error('[admin-pin-reset] RESEND_API_KEY is not set')
+    const smtpUser = Deno.env.get('GMAIL_SMTP_USER')?.trim() ?? ''
+    const appPassword = Deno.env.get('GMAIL_SMTP_APP_PASSWORD')?.trim() ?? ''
+    if (smtpUser === '' || appPassword === '') {
+      console.error('[admin-pin-reset] Gmail SMTP credentials are not set')
       return json(
         {
           error:
@@ -318,7 +371,6 @@ Deno.serve(async (request) => {
         503,
       )
     }
-    const from = Deno.env.get('PIN_RESET_FROM')?.trim() || 'Hacienda de LuisAna <onboarding@resend.dev>'
     const now = Date.now()
 
     // Mint first, then transact. The digest is a hash of a code that only this
@@ -395,14 +447,14 @@ Deno.serve(async (request) => {
     // it holds the pacing counters (so a repeated failure cannot become a free
     // retry storm) and a digest for a code nobody received, which expires on
     // its own.
-    const sent = await sendCodeEmail(apiKey, from, email, code)
+    const sent = await sendCodeEmail(smtpUser, appPassword, email, code)
     if (!sent.ok) {
       return json(
         {
           error:
-            sent.status === 401 || sent.status === 403
-              ? 'The mail service refused this deployment. Ask the developer to check RESEND_API_KEY.'
-              : 'The code could not be emailed just now. Try again in a minute.',
+            sent.detail.includes('535') || sent.detail.includes('534')
+              ? 'Gmail refused the SMTP login. Check the Gmail address and App Password.'
+              : 'Gmail could not send the code right now. Check the server mail settings and try again.',
         },
         502,
       )
