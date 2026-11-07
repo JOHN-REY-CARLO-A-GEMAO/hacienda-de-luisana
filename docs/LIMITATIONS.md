@@ -307,11 +307,16 @@ this section is rewritten around what is left:
 **What is new and not yet exercised end to end.** Three things this page will not
 pretend are verified:
 
-- **The Edge Function has never run.** There is no Deno runtime in this
-  environment, so `supabase/functions/admin-pin-reset/index.ts` is typechecked
-  (its shared modules, by the app's own `tsc`) and read, not executed. Its pure
+- **The Edge Function has now run exactly once, and it failed to boot.** The
+  first deploy answered `503 BOOT_ERROR` because two helpers had moved between
+  shared modules while the function's import list did not follow — the one class
+  of mistake that neither `tsc` here nor any reading catches, since Deno resolves
+  imports only at start-up. Fixed, and now covered by a case in
+  `test/web/pin-reset.test.ts` that resolves every import; the fix itself has not
+  been redeployed from this environment. There is still no Deno runtime here, so
+  the function beyond its pure modules remains reviewed, not executed. Its pure
   pieces — the code shape, the digest, the Admin gate, the pacing, the usability
-  rules — are covered by `test/web/pin-reset.test.ts` (26 cases). The wiring that
+  rules — are covered by `test/web/pin-reset.test.ts` (28 cases). The wiring that
   calls Resend, the Firestore transaction and the batch delete is only reviewed.
 - **No mail has ever been sent.** `RESEND_API_KEY` is a deployment secret and is
   not in this repository. In Resend's test mode the only permitted recipient is

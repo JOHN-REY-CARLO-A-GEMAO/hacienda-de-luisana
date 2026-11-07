@@ -988,7 +988,7 @@ six-digit code mailed to the Admin's Firebase-verified address and checked by
 | Check | Command | Result |
 | --- | --- | --- |
 | Rules suite (the real `firestore.rules`, in the isolated namespace) | `npm run test:rules` | **9 files, 359 / 359** — `admin_security` delete refused for every client at 0 s / 24 h / 24 h + 1 ms / a year; `admin_security_events` refuses every client create, update and delete; `admin_security_resets` refuses every read and write |
-| New web suite for the code | `vitest run test/web/pin-reset.test.ts` (under the same namespace) | **26 / 26** |
+| New web suite for the code | `vitest run test/web/pin-reset.test.ts` (under the same namespace) | **28 / 28** |
 | Whole web suite | `npm test` | **1,298 / 1,310**, 5 files red — all pre-existing and unrelated (see 18.3) |
 | TypeScript typecheck | `npm run check:phase0` | **PASS**, no output |
 | Rules file parses | `@firebase/eslint-plugin-security-rules` parser, via `test:rules` | **PASS** |
@@ -1001,6 +1001,30 @@ six-digit code mailed to the Admin's Firebase-verified address and checked by
 | Any real mail | `RESEND_API_KEY` is a deployment secret and is not in this repository. |
 | `flutter test`, `flutter analyze` | No Flutter or Dart SDK in this environment. The Dart written here (`pin_reset_service.dart`, the rewritten sheet, the two suites) is **reviewed, not compiled** — the same standing gap recorded in §2 and §14. |
 | The emulator suite | Still no `admin_security` coverage (an ADR-0015 gap, restated in `docs/LIMITATIONS.md`), so the new refusals are asserted by the in-repo evaluator only. |
+
+### 18.2b The BOOT_ERROR the first deploy produced (found after merge, fixed forward)
+
+The first `supabase functions deploy admin-pin-reset` succeeded and every request
+then answered `503 BOOT_ERROR`. The cause was **not** the secrets: two helpers
+(`checkRequestPacing`, `nextRequestPacingState`) had been moved from
+`admin-gate.ts` to `pin-reset-code.ts` so the shared modules would pass this
+repository's `tsc`, and the function's own import list was never updated. Deno
+resolves imports at boot, so the function never started.
+
+Why nothing caught it: `npm run check:phase0` typechecks `_shared/` against the
+app's config, not the function's import graph, and the Deno runtime is not
+available here. Two things now cover it:
+
+- `test/web/pin-reset.test.ts` resolves every relative import in the function
+  against the module it names, and the case was proved by reintroducing the bug
+  (the suite fails, naming both symbols);
+- the same file asserts the verify verdict is the transaction's **return value**
+  rather than a captured `let`, which Firestore's callback retry would otherwise
+  read stale. `tsc` flagged that one as "unintentional comparison"; it was a real
+  retry bug, not a typing complaint.
+
+Redeploying the same function with the corrected imports is the whole fix — no
+secret or console step is involved.
 
 ### 18.3 The five red web files
 
