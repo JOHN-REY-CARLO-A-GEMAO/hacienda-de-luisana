@@ -198,8 +198,8 @@ describe('PaymentStep', () => {
     // unwinnable (no checkbox ever set it).
     const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]')
     const terms = container.querySelector<HTMLInputElement>('input[type="checkbox"]')
-    const reference = byPlaceholder(container, 'e.g. 1234567890123')
-    const amount = byPlaceholder(container, 'e.g. 10500')
+    const reference = byPlaceholder(container, 'Read from your receipt')
+    const amount = container.querySelector<HTMLInputElement>('input[inputmode="decimal"]')
     const send = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Send my proof')
     expect(fileInput).not.toBeNull()
     expect(terms).not.toBeNull()
@@ -216,8 +216,18 @@ describe('PaymentStep', () => {
     // Choose the screenshot: a receipt-as-text file exercises the OCR path
     // without a network round-trip (runReceiptOcr's text shortcut).
     // Declared as an image so the proof contract accepts it, named `.txt` so
-    // runReceiptOcr takes its no-network text shortcut.
-    const receipt = new File(['GCash Ref No: 1234567890123\nAmount 4500.00'], 'receipt.txt', { type: 'image/png' })
+    // runReceiptOcr takes its no-network text shortcut. The receipt has to
+    // print the reference, the amount, and a date and time within the window,
+    // or the strict receipt rule refuses it before any upload.
+    const { scannedNow } = await import('./receipt-fixture')
+    const scan = scannedNow({
+      reference: '1234567890123',
+      amount: '4500',
+      amounts: [{ label: 'Amount', value: '4500' }],
+    })
+    const receipt = new File([
+      `GCash\nRef No: ${scan.reference}\nAmount ${scan.amount}.00\n${scan.paymentDateIso}\n${scan.paymentTime24}`,
+    ], 'receipt.txt', { type: 'image/png' })
     await act(async () => {
       // jsdom has no DataTransfer; the handler only reads `files[0]`.
       Object.defineProperty(fileInput!, 'files', { configurable: true, value: [receipt] })
@@ -227,13 +237,12 @@ describe('PaymentStep', () => {
     expect(container.textContent).toContain('receipt.txt chosen.')
     expect(reference!.value).toBe('1234567890123')
 
-    // The OCR result is a hint the Guest confirms: fill the amount, tick the
-    // terms, and send — the upload lands in the browser's demo store (ADR-0011).
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!
-      setter.call(amount!, '4500')
-      amount!.dispatchEvent(new Event('input', { bubbles: true }))
-    })
+    // The four receipt values are the scan's own; the Guest only ticks the
+    // terms and sends — the upload lands in the browser's demo store (ADR-0011).
+    expect(Number(amount!.value)).toBe(4500)
+    expect(amount!.readOnly).toBe(true)
+    expect(reference!.readOnly).toBe(true)
+    expect(container.textContent).not.toContain('could not read')
     await act(async () => {
       terms!.click()
     })

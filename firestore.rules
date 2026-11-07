@@ -1169,10 +1169,11 @@ service cloud.firestore {
                       'balance_due', 'cancellation_reason', 'hold_expires_at',
                       'refund_status', 'refund_total', 'refund_breakdown',
                       'policy_version', 'policy_effective_date', 'refund_policy_snapshot',
-                      'payment_reference', 'ocr_reference', 'ocr_amount',
-                      'ocr_sender_name', 'ocr_payment_date',
+                      'payment_reference', 'payment_reference_key',
+                      'ocr_reference', 'ocr_amount',
+                      'ocr_sender_name', 'ocr_payment_date', 'ocr_payment_time',
                       'ocr_proof_url', 'ocr_engine', 'ocr_confidence',
-                      'payment_sender_name', 'payment_date',
+                      'payment_sender_name', 'payment_date', 'payment_time',
                       'terms_version', 'terms_accepted_at'])
           // Choosing/changing a plan is permitted only when every financial
           // snapshot field is internally coherent under the Guest's own figures
@@ -1250,8 +1251,8 @@ service cloud.firestore {
       // halves below.
       function ocrEvidenceKeys() {
         return ['ocr_reference', 'ocr_amount', 'ocr_sender_name',
-                'ocr_recipient_name', 'ocr_payment_date', 'ocr_proof_url',
-                'ocr_engine', 'ocr_confidence', 'ocr_extracted_at'];
+                'ocr_recipient_name', 'ocr_payment_date', 'ocr_payment_time',
+                'ocr_proof_url', 'ocr_engine', 'ocr_confidence', 'ocr_extracted_at'];
       }
 
       function adminOcrEvidenceUpdate() {
@@ -1507,19 +1508,15 @@ service cloud.firestore {
         && (docId != 'availability' || request.resource == null || validAvailabilityProjection());
     }
 
-    // The retired tracking module's collection (ADR-0009). Superseded for
-    // *reading and writing a position* by ADR-0013, which puts live location in
-    // the conversation instead — but this collection stays closed, because what
-    // ADR-0009 was right about has not changed: a position written to Firestore
-    // is a position stored forever, and the module that wrote it had no expiry
-    // anyone could enforce. A document left over from before the withdrawal can
-    // still be cleared:
+    // The retired tracking module's collection (ADR-0009, restored by
+    // ADR-0025, which removed live location altogether). It stays closed
+    // because a position written to Firestore is a position stored forever,
+    // and the module that wrote it had no expiry anyone could enforce. A
+    // document left over from before the withdrawal can still be cleared:
     // - READ / CREATE / UPDATE: refused to every caller, the Admin included.
     // - DELETE: the Admin only.
-    // Live location today writes no position to Firestore at all. See
-    // `location_sessions` below for what it does keep, and database.rules.json
-    // for the stream it does not store. Door events are logged in access_logs;
-    // a position never belongs there.
+    // Nothing in either app writes a position to Firestore. Door events are
+    // logged in access_logs; a position never belongs there.
     match /tracking_sessions/{sessionId} {
       allow read, create, update: if false;
       allow delete: if isAdmin();
@@ -1663,103 +1660,6 @@ service cloud.firestore {
       allow read: if isAdmin() || isConversationMember(convoId);
         allow update, delete: if false;
       }
-    }
-
-    // ------------------------------------------------------------------
-    // Live location — the session, not the position (ADR-0013)
-    // ------------------------------------------------------------------
-    // A Guest may share their live position from inside a conversation. What
-    // lands in Firestore is this one document, and it carries no coordinate: who
-    // is sharing, since when, until when, and the random secret that ties the
-    // ephemeral stream to this consent. The document id IS the conversation id,
-    // so `isConversationMember(sessionId)` is the membership check — the same
-    // one the messages in that conversation already answer to, and a Guest who
-    // has not opened a session here is not asked to pass a second test.
-    //
-    // The position itself never comes here. It is published to a Realtime
-    // Database node carrying a server-side TTL, which the server deletes whether
-    // or not the Guest ever presses Stop. A rule can refuse a write; it cannot
-    // schedule a deletion, so the expiry here is enforced three ways instead:
-    // the create below caps the window, the Admin's reader compares `expires_at`
-    // against the clock, and the stream's own rules refuse a write past it.
-    match /location_sessions/{sessionId} {
-      // CREATE — the Guest of *this* conversation, opening a session for
-      // themselves. The window is 1..60 minutes and is checked against the
-      // clock, so a client cannot claim a year of sharing.
-      allow create: if isConversationMember(sessionId)
-        && request.resource.data.keys().hasAll([
-             'guest_uid', 'conversation_id', 'active', 'started_at',
-             'expires_at', 'duration_minutes', 'stream_secret'])
-        && request.resource.data.guest_uid == request.auth.uid
-        && request.resource.data.conversation_id == sessionId
-        && request.resource.data.active == true
-        && request.resource.data.duration_minutes is int
-        && request.resource.data.duration_minutes >= 1
-        && request.resource.data.duration_minutes <= 60
-        && request.resource.data.stream_secret is string
-        && request.resource.data.stream_secret.size() == 32
-        && request.resource.data.started_at is timestamp
-        && request.resource.data.expires_at is timestamp
-        && request.resource.data.expires_at > request.time
-        && request.resource.data.expires_at <= request.time + duration.value(1, 'h')
-        // The rule that keeps the feature honest: this document is metadata, and
-        // a coordinate written here would be a position stored forever. There is
-        // no shape of position this accepts.
-        && !request.resource.data.keys().hasAny([
-             'lat', 'lng', 'latitude', 'longitude', 'position', 'fix', 'points', 'trail']);
-
-      // READ — the Admin, and the Guest who is sharing, so a page reload can
-      // resume the countdown instead of starting a second session. Nobody else:
-      // a Guest is not a member of another Guest's conversation, and this rule
-      // is the only door to the metadata.
-      allow read: if isAdmin() || isConversationMember(sessionId);
-
-      // UPDATE — the same Guest ending their own session. Only `active` and
-      // `expires_at` may move, and once ended it cannot be reopened: the
-      // identity, the conversation and the secret are fixed for the life of the
-      // document, because those are what the stream is bound to.
-      allow update: if isConversationMember(sessionId)
-        && resource.data.guest_uid == request.auth.uid
-        && request.resource.data.guest_uid == resource.data.guest_uid
-        && request.resource.data.conversation_id == resource.data.conversation_id
-        && request.resource.data.stream_secret == resource.data.stream_secret
-        && request.resource.data.duration_minutes == resource.data.duration_minutes
-        && !(resource.data.active == false && request.resource.data.active == true)
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['active', 'expires_at']);
-
-      // DELETE — the Admin, or the Guest clearing their own session.
-      allow delete: if isAdmin()
-        || (isConversationMember(sessionId) && resource.data.guest_uid == request.auth.uid);
-    }
-
-    // ------------------------------------------------------------------
-    // A clock probe: one throwaway document per share, so the Guest's browser
-    // can learn what time the *server* thinks it is before it states a sharing
-    // window on the server's clock.
-    //
-    // Why it exists. `location_sessions` above caps the window with
-    // `expires_at <= request.time + 1h`, and `database.rules.json` caps every
-    // fix with `expires_at_ms <= now + 3600000`. Both are the server's clock. A
-    // browser computing `now + 60 minutes` from *its own* clock therefore asks
-    // for a window past the cap whenever that clock runs fast — and the longest
-    // share, the one a Guest most often wants, is the one refused. `serverTimestamp()`
-    // is the only way a browser can be told the server's time, and only a write
-    // gets one.
-    //
-    // So the shape is deliberately the narrowest write in this file: one
-    // document per probe, named by the caller, carrying the probe's owner and a
-    // server stamp. The Guest may create and read back their own, and remove it;
-    // nobody may read anybody's, and nothing here is a record of anything.
-    match /clock_probes/{probeId} {
-      allow create: if isSignedIn()
-        && request.resource.data.keys().hasAll(['uid', 'probed_at'])
-        && request.resource.data.keys().hasOnly(['uid', 'probed_at'])
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.probed_at is timestamp;
-      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
-      allow update: if false;
     }
 
     // A Review is a Guest's words about their own finished stay, and one stay

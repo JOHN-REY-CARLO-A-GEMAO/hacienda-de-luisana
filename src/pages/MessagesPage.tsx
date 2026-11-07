@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { LiveLocationStatus } from '../components/chat/LiveLocationStatus'
 import { BookingDetailsDrawer } from '../components/chat/BookingDetailsDrawer'
 import { MessageComposer } from '../components/chat/MessageComposer'
 import { QuickReplyActions, type QuickReplyOption } from '../components/chat/QuickReplyActions'
-import { ShareLocationBar } from '../components/chat/ShareLocationBar'
 import { MessageTimeline } from '../components/chat/MessageTimeline'
 import { EmailVerificationNotice } from '../components/Auth/EmailVerificationNotice'
 import { Alert, Container, EmptyState, LoadingPanel, Page, PageHeader } from '../components/ui'
 import { useAuth } from '../hooks/useAuth'
-import { canShareLocation, useLiveLocation } from '../hooks/useLiveLocation'
 import {
   attachmentFailureMessage,
   uploadMessageAttachment,
@@ -281,11 +278,6 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
     user?.uid,
   ])
 
-  const sharing = useLiveLocation({
-    convoId: activeConvoId,
-    uid: user?.uid,
-  })
-
   const clearPendingImage = useCallback(() => {
     setPendingImage((prev) => {
       if (prev) URL.revokeObjectURL(prev.previewUrl)
@@ -431,7 +423,6 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
   const retentionStamp = selectedConvo?.retentionExpiresAt ?? null
   const retentionDays = retentionDaysLeft(retentionStamp)
   const retentionSwept = retentionElapsed(retentionStamp)
-  const locationAvailable = canShareLocation(user?.uid)
 
   const sendStageLabel =
     sendStage === 'uploading'
@@ -593,14 +584,6 @@ function MessagesWorkspace({ bookingId }: { bookingId: string | null }) {
                       disabled={sendStage !== 'idle' || threadState !== 'ready' || retentionSwept}
                       onSelect={handleQuickReply}
                     />
-                  }
-                  locationStatusSlot={
-                    <LiveLocationStatus sharing={sharing} />
-                  }
-                  locationSlot={
-                    locationAvailable ? (
-                      <ShareLocationBar sharing={sharing} />
-                    ) : undefined
                   }
                 />
               </div>

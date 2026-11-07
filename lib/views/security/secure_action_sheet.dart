@@ -5,8 +5,8 @@ import '../../core/constants/app_constants.dart';
 
 /// The Security gate's second tier (ADR-0015): one confirm modal, built once,
 /// that every "requires a confirm" action goes through — the stay
-/// transitions, the recorded expiry, sign-out, the live-location reader
-/// grant, room status and price overrides, payment-reference changes.
+/// transitions, the recorded expiry, sign-out, room status and price
+/// overrides, payment-reference changes.
 ///
 /// This absorbs the Booking detail screen's private `_confirm`, so the
 /// wording, the Cinzel title and the `Bumalik` / confirm pair are the same at

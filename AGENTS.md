@@ -20,6 +20,22 @@ log prints it (`[firebase] Building for project …`). Never put a secret in a
 `VITE_*` variable — everything Vite exposes is public — and read
 `docs/FIREBASE_SETUP.md` § 3c before changing any of this.
 
+## Payment proofs are receipts, not claims
+
+A Guest files a payment proof only when the browser read the reference number,
+the amount, and the payment date and time off the screenshot; all four are
+read-only, and there is no manual or "my receipt says otherwise" fallback. The
+one rule is `checkScannedReceipt` in `src/lib/payments/receipt-rules.ts` — use
+it rather than re-deriving the checks in a page. Receipts older than the
+Admin's `payment_proof_max_age_days` (default 7) are refused, and a reference
+already on a live Booking is refused as a duplicate both up front
+(`paymentReferenceStatus`) and inside `submitBooking`'s transaction. See
+ADR-0025.
+
+There is no live-location feature in either app; do not reintroduce the
+Realtime Database block in `firebase.json` or the removed share controls
+(ADR-0026).
+
 ## SEO and the prerender
 
 The Guest website is a single-page app that is prerendered at build time

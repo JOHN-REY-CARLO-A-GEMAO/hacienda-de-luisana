@@ -20,7 +20,7 @@ import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 
 vi.mock('../../src/lib/payments/ocr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/lib/payments/ocr')>()),
-  runReceiptOcr: vi.fn(async () => ({ reference: '', amount: '', amounts: [], confidence: 'none', notes: [] })),
+  runReceiptOcr: vi.fn(async () => (await import('./receipt-fixture')).scannedNow()),
 }))
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -102,7 +102,8 @@ async function attachScreenshotAndSubmit() {
   const input = container.querySelector<HTMLInputElement>('[type="file"]')!
   Object.defineProperty(input, 'files', { configurable: true, value: [file] })
   await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
-  fill('[inputmode="decimal"]', '3000')
+  // The receipt has to be read before the page will offer a submit button.
+  await until(() => [...container.querySelectorAll<HTMLButtonElement>('button')].some((item) => item.textContent?.includes('Submit booking')))
   const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.includes('Submit booking'))
   if (!button) throw new Error('No proof submit button')
   click(button)

@@ -16,11 +16,6 @@ dependencies:
   firebase_auth: ^6.7.0
   cloud_firestore: ^6.10.0
   firebase_messaging: ^16.7.0
-  # The ephemeral live-location stream (ADR-0013). Realtime Database rather
-  # than Firestore because the server deletes a TTL'd node for us and bills
-  # bandwidth rather than a write per GPS fix; the rules that guard it are
-  # database.rules.json.
-  firebase_database: ^12.6.0
   # Private Guest ↔ Admin message images. Bytes are read with the current
   # Firebase Auth token under storage.rules; no public download URLs.
   firebase_storage: ^13.0.0

@@ -19,7 +19,6 @@ import '../../services/accommodations.dart';
 import '../../services/auth_store.dart';
 import '../../services/chat_attachment_service.dart';
 import '../../services/chat_retention.dart';
-import '../../services/live_location_service.dart';
 import '../../tutorial/tutorial_controller.dart';
 import '../../tutorial/tutorial_keys.dart';
 import '../../widgets/empty_state.dart';
@@ -27,7 +26,6 @@ import '../../widgets/hacienda_card.dart';
 import '../../widgets/status_pill.dart';
 import '../bookings/booking_detail_screen.dart';
 import '../security/secure_action_sheet.dart';
-import 'live_location_panel.dart';
 import 'private_chat_image.dart';
 
 /// Canonical display fallback when published rates have not loaded yet, so raw
@@ -910,12 +908,9 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
   String _sendStage = 'idle';
   String? _composerError;
 
-  bool _showLiveLocationPanel = false;
-  bool _liveBannerDismissed = false;
   bool _showBookingDetails = false;
   bool _markingRead = false;
 
-  LiveLocationService? _liveLocation;
   Timer? _countdownTimer;
 
   /// Cursor pagination state: older pages fetched via "Load earlier messages".
@@ -958,8 +953,6 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
       _selectedImage = null;
       _imageMessageId = null;
       _composerError = null;
-      _showLiveLocationPanel = false;
-      _liveBannerDismissed = false;
       _markAdminRead();
     }
   }
@@ -984,38 +977,6 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
     } finally {
       _markingRead = false;
     }
-  }
-
-  Future<void> _toggleLiveLocationPanel({bool skipConfirmIfOpen = false}) async {
-    if (_showLiveLocationPanel) {
-      setState(() => _showLiveLocationPanel = false);
-      return;
-    }
-    if (!skipConfirmIfOpen) {
-      final ok = await showSecureConfirm(
-        context,
-        title: 'View live location?',
-        body:
-            'You will view this Guest\'s position only while their sharing session remains active (up to 60 minutes). Nothing is stored in message history, and the Guest can stop sharing at any moment.',
-        confirm: 'Open map reader',
-      );
-      if (!ok || !mounted) return;
-    }
-
-    final service = _liveLocation ??= LiveLocationService();
-    final auth = legacy.Provider.of<AuthStore>(context, listen: false);
-    final uid = auth.uid;
-    if (uid != null && uid.isNotEmpty) {
-      await service.registerReader(
-        uid: uid,
-        allowlisted: AuthStore.isAllowlisted(auth.sessionEmail),
-      );
-    }
-    if (!mounted) return;
-    setState(() {
-      _showLiveLocationPanel = true;
-      _liveBannerDismissed = false;
-    });
   }
 
   Future<void> _callGuest(String? phone, String guestName) async {
@@ -1258,129 +1219,9 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                 lastActiveLabel: lastActiveLabel,
                 hasPhone: guestPhone.isNotEmpty,
                 showBookingDetails: _showBookingDetails,
-                showLiveLocation: _showLiveLocationPanel,
                 onCall: () => _callGuest(guestPhone, resolved.guestName),
                 onToggleBookingDetails: () =>
                     setState(() => _showBookingDetails = !_showBookingDetails),
-                onToggleLiveLocation: () => _toggleLiveLocationPanel(),
-              ),
-
-            // Live location active consent banner (real session status, no fake ETA)
-            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection(AppConstants.colLocationSessions)
-                  .doc(widget.convoId)
-                  .snapshots(),
-              builder: (context, sessionSnap) {
-                final doc = sessionSnap.data;
-                final session =
-                    (doc != null && doc.exists) ? LiveLocationSession.fromDoc(doc) : null;
-                final isLive = session != null && session.isLive;
-                if (!isLive) return const SizedBox.shrink();
-
-                if (_liveBannerDismissed && !_showLiveLocationPanel) {
-                  return Container(
-                    width: double.infinity,
-                    color: const Color(0xFFECFDF5),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: ActionChip(
-                        avatar: const Icon(
-                          Icons.location_on,
-                          size: 15,
-                          color: AppColors.statusSuccess,
-                        ),
-                        label: Text(
-                          'Live location active, ${session.countdown}',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primaryDark,
-                          ),
-                        ),
-                        backgroundColor: Colors.white,
-                        side: BorderSide(
-                          color: AppColors.statusSuccess.withOpacity(0.45),
-                        ),
-                        onPressed: () => setState(() => _liveBannerDismissed = false),
-                      ),
-                    ),
-                  );
-                }
-
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.sageMist,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: AppColors.statusSuccess.withOpacity(0.3),
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 16,
-                        color: AppColors.statusSuccess,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Live location active, ${session.countdown} remaining',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primaryDark,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () =>
-                            _toggleLiveLocationPanel(skipConfirmIfOpen: true),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          foregroundColor: AppColors.primaryForest,
-                        ),
-                        child: Text(
-                          _showLiveLocationPanel ? 'Hide Map' : 'Open Map',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Minimize live location bar',
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => setState(() {
-                          _liveBannerDismissed = true;
-                          _showLiveLocationPanel = false;
-                        }),
-                        icon: const Icon(
-                          Icons.close,
-                          size: 16,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-
-            // Real OpenStreetMap live-location reader panel
-            if (_showLiveLocationPanel)
-              LiveLocationPanel(
-                conversationId: widget.convoId,
-                guestUid: widget.guestUid.isEmpty ? null : widget.guestUid,
-                service: _liveLocation,
-                onClose: () => setState(() => _showLiveLocationPanel = false),
               ),
 
             // Toggleable Booking Details collapsible card
@@ -1454,18 +1295,6 @@ class ThreadScreenState extends ConsumerState<ThreadScreen> {
                 icon: Icon(
                   Icons.phone_outlined,
                   color: guestPhone.isNotEmpty ? Colors.white : Colors.white54,
-                ),
-              ),
-              IconButton(
-                tooltip: _showLiveLocationPanel
-                    ? 'Close live location map'
-                    : 'Open live location map',
-                onPressed: () => _toggleLiveLocationPanel(),
-                icon: Icon(
-                  _showLiveLocationPanel
-                      ? Icons.location_off_outlined
-                      : Icons.location_on_outlined,
-                  color: Colors.white,
                 ),
               ),
               IconButton(
@@ -2006,20 +1835,16 @@ class _EmbeddedThreadHeader extends StatelessWidget {
     required this.lastActiveLabel,
     required this.hasPhone,
     required this.showBookingDetails,
-    required this.showLiveLocation,
     required this.onCall,
     required this.onToggleBookingDetails,
-    required this.onToggleLiveLocation,
   });
 
   final _ResolvedConversation resolved;
   final String lastActiveLabel;
   final bool hasPhone;
   final bool showBookingDetails;
-  final bool showLiveLocation;
   final VoidCallback onCall;
   final VoidCallback onToggleBookingDetails;
-  final VoidCallback onToggleLiveLocation;
 
   @override
   Widget build(BuildContext context) {
@@ -2072,18 +1897,6 @@ class _EmbeddedThreadHeader extends StatelessWidget {
             icon: Icon(
               Icons.phone_outlined,
               color: hasPhone ? AppColors.primaryForest : AppColors.textMuted,
-            ),
-          ),
-          IconButton(
-            tooltip: showLiveLocation
-                ? 'Close live location map'
-                : 'Open live location map',
-            onPressed: onToggleLiveLocation,
-            icon: Icon(
-              showLiveLocation
-                  ? Icons.location_off_outlined
-                  : Icons.location_on_outlined,
-              color: AppColors.primaryForest,
             ),
           ),
           IconButton(

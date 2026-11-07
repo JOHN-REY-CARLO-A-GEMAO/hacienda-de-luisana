@@ -22,8 +22,6 @@ export type MessageComposerProps = {
   error?: string | null
   onRetry?: () => void
   quickRepliesSlot?: ReactNode
-  locationSlot?: ReactNode
-  locationStatusSlot?: ReactNode
 }
 
 export function MessageComposer({
@@ -39,8 +37,6 @@ export function MessageComposer({
   error = null,
   onRetry,
   quickRepliesSlot,
-  locationSlot,
-  locationStatusSlot,
 }: MessageComposerProps) {
   const inputId = useId()
   const counterId = useId()
@@ -74,7 +70,6 @@ export function MessageComposer({
         submit()
       }}
     >
-      {locationStatusSlot}
       {quickRepliesSlot}
 
       {error && (
@@ -139,7 +134,6 @@ export function MessageComposer({
           <Paperclip size={18} />
         </button>
 
-        {locationSlot}
         <div className="min-w-0 flex-1">
           <label htmlFor={inputId} className="sr-only">
             Message Hacienda de LuisAna

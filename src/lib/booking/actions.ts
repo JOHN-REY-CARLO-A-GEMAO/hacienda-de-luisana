@@ -185,6 +185,12 @@ export type BookingAction =
       payment_sender_name?: string
       /** Payment date the Guest confirmed from the receipt. */
       payment_date?: string
+      /** Payment time the Guest confirmed from the receipt, `HH:MM`. */
+      payment_time?: string
+      /** The reference folded to letters and digits — the duplicate-check key. */
+      payment_reference_key?: string
+      /** OCR-extracted payment time, `HH:MM` (never verified). */
+      ocr_payment_time?: string
     }
   | { type: 'VerifyPayment'; amount_verified: number }
   | { type: 'RejectPaymentProof'; reason: string; guestResubmits: boolean }

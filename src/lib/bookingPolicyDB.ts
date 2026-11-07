@@ -4,6 +4,7 @@
 import { doc, getDocFromServer, onSnapshot } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from './firebase'
 import { configuredBookingLeadTimeDays, MINIMUM_BOOKING_LEAD_TIME_DAYS } from './booking'
+import { configuredReceiptMaxAgeDays, RECEIPT_MAX_AGE_DAYS_DEFAULT } from './payments/receipt-rules'
 
 const COLLECTION = 'site_config'
 const DOC_ID = 'booking'
@@ -39,12 +40,20 @@ export const bookingPolicyDB = {
     minimumLeadTimeDays: number
     quotesRequired: boolean
     callableBookingRequired: boolean
+    /**
+     * How old a payment receipt may be. The Admin sets
+     * `site_config/booking.payment_proof_max_age_days`; absent, invalid or out
+     * of range is the 7-day default, because a policy document nobody can read
+     * is not a reason to accept an old receipt.
+     */
+    paymentProofMaxAgeDays: number
   }> {
     if (!isCloud || !db) {
       return {
         minimumLeadTimeDays: MINIMUM_BOOKING_LEAD_TIME_DAYS,
         quotesRequired: false,
         callableBookingRequired: false,
+        paymentProofMaxAgeDays: RECEIPT_MAX_AGE_DAYS_DEFAULT,
       }
     }
     try {
@@ -54,6 +63,7 @@ export const bookingPolicyDB = {
         minimumLeadTimeDays: configuredBookingLeadTimeDays(data ?? null),
         quotesRequired: data?.quotes_required === true,
         callableBookingRequired: data?.callable_booking_required === true,
+        paymentProofMaxAgeDays: configuredReceiptMaxAgeDays(data),
       }
     } catch {
       throw new Error('Booking dates could not be checked right now. Please try again.')

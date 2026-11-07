@@ -323,3 +323,74 @@ test('bookingAvailability keeps light calendar reads in-memory and persists only
   assert.equal(bucketPaths.length, 1);
   assert.equal(store.get(bucketPaths[0]!).count, 7);
 });
+
+// ---------------------------------------------------------------------------
+// One reference, one payment
+// ---------------------------------------------------------------------------
+
+test('submitBooking refuses a reference already on another live Booking, across spellings', async () => {
+  prepareBookingConfig();
+  store.set('bookings/bk_existing', {
+    status: 'Pending', payment_status: 'pending', guest_name: 'Other Guest',
+    check_in: isoAfter(60), check_out: isoAfter(61), accommodation: 'annex',
+    payment_reference: 'BDO-1234 5678', payment_reference_key: 'BDO12345678',
+  });
+
+  // The same bank ref, printed without separators and in lower case: the key is
+  // the identity, so the duplicate is still found. (`payment_reference_key` is
+  // the normalised form the browser files; the server normalises it again.)
+  const payload = {
+    ...guestBooking('guest-one', isoAfter(45)),
+    payment_reference: 'bdo12345678',
+    payment_reference_key: 'BDO12345678',
+  };
+  await assert.rejects(
+    run('guest-one', { booking: payload }, 'submitBooking'),
+    (error: any) =>
+      error.code === 'already-exists' &&
+      error.details?.cause === 'DUPLICATE_PAYMENT_REFERENCE' &&
+      /Duplicate reference/i.test(error.message),
+  );
+  assert.equal([...store.keys()].filter(path => /^bookings\/[^/]+$/.test(path)).length, 1);
+});
+
+test('submitBooking accepts a reference whose only other Booking is Cancelled', async () => {
+  prepareBookingConfig();
+  store.set('bookings/bk_cancelled', {
+    status: 'Cancelled', payment_status: 'pending', guest_name: 'Earlier Guest',
+    check_in: isoAfter(70), check_out: isoAfter(71), accommodation: 'annex',
+    payment_reference: 'GCASH987654321', payment_reference_key: 'GCASH987654321',
+  });
+  const payload = {
+    ...guestBooking('guest-one', isoAfter(45)),
+    payment_reference: 'GCASH987654321',
+    payment_reference_key: 'GCASH987654321',
+  };
+  const created = await run('guest-one', { booking: payload }, 'submitBooking');
+  assert.equal(created.status, 'Pending');
+  assert.equal(store.get(`bookings/${created.id}`).payment_reference_key, 'GCASH987654321');
+});
+
+test('paymentReferenceStatus reports the live Booking behind a duplicate reference', async () => {
+  prepareBookingConfig();
+  store.set('bookings/bk_live', {
+    status: 'Payment Pending', guest_name: 'Other Guest',
+    check_in: isoAfter(60), check_out: isoAfter(61), accommodation: 'annex',
+    payment_reference: '7044357122304', payment_reference_key: '7044357122304',
+  });
+
+  const found = await run('guest-one', { reference: '7044 357 122304' }, 'paymentReferenceStatus');
+  assert.deepEqual(found, { duplicate: true, bookingId: 'bk_live', key: '7044357122304' });
+
+  const free = await run('guest-one', { reference: 'NEW-REF-99' }, 'paymentReferenceStatus');
+  assert.deepEqual(free, { duplicate: false, bookingId: null, key: 'NEWREF99' });
+
+  await assert.rejects(
+    run(null, { reference: '7044357122304' }, 'paymentReferenceStatus'),
+    (error: any) => error.code === 'unauthenticated',
+  );
+  await assert.rejects(
+    run('guest-one', { reference: 'AB' }, 'paymentReferenceStatus'),
+    (error: any) => error.code === 'invalid-argument',
+  );
+});

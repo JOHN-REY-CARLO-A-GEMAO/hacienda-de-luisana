@@ -32,9 +32,7 @@ import { appSession } from './authSession'
 import {
   auth,
   db,
-  ensureRealtimeDatabase,
   firebaseConfigReport,
-  hasRealtimeDatabaseConfig,
   isFirebaseConfigured,
   isUsingEmulators,
 } from './firebase'
@@ -45,7 +43,7 @@ import { lastCloudWriteFailure } from './firestoreBookings'
 export type CheckStatus = 'ok' | 'warn' | 'fail' | 'skip'
 
 export type Check = {
-  id: 'build' | 'identity' | 'database' | 'live-location' | 'write' | 'emulators'
+  id: 'build' | 'identity' | 'database' | 'write' | 'emulators'
   label: string
   status: CheckStatus
   detail: string
@@ -153,13 +151,6 @@ export async function runConnectionCheck(): Promise<Check[]> {
     }
   }
 
-  // 3b. The Realtime Database — the live-location stream's transport, and the
-  // one service whose absence used to be invisible. A project with no
-  // `databaseURL`, or a database whose rules were never deployed, disables the
-  // share control with a reason, and this check is where an owner finds that
-  // out without opening a conversation and guessing.
-  checks.push(await realtimeDatabaseCheck())
-
   // 4. Has firestore.rules refused a Booking write from this browser? Nothing else
   // in the app reports this, and it is the failure a Guest cannot act on: the
   // rules refused the create for one of a dozen reasons and the screen can only
@@ -201,100 +192,6 @@ export async function runConnectionCheck(): Promise<Check[]> {
   }
 
   return checks
-}
-
-/**
- * Is the live-location stream actually reachable from this build?
- *
- * Three questions, in the order they fail:
- *
- *   1. Does the build carry a Realtime Database URL at all? Without one
- *      `hasRealtimeDatabaseConfig()` is false and the share control is disabled
- *      with "no live-location channel configured" — the state that hid the
- *      `.ttl` bug for a release, because the button was off and nothing said so
- *      on a page an owner reads.
- *   2. Can the SDK open it? A URL that is wrong, or a database that was never
- *      created in the console, fails here.
- *   3. Do the deployed rules answer? A read of `live_location` is refused for
- *      everybody, by design (`database.rules.json` grants a read on the *leaf*,
- *      under a live window), so a `permission-denied` is the SUCCESS case: it
- *      proves rules are deployed and answering. A URL that resolves but has no
- *      rules at all answers the same way, so this check reports what it saw
- *      rather than claiming more — the definitive test is a real share.
- */
-async function realtimeDatabaseCheck(): Promise<Check> {
-  const id = 'live-location' as const
-  const label = 'Realtime Database (live location)'
-
-  if (!isFirebaseConfigured) {
-    return {
-      id,
-      label,
-      status: 'skip',
-      detail: 'No Firebase project in this build, so there is no live-location channel either.',
-    }
-  }
-
-  if (!hasRealtimeDatabaseConfig()) {
-    return {
-      id,
-      label,
-      status: 'fail',
-      detail:
-        'This build has no Realtime Database URL, so the "Live Location" control is disabled and a ' +
-        'Guest cannot share a position at all. Create the database in Firebase console → Realtime ' +
-        'Database, set VITE_FIREBASE_DATABASE_URL (or the committed default in ' +
-        'src/lib/firebaseDefaults.ts), redeploy, and run: firebase deploy --only database',
-    }
-  }
-
-  const realtime = await ensureRealtimeDatabase()
-  if (!realtime) {
-    return {
-      id,
-      label,
-      status: 'fail',
-      detail:
-        'The Realtime Database URL is configured but the SDK could not open it. Check that the ' +
-        'database exists in Firebase console → Realtime Database and that the project id in the ' +
-        'URL matches this build.',
-    }
-  }
-
-  try {
-    const { get, ref } = await import('firebase/database')
-    await get(ref(realtime, 'live_location'))
-    return {
-      id,
-      label,
-      status: 'warn',
-      detail:
-        'The Realtime Database answered, and the read was ALLOWED — the database rules grant ' +
-        'everyone a read of live_location, which database.rules.json does not. Deploy them: ' +
-        'firebase deploy --only database',
-    }
-  } catch (error) {
-    const code = (error as { code?: string } | null)?.code ?? ''
-    if (code.includes('permission') || code.includes('unauthorized')) {
-      return {
-        id,
-        label,
-        status: 'ok',
-        detail:
-          'The Realtime Database is reachable and its rules are answering — a read of ' +
-          'live_location was refused, which is what database.rules.json intends (a position is ' +
-          'readable only on the leaf, and only while a session is live).',
-      }
-    }
-    return {
-      id,
-      label,
-      status: 'fail',
-      detail:
-        `The Realtime Database could not be reached (${code || 'no code'}). Live location needs ` +
-        'it; everything else on this site works without it.',
-    }
-  }
 }
 
 /** Who, if anybody, this browser is signed in as — for the status page. */

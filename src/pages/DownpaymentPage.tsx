@@ -25,7 +25,17 @@ import { AddonFeeSummary } from '../components/Booking/StayRequestsSection'
 import { uploadPaymentProof } from '../lib/payments'
 import { usePaymentInformation } from '../hooks/usePaymentInformation'
 import { PaymentInformationPanel } from '../components/Booking/PaymentInformationPanel'
-import { amountMismatchNote, claimAgainstReceipt, runReceiptOcr, suggestedAmount, type OcrExtract, type ReceiptAmount } from '../lib/payments/ocr'
+import { amountMismatchNote, runReceiptOcr, suggestedAmount, type OcrExtract, type ReceiptAmount } from '../lib/payments/ocr'
+import {
+  RECEIPT_MAX_AGE_DAYS_DEFAULT,
+  checkScannedReceipt,
+  configuredReceiptMaxAgeDays,
+  displayPaymentReference,
+  duplicateReferenceMessage,
+  normalizePaymentReference,
+} from '../lib/payments/receipt-rules'
+import { checkPaymentReference } from '../lib/payments/reference-check'
+import { bookingPolicyDB } from '../lib/bookingPolicyDB'
 import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { usePublishedRates } from '../hooks/usePublishedRates'
 import { displayedRate } from '../sections/Accommodations'
@@ -76,14 +86,17 @@ export function DownpaymentPage() {
    */
   const [ocrExtract, setOcrExtract] = useState<OcrExtract | null>(null)
   const [reference, setReference] = useState('')
+  /** The payment date the scan read, `YYYY-MM-DD`. Filed as `payment_date`. */
+  const [paymentDate, setPaymentDate] = useState('')
+  /** The payment time the scan read, `HH:MM`. Filed as `payment_time`. */
+  const [paymentTime, setPaymentTime] = useState('')
   const [ocrNote, setOcrNote] = useState('')
-  /**
-   * The Guest has said, on purpose, that their receipt shows an amount OCR did
-   * not read. Only they can know that — the Admin reads it off the screenshot —
-   * so it is a claim of theirs to make, and it is cleared the moment the
-   * screenshot is replaced or taken away.
-   */
-  const [claimOffReceipt, setClaimOffReceipt] = useState(false)
+  /** The Admin's receipt-age window, from `site_config/booking`. */
+  const [maxAgeDays, setMaxAgeDays] = useState(RECEIPT_MAX_AGE_DAYS_DEFAULT)
+  /** The Booking already carrying this reference, when one was found. */
+  const [duplicateOf, setDuplicateOf] = useState<string | null>(null)
+  /** The duplicate popup. Its title is the sentence the Admin asked for. */
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -111,20 +124,36 @@ export function DownpaymentPage() {
   const paymentPlan = selectedOption?.plan ?? 'full' as const
   const deposit = quoted?.rateCard.securityDeposit
   /**
-   * The claim, held against the evidence for it: the sentence that says the two
-   * disagree, or `null` when they agree, when the screenshot printed no figure to
-   * check against, and once the Guest has said on the record that their receipt
-   * reads differently from what was read off it — OCR is a hint engine, and only
-   * the Admin reads the screenshot for real.
+   * The proof, held against the receipt it claims to be: the scan has to have
+   * read the reference, amount, date and time, the form's values have to be the
+   * scan's own, the receipt has to be inside the Admin's window, and the
+   * reference must not already belong to another Booking.
    */
-  const receiptCheck = claimAgainstReceipt(amount, amountCandidates, dueNow ?? undefined)
-  const offReceipt = claimOffReceipt ? null : receiptCheck.ok ? null : receiptCheck.message
-  /**
-   * Whether this page will accept the claim at all. `submit` refuses one below
-   * the due-now figure, so every sentence on this page that promises an Admin
-   * review has to know whether that promise has a path behind it.
-   */
+  const receiptCheck = checkScannedReceipt({
+    extract: ocrExtract,
+    claim: { reference, amount, paymentDate, paymentTime },
+    maxAgeDays,
+    duplicateOf,
+  })
+  const receiptRefusal = receiptCheck.ok ? null : receiptCheck.message
+  /** The proof field below the due-now figure: `submit` refuses this. */
   const belowDueNow = dueNow !== null && Number(amount) > 0 && dueNow - Number(amount) >= 0.005
+
+  // The Admin's window can change without a redeploy. A receipt that was in
+  // window when the page opened is judged again at submit anyway; this is what
+  // the sentence above the form reads.
+  useEffect(() => {
+    let cancelled = false
+    bookingPolicyDB
+      .getGuestPolicy()
+      .then((policy) => {
+        if (!cancelled) setMaxAgeDays(configuredReceiptMaxAgeDays({ payment_proof_max_age_days: policy.paymentProofMaxAgeDays }))
+      })
+      .catch(() => {
+        if (!cancelled) setMaxAgeDays(RECEIPT_MAX_AGE_DAYS_DEFAULT)
+      })
+    return () => { cancelled = true }
+  }, [])
 
   // No draft means the booking session ended (tab closed, browser cleared, or the
   // page was opened directly), or the draft was incomplete. Say so on /book rather
@@ -179,8 +208,11 @@ export function DownpaymentPage() {
     setOcrNote('')
     setOcrExtract(null)
     setAmountCandidates([])
-    setClaimOffReceipt(false)
+    setDuplicateOf(null)
+    setDuplicateOpen(false)
     setReference('')
+    setPaymentDate('')
+    setPaymentTime('')
     setAmount(dueNow === null ? '' : String(dueNow))
     if (!file) {
       setProofFile(null)
@@ -201,7 +233,25 @@ export function DownpaymentPage() {
       // Kept whole, not just the two fields the form borrows: `submit` writes
       // the read onto the Booking as `ocr_*` evidence for the Admin.
       setOcrExtract(fields)
-      if (fields.reference) setReference((current) => current || fields.reference)
+      // The reference, date and time come off the receipt itself. They are
+      // shown read-only below, because a proof the Guest edits is not the
+      // receipt the Admin will read.
+      if (fields.reference) setReference(displayPaymentReference(fields.reference))
+      if (fields.paymentDateIso) setPaymentDate(fields.paymentDateIso)
+      if (fields.paymentTime24) setPaymentTime(fields.paymentTime24)
+      if (fields.reference) {
+        // Checked here so the Guest learns before uploading, and checked again
+        // at submit because another Booking can claim it in between.
+        void checkPaymentReference({ reference: fields.reference })
+          .then((result) => {
+            if (scan !== scanGeneration.current) return
+            if (result.status === 'duplicate') {
+              setDuplicateOf(result.bookingId)
+              setDuplicateOpen(true)
+            }
+          })
+          .catch(() => {})
+      }
       // Every distinct figure the screenshot prints, kept so a receipt whose
       // `Amount` and `Total Amount Sent` disagree asks the Guest which one they
       // sent. Without this the field sits on the published `dueNow` whatever the
@@ -218,7 +268,18 @@ export function DownpaymentPage() {
         if (suggestion) setAmount(suggestion.value)
       }
       const notes: string[] = []
-      if (fields.reference) notes.push('A reference was read off the screenshot. Please check it before you submit.')
+      const missing: string[] = []
+      if (!fields.reference) missing.push('reference number')
+      if (fields.amounts.length === 0) missing.push('amount')
+      if (!fields.paymentDateIso) missing.push('date')
+      if (!fields.paymentTime24) missing.push('time')
+      if (missing.length > 0) {
+        notes.push(
+          `Could not read the ${missing.join(', ')} from this screenshot. Only a receipt whose reference, date and time, and amount are all readable can be accepted — upload a clearer screenshot.`,
+        )
+      } else {
+        notes.push('The reference, date and time, and amount on the form were read from this screenshot.')
+      }
       if (candidates.length > 1) {
         notes.push(
           `This screenshot shows ${candidates.length} different amounts (${candidates
@@ -286,12 +347,29 @@ export function DownpaymentPage() {
         return
       }
       const claimed = Number(amountCheck.value)
-      // The claim is checked against its own screenshot before it is checked
-      // against the published rate: a figure the receipt never printed is a
-      // wrong claim whatever the rate says, and `amount_claimed` is the number
-      // the Admin approves against. Nothing is uploaded or written first.
-      if (offReceipt) {
-        setError(offReceipt)
+      // The proof is judged against its own receipt before anything is uploaded:
+      // the scan has to have read the reference, amount, date and time, the form
+      // has to carry the scan's own values, and the receipt has to be recent.
+      // Nothing is uploaded or written before this passes.
+      const verdict = checkScannedReceipt({
+        extract: ocrExtract,
+        claim: { reference, amount, paymentDate, paymentTime },
+        maxAgeDays,
+        duplicateOf,
+      })
+      if (!verdict.ok) {
+        setError(verdict.message)
+        if (verdict.problems.some((problem) => problem.code === 'duplicate')) setDuplicateOpen(true)
+        return
+      }
+      // The reference may have been filed by another Guest since the page read
+      // it. The callable is the last check before the screenshot leaves the
+      // device; `submitBooking` is the one that cannot be walked around.
+      const duplicate = await checkPaymentReference({ reference })
+      if (duplicate.status === 'duplicate') {
+        setDuplicateOf(duplicate.bookingId)
+        setDuplicateOpen(true)
+        setError(duplicateReferenceMessage(displayPaymentReference(reference), duplicate.bookingId))
         return
       }
       if (dueNow !== null && claimed < dueNow) {
@@ -437,6 +515,7 @@ refund_policy_snapshot: published.refund ?? null,
             ...(ocrExtract.amount ? { ocr_amount: ocrExtract.amount } : {}),
             ...(ocrExtract.senderName ? { ocr_sender_name: ocrExtract.senderName } : {}),
             ...(ocrExtract.paymentDateIso ? { ocr_payment_date: ocrExtract.paymentDateIso } : {}),
+            ...(ocrExtract.paymentTime24 ? { ocr_payment_time: ocrExtract.paymentTime24 } : {}),
             ocr_proof_url: uploaded.url,
             ocr_engine: 'tesseract',
             ocr_confidence: ocrExtract.confidence,
@@ -486,7 +565,16 @@ refund_policy_snapshot: published.refund ?? null,
            payment_plan: paymentPlan,
            payment_status: 'pending',
            amount_claimed: claimed,
-           ...(reference.trim() ? { payment_reference: reference.trim() } : {}),
+           ...(reference.trim()
+             ? {
+                 payment_reference: displayPaymentReference(reference),
+                 // The comparison key the duplicate check queries on: the same
+                 // reference written with different separators is one number.
+                 payment_reference_key: normalizePaymentReference(reference),
+               }
+             : {}),
+           ...(paymentDate ? { payment_date: paymentDate } : {}),
+           ...(paymentTime ? { payment_time: paymentTime } : {}),
            ...ocrEvidence,
            nights,
            stay_total: stayTotal,
@@ -700,8 +788,11 @@ refund_policy_snapshot: published.refund ?? null,
                     setProofFile(null)
                     setOcrNote('')
                     setReference('')
+                    setPaymentDate('')
+                    setPaymentTime('')
                     setAmountCandidates([])
-                    setClaimOffReceipt(false)
+                    setDuplicateOf(null)
+                    setDuplicateOpen(false)
                     // The figure that was read off this screenshot has no evidence
                     // behind it any more, so it goes with the screenshot and the
                     // published downpayment comes back as the default claim.
@@ -714,12 +805,8 @@ refund_policy_snapshot: published.refund ?? null,
               )}
               {scanning && (
                 <p className="mt-3 text-base text-forest-700" role="status">
-                  Reading the screenshot… You can{' '}
-                  <button type="button" className="underline" onClick={() => {
-                    scanGeneration.current += 1
-                    setScanning(false)
-                    setOcrNote('Automatic reading skipped. Enter the amount and reference from your receipt.')
-                  }}>enter details manually</button> instead.
+                  Reading the screenshot… The reference number, payment date and time, and amount
+                  have to be readable, so this can take a moment.
                 </p>
               )}
               {ocrNote && <p className="mt-3 text-base text-forest-700/70" role="status">{ocrNote}</p>}
@@ -756,69 +843,69 @@ refund_policy_snapshot: published.refund ?? null,
                 </Alert>
               )}
 
-              <div className="mt-6 grid sm:grid-cols-2 gap-5">
-                <Field label="Halagang Nakasaad sa Screenshot" required>
+              {/* A proof the engine could not fully read, or a value that is not the
+                  scan's own, is refused — there is no "my receipt says otherwise"
+                  escape, because a proof the system cannot check against the image
+                  is not a proof. */}
+              {receiptRefusal && (
+                <Alert tone="danger" role="status" className="mt-4 text-base">
+                  <span className="block font-medium">{receiptRefusal}</span>
+                </Alert>
+              )}
+
+              <div className="mt-6 grid gap-5 sm:grid-cols-2">
+                <Field label="Reference Number (from the receipt)" required>
+                  <Input
+                    value={reference}
+                    readOnly
+                    aria-readonly="true"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="Read from your screenshot"
+                  />
+                </Field>
+                <Field
+                  label="Amount on the receipt (₱)"
+                  required
+                  hint={amountCandidates.length > 1 ? 'Choose the figure you actually sent above.' : undefined}
+                >
                   <Input
                     inputMode="decimal"
                     autoComplete="off"
                     spellCheck={false}
                     value={amount}
-                    placeholder="0.00"
-                    onChange={(event) => { amountEdited.current = true; setAmount(event.target.value) }}
+                    readOnly
+                    aria-readonly="true"
+                    placeholder="Read from your screenshot"
                   />
                 </Field>
-                <Field label="Reference Number" hint="Optional, pero mabilisang masusuri kung mayroon.">
+                <Field label="Payment date (from the receipt)" required>
                   <Input
-                    value={reference}
+                    value={paymentDate}
+                    readOnly
+                    aria-readonly="true"
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder="GCash / Maya / bank ref"
-                    onChange={(event) => setReference(event.target.value)}
+                    placeholder="YYYY-MM-DD"
+                  />
+                </Field>
+                <Field label="Payment time (from the receipt)" required>
+                  <Input
+                    value={paymentTime}
+                    readOnly
+                    aria-readonly="true"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="HH:MM"
                   />
                 </Field>
               </div>
 
-              {/* The claim against the evidence for it. `submit` refuses this, so it
-                  is said plainly here, with the figures the screenshot printed one
-                  click away — and with a way through for a Guest whose receipt the
-                  engine read wrong, because OCR is a hint and the Admin is the one
-                  who reads the screenshot. */}
-              {amountCandidates.length > 0 && (offReceipt || claimOffReceipt) && (
-                <Alert tone={offReceipt ? 'danger' : 'warning'} role="status" className="mt-4 text-base">
-                  <span className="block font-medium">
-                    {offReceipt ??
-                      (belowDueNow
-                        ? `You are claiming an amount this screenshot does not show. It is also below the ${peso(dueNow!)} down payment this Booking asks for, so this still cannot be submitted until the amount is corrected.`
-                        : 'You are claiming an amount this screenshot does not show. The Admin reads the amount off your screenshot before approving this booking.')}
-                  </span>
-                  {offReceipt && (
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                      {amountCandidates.map((candidate) => (
-                        <button
-                          key={candidate.value}
-                          type="button"
-                          className="text-base text-red-700 underline underline-offset-2"
-                          onClick={() => { amountEdited.current = true; setAmount(candidate.value) }}
-                        >
-                          Use {peso(Number(candidate.value))} ({candidate.label})
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <label className="mt-2 flex min-h-11 cursor-pointer items-start gap-3 py-2 text-base">
-                    <input
-                      type="checkbox"
-                      name="claim-off-receipt"
-                      className="mt-1 h-5 w-5 shrink-0"
-                      checked={claimOffReceipt}
-                      onChange={(event) => setClaimOffReceipt(event.target.checked)}
-                    />
-                    <span>
-                      My screenshot says a different amount. I typed it above from the receipt.
-                    </span>
-                  </label>
-                </Alert>
-              )}
+              <p className="mt-3 text-sm leading-relaxed text-forest-700">
+                Receipts are accepted only within {maxAgeDays} {maxAgeDays === 1 ? 'day' : 'days'} of the
+                payment date and time printed on them. If a value above is wrong, upload a clearer
+                screenshot — these four fields are read from the image and cannot be typed over.
+              </p>
 
               {/* `submit` refuses a claim below `dueNow`, so this page says the claim cannot
                   be submitted rather than promising an Admin review that cannot
@@ -828,6 +915,36 @@ refund_policy_snapshot: published.refund ?? null,
                 <Alert tone="warning" role="status" className="mt-4 text-base">
                   {amountMismatchNote(Number(amount) || 0, dueNow ?? 0, { underpay: 'blocks_submit' })}
                 </Alert>
+              )}
+
+              {duplicateOpen && duplicateOf && (
+                <div
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="duplicate-reference-title"
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-forest-950/60 p-4"
+                >
+                  <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+                    <h3 id="duplicate-reference-title" className="font-serif text-xl font-semibold text-forest-900">
+                      Duplicate reference
+                    </h3>
+                    <p className="mt-3 text-base leading-relaxed text-forest-800">
+                      {duplicateReferenceMessage(displayPaymentReference(reference), duplicateOf)}
+                    </p>
+                    <p className="mt-3 text-sm leading-relaxed text-forest-700">
+                      Each reference number pays for one Booking. Check that this screenshot belongs to
+                      this stay, and contact the Hacienda through its official channels if you believe
+                      this is a mistake.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm mt-5 w-full"
+                      onClick={() => setDuplicateOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
               )}
 
               <div className="mt-8 flex flex-wrap items-center gap-3">

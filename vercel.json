@@ -12,7 +12,6 @@
     { "source": "/review", "destination": "/404.html" },
     { "source": "/admin", "destination": "/404.html" },
     { "source": "/admin/(.*)", "destination": "/404.html" },
-    { "source": "/admin/live-location/(.*)", "destination": "/404.html" },
     { "source": "/app", "destination": "/404.html" },
     { "source": "/app/(.*)", "destination": "/404.html" }
   ]

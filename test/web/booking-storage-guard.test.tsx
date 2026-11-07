@@ -21,10 +21,7 @@ import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 
 vi.mock('../../src/lib/payments/ocr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/lib/payments/ocr')>()),
-  runReceiptOcr: vi.fn(async () => ({
-    reference: '', amount: '', amounts: [], confidence: 'none', notes: [],
-    senderName: '', paymentDate: '', paymentDateIso: '',
-  })),
+  runReceiptOcr: vi.fn(async () => (await import('./receipt-fixture')).scannedNow()),
 }))
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
@@ -97,7 +94,7 @@ async function attachScreenshot() {
   const file = new File(['test screenshot'], 'proof.png', { type: 'image/png' })
   Object.defineProperty(input('[type="file"]'), 'files', { configurable: true, value: [file] })
   await act(async () => input('[type="file"]').dispatchEvent(new Event('change', { bubbles: true })))
-  fill('[inputmode="decimal"]', '3000')
+  await until(() => [...container.querySelectorAll<HTMLButtonElement>('button')].some((item) => item.textContent?.includes('Submit booking')))
 }
 
 function submitProof() {

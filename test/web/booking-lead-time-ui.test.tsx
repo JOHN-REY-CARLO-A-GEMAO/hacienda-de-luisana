@@ -25,7 +25,7 @@ import { LOCAL_RATES_KEY } from '../../src/lib/ratesDB'
 // is how `amountMismatchNote` went missing and took all 7 of these tests with it.
 vi.mock('../../src/lib/payments/ocr', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/lib/payments/ocr')>()),
-  runReceiptOcr: vi.fn(async () => ({ reference: '', amount: '', amounts: [], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' })),
+  runReceiptOcr: vi.fn(async () => (await import('./receipt-fixture')).scannedNow()),
 }))
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -91,7 +91,14 @@ async function attachScreenshot() {
   const file = new File(['test screenshot'], 'proof.png', { type: 'image/png' })
   Object.defineProperty(input('[type="file"]'), 'files', { configurable: true, value: [file] })
   await act(async () => input('[type="file"]').dispatchEvent(new Event('change', { bubbles: true })))
-  fill('[inputmode="decimal"]', '3000')
+  // The page reads the receipt before it will show a submit button; wait for the
+  // read to settle rather than guessing a tick.
+  await until(() => container.textContent?.includes('The reference, date and time') ?? false)
+}
+
+/** The four fields the scan fills, in the order the page renders them. */
+function scannedFields(): string[] {
+  return [...container.querySelectorAll<HTMLInputElement>('input[readonly]')].map((field) => field.value)
 }
 function submitProof() {
   const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.includes('Submit booking'))
@@ -323,18 +330,26 @@ describe('new date policy preserves the existing validation gates', () => {
     expect(container.querySelector('.booking-light-surface')).not.toBeNull()
   })
 
-  it('does not overwrite manual entries typed while OCR is running', async () => {
+  it('fills the reference, amount, date and time from the scan, and closes them to typing', async () => {
     saveBookingDraft(draft())
     let resolveScan!: (value: Awaited<ReturnType<typeof ocr.runReceiptOcr>>) => void
     vi.mocked(ocr.runReceiptOcr).mockImplementationOnce(() => new Promise((resolve) => { resolveScan = resolve }))
     open('/book/pay')
     Object.defineProperty(input('[type="file"]'), 'files', { configurable: true, value: [new File(['image'], 'proof.png', { type: 'image/png' })] })
     await act(async () => { input('[type="file"]').dispatchEvent(new Event('change', { bubbles: true })) })
-    fill('[inputmode="decimal"]', '3100')
-    fill('[placeholder="GCash / Maya / bank ref"]', 'MYREF')
-    await act(async () => { resolveScan({ reference: 'OCRREF', amount: '9000', amounts: [{ value: '9000', label: 'Amount' }], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' }) })
-    expect(input('[inputmode="decimal"]').value).toBe('3100')
-    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('MYREF')
+    // Nothing is readable yet, and the fields are the scan's alone.
+    expect(scannedFields()).toEqual(['', '3000', '', ''])
+    for (const field of container.querySelectorAll<HTMLInputElement>('input[readonly]')) {
+      expect(field.readOnly, 'a scanned field cannot be typed over').toBe(true)
+    }
+    const scan = (await import('./receipt-fixture')).scannedNow()
+    await act(async () => { resolveScan(scan) })
+    expect(scannedFields()).toEqual([
+      scan.reference,
+      scan.amount,
+      scan.paymentDateIso,
+      scan.paymentTime24,
+    ])
   })
 
   it('reports unknown availability without asserting that another booking holds the dates', async () => {
@@ -364,27 +379,26 @@ describe('new date policy preserves the existing validation gates', () => {
     expect(container.textContent).toContain('Reading the screenshot')
     expect([...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Reading screenshot'))?.disabled).toBe(true)
     await select('new.png')
-    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('NEWREF')
+    expect(scannedFields()[0]).toBe('NEWREF')
     await act(async () => { resolveFirst({ reference: 'OLDREF', amount: '9000', amounts: [{ value: '9000', label: 'Amount' }], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' }) })
-    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('NEWREF')
-    expect(input('[inputmode="decimal"]').value).not.toBe('9000')
+    expect(scannedFields()[0]).toBe('NEWREF')
+    expect(scannedFields()[1]).not.toBe('9000')
     click([...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Remove screenshot'))!)
-    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('')
+    expect(scannedFields()[0]).toBe('')
   })
 
-  it('allows manual entry if OCR is slow and ignores the late result', async () => {
+  it('keeps Submit disabled and the fields blank until a slow scan finishes', async () => {
     saveBookingDraft(draft())
     let resolveScan!: (value: Awaited<ReturnType<typeof ocr.runReceiptOcr>>) => void
     vi.mocked(ocr.runReceiptOcr).mockImplementationOnce(() => new Promise((resolve) => { resolveScan = resolve }))
     open('/book/pay')
     Object.defineProperty(input('[type="file"]'), 'files', { configurable: true, value: [new File(['image'], 'proof.png', { type: 'image/png' })] })
     await act(async () => { input('[type="file"]').dispatchEvent(new Event('change', { bubbles: true })) })
-    click([...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('enter details manually'))!)
-    fill('[inputmode="decimal"]', '3100')
-    await act(async () => { resolveScan({ reference: 'STALE', amount: '9000', amounts: [{ value: '9000', label: 'Amount' }], confidence: 'none', notes: [], senderName: '', paymentDate: '', paymentDateIso: '' }) })
-    expect(input('[inputmode="decimal"]').value).toBe('3100')
-    expect(input('[placeholder="GCash / Maya / bank ref"]').value).toBe('')
-    expect(container.textContent).toContain('Automatic reading skipped')
+    const submit = [...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => /Reading screenshot|Submit booking/.test(b.textContent ?? ''))
+    expect(submit?.disabled, 'no proof can be filed before the receipt is read').toBe(true)
+    expect(scannedFields().slice(0, 1)).toEqual([''])
+    await act(async () => { resolveScan((await import('./receipt-fixture')).scannedNow()) })
+    expect(scannedFields()[0]).toBe('7044357122304')
   })
 
   it('does not bypass guest details validation for an otherwise valid date', async () => {
@@ -408,14 +422,18 @@ describe('new date policy preserves the existing validation gates', () => {
     expect(upload).not.toHaveBeenCalled()
     expect(bookingsDB.list().some((booking) => booking.guest_name === 'Ana Reyes')).toBe(false)
   })
-  it('still refuses an invalid claimed payment amount for a lead-time-valid draft', async () => {
+  it('refuses a scanned figure below the down payment, before any upload', async () => {
     saveBookingDraft(draft())
+    const fixture = await import('./receipt-fixture')
+    vi.mocked(ocr.runReceiptOcr).mockResolvedValueOnce(fixture.scannedNow({
+      amount: '2000',
+      amounts: [{ label: 'Amount', value: '2000' }],
+    }))
     open('/book/pay')
     await attachScreenshot()
-    fill('[inputmode="decimal"]', '0')
     submitProof()
     await until(() => Boolean(container.querySelector('[role="alert"]')))
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Amount must be at least')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('downpayment due now is')
     expect(localStorage.getItem('hdl:payment-proofs')).toBeNull()
   })
   it('checks again if availability/auth completes after Manila midnight, before proof upload', async () => {
