@@ -29,8 +29,10 @@ one rule is `checkScannedReceipt` in `src/lib/payments/receipt-rules.ts` — use
 it rather than re-deriving the checks in a page. Receipts older than the
 Admin's `payment_proof_max_age_days` (default 7) are refused, and a reference
 already on a live Booking is refused as a duplicate both up front
-(`paymentReferenceStatus`) and inside `submitBooking`'s transaction. See
-ADR-0025.
+(`paymentReferenceStatus`) and inside `submitBooking`'s transaction. The core
+runs on Firebase Functions or on the Cloudflare Worker (ADR-0024), which hosts
+`paymentReferenceStatus` too; with neither host deployed the duplicate check can
+only see the Guest's own Bookings. See ADR-0025.
 
 There is no live-location feature in either app; do not reintroduce the
 Realtime Database block in `firebase.json` or the removed share controls
