@@ -455,7 +455,10 @@ bool _referenceBetweenIsOneRun(String between) {
   return true;
 }
 
+/// The labels a receipt prints its figures under, most specific first.
+/// `Send Money Amount` is BDO Pay's principal figure.
 const _amountLabels = <(String, String)>[
+  ('Send Money Amount', r'send\s*money\s*amount'),
   ('Total Amount Sent', r'total\s*amount\s*sent'),
   ('Amount Sent', r'amount\s*sent'),
   ('Total Amount', r'total\s*amount'),
@@ -466,8 +469,26 @@ const _amountLabels = <(String, String)>[
   ('Paid', r'paid'),
 ];
 
+/// A line that prices the transfer's fee, not the transfer: `Service Fee`,
+/// `Convenience Fee`, `Service Charge`. BDO Pay prints `Service Fee PHP 10.00`
+/// right under the amount the Guest sent, and without this the fee figure reads
+/// as a second payment amount.
+final _feeLineRe = RegExp(r'\bfees?\b|\bcharges?\b', caseSensitive: false);
+
+/// Whether a line carries an amount label — the receipt saying a figure on it
+/// is money, which a fee word from an interleaved row must not overrule.
+bool _hasAmountLabel(String scope) {
+  for (final label in _amountLabels) {
+    if (RegExp(label.$2, caseSensitive: false).hasMatch(scope)) return true;
+  }
+  return false;
+}
+
 /// Every peso figure a receipt prints, each with its label, deduplicated by
 /// value and ordered most-specific label first.
+///
+/// A figure that prices the transfer's fee (`Service Fee PHP 10.00` on a BDO
+/// Pay receipt) is skipped outright: it is never money the Guest sent.
 ///
 /// Line structure is what identifies a label: `Total Amount Sent` is a label
 /// because of the words next to *its own* figure, not because of the words
@@ -535,6 +556,8 @@ List<ReceiptAmount> extractReceiptAmounts(String text) {
           _referenceBetweenIsOneRun(before.substring(refLabelEnd))) {
         continue;
       }
+      // `Service Fee PHP 10.00` prices the fee, not the payment.
+      if (_feeLineRe.hasMatch(before) && !_hasAmountLabel(before)) continue;
 
       var label = '';
       var rank = _amountLabels.length;
@@ -553,6 +576,9 @@ List<ReceiptAmount> extractReceiptAmounts(String text) {
           beforeIsOnlyCurrency(before, raw) &&
           index > 0 &&
           lines[index - 1].trim().isNotEmpty) {
+        // A bare figure under a fee row is the fee's own figure (`Service Fee`
+        // then `PHP 10.00`), not a second payment.
+        if (_feeLineRe.hasMatch(lines[index - 1])) continue;
         // The label printed on its own row, the figure below it.
         labelFrom(lines[index - 1]);
       }
@@ -656,13 +682,15 @@ String extractSenderName(String text) =>
 String extractRecipientName(String text) =>
     _nameAfterLabel(text.split(RegExp(r'\r?\n')), _recipientLabelRe);
 
-/// `Aug 26, 2026`, `26/08/2026`, `2026-08-26`, `08/26/2026`, `26-08-2026`,
-/// `26 Aug 2026`.
+/// `Aug 26, 2026`, `Oct. 1, 2025`, `26/08/2026`, `2026-08-26`, `08/26/2026`,
+/// `26-08-2026`, `26 Aug 2026`.
+///
+/// The month may carry a period (`Oct. 1, 2025`), as BDO Pay prints it.
 final _printedDateRe = RegExp(
   r'(?:(\d{1,2})[/\-](\d{1,2})[/\-](\d{4}))'
   r'|((\d{4})[/\-](\d{1,2})[/\-](\d{1,2}))'
-  r'|(([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4}))'
-  r'|((\d{1,2})\s+([A-Za-z]{3,9}),?\s+(\d{4}))',
+  r'|(([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4}))'
+  r'|((\d{1,2})\s+([A-Za-z]{3,9})\.?,?\s+(\d{4}))',
   caseSensitive: false,
 );
 
