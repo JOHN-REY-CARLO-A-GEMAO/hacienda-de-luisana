@@ -18,7 +18,7 @@
 //                                rate-limit, mint 6 digits
 //                                store the salted SHA-256     ─►  Firestore
 //                                                                 admin_security_resets/{uid}
-//                                SMTP over TLS                ─►  Gmail   ─►  the Admin's inbox
+//                                HTTPS relay                   ─►  Apps Script / Gmail
 //   ◄─────────────────────────  { email, masked, expiresIn }
 //
 //   "I have the code" + code ──► verify the JWT + the digest
@@ -39,11 +39,11 @@
 //   supabase secrets set FIREBASE_PROJECT_ID=hacienda-de-luisana
 //   supabase secrets set FIREBASE_SERVICE_ACCOUNT_JSON=<service account json>
 //   supabase secrets set BOOTSTRAP_ADMIN_EMAILS="gemaojohnreyarguilles@gmail.com"
-//   supabase secrets set GMAIL_SMTP_USER=your-gmail@gmail.com
-//   supabase secrets set GMAIL_SMTP_APP_PASSWORD=your-16-character-app-password
+//   supabase secrets set GMAIL_RELAY_URL=https://script.google.com/macros/s/.../exec
+//   supabase secrets set GMAIL_RELAY_SECRET=<same value as Apps Script RELAY_SECRET>
 //
-// Gmail SMTP uses the account address as the sender; only an App Password is
-// accepted here, never the account's regular password.
+// Apps Script executes as the Gmail owner and sends via GmailApp. The shared
+// relay secret is never sent to the client.
 
 import { cert, initializeApp, getApps, type App } from 'npm:firebase-admin@11/app'
 import { getAuth, type DecodedIdToken } from 'npm:firebase-admin@11/auth'
@@ -75,9 +75,8 @@ const SECURITY_COLLECTION = 'admin_security'
 /** The append-only trail (ADR-0016) the reset writes into. */
 const SECURITY_EVENTS_COLLECTION = 'admin_security_events'
 
-/** Gmail implicit-TLS SMTP endpoint. */
-const GMAIL_SMTP_HOST = 'smtp.gmail.com'
-const GMAIL_SMTP_PORT = 465
+/** The Apps Script Web App is called over HTTPS, which Supabase Edge supports. */
+const GMAIL_RELAY_TIMEOUT_MS = 15_000
 
 /** Warn once per instance, not once per request, when the allowlist secret is unset. */
 let warnedMissingBootstrap = false
@@ -152,111 +151,43 @@ function codeEmail(code: string, minutes: number) {
 }
 
 /**
- * Hand the code to Gmail over SMTP/TLS, and say plainly whether it left.
+ * Hand the code to the Gmail Apps Script relay over HTTPS, and say plainly whether it left.
  *
  * The code itself is never logged: a reset code in a log is a reset code in a
  * log reader's hands. Only the address is, because a failed send is diagnosed
  * by knowing where it was going.
  */
-function base64(value: string): string {
-  return btoa(value)
-}
-
-async function smtpWrite(connection: Deno.Conn, value: string): Promise<void> {
-  const bytes = new TextEncoder().encode(value)
-  let offset = 0
-  while (offset < bytes.length) {
-    offset += await connection.write(bytes.subarray(offset))
-  }
-}
-
-async function smtpResponse(connection: Deno.Conn): Promise<{ code: number; text: string }> {
-  const decoder = new TextDecoder()
-  const bytes = new Uint8Array(1)
-  const lines: string[] = []
-  let line = ''
-  while (true) {
-    const count = await connection.read(bytes)
-    if (count === null) throw new Error('Gmail closed the SMTP connection')
-    const char = decoder.decode(bytes.subarray(0, count))
-    line += char
-    if (line.endsWith('\n')) {
-      const clean = line.replace(/[\r\n]+$/, '')
-      lines.push(clean)
-      if (/^\d{3} /.test(clean)) break
-      line = ''
-    }
-    if (lines.join('\n').length > 8192) throw new Error('SMTP response was too long')
-  }
-  const code = Number(lines.at(-1)?.slice(0, 3))
-  if (!Number.isFinite(code)) throw new Error('Malformed SMTP response')
-  return { code, text: lines.join(' | ') }
-}
-
-async function smtpCommand(
-  connection: Deno.Conn,
-  command: string,
-  accepted: number[],
-): Promise<string> {
-  await smtpWrite(connection, `${command}\r\n`)
-  const response = await smtpResponse(connection)
-  if (!accepted.includes(response.code)) throw new Error(`SMTP ${response.code}: ${response.text}`)
-  return response.text
-}
-
-/** Gmail SMTP supports AUTH LOGIN with an App Password on port 465. */
+/** Send through the user's Apps Script Web App, which calls GmailApp. */
 async function sendCodeEmail(
-  username: string,
-  appPassword: string,
+  relayUrl: string,
+  relaySecret: string,
   to: string,
   code: string,
 ): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
-  let connection: Deno.Conn | undefined
+  const minutes = Math.round(PIN_RESET_CODE_TTL_MS / 60_000)
+  const content = codeEmail(code, minutes)
   try {
-    connection = await Deno.connectTls({ hostname: GMAIL_SMTP_HOST, port: GMAIL_SMTP_PORT })
-    const greeting = await smtpResponse(connection)
-    if (greeting.code !== 220) throw new Error(`SMTP ${greeting.code}: ${greeting.text}`)
-    await smtpCommand(connection, `EHLO hacienda-de-luisana`, [250])
-    await smtpCommand(connection, 'AUTH LOGIN', [334])
-    await smtpCommand(connection, base64(username), [334])
-    await smtpCommand(connection, base64(appPassword.replace(/\s/g, '')), [235])
-    await smtpCommand(connection, `MAIL FROM:<${username}>`, [250])
-    await smtpCommand(connection, `RCPT TO:<${to}>`, [250, 251])
-    await smtpCommand(connection, 'DATA', [354])
-
-    const minutes = Math.round(PIN_RESET_CODE_TTL_MS / 60_000)
-    const content = codeEmail(code, minutes)
-    const message = [
-      `From: Hacienda de LuisAna <${username}>`,
-      `To: <${to}>`,
-      `Subject: Your Hacienda de LuisAna reset code: ${code}`,
-      'MIME-Version: 1.0',
-      'Content-Type: multipart/alternative; boundary="hacienda-pin-reset"',
-      '',
-      '--hacienda-pin-reset',
-      'Content-Type: text/plain; charset=UTF-8',
-      'Content-Transfer-Encoding: 7bit',
-      '',
-      content.text,
-      '--hacienda-pin-reset',
-      'Content-Type: text/html; charset=UTF-8',
-      'Content-Transfer-Encoding: 7bit',
-      '',
-      content.html,
-      '--hacienda-pin-reset--',
-      '.',
-    ].join('\r\n').replace(/\r?\n\./g, '\r\n..')
-    await smtpWrite(connection, `${message}\r\n`)
-    const sent = await smtpResponse(connection)
-    if (sent.code !== 250) throw new Error(`SMTP ${sent.code}: ${sent.text}`)
-    await smtpCommand(connection, 'QUIT', [221])
-    return { ok: true }
+    const response = await fetch(relayUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        secret: relaySecret,
+        to,
+        subject: `Your Hacienda de LuisAna reset code: ${code}`,
+        text: content.text,
+        html: content.html,
+      }),
+      signal: AbortSignal.timeout(GMAIL_RELAY_TIMEOUT_MS),
+    })
+    const body = await response.json().catch(() => null) as { ok?: unknown; error?: unknown } | null
+    if (response.ok && body?.ok === true) return { ok: true }
+    const detail = typeof body?.error === 'string' ? body.error.slice(0, 300) : `HTTP ${response.status}`
+    console.error(`[admin-pin-reset] Gmail relay refused mail (${response.status}): ${detail}`)
+    return { ok: false, status: response.status, detail }
   } catch (error) {
-    const detail = error instanceof Error ? error.message : 'SMTP connection failed'
-    console.error(`[admin-pin-reset] Gmail SMTP delivery failed: ${detail.slice(0, 300)}`)
+    const detail = error instanceof Error ? error.message : 'Gmail relay request failed'
+    console.error(`[admin-pin-reset] Gmail relay request failed: ${detail.slice(0, 300)}`)
     return { ok: false, status: 0, detail: detail.slice(0, 300) }
-  } finally {
-    try { connection?.close() } catch { /* already closed */ }
   }
 }
 
@@ -359,10 +290,10 @@ Deno.serve(async (request) => {
 
   // ---- request: mint, store, mail -----------------------------------------
   if (parsed.action === 'request') {
-    const smtpUser = Deno.env.get('GMAIL_SMTP_USER')?.trim() ?? ''
-    const appPassword = Deno.env.get('GMAIL_SMTP_APP_PASSWORD')?.trim() ?? ''
-    if (smtpUser === '' || appPassword === '') {
-      console.error('[admin-pin-reset] Gmail SMTP credentials are not set')
+    const relayUrl = Deno.env.get('GMAIL_RELAY_URL')?.trim() ?? ''
+    const relaySecret = Deno.env.get('GMAIL_RELAY_SECRET')?.trim() ?? ''
+    if (relayUrl === '' || relaySecret === '') {
+      console.error('[admin-pin-reset] Gmail relay settings are not set')
       return json(
         {
           error:
@@ -447,14 +378,14 @@ Deno.serve(async (request) => {
     // it holds the pacing counters (so a repeated failure cannot become a free
     // retry storm) and a digest for a code nobody received, which expires on
     // its own.
-    const sent = await sendCodeEmail(smtpUser, appPassword, email, code)
+    const sent = await sendCodeEmail(relayUrl, relaySecret, email, code)
     if (!sent.ok) {
       return json(
         {
           error:
-            sent.detail.includes('535') || sent.detail.includes('534')
-              ? 'Gmail refused the SMTP login. Check the Gmail address and App Password.'
-              : 'Gmail could not send the code right now. Check the server mail settings and try again.',
+            sent.status === 403 || sent.detail.includes('Unauthorized')
+              ? 'The Gmail relay authorization failed. Check GMAIL_RELAY_SECRET.'
+              : 'Gmail could not send the code right now. Check the relay settings and try again.',
         },
         502,
       )

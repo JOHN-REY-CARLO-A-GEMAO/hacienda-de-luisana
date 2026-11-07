@@ -520,7 +520,7 @@ regenerate or re-encode that code — see `public/images/payment/README.md`.
   **not deletable by any client at all**. A forgotten PIN is reset through the Supabase Edge Function
   `admin-pin-reset`, which mails six digits to the Admin's Firebase-verified address and disposes of
   the record only when those digits come back. See the deployment block in `docs/adr/0027-a-forgotten-pin-is-reset-by-an-emailed-code.md`
-  — it needs `GMAIL_SMTP_USER`, `GMAIL_SMTP_APP_PASSWORD` and `BOOTSTRAP_ADMIN_EMAILS` as function secrets, or
+  — it needs `GMAIL_RELAY_URL`, `GMAIL_RELAY_SECRET` and `BOOTSTRAP_ADMIN_EMAILS` as function secrets, or
   the reset sheet reports that sending is not configured. `admin_security_events` stays append-only
   (`create`, `update` and `delete` refused to every client), and the function writes the line, so the
   trail that a PIN was reset outlives the record. `admin_security_resets/{uid}` holds the reset code's
