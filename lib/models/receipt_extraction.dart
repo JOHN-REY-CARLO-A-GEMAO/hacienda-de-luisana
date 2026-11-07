@@ -20,7 +20,7 @@
 //     a number nobody can match against a real GCash transaction.
 //
 // The parsing rules mirror the website's extractor on purpose. The two apps
-// read the same GCash / Maya / bank screenshots, so a reference that reads
+// read the same GCash / bank screenshots, so a reference that reads
 // correctly on `/account` must read identically here — including the awkward
 // parts: a 13-digit GCash reference printed across two rows of a two-column
 // receipt, and the 16-digit card number on the same screenshot that must never
@@ -321,19 +321,19 @@ final _lettersAndDigitsRe = RegExp(r'[^A-Za-z0-9]');
 
 /// Labels that introduce a reference number on the receipts this estate sees.
 final _referenceLabelRe = RegExp(
-  r'(?:ref(?:erence)?(?:\s*(?:no\.?|number|#))?|txn|transaction|confirmation|trace|gcash\s*ref|maya\s*ref)',
+  r'(?:ref(?:erence)?(?:\s*(?:no\.?|number|#))?|txn|transaction|confirmation|trace|gcash\s*ref)',
   caseSensitive: false,
 );
 
 /// A labelled reference printed as one alphanumeric run (`REF-A1B2C3D4`).
 final _labelledAlphanumericRe = RegExp(
-  r'(?:ref(?:erence)?(?:\s*(?:no\.?|number|#))?|txn(?:\s*id)?|transaction(?:\s*(?:id|no\.?|number|#))?|confirmation(?:\s*(?:no\.?|number|#))?|trace(?:\s*(?:no\.?|number|#))?|gcash\s*ref|maya\s*ref)\s*[:#-]?\s*([A-Za-z0-9][A-Za-z0-9-]{5,39})',
+  r'(?:ref(?:erence)?(?:\s*(?:no\.?|number|#))?|txn(?:\s*id)?|transaction(?:\s*(?:id|no\.?|number|#))?|confirmation(?:\s*(?:no\.?|number|#))?|trace(?:\s*(?:no\.?|number|#))?|gcash\s*ref)\s*[:#-]?\s*([A-Za-z0-9][A-Za-z0-9-]{5,39})',
   caseSensitive: false,
 );
 
 /// 10–13 digits collected so far, or '' while the reference is still too short.
 ///
-/// A GCash/Maya/bank reference is 10–13 digits. Sixteen is a card number; nine
+/// A GCash/bank reference is 10–13 digits. Sixteen is a card number; nine
 /// is a partial read. Both are refused rather than stored.
 String _settledReference(String digits) =>
     (digits.length >= 10 && digits.length <= 13) ? digits : '';
@@ -404,7 +404,7 @@ String _labelledGroups(String text) {
   return '';
 }
 
-/// Pull the 10–13 digit reference a GCash, Maya or bank transfer receipt
+/// Pull the 10–13 digit reference a GCash or bank transfer receipt
 /// carries out of recognized text.
 ///
 /// A labelled reference wins (`Ref No.`, `Txn ID`, `GCash ref`, `confirmation
@@ -420,7 +420,7 @@ String extractReferenceNumber(String text) {
   final compact = text.replaceAll(RegExp(r'\s+'), ' ');
 
   final labelled = RegExp(
-    r'(?:ref(?:erence)?|txn|transaction|confirmation|trace|gcash|maya|bank)[^\n]{0,24}?(\d[\d\s-]{8,24}\d)',
+    r'(?:ref(?:erence)?|txn|transaction|confirmation|trace|gcash|bank)[^\n]{0,24}?(\d[\d\s-]{8,24}\d)',
     caseSensitive: false,
   ).firstMatch(compact);
   if (labelled != null) {
@@ -628,7 +628,7 @@ final _recipientLabelRe = RegExp(
 
 /// Tokens that end a name candidate — money figures, references, dates, labels.
 final _nameStopRe = RegExp(
-  r'^(?:ref|reference|txn|transaction|amount|total|paid|date|time|gcash|maya|bank|₱|php|\d{10,})',
+  r'^(?:ref|reference|txn|transaction|amount|total|paid|date|time|gcash|bank|₱|php|\d{10,})',
   caseSensitive: false,
 );
 

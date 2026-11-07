@@ -110,7 +110,7 @@ describe('payment information configuration', () => {
   })
 
   it('does not give GCash instructions for another payment method', () => {
-    const host = render({ active: true, methods: [{ method: 'Maya', recipient_name: 'Hacienda', qr_image: '/qr.png' }], instructions: 'Keep the receipt.' })
+    const host = render({ active: true, methods: [{ method: 'UnionBank', recipient_name: 'Hacienda', qr_image: '/qr.png' }], instructions: 'Keep the receipt.' })
     expect(host.textContent).toContain('Use a compatible payment app')
     expect(host.textContent).not.toContain('In GCash, tap Scan QR')
   })

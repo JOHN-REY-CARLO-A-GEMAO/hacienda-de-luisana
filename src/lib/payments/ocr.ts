@@ -44,7 +44,7 @@ export type OcrExtract = {
 
 const REF_PATTERNS = [
   /(?:ref(?:erence)?(?:\s*(?:no\.?|number|#))?|txn|transaction|gcash\s*ref)[:\s#-]*([A-Z0-9-]{6,40})/i,
-  // GCash / Maya / bank transfer references are 10–13 digits; a 16-digit run is
+  // GCash / bank transfer references are 10–13 digits; a 16-digit run is
   // a card number, not a reference, and is deliberately not matched.
   /\b([0-9]{10,13})\b/,
 ]
@@ -125,7 +125,7 @@ function labelledGroups(text: string): string {
 }
 
 /**
- * Pull the 10–13 digit reference a GCash, Maya or bank transfer receipt carries
+ * Pull the 10–13 digit reference a GCash or bank transfer receipt carries
  * out of OCR'd text (task: OCR fills the Guest's reference input).
  *
  * A labelled reference wins ("Ref No.", "Txn ID", "GCash ref", "confirmation
@@ -139,7 +139,7 @@ export function extractReferenceNumber(text: string): string {
   if (grouped) return grouped
   const compact = text.replace(/\s+/g, ' ')
   const labelled = compact.match(
-    /(?:ref(?:erence)?|txn|transaction|confirmation|trace|gcash|maya|bank)[^\n]{0,24}?(\d[\d\s-]{8,24}\d)/i,
+    /(?:ref(?:erence)?|txn|transaction|confirmation|trace|gcash|bank)[^\n]{0,24}?(\d[\d\s-]{8,24}\d)/i,
   )
   if (labelled) {
     const digits = labelled[1].replace(/[\s-]/g, '')
@@ -153,7 +153,7 @@ export function extractReferenceNumber(text: string): string {
  * Labels that introduce the sender on the receipt formats the Hacienda sees.
  * GCash prints the sender as a phone number (`+63 930 485 7798`), bank
  * transfer receipts print a name under `Remitter`, `Account Name`, `Sender` or
- * `From`, and Maya receipts print `From`. The label wins; a bare line that
+ * `From`. The label wins; a bare line that
  * looks like a name is never enough on its own.
  */
 const SENDER_LABEL_RE =
@@ -161,7 +161,7 @@ const SENDER_LABEL_RE =
 
 /** Tokens that end a name candidate — money figures, references, dates, labels. */
 const NAME_STOP_RE =
-  /^(?:ref|reference|txn|transaction|amount|total|paid|date|time|gcash|maya|bank| ₱|php|\d{10,})/i
+  /^(?:ref|reference|txn|transaction|amount|total|paid|date|time|gcash|bank| ₱|php|\d{10,})/i
 
 /** What a sender name may contain: letters, spaces and the punctuation names use. */
 const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ'.\s-]{2,60}$/
@@ -170,7 +170,7 @@ const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ'.\s-]{2,60}$/
 const NUMBER_LINE_RE = /\d{4,}/
 
 /**
- * A time as a GCash / Maya / bank receipt prints it: `10:23 AM`, `22:05`,
+ * A time as a GCash / bank receipt prints it: `10:23 AM`, `22:05`,
  * `9:07:12 p.m.`. The meridiem is optional, and a trailing meridiem that
  * Tesseract mistook for a stray word simply makes the time read as 24-hour.
  *
@@ -203,7 +203,7 @@ export function extractPaymentTime(text: string): { display: string; time24: str
  * An alphanumeric reference as bank apps print it — `BDO123456789`,
  * `REF-8F2K9L`, `MBTC 0045 7781 22`.
  *
- * GCash and Maya print 10–13 digits, which `extractReferenceNumber` reads
+ * GCash prints 10–13 digits, which `extractReferenceNumber` reads
  * exactly. A bank transfer's reference is often shorter and often carries
  * letters, so it needs its own read: a labelled token of 6–40 letters, digits
  * and hyphens that contains at least one digit and is neither a date, a time,
@@ -582,7 +582,7 @@ export function extractReceiptFields(text: string): OcrExtract {
 
   // A reference split across the rows of a two-column receipt only reads off the
   // text as it was recognised, so the collapse below is not enough for this one.
-  // The 10–13 digit GCash/Maya shape is tried first; a labelled alphanumeric or
+  // The 10–13 digit GCash shape is tried first; a labelled alphanumeric or
   // short bank reference is the fallback.
   let reference = extractReferenceNumber(text) || extractAlphanumericReference(text)
   if (!reference) {

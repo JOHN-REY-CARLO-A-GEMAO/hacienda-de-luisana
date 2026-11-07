@@ -4,7 +4,7 @@
 // (`payments/{uid}/{ref}/proof-1.jpg`), not a link. The bucket is private and
 // grants the `anon` role write and nothing else, so there is no URL the app can
 // simply open, and the `anon` key cannot sign one either — that is deliberate:
-// an anon read policy would publish every Guest's GCash or Maya reference to
+// an anon read policy would publish every Guest's GCash or bank reference to
 // anyone who loads the website.
 //
 // So the app asks the `admin-payment-proof` function, which verifies the

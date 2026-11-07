@@ -125,11 +125,11 @@ describe('pagination + sort', () => {
 })
 
 describe('OCR is not verification', () => {
-  it('extracts the 10–13 digit reference GCash, Maya and bank receipts carry', () => {
+  it('extracts the 10–13 digit reference GCash and bank receipts carry', () => {
     // Labelled first — including references printed with spacing — then a
     // bare run; anything card-shaped (14–16 digits) or absent is ''.
     expect(extractReferenceNumber('GCash Ref No: 1234567890123 Amount: 1500')).toBe('1234567890123')
-    expect(extractReferenceNumber('Maya transaction 987654321098')).toBe('987654321098')
+    expect(extractReferenceNumber('Bank transaction 987654321098')).toBe('987654321098')
     expect(extractReferenceNumber('Confirmation no. 1234 567 890123')).toBe('1234567890123')
     // A bank reference keeps only its 10–13 digit heart; a shorter run is nothing.
     expect(extractReferenceNumber('Bank ref: TRX-004455667788')).toBe('004455667788')

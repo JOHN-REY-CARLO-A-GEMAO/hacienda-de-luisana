@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // What makes a payment proof acceptable — pure, and the same answer everywhere.
 //
-// The Guest uploads a screenshot of a GCash / Maya / bank transfer receipt and
+// The Guest uploads a screenshot of a GCash / bank transfer receipt and
 // the browser reads it with OCR. This module decides whether that read is good
 // enough to file:
 //
@@ -85,7 +85,7 @@ export function normalizeTimeOfDay(raw: string): string {
 /**
  * The instant a receipt states, read on Philippine time.
  *
- * GCash, Maya and Philippine banks print the sender's local time, which is
+ * GCash and Philippine banks print the sender's local time, which is
  * Asia/Manila (UTC+08:00, no daylight saving). Reading it as UTC would make every
  * receipt look eight hours older than it is — enough to push one sent late
  * tonight outside a short window.
@@ -185,11 +185,11 @@ export function checkScannedReceipt(input: {
         {
           code: 'not-scanned',
           message:
-            'Upload a clear screenshot of your GCash / Maya / bank transfer receipt first. The reference number, date and time, and amount have to be readable.',
+            'Upload a clear screenshot of your GCash / bank transfer receipt first. The reference number, date and time, and amount have to be readable.',
         },
       ],
       message:
-        'Upload a clear screenshot of your GCash / Maya / bank transfer receipt first. The reference number, date and time, and amount have to be readable.',
+        'Upload a clear screenshot of your GCash / bank transfer receipt first. The reference number, date and time, and amount have to be readable.',
     }
   }
 

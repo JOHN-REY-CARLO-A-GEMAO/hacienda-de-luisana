@@ -380,7 +380,7 @@ Implemented as a client-side pipeline (2026-09-27), documented, and still
 - What exists: `src/lib/payments/ocr.ts` — `runReceiptOcr` runs tesseract.js in
   the browser when the Guest picks the screenshot (busy indicator shown, worker
   fetched on first use), `extractReferenceNumber` pulls the 10–13 digit GCash /
-  Maya / bank reference (14–16 digit card numbers refused) and pre-fills the
+  bank reference (14–16 digit card numbers refused) and pre-fills the
   editable reference input, `extractReceiptFields` keeps the regex path for text
   files (step 16), and `matchPaymentReference` does the duplicate/amount check.
   The chosen reference travels to the Booking as `extractedRefNumber` next to

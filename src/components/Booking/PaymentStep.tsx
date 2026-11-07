@@ -581,7 +581,7 @@ export function PaymentStep({ booking }: { booking: Booking }) {
               <label className="block">
                 <span className="guest-label">Reference number</span>
                 <span className="mt-0.5 mb-1.5 block text-[11px] leading-relaxed text-forest-600 dark:text-sage-400">
-                  Read from your GCash, Maya or bank receipt — digits or letters. If it was read
+                  Read from your GCash or bank receipt — digits or letters. If it was read
                   wrongly, upload a clearer screenshot; it cannot be typed over.
                 </span>
                 <Input
