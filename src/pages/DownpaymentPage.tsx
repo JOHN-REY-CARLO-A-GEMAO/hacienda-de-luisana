@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ACCOMMODATIONS, BUSINESS } from '../config/site'
 import { FlowSteps } from '../components/Booking/FlowSteps'
-import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { SmartImage } from '../components/SmartImage'
 import { clearBookingDraft, loadBookingDraft, rememberBookingId, type BookingDraft } from '../lib/bookingDraft'
 import { formatStayDate } from '../lib/formatDate'
@@ -660,9 +659,6 @@ refund_policy_snapshot: published.refund ?? null,
                 ) : (
                   <Alert tone="warning" role="status">The published rate is not available yet. Do not send payment; online submission requires an applicable published rate.</Alert>
                 )}
-              </div>
-              <div className="mt-5">
-                <OfficialChannelsNotice />
               </div>
               <div className="mt-5 rounded-2xl bg-forest-900 p-5 text-cream-50 sm:p-6">
                 <h3 className="font-serif text-2xl">Buod ng Bayad</h3>

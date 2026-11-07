@@ -27,7 +27,6 @@ import { Nearby } from '../../src/sections/Nearby'
 import { GoodToKnow } from '../../src/sections/GoodToKnow'
 import { Location } from '../../src/sections/Location'
 import { Hero } from '../../src/sections/Hero'
-import { OfficialChannelsNotice } from '../../src/components/OfficialChannelsNotice'
 import type { PublishedRates } from '../../src/lib/booking'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
@@ -158,16 +157,6 @@ describe('official listings and channels', () => {
     expect(LISTINGS.agoda.url).toBe('https://www.agoda.com/hacienda-de-luisana/hotel/luisiana-ph.html')
   })
 
-  it('shows the scam notice with the real contact details and both listings', () => {
-    const page = render(<OfficialChannelsNotice />)
-    expect(page.text()).toContain(OFFICIAL_CHANNELS.headline)
-    expect(page.text()).toContain(BUSINESS.contact.phoneDisplay)
-    expect(page.text()).toContain(BUSINESS.contact.email)
-    const hrefs = [...page.container.querySelectorAll('a')].map((a) => a.href)
-    expect(hrefs).toContain(LISTINGS.airbnb.url)
-    expect(hrefs).toContain(LISTINGS.agoda.url)
-    expect(hrefs).toContain(BUSINESS.contact.facebook)
-  })
 })
 
 describe('rates, fees and sleeping arrangements', () => {

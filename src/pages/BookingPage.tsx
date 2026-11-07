@@ -23,7 +23,6 @@ import { LIMITS, checkRateLimit } from '../lib/rateLimit'
 import { LEGAL_VERSION } from '../lib/legal'
 import { MAX_STAY_NIGHTS } from '../lib/booking'
 import { usePublishedRates } from '../hooks/usePublishedRates'
-import { OfficialChannelsNotice } from '../components/OfficialChannelsNotice'
 import { useBookingPolicy } from '../hooks/useBookingPolicy'
 import { doc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
@@ -937,10 +936,6 @@ export function BookingPage() {
                   </div>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-6">
-              <OfficialChannelsNotice compact />
             </div>
 
             <div className="mt-6 bg-forest-900 text-cream-100 rounded-[28px] p-6">
