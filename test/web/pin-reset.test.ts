@@ -308,19 +308,20 @@ describe('the function the app calls', () => {
     // phone cannot redirect a code to an address its holder controls.
     const readBody = fnCode.slice(fnCode.indexOf('function readBody'), fnCode.indexOf('Deno.serve'))
     expect(readBody).not.toMatch(/record\.email|\bemail\s*:/)
-    expect(fnCode).toContain('sendCodeEmail(apiKey, from, email, code)')
+    expect(fnCode).toContain('sendCodeEmail(smtpUser, appPassword, email, code)')
   })
 
   it('sends by mail, with no link to click', () => {
     // `fnSource`, not `fnCode`: the comment stripper cuts `//` out of URLs.
-    expect(fnSource).toContain("const RESEND_ENDPOINT = 'https://api.resend.com/emails'")
+    expect(fnSource).toContain("const GMAIL_SMTP_HOST = 'smtp.gmail.com'")
+    expect(fnSource).toContain("const GMAIL_SMTP_PORT = 465")
     // A link in a reset email is a phishing habit to teach; the code is typed
     // into the app that asked for it.
-    expect(fnSource).not.toMatch(/https?:\/\/(?!api\.resend\.com|identitytoolkit|firebase)/)
+    expect(fnSource).not.toMatch(/https?:\/\/(?!identitytoolkit|firebase)/)
   })
 
   it('refuses to pretend when the mailer is unconfigured', () => {
-    expect(fnCode).toMatch(/RESEND_API_KEY[\s\S]{0,600}?503/)
+    expect(fnCode).toMatch(/GMAIL_SMTP_USER[\s\S]{0,600}?503/)
   })
 
   it('imports only what its modules actually export', () => {
