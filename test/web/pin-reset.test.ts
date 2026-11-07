@@ -323,6 +323,57 @@ describe('the function the app calls', () => {
     expect(fnCode).toMatch(/RESEND_API_KEY[\s\S]{0,600}?503/)
   })
 
+  it('imports only what its modules actually export', () => {
+    // The bug this exists for was a **BOOT_ERROR in production**: two helpers
+    // moved from `admin-gate.ts` to `pin-reset-code.ts` while the function kept
+    // importing them from the first. Nothing in this repository caught it —
+    // `tsc` typechecks the *shared* modules against the app, not the function's
+    // own import list, and Deno only complains when the function boots. The
+    // first deploy of ADR-0027 therefore answered `503 BOOT_ERROR` on every
+    // request, which reads like a secrets problem and is not one.
+    //
+    // A missing export is cheap to catch statically, so it is a test: every
+    // name the function imports must be exported by the module it names.
+    const relativeImport = /import\s*\{([^}]*)\}\s*from\s*'(\.[^']+)'/g
+    const exportedNames = (file: string): Set<string> => {
+      const text = readFileSync(join(__dirname, '../../', file), 'utf8')
+      return new Set(
+        [...text.matchAll(
+          /export\s+(?:async\s+)?(?:function|const|let|class|interface|type)\s+([A-Za-z0-9_]+)/g,
+        )].map((match) => match[1]),
+      )
+    }
+
+    const failures: string[] = []
+    for (const match of fnSource.matchAll(relativeImport)) {
+      const names = match[1]
+        .split(',')
+        .map((part) => part.trim().replace(/^type\s+/, ''))
+        .filter(Boolean)
+      const specifier = match[2]
+      const target = `supabase/functions/${specifier.replace(/^\.\.\//, '').replace(/\.ts$/, '')}.ts`
+      const available = exportedNames(target)
+      for (const name of names) {
+        if (!available.has(name)) failures.push(`${name} ← ${specifier}`)
+      }
+    }
+
+    expect(failures).toEqual([])
+  })
+
+  it('returns the verdict from the transaction instead of assigning it', () => {
+    // Firestore re-runs a transaction callback on contention. A captured `let`
+    // would carry the last attempt's answer into a commit made by a different
+    // one, so the verdict has to be the callback's return value.
+    expect(fnCode).toContain('Promise<ResetRefusal>')
+    expect(fnCode).toContain('type ResetRefusal')
+    expect(fnCode).toMatch(/return attempts >= PIN_RESET_MAX_ATTEMPTS \? 'spent' : 'mismatch'/)
+    // No assignment left inside the callback: the one `reason =` is the call
+    // itself.
+    const assignments = [...fnCode.matchAll(/\breason\s*=(?!=)/g)]
+    expect(assignments).toHaveLength(1)
+  })
+
   it('spends the code and deletes the PIN in server writes no client can make', () => {
     // The dispose is the Admin SDK's, after the digest matched — not a client
     // delete a phone could perform on its own.

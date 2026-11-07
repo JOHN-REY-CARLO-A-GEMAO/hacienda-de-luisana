@@ -50,10 +50,8 @@ import { getAuth, type DecodedIdToken } from 'npm:firebase-admin@11/auth'
 import { getFirestore } from 'npm:firebase-admin@11/firestore'
 import {
   checkAdminCaller,
-  checkRequestPacing,
   codeUsability,
   maskEmail,
-  nextRequestPacingState,
   parseAdminEmails,
 } from '../_shared/admin-gate.ts'
 import {
@@ -61,10 +59,12 @@ import {
   PIN_RESET_MAX_ATTEMPTS,
   PIN_RESET_REQUESTS_PER_HOUR,
   PIN_RESET_REQUEST_COOLDOWN_MS,
+  checkRequestPacing,
   hashResetCode,
   isResetCodeShape,
   newCodeSalt,
   newResetCode,
+  nextRequestPacingState,
   verifyResetCode,
 } from '../_shared/pin-reset-code.ts'
 
@@ -418,10 +418,17 @@ Deno.serve(async (request) => {
   }
 
   // ---- verify: check the digest, then dispose of the record ---------------
+  //
+  // The verdict is the transaction's **return value**, not a variable it
+  // assigns. That is not style: Firestore may re-run this callback when a
+  // concurrent write contends, and a captured `let` would then be read as
+  // whatever the *last* attempt wrote while an earlier attempt's writes are the
+  // ones that commit. Returning it means each committed attempt carries its own
+  // answer, so a retry cannot turn a spent code into an accepted one.
   const code = parsed.code
-  let reason: 'missing' | 'spent' | 'expired' | 'consumed' | 'mismatch' | 'ok' = 'missing'
+  let reason: ResetRefusal = 'missing'
   try {
-    await firestore.runTransaction(async (transaction) => {
+    reason = await firestore.runTransaction(async (transaction): Promise<ResetRefusal> => {
       const snapshot = await transaction.get(resetRef)
       const state = snapshot.exists ? (snapshot.data() as Record<string, unknown>) : undefined
       const now = Date.now()
@@ -436,10 +443,7 @@ Deno.serve(async (request) => {
         now,
         PIN_RESET_MAX_ATTEMPTS,
       )
-      if (usability !== 'ok') {
-        reason = usability
-        return
-      }
+      if (usability !== 'ok') return usability
 
       const storedHash = typeof state!.code_hash === 'string' ? state!.code_hash : ''
       const salt = typeof state!.code_salt === 'string' ? state!.code_salt : ''
@@ -448,15 +452,14 @@ Deno.serve(async (request) => {
       if (!matches) {
         const attempts = (typeof state!.attempts === 'number' ? state!.attempts : 0) + 1
         transaction.update(resetRef, { attempts })
-        reason = attempts >= PIN_RESET_MAX_ATTEMPTS ? 'spent' : 'mismatch'
-        return
+        return attempts >= PIN_RESET_MAX_ATTEMPTS ? 'spent' : 'mismatch'
       }
 
       // A correct code is consumed in the same transaction that settles the
       // PIN: a second submit cannot spend it twice, and the delete below can
       // only happen once.
       transaction.update(resetRef, { consumed_at: now })
-      reason = 'ok'
+      return 'ok'
     })
   } catch (error) {
     console.error('[admin-pin-reset] verify failed', error)
@@ -496,11 +499,11 @@ Deno.serve(async (request) => {
   return json({ reset: true })
 })
 
+/** Every way a code check can end, named once so the transaction and the copy agree. */
+type ResetRefusal = 'missing' | 'spent' | 'expired' | 'consumed' | 'mismatch' | 'ok'
+
 /** What a failed entry says. Each one is a next step, not a status code. */
-const RESET_REFUSAL: Record<
-  'missing' | 'spent' | 'expired' | 'consumed' | 'mismatch' | 'ok',
-  string
-> = {
+const RESET_REFUSAL: Record<ResetRefusal, string> = {
   ok: 'The code was accepted.',
   missing: 'Ask for a code first.',
   spent: 'That code has been used up. Ask for a new one.',
