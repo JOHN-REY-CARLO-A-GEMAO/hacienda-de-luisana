@@ -344,9 +344,9 @@ ANA CRUZ
       expect(extraction.confidence, ReceiptConfidence.high);
     });
 
-    test('a Maya receipt with a labelled transaction id and a slash date', () {
+    test('a bank receipt with a labelled transaction id and a slash date', () {
       final extraction = parseReceiptText(
-        'Maya\nTransaction ID: 123456789012\nAmount: 8,500.00\n'
+        'BDO\nTransaction ID: 123456789012\nAmount: 8,500.00\n'
         'Date: 09/05/2026',
       );
       expect(extraction.reference, '123456789012');

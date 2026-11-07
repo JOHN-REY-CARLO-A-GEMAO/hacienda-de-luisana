@@ -9,7 +9,7 @@
 // The one assertion that earns the file: **no read policy for `anon`**. The
 // `anon` key is public (Vite inlines it into the bundle, so every visitor has
 // it), which means an `anon` select policy on the proofs bucket publishes every
-// Guest's GCash/Maya reference number and amount. The bug is invisible in
+// Guest's GCash/bank reference number and amount. The bug is invisible in
 // review — the policies read like a tidy set of three — and it is the kind that
 // gets written by someone trying to make a preview work. So it is a test.
 import { readFileSync } from 'node:fs'

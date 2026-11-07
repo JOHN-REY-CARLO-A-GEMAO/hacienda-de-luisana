@@ -22,7 +22,7 @@
 -- and the rules downstream (payment verification) are what actually mean
 -- anything by it.
 --
--- Reads are NOT anonymous. A payment proof is a GCash or Maya reference number
+-- Reads are NOT anonymous. A payment proof is a GCash or bank reference number
 -- and an amount — money-adjacent personal data, and RA 10173 is not a
 -- hypothetical for this project. So there is deliberately **no** `select`
 -- policy for `anon` here, and adding one is the single most damaging change

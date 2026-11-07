@@ -3,7 +3,7 @@
 // Why this exists: `supabase/01-storage.sql` grants the `anon` role write and
 // nothing else, because the `anon` key is public — it ships inside the Vite
 // bundle. A read policy for `anon` would therefore publish every Guest's GCash
-// or Maya reference number and amount to anyone who loads the website. So an
+// or bank reference number and amount to anyone who loads the website. So an
 // Admin cannot fetch a proof with a key; it asks this function, which
 // authenticates the caller and hands back a URL that expires in 60 seconds.
 //

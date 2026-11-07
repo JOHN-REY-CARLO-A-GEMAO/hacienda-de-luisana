@@ -747,7 +747,7 @@ refund_policy_snapshot: published.refund ?? null,
                 <RequestBadge status="required" label="Kailangan" />
               </div>
               <p className="mt-2 text-base leading-relaxed text-forest-700">
-                Larawan ng GCash, Maya, o bank receipt. Image file na mas maliit sa 5 MB.
+                Larawan ng GCash o bank receipt. Image file na mas maliit sa 5 MB.
                 Dapat mabasa ang halaga at reference bago ipadala.
               </p>
 

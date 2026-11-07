@@ -68,7 +68,7 @@ na na-verify na pala. Kung `ocr_reference` lamang ang may reference (walang taon
 
 ## 3. Ano ang nababasa ngayon
 
-- **GCash / Maya / bank reference**: 10–13 digits. Kasama ang pinakamahirap na kaso — ang GCash
+- **GCash / bank reference**: 10–13 digits. Kasama ang pinakamahirap na kaso — ang GCash
   "Express Send" na `7044 357 122304` na hinahati ng date column sa dalawang linya.
 - **BDO Pay ("Sent!") reference**: alphanumeric na `BN-20251001-57580325` sa ilalim ng
   `Reference no.` — kahit nasa sariling linya ang value. Hindi kailanman nagiging reference ang
@@ -123,7 +123,7 @@ Dapat lumabas ang `7044357122304` — iyon ang reference na pinagdugtong mula sa
 ## 6. Kung may resibong hindi mabasa
 
 1. Kunin ang **toong OCR text** mula sa isang ligtas na test fixture, at gamitin ito sa parser tests.
-2. Kung mali ang pagkakabasa ng layout (halimbawa bagong template ng Maya o bank), dagdagan ang
+2. Kung mali ang pagkakabasa ng layout (halimbawa bagong template ng GCash o bank), dagdagan ang
    pattern sa `src/lib/payments/ocr.ts`:
    - reference → `REF_PATTERNS`, `REF_LABEL_RE`, `labelledGroups()`
    - amount → `extractReceiptAmounts()` (ang label list)

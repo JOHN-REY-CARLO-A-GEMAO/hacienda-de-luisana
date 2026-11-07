@@ -1,6 +1,6 @@
 // Full-screen view of one payment proof.
 //
-// The Admin's whole job at this moment is to read a GCash or Maya screenshot —
+// The Admin's whole job at this moment is to read a GCash or bank screenshot —
 // a reference number, an amount, a date — and decide. So it opens as a photo,
 // zoomable with two fingers, rather than a preview in a list: the numbers have
 // to be legible on a phone held at arm's length.

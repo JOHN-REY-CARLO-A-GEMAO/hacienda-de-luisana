@@ -60,7 +60,7 @@ describe('extractReferenceNumber', () => {
     ['GCash\nRef No. 1234567890123', '1234567890123'],
     ['GCash\nRef No: 1234 5678 9012 3', '1234567890123'],
     ['BDO\nReference No.\n1234567890123', '1234567890123'],
-    ['MAYA\nTransaction ID 1234567890123', '1234567890123'],
+    ['Bank transfer\nTransaction ID 1234567890123', '1234567890123'],
     ['BDO\nTrace No. 1234567890123', '1234567890123'],
     // No label: a bare 10–13 digit run still counts.
     ['Sent 1234567890123 today', '1234567890123'],
@@ -119,7 +119,7 @@ describe('extractSenderName', () => {
   })
 
   it('reads a From label', () => {
-    expect(extractSenderName('MAYA\nFrom: Jose Rizal\nRef No. 1234567890123')).toBe(
+    expect(extractSenderName('Bank transfer\nFrom: Jose Rizal\nRef No. 1234567890123')).toBe(
       'Jose Rizal',
     )
   })
